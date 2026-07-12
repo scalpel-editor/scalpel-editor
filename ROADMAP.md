@@ -4,11 +4,13 @@ Phases run roughly in order; each lists its deliverable and how it is verified. 
 
 A note on verification order: the editor will not be runnable in this repository until phase 6. Until then, the upstream unit tests are the only executable check, which is why they come first and why phases 2–5 are behavior-preserving refactors. The OnlyWayUi repository (tag `scintilla-seed`) keeps a runnable editor on the same unmodified 5.6.4 core and can serve as a visual cross-check if a question about original behavior comes up.
 
-## Phase 1 — Stand up the harness
+## Phase 1 — Stand up the harness ✅ (2026-07-12)
 
 Create CMake for the Scintilla core and the upstream unit tests in `scintilla/test/unit`, and get them green under `ctest`. Document the build and test commands in AGENTS.md in the same change.
 
 Deliverable: `cmake --preset dev && cmake --build build && ctest --test-dir build` works. This is the safety net every later phase relies on.
+
+Done: the whole core compiles as static library `scintilla_core` (GCC 15, `-Wall -Wextra`, zero warnings); the upstream tests build against it and pass — 3,816 assertions in 52 test cases. `UnitTester.cxx` is excluded from the test build; it is an alternate `main()` for the Visual Studio build, matching the upstream GNU makefile.
 
 ## Phase 2 — Establish the dissolution pattern
 

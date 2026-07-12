@@ -30,7 +30,15 @@ The project has two goals of equal weight. First, a small, sharp editor. Second,
 
 ## Build and test
 
-There is no build yet. The first roadmap phase stands up CMake for the core plus the upstream unit tests. Update this section with the real commands in the same change that creates them — do not let this file describe a state the code does not have.
+The build uses CMake with the Ninja generator. From the repository root:
+
+```
+cmake --preset dev          # configure into build/ (Debug)
+cmake --build build         # build the core library and the unit tests
+ctest --test-dir build      # run the unit tests
+```
+
+For failure details, run the test binary directly: `./build/scintilla/test/unit/unitTest` (Catch2 v2; pass a test name pattern to run a single test case). The core builds as a static library, `scintilla_core`. It cannot link into a runnable program yet because no `Platform.h` implementation exists — that arrives in roadmap phase 6; the unit tests link only the platform-free subset of its objects.
 
 ## Source reading rule
 
