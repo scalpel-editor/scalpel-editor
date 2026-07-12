@@ -1,0 +1,9 @@
+# Build tree
+/build/
+
+# grepai index
+/.grepai/
+
+# Note: never add a `.*/` pattern here. grepai's ignore matcher mis-reads it as
+# "every directory" and indexes nothing (see AGENTS.md, Tooling notes). List
+# hidden directories explicitly instead.
