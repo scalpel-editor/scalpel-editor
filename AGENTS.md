@@ -6,14 +6,14 @@ This document is the working guide for coding agents and contributors in this re
 
 scalpel-editor is a Wayland-only text editor built from a refactored Scintilla core. It is not a general UI toolkit, not cross-platform, and not designed for embedding. It does one thing: edit text in one window on Wayland.
 
-The project has two goals of equal weight. First, a small, sharp editor. Second, a demonstration that a mature codebase can be refactored until both humans and AI models can read it: every feature findable by name, documentation next to implementation, no layer that exists only to serve platforms or uses this project does not have. Judge changes against both goals.
+The editor itself is personal utility — SciTE already gives Wayland users the full Scintilla feature set through GTK, so a lightweight alternative is not the value here. The value beyond personal utility lies in two artifacts. First, a Scintilla core refactored until both humans and AI models can read it: every feature findable by name, documentation next to implementation, no layer that exists only to serve platforms or uses this project does not have. Second, a worked example of a C++ Wayland application built without a GUI toolkit. Judge changes against these.
 
 ## Direction principles
 
-- One platform (Wayland), one encoding (UTF-8), one renderer. Delete generality that serves absent platforms or absent uses.
+- One platform (Wayland), one encoding (UTF-8), one renderer. Delete layers and generality that serve absent platforms; keep Scintilla's editing features intact even when this editor does not use them yet, so the refactored core stays useful to others (see the roadmap scope principle).
 - A feature's name, documentation, and implementation belong in one greppable place. No numeric message dispatch, no indirection that severs the link between a name and its code.
 - Prefer deleting indirection over adding abstraction. When tempted to make something more generally useful, stop and make it do its one job better instead.
-- Keep the tree small enough to hold in one head. The core fitting in a single model context window is a measurable target, not a metaphor.
+- Keep the tree small enough to hold in one head.
 - Refactor in behavior-preserving steps with tests green, and make each step small enough to review as a diff. When deliberately reducing scope, state the removed behavior and test what remains.
 
 ## Repository layout
@@ -25,7 +25,7 @@ The project has two goals of equal weight. First, a small, sharp editor. Second,
 ## Change rules for scintilla/
 
 - Keep `scintilla/test/unit` green through every refactoring step. These upstream tests cover the platform-free document and container code; they are not evidence that `Editor` behavior is unchanged.
-- Before dissolving a message, classify it as an application-facing method, private editor operation, keyboard command, retained type or notification, or feature to delete. Do not automatically turn messages into public methods.
+- Before dissolving a message, classify it as an application-facing method, private editor operation, keyboard command, retained type or notification, or feature to delete. Deletion is reserved for platform-only material and the message layer itself. Do not automatically turn messages into public methods.
 - When a retained message becomes a named method, find its entry in `scintilla/ScintillaDoc.html`, condense the useful prose into a doc comment near the method, and remove the old prose. When a feature is deleted, delete its documentation in the same change. The goal state is that `ScintillaDoc.html` has no live content and is deleted.
 - Add a focused editor test before moving behavior that the current tests do not exercise. Prefer assertions on visible effects such as document state, selection, invalidation, notifications, and scrollbar changes over relying on a mechanical-looking diff.
 - The "concrete test editor" is the test-only `ScintillaBase` subclass and deterministic host described in roadmap phase 2. Keep its callbacks observable, keep its clock and external state under test control, and do not make it depend on the seed code or the real Wayland and rendering stack.
