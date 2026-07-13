@@ -45,3 +45,4 @@ target_include_directories(scintilla_core PUBLIC include src)
 target_compile_options(scintilla_core PRIVATE -Wall -Wextra)
 
 add_subdirectory(test/unit)
+add_subdirectory(test/editor)

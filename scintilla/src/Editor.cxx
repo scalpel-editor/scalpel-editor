@@ -1508,6 +1508,19 @@ bool Editor::Wrapping() const noexcept {
 	return vs.wrap.state != Wrap::None;
 }
 
+void Editor::SetWrapMode(Wrap wrapMode) {
+	if (vs.SetWrapState(wrapMode)) {
+		xOffset = 0;
+		ContainerNeedsUpdate(Update::HScroll);
+		InvalidateStyleRedraw();
+		ReconfigureScrollBars();
+	}
+}
+
+Wrap Editor::GetWrapMode() const noexcept {
+	return vs.wrap.state;
+}
+
 void Editor::NeedWrapping(Sci::Line docLineStart, Sci::Line docLineEnd) {
 //Platform::DebugPrintf("\nNeedWrapping: %0d..%0d\n", docLineStart, docLineEnd);
 	if (wrapPending.AddRange(docLineStart, docLineEnd)) {
@@ -7269,16 +7282,11 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return static_cast<sptr_t>(idleStyling);
 
 	case Message::SetWrapMode:
-		if (vs.SetWrapState(static_cast<Wrap>(wParam))) {
-			xOffset = 0;
-			ContainerNeedsUpdate(Update::HScroll);
-			InvalidateStyleRedraw();
-			ReconfigureScrollBars();
-		}
+		SetWrapMode(static_cast<Wrap>(wParam));
 		break;
 
 	case Message::GetWrapMode:
-		return static_cast<sptr_t>(vs.wrap.state);
+		return static_cast<sptr_t>(GetWrapMode());
 
 	case Message::SetWrapVisualFlags:
 		if (vs.SetWrapVisualFlags(static_cast<WrapVisualFlag>(wParam))) {

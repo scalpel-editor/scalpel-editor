@@ -40,7 +40,12 @@
   ],
   "testPresets": [
     { "name": "dev", "configurePreset": "dev", "output": { "outputOnFailure": true } },
-    { "name": "asan", "configurePreset": "asan", "output": { "outputOnFailure": true } },
+    {
+      "name": "asan",
+      "configurePreset": "asan",
+      "environment": { "ASAN_OPTIONS": "detect_leaks=0" },
+      "output": { "outputOnFailure": true }
+    },
     { "name": "ubsan", "configurePreset": "ubsan", "output": { "outputOnFailure": true } }
   ],
   "workflowPresets": [

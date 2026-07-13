@@ -36,8 +36,8 @@ The build uses CMake with the Ninja generator. From the repository root:
 
 ```
 cmake --preset dev          # configure into build/ (Debug)
-cmake --build build         # build the core library and the unit tests
-ctest --test-dir build      # run the unit tests
+cmake --build build         # build the core library and both test executables
+ctest --test-dir build      # run the unit and editor tests
 ```
 
 The check matrix runs the same configure/build/test sequence for three trees — normal (`dev`, in `build/`), AddressSanitizer (`asan`, in `build-asan/`), and UndefinedBehaviorSanitizer (`ubsan`, in `build-ubsan/`):
@@ -49,7 +49,9 @@ cmake --workflow --preset asan   # one tree
 
 Passing `./check.sh` is part of the definition of done for each reviewable step. There is no hosted CI; this script is the whole gate.
 
-For failure details, run the test binary directly: `./build/scintilla/test/unit/unitTest` (Catch2 v2; pass a test name pattern to run a single test case). The core builds as a static library, `scintilla_core`. It cannot link into a runnable program yet because no `Platform.h` implementation exists; the first runnable program arrives in roadmap phase 6. The current unit executable links only the platform-free objects it calls, so it does not catch missing editor definitions or regressions in `Editor` and `ScintillaBase`; roadmap phase 2 adds that coverage before the bulk refactor.
+The ASan test preset sets `ASAN_OPTIONS=detect_leaks=0` because this development runner uses `ptrace`, under which LeakSanitizer aborts before reporting results. AddressSanitizer's other checks remain enabled. The matrix therefore does not check for leaks; use a non-traced process for a separate leak check.
+
+For failure details, run a test binary directly: `./build/scintilla/test/unit/unitTest` for the upstream platform-free tests or `./build/scintilla/test/editor/editorTest` for the concrete editor tests (Catch2 v2; pass a test name pattern to run one case). The core builds as a static library, `scintilla_core`. The unit executable links only the platform-free objects it calls. `editorTest` links `Editor.cxx`, `ScintillaBase.cxx`, and their required core objects against the deterministic test-only `Platform.h` implementation, so missing editor definitions fail the build. The first application with a real platform implementation arrives in roadmap phase 6.
 
 ## Source reading rule
 
