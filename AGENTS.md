@@ -40,6 +40,15 @@ cmake --build build         # build the core library and the unit tests
 ctest --test-dir build      # run the unit tests
 ```
 
+The check matrix runs the same configure/build/test sequence for three trees — normal (`dev`, in `build/`), AddressSanitizer (`asan`, in `build-asan/`), and UndefinedBehaviorSanitizer (`ubsan`, in `build-ubsan/`):
+
+```
+./check.sh                    # all three trees
+cmake --workflow --preset asan   # one tree
+```
+
+Passing `./check.sh` is part of the definition of done for each reviewable step. There is no hosted CI; this script is the whole gate.
+
 For failure details, run the test binary directly: `./build/scintilla/test/unit/unitTest` (Catch2 v2; pass a test name pattern to run a single test case). The core builds as a static library, `scintilla_core`. It cannot link into a runnable program yet because no `Platform.h` implementation exists; the first runnable program arrives in roadmap phase 6. The current unit executable links only the platform-free objects it calls, so it does not catch missing editor definitions or regressions in `Editor` and `ScintillaBase`; roadmap phase 2 adds that coverage before the bulk refactor.
 
 ## Source reading rule

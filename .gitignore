@@ -1,5 +1,7 @@
-# Build tree
+# Build trees (one per check-matrix preset, see check.sh)
 /build/
+/build-asan/
+/build-ubsan/
 
 # grepai index
 /.grepai/
