@@ -714,12 +714,12 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 public:
 	~Editor() override;
 
-	/**
-	 * Choose how lines wider than the window are wrapped. Word wraps on word or
-	 * style boundaries, Char may wrap between any characters, Whitespace wraps
-	 * on whitespace, and None disables wrapping. Char is useful for languages
-	 * that do not separate words with spaces.
-	 */
+    /**
+    * Sets how lines wider than the window wrap. Word wraps on word or style
+    * boundaries, Char may wrap between any characters, Whitespace wraps on
+    * whitespace, and None disables wrapping. Char is useful for languages that
+    * do not separate words with spaces.
+    */
 	void SetWrapMode(Scintilla::Wrap wrapMode);
 	Scintilla::Wrap GetWrapMode() const noexcept;
 
