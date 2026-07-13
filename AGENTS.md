@@ -14,7 +14,7 @@ The project has two goals of equal weight. First, a small, sharp editor. Second,
 - A feature's name, documentation, and implementation belong in one greppable place. No numeric message dispatch, no indirection that severs the link between a name and its code.
 - Prefer deleting indirection over adding abstraction. When tempted to make something more generally useful, stop and make it do its one job better instead.
 - Keep the tree small enough to hold in one head. The core fitting in a single model context window is a measurable target, not a metaphor.
-- Refactor in behavior-preserving steps with tests green, and make each step small enough to review as a diff.
+- Refactor in behavior-preserving steps with tests green, and make each step small enough to review as a diff. When deliberately reducing scope, state the removed behavior and test what remains.
 
 ## Repository layout
 
@@ -24,9 +24,11 @@ The project has two goals of equal weight. First, a small, sharp editor. Second,
 
 ## Change rules for scintilla/
 
-- Keep `scintilla/test/unit` green through every refactoring step. These upstream tests are the safety net; grow them when dissolving code they cover thinly.
-- When a message moves out of the dispatch switch into a named method, move its documentation too: find its entry in `scintilla/ScintillaDoc.html` and rewrite it as a doc comment on the method. The goal state is that `ScintillaDoc.html` becomes empty of live content and is deleted.
-- The unit tests are strong on `Document`, `CellBuffer`, and the container classes, and thin on `Editor` behavior. When dissolving a message whose behavior is untested, either keep the transformation mechanical enough that the diff is its own proof, or add a test first.
+- Keep `scintilla/test/unit` green through every refactoring step. These upstream tests cover the platform-free document and container code; they are not evidence that `Editor` behavior is unchanged.
+- Before dissolving a message, classify it as an application-facing method, private editor operation, keyboard command, retained type or notification, or feature to delete. Do not automatically turn messages into public methods.
+- When a retained message becomes a named method, find its entry in `scintilla/ScintillaDoc.html`, condense the useful prose into a doc comment near the method, and remove the old prose. When a feature is deleted, delete its documentation in the same change. The goal state is that `ScintillaDoc.html` has no live content and is deleted.
+- Add a focused editor test before moving behavior that the current tests do not exercise. Prefer assertions on visible effects such as document state, selection, invalidation, notifications, and scrollbar changes over relying on a mechanical-looking diff.
+- The "concrete test editor" is the test-only `ScintillaBase` subclass and deterministic host described in roadmap phase 2. Keep its callbacks observable, keep its clock and external state under test control, and do not make it depend on the seed code or the real Wayland and rendering stack.
 
 ## Build and test
 
@@ -38,7 +40,7 @@ cmake --build build         # build the core library and the unit tests
 ctest --test-dir build      # run the unit tests
 ```
 
-For failure details, run the test binary directly: `./build/scintilla/test/unit/unitTest` (Catch2 v2; pass a test name pattern to run a single test case). The core builds as a static library, `scintilla_core`. It cannot link into a runnable program yet because no `Platform.h` implementation exists — that arrives in roadmap phase 6; the unit tests link only the platform-free subset of its objects.
+For failure details, run the test binary directly: `./build/scintilla/test/unit/unitTest` (Catch2 v2; pass a test name pattern to run a single test case). The core builds as a static library, `scintilla_core`. It cannot link into a runnable program yet because no `Platform.h` implementation exists; the first runnable program arrives in roadmap phase 6. The current unit executable links only the platform-free objects it calls, so it does not catch missing editor definitions or regressions in `Editor` and `ScintillaBase`; roadmap phase 2 adds that coverage before the bulk refactor.
 
 ## Source reading rule
 
