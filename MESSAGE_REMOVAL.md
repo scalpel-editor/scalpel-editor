@@ -16,7 +16,7 @@ When one entry mixes these roles, split it along those boundaries instead of cho
 
 ## Documentation Pattern
 
-For every retained operation, read its implementation and its `ScintillaDoc.html` entry before editing. Add a focused editor test when current coverage does not observe the behavior. Put a short doc comment beside the named declaration, remove the matching HTML API prose, and temporarily forward the old switch case to the named operation. Compare the forwarding path with the direct path when a snapshot gives a useful check. Remove the forwarding case with its concern group in phase 4.
+For every retained operation, read its implementation and its `ScintillaDoc.html` entry before editing. Add a focused editor test when current coverage does not observe the behavior. Keep a short authoritative doc comment with the named operation, following the placement checks in [DISCOVERABILITY.md](DISCOVERABILITY.md), remove the matching HTML API prose, and temporarily forward the old switch case to the named operation. Compare the forwarding path with the direct path when a snapshot gives a useful check. Remove the forwarding case with its concern group in phase 4.
 
 For a deleted feature, state which absent platform or message-layer need it served, remove its documentation in the same change, and test the behavior that remains.
 
