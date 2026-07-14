@@ -854,8 +854,6 @@ private:
 	}
 	void SetMouseCapture(bool capture) override { mouse_capture = capture; }
 	bool HaveMouseCapture() override { return mouse_capture; }
-	std::string UTF8FromEncoded(std::string_view text) const override { return std::string(text); }
-	std::string EncodedFromUTF8(std::string_view text) const override { return std::string(text); }
 	void CreateCallTipWindow(PRectangle) override {}
 	void AddToPopUp(const char*, int, bool) override {}
 

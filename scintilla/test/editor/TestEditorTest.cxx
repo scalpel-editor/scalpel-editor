@@ -158,3 +158,19 @@ TEST_CASE("Invalid UTF-8 passes through the editor unchanged") {
 	editor.WndProc(Message::UpperCase, 0, 0);
 	CHECK(editor.Text() == "A\x80\xc2Z");
 }
+
+TEST_CASE("UpperCase maps Unicode letters through CaseConvertString") {
+	// CaseMapString uses Unicode case conversion, not ASCII-only byte mapping.
+	// "café" (c a f U+00E9) uppercases to "CAFÉ"; "ß" (U+00DF) uppercases to "SS".
+	TestHost host;
+	TestEditor editor(host);
+	editor.SetText("café ß");
+	editor.WndProc(Message::SelectAll, 0, 0);
+	editor.WndProc(Message::UpperCase, 0, 0);
+	CHECK(editor.Text() == "CAFÉ SS");
+
+	editor.WndProc(Message::SelectAll, 0, 0);
+	editor.WndProc(Message::LowerCase, 0, 0);
+	// "SS" does not round-trip to "ß"; lowercasing yields "ss".
+	CHECK(editor.Text() == "café ss");
+}

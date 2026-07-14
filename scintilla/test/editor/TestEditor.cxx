@@ -263,14 +263,6 @@ bool TestEditor::HaveMouseCapture() {
 	return host.mainWindow.mouseCaptured;
 }
 
-std::string TestEditor::UTF8FromEncoded(std::string_view encoded) const {
-	return std::string(encoded);
-}
-
-std::string TestEditor::EncodedFromUTF8(std::string_view utf8) const {
-	return std::string(utf8);
-}
-
 void TestEditor::CreateCallTipWindow(PRectangle rc) {
 	observations.callTipWindows.push_back(rc);
 }

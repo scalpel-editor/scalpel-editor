@@ -59,6 +59,7 @@
 #include "CharClassify.h"
 #include "Decoration.h"
 #include "CaseFolder.h"
+#include "CaseConvert.h"
 #include "Document.h"
 #include "UniConversion.h"
 #include "Selection.h"
@@ -186,8 +187,6 @@ Editor::Editor() : durationWrapOneByte(0.000001, 0.00000001, 0.00001) {
 
 	topLine = 0;
 	posTopLine = 0;
-
-	lengthForEncode = -1;
 
 	needUpdateUI = Update::None;
 	ContainerNeedsUpdate(Update::Content);
@@ -4289,8 +4288,7 @@ void Editor::Indent(bool forwards, bool lineIndent) {
 }
 
 std::unique_ptr<CaseFolder> Editor::CaseFolderForEncoding() {
-	// Simple default that only maps ASCII upper case to lower case.
-	return std::make_unique<CaseFolderTable>();
+	return std::make_unique<CaseFolderUnicode>();
 }
 
 /**
@@ -4407,24 +4405,15 @@ Sci::Position Editor::SearchText(
 	return pos;
 }
 
-// Only converts ASCII letters. Upstream, Unicode case conversion lived in platform-layer
-// overrides that this project deleted; folding CaseConvertString in here is planned as
-// part of roadmap phase 3.
+// UTF-8 Unicode case mapping (not locale-sensitive). Invalid UTF-8 bytes are left unchanged.
 std::string Editor::CaseMapString(const std::string &s, CaseMapping caseMapping) {
-	std::string ret(s);
-	for (char &ch : ret) {
-		switch (caseMapping) {
-			case CaseMapping::upper:
-				ch = MakeUpperCase(ch);
-				break;
-			case CaseMapping::lower:
-				ch = MakeLowerCase(ch);
-				break;
-			default:	// no action
-				break;
-		}
+	if (s.empty() || caseMapping == CaseMapping::same) {
+		return s;
 	}
-	return ret;
+	const CaseConversion conversion = (caseMapping == CaseMapping::upper)
+		? CaseConversion::upper
+		: CaseConversion::lower;
+	return CaseConvertString(s, conversion);
 }
 
 /**
@@ -8517,10 +8506,6 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 	case Message::ConvertEOLs:
 		pdoc->ConvertLineEnds(static_cast<EndOfLine>(wParam));
 		SetSelection(sel.MainCaret(), sel.MainAnchor());	// Ensure selection inside document
-		return 0;
-
-	case Message::SetLengthForEncode:
-		lengthForEncode = PositionFromUPtr(wParam);
 		return 0;
 
 	case Message::SelectionIsRectangle:

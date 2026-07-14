@@ -704,11 +704,6 @@ public:
 	void AutoCSetOrder(Scintilla::Ordering order);
 	Scintilla::Ordering AutoCGetOrder();
 	void Allocate(Position bytes);
-	Position TargetAsUTF8(char *s);
-	std::string TargetAsUTF8();
-	void SetLengthForEncode(Position bytes);
-	Position EncodedFromUTF8(const char *utf8, char *encoded);
-	std::string EncodedFromUTF8(const char *utf8);
 	Position FindColumn(Line line, Position column);
 	Scintilla::CaretSticky CaretSticky();
 	void SetCaretSticky(Scintilla::CaretSticky useCaretStickyBehaviour);

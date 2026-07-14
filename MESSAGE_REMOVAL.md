@@ -28,7 +28,7 @@ Wrap mode is application-facing because the editor's chrome chooses whether long
 
 ## Interface Inventory
 
-Generated from `scintilla/include/Scintilla.iface` on 2026-07-13. It contains all 826 `fun`, `get`, and `set` entries and all 32 `evt` entries, grouped for phase 4. It does not assign a removal classification without tracing the code. Constants, aliases, and enum declarations are type definitions rather than dispatch cases; phase 5 handles them when it replaces generated client headers.
+Generated from `scintilla/include/Scintilla.iface` on 2026-07-13. It contains all 823 `fun`, `get`, and `set` entries and all 32 `evt` entries, grouped for phase 4. It does not assign a removal classification without tracing the code. Constants, aliases, and enum declarations are type definitions rather than dispatch cases; phase 5 handles them when it replaces generated client headers.
 
 ### Document and text (30)
 
@@ -54,9 +54,9 @@ Generated from `scintilla/include/Scintilla.iface` on 2026-07-13. It contains al
 
 `fun CanPaste=2173`, `fun Cut=2177`, `fun Copy=2178`, `fun Paste=2179`, `set SetMultiPaste=2614`, `get GetMultiPaste=2615`, `fun CopyRange=2419`, `fun CopyText=2420`, `set SetPasteConvertEndings=2467`, `get GetPasteConvertEndings=2468`, `fun CopyAllowLine=2519`, `fun CutAllowLine=2810`, `set SetCopySeparator=2811`, `get GetCopySeparator=2812`
 
-### Search and replace (25)
+### Search and replace (24)
 
-`fun FindText=2150`, `fun FindTextFull=2196`, `fun ReplaceSel=2170`, `set SetTargetStart=2190`, `get GetTargetStart=2191`, `set SetTargetStartVirtualSpace=2728`, `get GetTargetStartVirtualSpace=2729`, `set SetTargetEnd=2192`, `get GetTargetEnd=2193`, `set SetTargetEndVirtualSpace=2730`, `get GetTargetEndVirtualSpace=2731`, `fun SetTargetRange=2686`, `get GetTargetText=2687`, `fun TargetWholeDocument=2690`, `fun ReplaceTarget=2194`, `fun ReplaceTargetRE=2195`, `fun ReplaceTargetMinimal=2779`, `fun SearchInTarget=2197`, `set SetSearchFlags=2198`, `get GetSearchFlags=2199`, `fun SearchAnchor=2366`, `fun SearchNext=2367`, `fun SearchPrev=2368`, `fun TargetAsUTF8=2447`, `fun ReplaceRectangular=2771`
+`fun FindText=2150`, `fun FindTextFull=2196`, `fun ReplaceSel=2170`, `set SetTargetStart=2190`, `get GetTargetStart=2191`, `set SetTargetStartVirtualSpace=2728`, `get GetTargetStartVirtualSpace=2729`, `set SetTargetEnd=2192`, `get GetTargetEnd=2193`, `set SetTargetEndVirtualSpace=2730`, `get GetTargetEndVirtualSpace=2731`, `fun SetTargetRange=2686`, `get GetTargetText=2687`, `fun TargetWholeDocument=2690`, `fun ReplaceTarget=2194`, `fun ReplaceTargetRE=2195`, `fun ReplaceTargetMinimal=2779`, `fun SearchInTarget=2197`, `set SetSearchFlags=2198`, `get GetSearchFlags=2199`, `fun SearchAnchor=2366`, `fun SearchNext=2367`, `fun SearchPrev=2368`, `fun ReplaceRectangular=2771`
 
 ### Keyboard commands (89)
 
@@ -106,9 +106,9 @@ Generated from `scintilla/include/Scintilla.iface` on 2026-07-13. It contains al
 
 `fun ChangeLexerState=2617`, `get GetLexer=4002`, `fun Colourise=4003`, `set SetProperty=4004`, `set SetKeyWords=4005`, `get GetProperty=4008`, `get GetPropertyExpanded=4009`, `get GetPropertyInt=4010`, `get GetLexerLanguage=4012`, `fun PrivateLexerCall=4013`, `fun PropertyNames=4014`, `fun PropertyType=4015`, `fun DescribeProperty=4016`, `fun DescribeKeyWordSets=4017`, `fun AllocateSubStyles=4020`, `get GetSubStylesStart=4021`, `get GetSubStylesLength=4022`, `get GetStyleFromSubStyle=4027`, `get GetPrimaryStyleFromStyle=4028`, `fun FreeSubStyles=4023`, `set SetIdentifiers=4024`, `get DistanceToSecondaryStyles=4025`, `get GetSubStyleBases=4026`, `get GetNamedStyles=4029`, `fun NameOfStyle=4030`, `fun TagsOfStyle=4031`, `fun DescriptionOfStyle=4032`, `set SetILexer=4033`
 
-### Encoding and character boundaries (11)
+### Encoding and character boundaries (10)
 
-`set SetCodePage=2037`, `set SetCharacterCategoryOptimization=2720`, `get GetCharacterCategoryOptimization=2721`, `get GetCodePage=2137`, `fun PositionBefore=2417`, `fun PositionAfter=2418`, `fun PositionRelative=2670`, `fun PositionRelativeCodeUnits=2716`, `fun SetCharsDefault=2444`, `fun EncodedFromUTF8=2449`, `get GetCharacterPointer=2520`
+`set SetCodePage=2037`, `set SetCharacterCategoryOptimization=2720`, `get GetCharacterCategoryOptimization=2721`, `get GetCodePage=2137`, `fun PositionBefore=2417`, `fun PositionAfter=2418`, `fun PositionRelative=2670`, `fun PositionRelativeCodeUnits=2716`, `fun SetCharsDefault=2444`, `get GetCharacterPointer=2520`
 
 ### Printing (8)
 
@@ -118,9 +118,9 @@ Generated from `scintilla/include/Scintilla.iface` on 2026-07-13. It contains al
 
 `get GetDirectFunction=2184`, `get GetDirectStatusFunction=2772`, `get GetDirectPointer=2185`, `set SetModEventMask=2359`, `get GetModEventMask=2378`, `set SetCommandEvents=2717`, `get GetCommandEvents=2718`, `set SetStatus=2382`, `get GetStatus=2383`, `set SetIdentifier=2622`, `get GetIdentifier=2623`, `get SupportsFeature=2750`, `fun StartRecord=3001`, `fun StopRecord=3002`
 
-### Other editor settings (59)
+### Other editor settings (58)
 
-`fun ChangeInsertion=2672`, `get GetStyleAt=2010`, `get GetStyleIndexAt=2038`, `get GetViewWS=2020`, `set SetViewWS=2021`, `fun GotoLine=2024`, `fun GotoPos=2025`, `fun GetCurLine=2027`, `get GetEndStyled=2028`, `fun SetSelFore=2067`, `fun SetSelBack=2068`, `get GetSelAlpha=2477`, `set SetSelAlpha=2478`, `set SetHighlightGuide=2134`, `get GetHighlightGuide=2135`, `fun Null=2172`, `set SetOvertype=2186`, `get GetOvertype=2187`, `get GetLastChild=2224`, `fun ShowLines=2226`, `fun HideLines=2227`, `get GetAllLinesVisible=2236`, `fun ExpandChildren=2239`, `fun EnsureVisible=2232`, `fun EnsureVisibleEnforcePolicy=2234`, `fun WordStartPosition=2266`, `fun WordEndPosition=2267`, `fun IsRangeWord=2691`, `get GetTag=2616`, `fun LinesJoin=2288`, `fun LinesSplit=2289`, `get GetEdgeMode=2362`, `set SetEdgeMode=2363`, `get GetEdgeColour=2364`, `set SetEdgeColour=2365`, `fun MultiEdgeAddLine=2694`, `fun MultiEdgeClearAll=2695`, `set SetZoom=2373`, `get GetZoom=2374`, `fun SetLengthForEncode=2448`, `set SetIndicatorCurrent=2500`, `get GetIndicatorCurrent=2501`, `set SetIndicatorValue=2502`, `get GetIndicatorValue=2503`, `fun ReleaseAllExtendedStyles=2552`, `fun AllocateExtendedStyles=2553`, `set SetVirtualSpaceOptions=2596`, `get GetVirtualSpaceOptions=2597`, `set SetAdditionalSelFore=2600`, `set SetAdditionalSelBack=2601`, `set SetAdditionalSelAlpha=2602`, `get GetAdditionalSelAlpha=2603`, `fun LineFromIndexPosition=2713`, `fun IndexPositionFromLine=2714`, `set SetStyleBits=2090`, `get GetStyleBits=2091`, `get GetStyleBitsNeeded=4011`, `get GetTwoPhaseDraw=2283`, `set SetTwoPhaseDraw=2284`
+`fun ChangeInsertion=2672`, `get GetStyleAt=2010`, `get GetStyleIndexAt=2038`, `get GetViewWS=2020`, `set SetViewWS=2021`, `fun GotoLine=2024`, `fun GotoPos=2025`, `fun GetCurLine=2027`, `get GetEndStyled=2028`, `fun SetSelFore=2067`, `fun SetSelBack=2068`, `get GetSelAlpha=2477`, `set SetSelAlpha=2478`, `set SetHighlightGuide=2134`, `get GetHighlightGuide=2135`, `fun Null=2172`, `set SetOvertype=2186`, `get GetOvertype=2187`, `get GetLastChild=2224`, `fun ShowLines=2226`, `fun HideLines=2227`, `get GetAllLinesVisible=2236`, `fun ExpandChildren=2239`, `fun EnsureVisible=2232`, `fun EnsureVisibleEnforcePolicy=2234`, `fun WordStartPosition=2266`, `fun WordEndPosition=2267`, `fun IsRangeWord=2691`, `get GetTag=2616`, `fun LinesJoin=2288`, `fun LinesSplit=2289`, `get GetEdgeMode=2362`, `set SetEdgeMode=2363`, `get GetEdgeColour=2364`, `set SetEdgeColour=2365`, `fun MultiEdgeAddLine=2694`, `fun MultiEdgeClearAll=2695`, `set SetZoom=2373`, `get GetZoom=2374`, `set SetIndicatorCurrent=2500`, `get GetIndicatorCurrent=2501`, `set SetIndicatorValue=2502`, `get GetIndicatorValue=2503`, `fun ReleaseAllExtendedStyles=2552`, `fun AllocateExtendedStyles=2553`, `set SetVirtualSpaceOptions=2596`, `get GetVirtualSpaceOptions=2597`, `set SetAdditionalSelFore=2600`, `set SetAdditionalSelBack=2601`, `set SetAdditionalSelAlpha=2602`, `get GetAdditionalSelAlpha=2603`, `fun LineFromIndexPosition=2713`, `fun IndexPositionFromLine=2714`, `set SetStyleBits=2090`, `get GetStyleBits=2091`, `get GetStyleBitsNeeded=4011`, `get GetTwoPhaseDraw=2283`, `set SetTwoPhaseDraw=2284`
 
 ### Notifications (32)
 

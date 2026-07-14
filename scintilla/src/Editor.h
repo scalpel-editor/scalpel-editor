@@ -254,7 +254,6 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	Scintilla::FindOption searchFlags;
 	Sci::Line topLine;
 	Sci::Position posTopLine;
-	Sci::Position lengthForEncode;
 
 	Scintilla::Update needUpdateUI;
 
@@ -621,8 +620,6 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void SetHoverIndicatorPosition(Sci::Position position);
 	void SetHoverIndicatorPoint(Point pt);
 
-	virtual std::string UTF8FromEncoded(std::string_view encoded) const = 0;
-	virtual std::string EncodedFromUTF8(std::string_view utf8) const = 0;
 	virtual std::unique_ptr<Surface> CreateMeasurementSurface() const;
 	virtual std::unique_ptr<Surface> CreateDrawingSurface(SurfaceID sid, std::optional<Scintilla::Technology> technologyOpt = {}) const;
 

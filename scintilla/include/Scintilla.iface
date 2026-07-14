@@ -2635,19 +2635,6 @@ get Ordering AutoCGetOrder=2661(,)
 # Enlarge the document to a particular size of text bytes.
 fun void Allocate=2446(position bytes,)
 
-# Returns the target converted to UTF8.
-# Return the length in bytes.
-fun position TargetAsUTF8=2447(, stringresult s)
-
-# Set the length of the utf8 argument for calling EncodedFromUTF8.
-# Set to -1 and the string will be measured to the first nul.
-fun void SetLengthForEncode=2448(position bytes,)
-
-# Translates a UTF8 string into the document encoding.
-# Return the length of the result in bytes.
-# On error return 0.
-fun position EncodedFromUTF8=2449(string utf8, stringresult encoded)
-
 # Find the position of a column on a line taking into account tabs and
 # multi-byte characters. If beyond end of line, return line end position.
 fun position FindColumn=2456(line line, position column)

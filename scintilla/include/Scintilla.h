@@ -962,9 +962,6 @@ typedef sptr_t (*SciFnDirectStatus)(sptr_t ptr, unsigned int iMessage, uptr_t wP
 #define SCI_AUTOCSETORDER 2660
 #define SCI_AUTOCGETORDER 2661
 #define SCI_ALLOCATE 2446
-#define SCI_TARGETASUTF8 2447
-#define SCI_SETLENGTHFORENCODE 2448
-#define SCI_ENCODEDFROMUTF8 2449
 #define SCI_FINDCOLUMN 2456
 #define SC_CARETSTICKY_OFF 0
 #define SC_CARETSTICKY_ON 1

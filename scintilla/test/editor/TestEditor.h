@@ -97,8 +97,6 @@ private:
 	void CopyToClipboard(const SelectionText &selectedText) override;
 	void SetMouseCapture(bool on) override;
 	bool HaveMouseCapture() override;
-	std::string UTF8FromEncoded(std::string_view encoded) const override;
-	std::string EncodedFromUTF8(std::string_view utf8) const override;
 	void CreateCallTipWindow(PRectangle rc) override;
 	void AddToPopUp(const char *label, int cmd, bool enabled) override;
 	bool FineTickerRunning(TickReason reason) override;
