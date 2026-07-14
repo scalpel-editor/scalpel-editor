@@ -206,7 +206,7 @@ public:
 		return startByteHasReprs[ch] != 0;
 	}
 	void Clear();
-	void SetDefaultRepresentations(int dbcsCodePage);
+	void SetDefaultRepresentations();
 };
 
 struct TextSegment {

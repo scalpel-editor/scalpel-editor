@@ -71,7 +71,6 @@ CallTip::CallTip() noexcept {
 	colourSel = ColourRGBA(0, 0, 0x80);
 	colourShade = black;
 	colourLight = silver;
-	codePage = 0;
 	clickPlace = 0;
 }
 
@@ -278,10 +277,9 @@ void CallTip::MouseClick(Point pt) noexcept {
 }
 
 PRectangle CallTip::CallTipStart(Sci::Position pos, Point pt, int textHeight, const char *defn,
-                                 int codePage_, Surface *surfaceMeasure, const std::shared_ptr<Font> &font_) {
+                                 Surface *surfaceMeasure, const std::shared_ptr<Font> &font_) {
 	clickPlace = 0;
 	val = defn;
-	codePage = codePage_;
 	highlight = Chunk();
 	inCallTipMode = true;
 	posStartCallTip = pos;

@@ -62,33 +62,28 @@ public:
 };
 
 /**
- * Hold a piece of text selected for copying or dragging, along with encoding and selection format information.
+ * Hold a piece of text selected for copying or dragging, along with selection format information.
+ * Text is always UTF-8 (same as the document).
  */
 class SelectionText {
 	std::string s;
 public:
 	bool rectangular;
 	bool lineCopy;
-	int codePage;
-	Scintilla::CharacterSet characterSet;
-	SelectionText() noexcept : rectangular(false), lineCopy(false), codePage(0), characterSet(Scintilla::CharacterSet::Ansi) {}
+	SelectionText() noexcept : rectangular(false), lineCopy(false) {}
 	void Clear() noexcept {
 		s.clear();
 		rectangular = false;
 		lineCopy = false;
-		codePage = 0;
-		characterSet = Scintilla::CharacterSet::Ansi;
 	}
-	void Copy(const std::string &s_, int codePage_, Scintilla::CharacterSet characterSet_, bool rectangular_, bool lineCopy_) {
+	void Copy(const std::string &s_, bool rectangular_, bool lineCopy_) {
 		s = s_;
-		codePage = codePage_;
-		characterSet = characterSet_;
 		rectangular = rectangular_;
 		lineCopy = lineCopy_;
 		FixSelectionForClipboard();
 	}
 	void Copy(const SelectionText &other) {
-		Copy(other.s, other.codePage, other.characterSet, other.rectangular, other.lineCopy);
+		Copy(other.s, other.rectangular, other.lineCopy);
 	}
 	const char *Data() const noexcept {
 		return s.c_str();
@@ -626,7 +621,6 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void SetHoverIndicatorPosition(Sci::Position position);
 	void SetHoverIndicatorPoint(Point pt);
 
-	int CodePage() const noexcept;
 	virtual std::string UTF8FromEncoded(std::string_view encoded) const = 0;
 	virtual std::string EncodedFromUTF8(std::string_view utf8) const = 0;
 	virtual std::unique_ptr<Surface> CreateMeasurementSurface() const;

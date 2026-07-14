@@ -49,7 +49,6 @@ public:
 	ColourRGBA colourSel;
 	ColourRGBA colourShade;
 	ColourRGBA colourLight;
-	int codePage;
 	int clickPlace;
 
 	int insetX; // text inset in x from calltip border
@@ -71,7 +70,7 @@ public:
 
 	/// Setup the calltip and return a rectangle of the area required.
 	PRectangle CallTipStart(Sci::Position pos, Point pt, int textHeight, const char *defn,
-		int codePage_, Surface *surfaceMeasure, const std::shared_ptr<Font> &font_);
+		Surface *surfaceMeasure, const std::shared_ptr<Font> &font_);
 
 	void CallTipCancel() noexcept;
 

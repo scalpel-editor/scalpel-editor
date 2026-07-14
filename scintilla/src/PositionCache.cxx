@@ -761,7 +761,7 @@ void SpecialRepresentations::Clear() {
 	crlf = false;
 }
 
-void SpecialRepresentations::SetDefaultRepresentations(int /*dbcsCodePage*/) {
+void SpecialRepresentations::SetDefaultRepresentations() {
 	Clear();
 
 	// C0 control set

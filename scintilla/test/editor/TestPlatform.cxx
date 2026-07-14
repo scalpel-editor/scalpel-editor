@@ -74,9 +74,7 @@ std::string ColourText(ColourRGBA colour) {
 	return buffer;
 }
 
-size_t CodePointsIn(std::string_view text, bool utf8) noexcept {
-	if (!utf8)
-		return text.length();
+size_t CodePointsIn(std::string_view text) noexcept {
 	size_t count = 0;
 	size_t i = 0;
 	while (i < text.length()) {
@@ -223,20 +221,12 @@ public:
 	}
 
 	void MeasureWidths(const Font *font_, std::string_view text, XYPOSITION *positions) override {
-		if (mode.codePage == Scintilla::CpUtf8) {
-			MeasureWidthsUTF8(font_, text, positions);
-			return;
-		}
-		// Outside UTF-8 mode every byte is one character.
-		XYPOSITION x = 0;
-		for (size_t i = 0; i < text.length(); i++) {
-			x += testCharWidth;
-			positions[i] = x;
-		}
+		// Surface text is always UTF-8.
+		MeasureWidthsUTF8(font_, text, positions);
 	}
 
 	XYPOSITION WidthText(const Font *, std::string_view text) override {
-		return testCharWidth * static_cast<XYPOSITION>(CodePointsIn(text, mode.codePage == Scintilla::CpUtf8));
+		return testCharWidth * static_cast<XYPOSITION>(CodePointsIn(text));
 	}
 
 	void DrawTextNoClipUTF8(PRectangle rc, const Font *, XYPOSITION ybase, std::string_view text,
@@ -273,7 +263,7 @@ public:
 	}
 
 	XYPOSITION WidthTextUTF8(const Font *, std::string_view text) override {
-		return testCharWidth * static_cast<XYPOSITION>(CodePointsIn(text, true));
+		return testCharWidth * static_cast<XYPOSITION>(CodePointsIn(text));
 	}
 
 	XYPOSITION Ascent(const Font *) override {

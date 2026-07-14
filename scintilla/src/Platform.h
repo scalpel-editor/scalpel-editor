@@ -174,10 +174,9 @@ public:
  * Parameters for surfaces.
  */
 struct SurfaceMode {
-	int codePage = 0;
 	bool bidiR2L = false;
 	SurfaceMode() = default;
-	explicit SurfaceMode(int codePage_, bool bidiR2L_) noexcept : codePage(codePage_), bidiR2L(bidiR2L_) {
+	explicit SurfaceMode(bool bidiR2L_) noexcept : bidiR2L(bidiR2L_) {
 	}
 };
 

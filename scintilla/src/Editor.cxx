@@ -224,7 +224,7 @@ void Editor::Finalise() {
 }
 
 void Editor::SetRepresentations() {
-	reprs->SetDefaultRepresentations(pdoc->dbcsCodePage);
+	reprs->SetDefaultRepresentations();
 }
 
 void Editor::DropGraphics() noexcept {
@@ -2166,22 +2166,13 @@ void Editor::InsertCharacter(std::string_view sv, CharacterSource charSource) {
 	}
 
 	int ch = static_cast<unsigned char>(sv[0]);
-	if (pdoc->dbcsCodePage != CpUtf8) {
-		if (sv.length() > 1) {
-			// DBCS code page or DBCS font character set.
-			ch = (ch << 8) | static_cast<unsigned char>(sv[1]);
-		}
+	if ((ch < 0xC0) || (1 == sv.length())) {
+		// ASCII, single-byte values, and naked trail bytes 0x80..0xBF
+		// represent themselves (one-byte characters under the invalid-UTF-8 policy).
 	} else {
-		if ((ch < 0xC0) || (1 == sv.length())) {
-			// Handles UTF-8 characters between 0x01 and 0x7F and single byte
-			// characters when not in UTF-8 mode.
-			// Also treats \0 and naked trail bytes 0x80 to 0xBF as valid
-			// characters representing themselves.
-		} else {
-			unsigned int utf32[1] = { 0 };
-			UTF32FromUTF8(sv, utf32, std::size(utf32));
-			ch = utf32[0];
-		}
+		unsigned int utf32[1] = { 0 };
+		UTF32FromUTF8(sv, utf32, std::size(utf32));
+		ch = utf32[0];
 	}
 	NotifyChar(ch, charSource);
 
@@ -4505,8 +4496,7 @@ bool Editor::CopyLineRange(SelectionText *ss, bool allowProtected) {
 	if (allowProtected || !RangeContainsProtected(start, end)) {
 		std::string text = RangeText(start, end);
 		text.append(pdoc->EOLString());
-		ss->Copy(text, pdoc->dbcsCodePage,
-			vs.styles[StyleDefault].characterSet, false, true);
+		ss->Copy(text, false, true);
 		return true;
 	}
 	return false;
@@ -4530,8 +4520,7 @@ void Editor::CopySelectionRange(SelectionText *ss, bool allowLineCopy) {
 				text.append(separator);
 			}
 		}
-		ss->Copy(text, pdoc->dbcsCodePage,
-			vs.styles[StyleDefault].characterSet, sel.IsRectangular(), sel.selType == Selection::SelTypes::lines);
+		ss->Copy(text, sel.IsRectangular(), sel.selType == Selection::SelTypes::lines);
 	}
 }
 
@@ -4540,15 +4529,13 @@ void Editor::CopyRangeToClipboard(Sci::Position start, Sci::Position end) {
 	end = pdoc->ClampPositionIntoDocument(end);
 	SelectionText selectedText;
 	std::string text = RangeText(start, end);
-	selectedText.Copy(text,
-		pdoc->dbcsCodePage, vs.styles[StyleDefault].characterSet, false, false);
+	selectedText.Copy(text, false, false);
 	CopyToClipboard(selectedText);
 }
 
 void Editor::CopyText(size_t length, const char *text) {
 	SelectionText selectedText;
-	selectedText.Copy(std::string(text, length),
-		pdoc->dbcsCodePage, vs.styles[StyleDefault].characterSet, false, false);
+	selectedText.Copy(std::string(text, length), false, false);
 	CopyToClipboard(selectedText);
 }
 
@@ -6016,13 +6003,8 @@ Sci::Position Editor::ReplaceTarget(ReplaceType replaceType, std::string_view te
 }
 
 bool Editor::IsUnicodeMode() const noexcept {
-	return pdoc && (CpUtf8 == pdoc->dbcsCodePage);
-}
-
-int Editor::CodePage() const noexcept {
-	if (pdoc)
-		return pdoc->dbcsCodePage;
-	return 0;
+	// Document is always UTF-8; true whenever an editor document exists.
+	return pdoc != nullptr;
 }
 
 std::unique_ptr<Surface> Editor::CreateMeasurementSurface() const {

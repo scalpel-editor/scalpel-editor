@@ -530,7 +530,6 @@ void ScintillaBase::CallTipShow(Point pt, const char *defn) {
 	PRectangle rc = ct.CallTipStart(sel.MainCaret(), pt,
 		vs.lineHeight,
 		defn,
-		CodePage(),
 		surfaceMeasure,
 		style.font);
 	// If the call-tip window would be out of the client

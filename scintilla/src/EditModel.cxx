@@ -133,8 +133,8 @@ EditModel::~EditModel() {
 }
 
 bool EditModel::BidirectionalEnabled() const noexcept {
-	return (bidirectional != Bidirectional::Disabled) &&
-		(CpUtf8 == pdoc->dbcsCodePage);
+	// Document is always UTF-8; bidirectional only needs that encoding.
+	return bidirectional != Bidirectional::Disabled;
 }
 
 bool EditModel::BidirectionalR2L() const noexcept {
@@ -142,7 +142,7 @@ bool EditModel::BidirectionalR2L() const noexcept {
 }
 
 SurfaceMode EditModel::CurrentSurfaceMode() const noexcept {
-	return SurfaceMode(pdoc->dbcsCodePage, BidirectionalR2L());
+	return SurfaceMode(BidirectionalR2L());
 }
 
 void EditModel::SetDefaultFoldDisplayText(const char *text) {
