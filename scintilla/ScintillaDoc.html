@@ -8254,17 +8254,7 @@ sptr_t CallScintilla(unsigned int iMessage, uptr_t wParam, sptr_t lParam){
 
     <h2 id="LineWrapping">Line wrapping</h2>
 
-    <code><a class="message" href="#SCI_SETWRAPMODE">SCI_SETWRAPMODE(int wrapMode)</a><br />
-     <a class="message" href="#SCI_GETWRAPMODE">SCI_GETWRAPMODE &rarr; int</a><br />
-     <a class="message" href="#SCI_SETWRAPVISUALFLAGS">SCI_SETWRAPVISUALFLAGS(int wrapVisualFlags)</a><br />
-     <a class="message" href="#SCI_GETWRAPVISUALFLAGS">SCI_GETWRAPVISUALFLAGS &rarr; int</a><br />
-     <a class="message" href="#SCI_SETWRAPVISUALFLAGSLOCATION">SCI_SETWRAPVISUALFLAGSLOCATION(int wrapVisualFlagsLocation)</a><br />
-     <a class="message" href="#SCI_GETWRAPVISUALFLAGSLOCATION">SCI_GETWRAPVISUALFLAGSLOCATION &rarr; int</a><br />
-     <a class="message" href="#SCI_SETWRAPINDENTMODE">SCI_SETWRAPINDENTMODE(int wrapIndentMode)</a><br />
-     <a class="message" href="#SCI_GETWRAPINDENTMODE">SCI_GETWRAPINDENTMODE &rarr; int</a><br />
-     <a class="message" href="#SCI_SETWRAPSTARTINDENT">SCI_SETWRAPSTARTINDENT(int indent)</a><br />
-     <a class="message" href="#SCI_GETWRAPSTARTINDENT">SCI_GETWRAPSTARTINDENT &rarr; int</a><br />
-     <a class="message" href="#SCI_SETLAYOUTCACHE">SCI_SETLAYOUTCACHE(int cacheMode)</a><br />
+    <code><a class="message" href="#SCI_SETLAYOUTCACHE">SCI_SETLAYOUTCACHE(int cacheMode)</a><br />
      <a class="message" href="#SCI_GETLAYOUTCACHE">SCI_GETLAYOUTCACHE &rarr; int</a><br />
      <a class="message" href="#SCI_SETPOSITIONCACHE">SCI_SETPOSITIONCACHE(int size)</a><br />
      <a class="message" href="#SCI_GETPOSITIONCACHE">SCI_GETPOSITIONCACHE &rarr; int</a><br />
@@ -8272,19 +8262,7 @@ sptr_t CallScintilla(unsigned int iMessage, uptr_t wParam, sptr_t lParam){
      <a class="message" href="#SCI_GETLAYOUTTHREADS">SCI_GETLAYOUTTHREADS &rarr; int</a><br />
      <a class="message" href="#SCI_LINESSPLIT">SCI_LINESSPLIT(int pixelWidth)</a><br />
      <a class="message" href="#SCI_LINESJOIN">SCI_LINESJOIN</a><br />
-     <a class="message" href="#SCI_WRAPCOUNT">SCI_WRAPCOUNT(line docLine) &rarr; line</a><br />
     </code>
-
-    <p>By default, Scintilla does not wrap lines of text. If you enable line wrapping, lines wider
-    than the window width are continued on the following lines. Lines are broken after space or tab
-    characters or between runs of different styles. If this is not possible because a word in one
-    style is wider than the window then the break occurs after the last character that completely
-    fits on the line. The horizontal scroll bar does not appear when wrap mode is on.</p>
-
-    <p>For wrapped lines Scintilla can draw visual flags (little arrows) at end of a a subline of a
-    wrapped line and at begin of the next subline. These can be enabled individually, but if Scintilla
-    draws the visual flag at the beginning of the next subline this subline will be indented by one char.
-    Independent from drawing a visual flag at the begin the subline can have an indentation.</p>
 
     <p>Much of the time used by Scintilla is spent on laying out and drawing text. The same text
     layout calculations may be performed many times even when the data used in these calculations
@@ -8294,152 +8272,6 @@ sptr_t CallScintilla(unsigned int iMessage, uptr_t wParam, sptr_t lParam){
     the whole document has the most effect, making dynamic line wrap as much as 20 times faster but
     this requires 7 times the memory required by the document contents plus around 80 bytes per
     line.</p>
-
-    <p>Wrapping is not performed immediately there is a change but is delayed until the display
-    is redrawn. This delay improves performance by allowing a set of changes to be performed
-    and then wrapped and displayed once. Because of this, some operations may not occur as
-    expected. If a file is read and the scroll position moved to a particular line in the text,
-    such as occurs when a container tries to restore a previous editing session, then
-    the scroll position will have been determined before wrapping so an unexpected range
-    of text will be displayed. To scroll to the position correctly, delay the scroll until the
-    wrapping has been performed by waiting for an initial
-    <a class="message" href="#SCN_PAINTED">SCN_PAINTED</a> notification.</p>
-
-    <p><b id="SCI_SETWRAPVISUALFLAGS">SCI_SETWRAPVISUALFLAGS(int wrapVisualFlags)</b><br />
-     <b id="SCI_GETWRAPVISUALFLAGS">SCI_GETWRAPVISUALFLAGS &rarr; int</b><br />
-                You can enable the drawing of visual flags to indicate a line is wrapped. Bits set in
-                wrapVisualFlags determine which visual flags are drawn.
-    </p>
-    <table class="standard" summary="Wrap visual flags">
-      <tbody>
-        <tr>
-          <th align="left">Symbol</th>
-          <th>Value</th>
-          <th align="left">Effect</th>
-        </tr>
-      </tbody>
-
-      <tbody valign="top">
-        <tr>
-          <td align="left"><code>SC_WRAPVISUALFLAG_NONE</code></td>
-          <td align="center">0</td>
-          <td>No visual flags</td>
-        </tr>
-
-        <tr>
-          <td align="left"><code>SC_WRAPVISUALFLAG_END</code></td>
-          <td align="center">1</td>
-          <td>Visual flag at end of subline of a wrapped line.</td>
-        </tr>
-
-        <tr>
-          <td align="left"><code>SC_WRAPVISUALFLAG_START</code></td>
-          <td align="center">2</td>
-          <td>Visual flag at begin of subline of a wrapped line.<br />
-                                             Subline is indented by at least 1 to make room for the flag.<br />
-                                </td>
-        </tr>
-
-        <tr>
-          <td align="left"><code>SC_WRAPVISUALFLAG_MARGIN</code></td>
-          <td align="center">4</td>
-          <td>Visual flag in line number margin.</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <p><b id="SCI_SETWRAPVISUALFLAGSLOCATION">SCI_SETWRAPVISUALFLAGSLOCATION(int wrapVisualFlagsLocation)</b><br />
-     <b id="SCI_GETWRAPVISUALFLAGSLOCATION">SCI_GETWRAPVISUALFLAGSLOCATION &rarr; int</b><br />
-                You can set whether the visual flags to indicate a line is wrapped are drawn near the border or near the text.
-                Bits set in wrapVisualFlagsLocation set the location to near the text for the corresponding visual flag.
-    </p>
-
-    <table class="standard" summary="Wrap visual flags locations">
-      <tbody>
-        <tr>
-          <th align="left">Symbol</th>
-          <th>Value</th>
-          <th align="left">Effect</th>
-        </tr>
-      </tbody>
-
-      <tbody valign="top">
-        <tr>
-          <td align="left"><code>SC_WRAPVISUALFLAGLOC_DEFAULT</code></td>
-          <td align="center">0</td>
-          <td>Visual flags drawn near border</td>
-        </tr>
-
-        <tr>
-          <td align="left"><code>SC_WRAPVISUALFLAGLOC_END_BY_TEXT</code></td>
-          <td align="center">1</td>
-          <td>Visual flag at end of subline drawn near text</td>
-        </tr>
-
-        <tr>
-          <td align="left"><code>SC_WRAPVISUALFLAGLOC_START_BY_TEXT</code></td>
-          <td align="center">2</td>
-          <td>Visual flag at beginning of subline drawn near text</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <p><b id="SCI_SETWRAPINDENTMODE">SCI_SETWRAPINDENTMODE(int wrapIndentMode)</b><br />
-     <b id="SCI_GETWRAPINDENTMODE">SCI_GETWRAPINDENTMODE &rarr; int</b><br />
-                Wrapped sublines can be indented to the position of their first subline or one more indent level.
-	  The default is <code>SC_WRAPINDENT_FIXED</code>.
-                The modes are:
-    </p>
-
-    <table class="standard" summary="Wrap visual flags locations">
-      <tbody>
-        <tr>
-          <th align="left">Symbol</th>
-          <th>Value</th>
-          <th align="left">Effect</th>
-        </tr>
-      </tbody>
-
-      <tbody valign="top">
-        <tr>
-          <td align="left"><code>SC_WRAPINDENT_FIXED</code></td>
-          <td align="center">0</td>
-          <td>
-              Wrapped sublines aligned to left of window plus amount set by
-              <a class="seealso" href="#SCI_SETWRAPSTARTINDENT">SCI_SETWRAPSTARTINDENT</a>
-          </td>
-        </tr>
-
-        <tr>
-          <td align="left"><code>SC_WRAPINDENT_SAME</code></td>
-          <td align="center">1</td>
-          <td>Wrapped sublines are aligned to first subline indent</td>
-        </tr>
-
-        <tr>
-          <td align="left"><code>SC_WRAPINDENT_INDENT</code></td>
-          <td align="center">2</td>
-          <td>Wrapped sublines are aligned to first subline indent plus one more level of indentation</td>
-        </tr>
-
-        <tr>
-          <td align="left"><code>SC_WRAPINDENT_DEEPINDENT</code></td>
-          <td align="center">3</td>
-          <td>Wrapped sublines are aligned to first subline indent plus two more levels of indentation</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <p><b id="SCI_SETWRAPSTARTINDENT">SCI_SETWRAPSTARTINDENT(int indent)</b><br />
-     <b id="SCI_GETWRAPSTARTINDENT">SCI_GETWRAPSTARTINDENT &rarr; int</b><br />
-     <code>SCI_SETWRAPSTARTINDENT</code> sets the size of indentation of sublines for
-                 wrapped lines in terms of the average character width in
-                <a class="message" href="#StyleDefinition"><code>STYLE_DEFAULT</code></a>.
-                There are no limits on indent sizes, but values        less than 0 or large values may have
-                undesirable effects.<br />
-                The indentation of sublines is independent of visual flags, but if
-                <code>SC_WRAPVISUALFLAG_START</code> is set an indent of at least 1 is used.
-     </p>
 
     <p><b id="SCI_SETLAYOUTCACHE">SCI_SETLAYOUTCACHE(int cacheMode)</b><br />
      <b id="SCI_GETLAYOUTCACHE">SCI_GETLAYOUTCACHE &rarr; int</b><br />
@@ -8523,10 +8355,6 @@ sptr_t CallScintilla(unsigned int iMessage, uptr_t wParam, sptr_t lParam){
      removing line end characters.
      Where this would lead to no space between words, an extra space is inserted.
      </p>
-
-    <p><b id="SCI_WRAPCOUNT">SCI_WRAPCOUNT(line docLine) &rarr; line</b><br />
-    Document lines can occupy more than one display line if they wrap and this
-    returns the number of display lines needed to wrap a document line.</p>
 
     <h2 id="Zooming">Zooming</h2>
 

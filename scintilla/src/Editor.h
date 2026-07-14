@@ -415,6 +415,14 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	bool WrapBlock(Surface *surface, Sci::Line lineToWrap, Sci::Line lineToWrapEnd);
 	enum class WrapScope {wsAll, wsVisible, wsIdle};
 	bool WrapLines(WrapScope ws);
+	void SetWrapVisualFlags(Scintilla::WrapVisualFlag wrapVisualFlags);
+	Scintilla::WrapVisualFlag GetWrapVisualFlags() const noexcept;
+	void SetWrapVisualFlagsLocation(Scintilla::WrapVisualLocation wrapVisualFlagsLocation);
+	Scintilla::WrapVisualLocation GetWrapVisualFlagsLocation() const noexcept;
+	void SetWrapStartIndent(int wrapStartIndent);
+	int GetWrapStartIndent() const noexcept;
+	void SetWrapIndentMode(Scintilla::WrapIndentMode wrapIndentMode);
+	Scintilla::WrapIndentMode GetWrapIndentMode() const noexcept;
 	void LinesJoin();
 	void LinesSplit(int pixelWidth);
 
@@ -703,12 +711,8 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 public:
 	~Editor() override;
 
-    /**
-    * Sets how lines wider than the window wrap. Word wraps on word or style
-    * boundaries, Char may wrap between any characters, Whitespace wraps on
-    * whitespace, and None disables wrapping. Char is useful for languages that
-    * do not separate words with spaces.
-    */
+	// Wrap mode is application-facing; its description lives beside the
+	// definition in EditorWrapping.cxx.
 	void SetWrapMode(Scintilla::Wrap wrapMode);
 	Scintilla::Wrap GetWrapMode() const noexcept;
 

@@ -1502,283 +1502,6 @@ void Editor::NotifyCaretMove() {
 void Editor::UpdateSystemCaret() {
 }
 
-bool Editor::Wrapping() const noexcept {
-	return vs.wrap.state != Wrap::None;
-}
-
-void Editor::SetWrapMode(Wrap wrapMode) {
-	if (vs.SetWrapState(wrapMode)) {
-		xOffset = 0;
-		ContainerNeedsUpdate(Update::HScroll);
-		InvalidateStyleRedraw();
-		ReconfigureScrollBars();
-	}
-}
-
-Wrap Editor::GetWrapMode() const noexcept {
-	return vs.wrap.state;
-}
-
-void Editor::NeedWrapping(Sci::Line docLineStart, Sci::Line docLineEnd) {
-//Platform::DebugPrintf("\nNeedWrapping: %0d..%0d\n", docLineStart, docLineEnd);
-	if (wrapPending.AddRange(docLineStart, docLineEnd)) {
-		view.llc.Invalidate(LineLayout::ValidLevel::positions);
-	}
-	// Wrap lines during idle.
-	if (Wrapping() && wrapPending.NeedsWrap()) {
-		SetIdle(true);
-	}
-}
-
-bool Editor::WrapOneLine(Surface *surface, Sci::Line lineToWrap) {
-	std::shared_ptr<LineLayout> ll = view.RetrieveLineLayout(lineToWrap, *this);
-	int linesWrapped = 1;
-	if (ll) {
-		view.LayoutLine(*this, surface, vs, ll.get(), wrapWidth);
-		linesWrapped = ll->lines;
-	}
-	if (vs.annotationVisible != AnnotationVisible::Hidden) {
-		linesWrapped += pdoc->AnnotationLines(lineToWrap);
-	}
-	return pcs->SetHeight(lineToWrap, linesWrapped);
-}
-
-namespace {
-
-// Lines less than lengthToMultiThread are laid out in blocks in parallel.
-// Longer lines are multi-threaded inside LayoutLine.
-// This allows faster processing when lines differ greatly in length and thus time to lay out.
-constexpr Sci::Position lengthToMultiThread = 4000;
-
-}
-
-bool Editor::WrapBlock(Surface *surface, Sci::Line lineToWrap, Sci::Line lineToWrapEnd) {
-
-	const size_t linesBeingWrapped = static_cast<size_t>(lineToWrapEnd - lineToWrap);
-
-	std::vector<int> linesAfterWrap(linesBeingWrapped);
-
-	size_t threads = std::min<size_t>(linesBeingWrapped, view.maxLayoutThreads);
-	if (!surface->SupportsFeature(Supports::ThreadSafeMeasureWidths)) {
-		threads = 1;
-	}
-
-	const bool multiThreaded = threads > 1;
-
-	ElapsedPeriod epWrapping;
-
-	// Wrap all the short lines in multiple threads
-
-	// If only 1 thread needed then use the main thread, else spin up multiple
-	const std::launch policy = multiThreaded ? std::launch::async : std::launch::deferred;
-
-	std::atomic<size_t> nextIndex = 0;
-
-	// Lines that are less likely to be re-examined should not be read from or written to the cache.
-	const SignificantLines significantLines {
-		pdoc->SciLineFromPosition(sel.MainCaret()),
-		pcs->DocFromDisplay(topLine),
-		LinesOnScreen() + 1,
-		view.llc.GetLevel(),
-	};
-
-	// Protect the line layout cache from being accessed from multiple threads simultaneously
-	std::mutex mutexRetrieve;
-
-	std::vector<std::future<void>> futures;
-	for (size_t th = 0; th < threads; th++) {
-		std::future<void> fut = std::async(policy,
-			[=, &surface, &nextIndex, &linesAfterWrap, &mutexRetrieve]() {
-			// llTemporary is reused for non-significant lines, avoiding allocation costs.
-			std::shared_ptr<LineLayout> llTemporary = std::make_shared<LineLayout>(-1, 200);
-			while (true) {
-				const size_t i = nextIndex.fetch_add(1, std::memory_order_acq_rel);
-				if (i >= linesBeingWrapped) {
-					break;
-				}
-				const Sci::Line lineNumber = lineToWrap + i;
-				const Range rangeLine = pdoc->LineRange(lineNumber);
-				const Sci::Position lengthLine = rangeLine.Length();
-				if (lengthLine < lengthToMultiThread) {
-					std::shared_ptr<LineLayout> ll;
-					if (significantLines.LineMayCache(lineNumber)) {
-						std::lock_guard<std::mutex> guard(mutexRetrieve);
-						ll = view.RetrieveLineLayout(lineNumber, *this);
-					} else {
-						ll = llTemporary;
-						ll->ReSet(lineNumber, lengthLine);
-					}
-					view.LayoutLine(*this, surface, vs, ll.get(), wrapWidth, multiThreaded);
-					linesAfterWrap[i] = ll->lines;
-				}
-			}
-		});
-		futures.push_back(std::move(fut));
-	}
-	for (const std::future<void> &f : futures) {
-		f.wait();
-	}
-	// End of multiple threads
-
-	// Multiply duration by number of threads to produce (near) equivalence to duration if single threaded
-	const double durationShortLines = epWrapping.Duration(true);
-	const double durationShortLinesThreads = durationShortLines * static_cast<double>(threads);
-
-	// Wrap all the long lines in the main thread.
-	// LayoutLine may then multi-thread over segments in each line.
-
-	std::shared_ptr<LineLayout> llLarge = std::make_shared<LineLayout>(-1, 200);
-	for (size_t indexLarge = 0; indexLarge < linesBeingWrapped; indexLarge++) {
-		if (linesAfterWrap[indexLarge] == 0) {
-			const Sci::Line lineNumber = lineToWrap + indexLarge;
-			const Range rangeLine = pdoc->LineRange(lineNumber);
-			const Sci::Position lengthLine = rangeLine.Length();
-			std::shared_ptr<LineLayout> ll;
-			if (significantLines.LineMayCache(lineNumber)) {
-				ll = view.RetrieveLineLayout(lineNumber, *this);
-			} else {
-				ll = llLarge;
-				ll->ReSet(lineNumber, lengthLine);
-			}
-			view.LayoutLine(*this, surface, vs, ll.get(), wrapWidth);
-			linesAfterWrap[indexLarge] = ll->lines;
-		}
-	}
-
-	const double durationLongLines = epWrapping.Duration();
-	const size_t bytesBeingWrapped = pdoc->LineStart(lineToWrap + linesBeingWrapped) - pdoc->LineStart(lineToWrap);
-
-	size_t wrapsDone = 0;
-
-	for (size_t i = 0; i < linesBeingWrapped; i++) {
-		const Sci::Line lineNumber = lineToWrap + i;
-		int linesWrapped = linesAfterWrap[i];
-		if (vs.annotationVisible != AnnotationVisible::Hidden) {
-			linesWrapped += pdoc->AnnotationLines(lineNumber);
-		}
-		if (pcs->SetHeight(lineNumber, linesWrapped)) {
-			wrapsDone++;
-		}
-		wrapPending.Wrapped(lineNumber);
-	}
-
-	durationWrapOneByte.AddSample(bytesBeingWrapped, durationShortLinesThreads + durationLongLines);
-
-	return wrapsDone > 0;
-}
-
-// Perform  wrapping for a subset of the lines needing wrapping.
-// wsAll: wrap all lines which need wrapping in this single call
-// wsVisible: wrap currently visible lines
-// wsIdle: wrap one page + 100 lines
-// Return true if wrapping occurred.
-bool Editor::WrapLines(WrapScope ws) {
-	Sci::Line goodTopLine = topLine;
-	bool wrapOccurred = false;
-	if (!Wrapping()) {
-		if (wrapWidth != LineLayout::wrapWidthInfinite) {
-			wrapWidth = LineLayout::wrapWidthInfinite;
-			for (Sci::Line lineDoc = 0; lineDoc < pdoc->LinesTotal(); lineDoc++) {
-				int linesWrapped = 1;
-				if (vs.annotationVisible != AnnotationVisible::Hidden) {
-					linesWrapped += pdoc->AnnotationLines(lineDoc);
-				}
-				pcs->SetHeight(lineDoc, linesWrapped);
-			}
-			wrapOccurred = true;
-		}
-		wrapPending.Reset();
-
-	} else if (wrapPending.NeedsWrap()) {
-		wrapPending.start = std::min(wrapPending.start, pdoc->LinesTotal());
-		if (!SetIdle(true)) {
-			// Idle processing not supported so full wrap required.
-			ws = WrapScope::wsAll;
-		}
-		// Decide where to start wrapping
-		Sci::Line lineToWrap = wrapPending.start;
-		Sci::Line lineToWrapEnd = std::min(wrapPending.end, pdoc->LinesTotal());
-
-		const Sci::Line lineDocTop = pcs->DocFromDisplay(topLine);
-		LineDocSub lineScrollTo;
-		if (scrollToAfterWrap) {
-			lineScrollTo = scrollToAfterWrap.value();
-		} else {
-			const Sci::Line subLineTop = topLine - pcs->DisplayFromDoc(lineDocTop);
-			lineScrollTo = { lineDocTop, subLineTop };
-		}
-		if (ws == WrapScope::wsVisible) {
-			lineToWrap = std::clamp(lineDocTop-5, wrapPending.start, pdoc->LinesTotal());
-			// Priority wrap to just after visible area.
-			// Since wrapping could reduce display lines, treat each
-			// as taking only one display line.
-			lineToWrapEnd = lineDocTop;
-			Sci::Line lines = LinesOnScreen() + 1;
-			constexpr double secondsAllowed = 0.1;
-			const size_t actionsInAllowedTime = std::clamp<Sci::Line>(
-				durationWrapOneByte.ActionsInAllowedTime(secondsAllowed),
-				0x2000, 0x200000);
-			const Sci::Line lineLast = pdoc->LineFromPositionAfter(lineToWrap, actionsInAllowedTime);
-			const Sci::Line maxLine = std::min(lineLast, pcs->LinesInDoc());
-			while ((lineToWrapEnd < maxLine) && (lines>0)) {
-				if (pcs->GetVisible(lineToWrapEnd))
-					lines--;
-				lineToWrapEnd++;
-			}
-			// .. and if the paint window is outside pending wraps
-			if ((lineToWrap > wrapPending.end) || (lineToWrapEnd < wrapPending.start)) {
-				// Currently visible text does not need wrapping
-				return false;
-			}
-		} else if (ws == WrapScope::wsIdle) {
-			// Try to keep time taken by wrapping reasonable so interaction remains smooth.
-			constexpr double secondsAllowed = 0.01;
-			const size_t actionsInAllowedTime = std::clamp<Sci::Line>(
-				durationWrapOneByte.ActionsInAllowedTime(secondsAllowed),
-				0x200, 0x20000);
-			lineToWrapEnd = pdoc->LineFromPositionAfter(lineToWrap, actionsInAllowedTime);
-		}
-		const Sci::Line lineEndNeedWrap = std::min(wrapPending.end, pdoc->LinesTotal());
-		lineToWrapEnd = std::min(lineToWrapEnd, lineEndNeedWrap);
-
-		// Ensure all lines being wrapped are styled.
-		pdoc->EnsureStyledTo(pdoc->LineStart(lineToWrapEnd));
-
-		if (lineToWrap < lineToWrapEnd) {
-
-			PRectangle rcTextArea = GetClientRectangle();
-			rcTextArea.left = static_cast<XYPOSITION>(vs.textStart);
-			rcTextArea.right -= vs.rightMarginWidth;
-			wrapWidth = static_cast<int>(rcTextArea.Width());
-			RefreshStyleData();
-			AutoSurface surface(this);
-			if (surface) {
-//Platform::DebugPrintf("Wraplines: scope=%0d need=%0d..%0d perform=%0d..%0d\n", ws, wrapPending.start, wrapPending.end, lineToWrap, lineToWrapEnd);
-
-				wrapOccurred = WrapBlock(surface, lineToWrap, lineToWrapEnd);
-
-				goodTopLine = pcs->DisplayFromDocSub(lineScrollTo.lineDoc, lineScrollTo.subLine);
-			}
-		}
-
-		// If wrapping is done, bring it to resting position
-		if (wrapPending.start >= lineEndNeedWrap) {
-			wrapPending.Reset();
-			scrollToAfterWrap.reset();
-		}
-	}
-
-	if (wrapOccurred) {
-		insideWrapScroll = true;
-		SetScrollBars();
-		SetTopLine(std::clamp<Sci::Line>(goodTopLine, 0, MaxScrollPos()));
-		SetVerticalScrollPos();
-		insideWrapScroll = false;
-	}
-
-	return wrapOccurred;
-}
-
 void Editor::LinesJoin() {
 	if (!RangeContainsProtected(targetRange.start.Position(), targetRange.end.Position())) {
 		UndoGroup ug(pdoc);
@@ -2754,26 +2477,6 @@ void Editor::NotifyModifyAttempt(Document *, void *) {
 void Editor::NotifySavePoint(Document *, void *, bool atSavePoint) {
 	//Platform::DebugPrintf("** Save Point %s\n", atSavePoint ? "On" : "Off");
 	NotifySavePoint(atSavePoint);
-}
-
-void Editor::CheckModificationForWrap(DocModification mh) {
-	if (FlagSet(mh.modificationType, ModificationFlags::InsertText | ModificationFlags::DeleteText)) {
-		view.llc.Invalidate(LineLayout::ValidLevel::checkTextAndStyle);
-		const Sci::Line lineDoc = pdoc->SciLineFromPosition(mh.position);
-		const Sci::Line lines = std::max(static_cast<Sci::Line>(0), mh.linesAdded);
-		if (Wrapping()) {
-			// Check if this modification crosses any of the wrap points
-			if (wrapPending.NeedsWrap()) {
-				if (lineDoc < wrapPending.end) { // Inserted/deleted before or inside wrap range
-					wrapPending.end += mh.linesAdded;
-				}
-			}
-			NeedWrapping(lineDoc, lineDoc + lines + 1);
-		}
-		RefreshStyleData();
-		// Fix up annotation heights
-		SetAnnotationHeights(lineDoc, lineDoc + lines + 2);
-	}
 }
 
 namespace {
@@ -6007,17 +5710,6 @@ std::unique_ptr<Surface> Editor::CreateDrawingSurface(SurfaceID sid, std::option
 	return surf;
 }
 
-Sci::Line Editor::WrapCount(Sci::Line line) {
-	AutoSurface surface(this);
-	std::shared_ptr<LineLayout> ll = view.RetrieveLineLayout(line, *this);
-
-	if (surface && ll) {
-		view.LayoutLine(*this, surface, vs, ll.get(), wrapWidth);
-		return ll->lines;
-	}
-	return 1;
-}
-
 void Editor::AddStyledText(const char *buffer, Sci::Position appendLength) {
 	// The buffer consists of alternating character bytes and style bytes
 	const Sci::Position textLength = appendLength / 2;
@@ -7253,43 +6945,32 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return static_cast<sptr_t>(GetWrapMode());
 
 	case Message::SetWrapVisualFlags:
-		if (vs.SetWrapVisualFlags(static_cast<WrapVisualFlag>(wParam))) {
-			InvalidateStyleRedraw();
-			ReconfigureScrollBars();
-		}
+		SetWrapVisualFlags(static_cast<WrapVisualFlag>(wParam));
 		break;
 
 	case Message::GetWrapVisualFlags:
-		return static_cast<sptr_t>(vs.wrap.visualFlags);
+		return static_cast<sptr_t>(GetWrapVisualFlags());
 
 	case Message::SetWrapVisualFlagsLocation:
-		if (vs.SetWrapVisualFlagsLocation(static_cast<WrapVisualLocation>(wParam))) {
-			InvalidateStyleRedraw();
-		}
+		SetWrapVisualFlagsLocation(static_cast<WrapVisualLocation>(wParam));
 		break;
 
 	case Message::GetWrapVisualFlagsLocation:
-		return static_cast<sptr_t>(vs.wrap.visualFlagsLocation);
+		return static_cast<sptr_t>(GetWrapVisualFlagsLocation());
 
 	case Message::SetWrapStartIndent:
-		if (vs.SetWrapVisualStartIndent(static_cast<int>(wParam))) {
-			InvalidateStyleRedraw();
-			ReconfigureScrollBars();
-		}
+		SetWrapStartIndent(static_cast<int>(wParam));
 		break;
 
 	case Message::GetWrapStartIndent:
-		return vs.wrap.visualStartIndent;
+		return GetWrapStartIndent();
 
 	case Message::SetWrapIndentMode:
-		if (vs.SetWrapIndentMode(static_cast<WrapIndentMode>(wParam))) {
-			InvalidateStyleRedraw();
-			ReconfigureScrollBars();
-		}
+		SetWrapIndentMode(static_cast<WrapIndentMode>(wParam));
 		break;
 
 	case Message::GetWrapIndentMode:
-		return static_cast<sptr_t>(vs.wrap.indentMode);
+		return static_cast<sptr_t>(GetWrapIndentMode());
 
 	case Message::SetLayoutCache:
 		if (static_cast<LineCache>(wParam) <= LineCache::Document) {
