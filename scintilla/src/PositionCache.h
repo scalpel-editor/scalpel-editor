@@ -231,7 +231,6 @@ class BreakFinder {
 	int saeNext;
 	int subBreak;
 	const Document *pdoc;
-	const EncodingFamily encodingFamily;
 	const SpecialRepresentations *preprs;
 	void Insert(Sci::Position val);
 public:

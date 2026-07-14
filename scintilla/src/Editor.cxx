@@ -61,7 +61,6 @@
 #include "CaseFolder.h"
 #include "Document.h"
 #include "UniConversion.h"
-#include "DBCS.h"
 #include "Selection.h"
 #include "PositionCache.h"
 #include "EditModel.h"

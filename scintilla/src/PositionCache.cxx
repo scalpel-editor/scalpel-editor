@@ -52,7 +52,6 @@
 #include "CaseFolder.h"
 #include "Document.h"
 #include "UniConversion.h"
-#include "DBCS.h"
 #include "Selection.h"
 #include "PositionCache.h"
 
@@ -346,13 +345,11 @@ void LineLayout::WrapLine(const Document *pdoc, Sci::Position posLineStart, Wrap
 				}
 			}
 			if (!foundBreak) {
-				if (CpUtf8 == pdoc->dbcsCodePage) {
-					// Go back before a base character, commonly a letter as modifiers are after the letter they modify
-					const Sci::Position afterWrap = CharacterBoundary(lastGoodBreak, 1);
-					std::string_view svWithoutLast(&chars[lastLineStart], afterWrap - lastLineStart);
-					if (DiscardLastCombinedCharacter(svWithoutLast) && !svWithoutLast.empty()) {
-						lastGoodBreak = lastLineStart + static_cast<Sci::Position>(svWithoutLast.length());
-					}
+				// Go back before a base character, commonly a letter as modifiers are after the letter they modify
+				const Sci::Position afterWrap = CharacterBoundary(lastGoodBreak, 1);
+				std::string_view svWithoutLast(&chars[lastLineStart], afterWrap - lastLineStart);
+				if (DiscardLastCombinedCharacter(svWithoutLast) && !svWithoutLast.empty()) {
+					lastGoodBreak = lastLineStart + static_cast<Sci::Position>(svWithoutLast.length());
 				}
 				if (lastGoodBreak == lastLineStart) {
 					// Ensure at least one character on line.
@@ -764,7 +761,7 @@ void SpecialRepresentations::Clear() {
 	crlf = false;
 }
 
-void SpecialRepresentations::SetDefaultRepresentations(int dbcsCodePage) {
+void SpecialRepresentations::SetDefaultRepresentations(int /*dbcsCodePage*/) {
 	Clear();
 
 	// C0 control set
@@ -774,27 +771,20 @@ void SpecialRepresentations::SetDefaultRepresentations(int dbcsCodePage) {
 	}
 	SetRepresentation("\x7f", "DEL");
 
-	// C1 control set
-	// As well as Unicode mode, ISO-8859-1 should use these
-	if (CpUtf8 == dbcsCodePage) {
-		for (size_t j = 0; j < std::size(repsC1); j++) {
-			const char c1[3] = { '\xc2',  static_cast<char>(0x80 + j), 0 };
-			SetRepresentation(c1, repsC1[j]);
-		}
-		SetRepresentation("\xe2\x80\xa8", "LS");
-		SetRepresentation("\xe2\x80\xa9", "PS");
+	// C1 control set (UTF-8 encoding of U+0080..U+009F, LS, PS)
+	for (size_t j = 0; j < std::size(repsC1); j++) {
+		const char c1[3] = { '\xc2',  static_cast<char>(0x80 + j), 0 };
+		SetRepresentation(c1, repsC1[j]);
 	}
+	SetRepresentation("\xe2\x80\xa8", "LS");
+	SetRepresentation("\xe2\x80\xa9", "PS");
 
-	// Invalid as single bytes in multi-byte encodings
-	if (dbcsCodePage) {
-		for (int k = 0x80; k < 0x100; k++) {
-			if ((CpUtf8 == dbcsCodePage) || !IsDBCSValidSingleByte(dbcsCodePage, k)) {
-				const char hiByte[2] = { static_cast<char>(k), 0 };
-				char hexits[4];
-				Hexits(hexits, k);
-				SetRepresentation(hiByte, hexits);
-			}
-		}
+	// Invalid as single bytes under UTF-8: show as hex blobs
+	for (int k = 0x80; k < 0x100; k++) {
+		const char hiByte[2] = { static_cast<char>(k), 0 };
+		char hexits[4];
+		Hexits(hexits, k);
+		SetRepresentation(hiByte, hexits);
 	}
 }
 
@@ -819,7 +809,6 @@ BreakFinder::BreakFinder(const LineLayout *ll_, const Selection *psel, Range lin
 	saeNext(0),
 	subBreak(-1),
 	pdoc(pdoc_),
-	encodingFamily(pdoc_->CodePageFamily()),
 	preprs(preprs_) {
 
 	// Search for first visible break
@@ -883,12 +872,8 @@ TextSegment BreakFinder::Next() {
 			const char * const chars = &ll->chars[nextBreak];
 			const unsigned char ch = chars[0];
 			bool characterStyleConsistent = true;	// All bytes of character in same style?
-			if (!UTF8IsAscii(ch) && encodingFamily != EncodingFamily::eightBit) {
-				if (encodingFamily == EncodingFamily::unicode) {
-					charWidth = UTF8DrawBytes(chars, lineRange.end - nextBreak);
-				} else {
-					charWidth = pdoc->DBCSDrawBytes(std::string_view(chars, lineRange.end - nextBreak));
-				}
+			if (!UTF8IsAscii(ch)) {
+				charWidth = UTF8DrawBytes(chars, lineRange.end - nextBreak);
 				for (int trail = 1; trail < charWidth; trail++) {
 					if (ll->styles[nextBreak] != ll->styles[nextBreak + trail]) {
 						characterStyleConsistent = false;

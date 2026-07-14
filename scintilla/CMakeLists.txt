@@ -15,7 +15,6 @@ add_library(scintilla_core STATIC
   src/CharacterType.cxx
   src/CharClassify.cxx
   src/ContractionState.cxx
-  src/DBCS.cxx
   src/Decoration.cxx
   src/Document.cxx
   src/EditModel.cxx

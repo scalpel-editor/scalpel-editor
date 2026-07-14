@@ -1,6 +1,6 @@
 // Scintilla source code edit control
 /** @file Document.h
- ** Text document that handles notifications, DBCS, styling, words and end of line.
+ ** Text document that handles notifications, styling, words and end of line.
  **/
 // Copyright 1998-2011 by Neil Hodgson <neilh@scintilla.org>
 // The License.txt file describes the conditions under which this software may be distributed.
@@ -17,8 +17,6 @@ class LineMarkers;
 class LineLevels;
 class LineState;
 class LineAnnotation;
-
-enum class EncodingFamily { eightBit, unicode, dbcs };
 
 /**
  * The range class represents a range of text in a document.
@@ -255,9 +253,7 @@ public:
 
 /**
  * A whole character (code point) with a value and width in bytes.
- * For UTF-8, the value is the code point value.
- * For DBCS, its jamming the lead and trail bytes together.
- * For 8 bit encodings, is just the byte value.
+ * The value is the Unicode code point; invalid UTF-8 yields characterBadByte.
  */
 struct CharacterExtracted {
 	unsigned int character;
@@ -267,25 +263,18 @@ struct CharacterExtracted {
 		character(character_), widthBytes(widthBytes_) {
 	}
 
-	// For UTF-8:
 	CharacterExtracted(const unsigned char *charBytes, size_t widthCharBytes) noexcept;
-
-	// For DBCS characters turn 2 bytes into an int
-	static CharacterExtracted DBCS(unsigned char lead, unsigned char trail) noexcept {
-		return CharacterExtracted((lead << 8) | trail, 2);
-	}
 };
 
 bool DiscardLastCombinedCharacter(std::string_view &text) noexcept;
 
 /**
  * Invalid UTF-8 policy: the document stores the bytes it is given and never validates,
- * rejects, or rewrites them. In UTF-8 mode, each byte that is not part of a valid UTF-8
- * sequence acts as a one-byte character for movement, width, and deletion.
- * GetCharacterAndWidth reports such a byte as 0xDC80 + byte, an escape value that is never
- * a real code point, and the view draws it as a hex blob (see
- * SpecialRepresentations::SetDefaultRepresentations). Callers that need valid UTF-8 output,
- * such as file saving, must handle invalid bytes themselves.
+ * rejects, or rewrites them. Each byte that is not part of a valid UTF-8 sequence acts as a
+ * one-byte character for movement, width, and deletion. GetCharacterAndWidth reports such a
+ * byte as 0xDC80 + byte, an escape value that is never a real code point, and the view draws
+ * it as a hex blob (see SpecialRepresentations::SetDefaultRepresentations). Callers that need
+ * valid UTF-8 output, such as file saving, must handle invalid bytes themselves.
  */
 class Document : PerLine, public Scintilla::IDocument, public Scintilla::ILoader, public Scintilla::IDocumentEditable {
 
@@ -395,15 +384,10 @@ public:
 	Sci_Position SCI_METHOD GetRelativePosition(Sci_Position positionStart, Sci_Position characterOffset) const override;
 	Sci::Position GetRelativePositionUTF16(Sci::Position positionStart, Sci::Position characterOffset) const noexcept;
 	int SCI_METHOD GetCharacterAndWidth(Sci_Position position, Sci_Position *pWidth) const override;
+	// Fixed answers for the Lexilla IDocument surface (always UTF-8, never a DBCS lead).
 	int SCI_METHOD CodePage() const override;
 	bool SCI_METHOD IsDBCSLeadByte(char ch) const override;
-	bool IsDBCSLeadByteNoExcept(char ch) const noexcept;
-	bool IsDBCSTrailByteNoExcept(char ch) const noexcept;
-	unsigned char DBCSMinTrailByte() const noexcept;
-	int DBCSDrawBytes(std::string_view text) const noexcept;
-	bool IsDBCSDualByteAt(Sci::Position pos) const noexcept;
 	size_t SafeSegment(std::string_view text) const noexcept;
-	EncodingFamily CodePageFamily() const noexcept;
 
 	// Gateways to modifying document
 	void ModifiedAt(Sci::Position pos) noexcept;

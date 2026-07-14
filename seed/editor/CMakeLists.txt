@@ -18,7 +18,6 @@ add_library(owui_scintilla STATIC
 	"${scintilla_source_dir}/src/CharacterType.cxx"
 	"${scintilla_source_dir}/src/CharClassify.cxx"
 	"${scintilla_source_dir}/src/ContractionState.cxx"
-	"${scintilla_source_dir}/src/DBCS.cxx"
 	"${scintilla_source_dir}/src/Decoration.cxx"
 	"${scintilla_source_dir}/src/Document.cxx"
 	"${scintilla_source_dir}/src/EditModel.cxx"
