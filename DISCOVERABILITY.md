@@ -29,7 +29,7 @@ grepai call and reference analysis also has current limits. Tests reported decla
 
 ## Search checks for each concern
 
-Before moving a concern, record its authoritative implementation spans and the queries used to find it. After the move, run the same queries from a fresh index and compare ranks.
+Before moving a concern, record its authoritative implementation spans and the queries used to find it. After the move, ensure the index includes the changed files (the watcher's incremental scan is enough), run the same queries, and compare ranks.
 
 - Exact name: `SetWrapMode`
 - Spaced name: `set wrap mode`
@@ -47,6 +47,8 @@ Run `grepai trace` and `grepai refs` only as recorded observations until their C
 Create the benchmark queries before the Phase 4 pilots and keep them unchanged while adjusting names, file boundaries, comments, or grepai settings. Include held-out paraphrases that were not consulted during the refactor.
 
 The fixed corpus, runner, and result format live in [`tools/discoverability/`](tools/discoverability/README.md).
+
+The current-tree baseline is recorded under [`benchmark-results/baseline/`](benchmark-results/baseline/observations.md) (phase 4 step 2). After that baseline the corpus is frozen: do not edit `queries.tsv` or `held-out-queries.tsv` while choosing pilot names, file boundaries, or comments. Change a corpus row only when this guide records the reason and the old and new evidence.
 
 The initial corpus should cover at least these different shapes:
 
@@ -69,12 +71,14 @@ Run the same corpus under these conditions:
 - Baseline tree and refactored pilot.
 - Vector-only search and hybrid search.
 - Whole-repository search and `--path scintilla/src`.
-- A freshly rebuilt index with grepai version, embedding model, chunk size, overlap, boosts, and ignore rules recorded.
+- An index that includes the tree under test, with grepai version, embedding model, chunk size, overlap, boosts, ignore rules, and index hash recorded so a later run can tell whether tool or index changed.
 - The normal query set and held-out paraphrases.
+
+Do not require a full wipe-and-re-embed of the index for recorded runs. grepai already reindexes only files whose contents or modtimes changed; that is enough for fair rank comparison. A full rebuild is optional diagnostics if ranks look absurd or the index is known corrupt — not part of the pilot schedule. The phase 4 step 2 baseline did a full wipe once; nothing in that run showed the wipe was necessary, and later measurements should not repeat it by default.
 
 Do not change more than one tool setting in a comparison. Refactor layout and tool configuration answer different questions and need separate results.
 
-Add a boundary-stability check after each pilot. Add or remove about 200 characters before a selected entry point, rebuild the index, and confirm that the correct concern remains easy to find. This checks that a result does not depend on an accidental fixed-window boundary.
+Add a boundary-stability check after each pilot. Add or remove about 200 characters before a selected entry point, let the index pick up that file change, and confirm that the correct concern remains easy to find. This checks that a result does not depend on an accidental fixed-window boundary.
 
 Add cold navigation checks for the baseline and pilot. Ask a reader or agent to locate a feature, summarize its effects, identify its callers, and name its focused tests without first giving it the symbol name. Record the searches used, wrong files opened, and whether it reached the authoritative implementation.
 
@@ -89,7 +93,11 @@ Add cold navigation checks for the baseline and pilot. Ask a reader or agent to 
 - Obsolete documentation and reference code do not outrank the authoritative concern after the phase that removes them.
 - The concern's focused behavior tests and `./check.sh` pass independently of the search benchmark.
 
-If a pilot misses these criteria, inspect concern boundaries, competing stale material, index freshness, and search configuration before changing comment wording. Record any adjusted criterion and the evidence for it here rather than silently tuning the benchmark to the result.
+The chosen normal configuration for these criteria is vector search over the whole repository (live `search.hybrid.enabled: false`). Path-limited and hybrid cells are diagnostic comparisons, not the pass gate.
+
+Baseline (pre-pilot) against that default cell: exact-name `rg` passes; exact-name definition top-3 is far below the bar; natural-language concern top-3 is about half of queries; HTML and seed often outrank live code; wrap cold nav reaches the right file in one step but the wrong span; undo cold nav fails. Full tables and the boundary re-run are in [`benchmark-results/baseline/observations.md`](benchmark-results/baseline/observations.md). Pilots are measured by improvement over that record, not by matching a path-limited hybrid cell that already looks healthier on the mixed tree.
+
+If a pilot misses these criteria, inspect concern boundaries, competing stale material, whether the index still reflects the moved files, and search configuration before changing comment wording. Record any adjusted criterion and the evidence for it here rather than silently tuning the benchmark to the result.
 
 ## Phase 4 pilot sequence
 

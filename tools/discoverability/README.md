@@ -8,10 +8,12 @@ The installed grepai build reports `dev-iface`. Its source is `/my/src/grepai` o
 
 ## Run
 
-Run the complete normal matrix from the repository root:
+Before a recorded run, make sure the index includes the current tree: leave the watcher running while you edit, or start it briefly after a batch of moves and wait until it is steady. Do not delete `index.gob` and re-embed the whole project unless the index is broken or you are deliberately testing rebuild behavior. Recorded runs freeze nothing special beyond “stop editing the tree mid-matrix”; the runner already records the index hash so you can see whether two result directories used the same index.
+
+Run the complete matrix (normal and held-out, both modes and scopes) from the repository root:
 
 ```sh
-tools/discoverability/run-searches.sh --label baseline --output benchmark-results/baseline
+tools/discoverability/run-searches.sh --label baseline --output benchmark-results/baseline --set all
 ```
 
 Run one query while checking the runner:
@@ -26,9 +28,13 @@ After the wrapping pilot, use target expectations only for the moved features:
 tools/discoverability/run-searches.sh --label wrapping-pilot --output benchmark-results/wrapping-pilot --target-feature SetWrapMode --target-feature WrapCount
 ```
 
-Use `--set held-out` for the held-out pass and `--all-target` only after every benchmark feature has reached its final Phase 4 location. The runner searches the existing index; create and verify the fresh index required by `DISCOVERABILITY.md` before starting a recorded run.
+Use `--set held-out` for the held-out pass alone and `--all-target` only after every benchmark feature has reached its final Phase 4 location. The runner searches the existing index.
 
 grepai has no command-line hybrid switch in this build. The runner creates temporary project roots containing a mode-adjusted copy of `.grepai/config.yaml` and a symlink to the live read-only index. It does not modify the live config or index. Vector and hybrid runs therefore use the same indexed chunks and differ only in `search.hybrid.enabled`.
+
+## Checked-in baseline
+
+Phase 4 step 2 recorded the pre-pilot tree in [`benchmark-results/baseline/`](../../benchmark-results/baseline/). That directory holds the frozen-index search matrix, `summary.json` roll-ups, and `observations.md` (exact-name `rg`, boundary-stability, cold navigation, and acceptance snapshot). The corpus is fixed after that baseline; do not edit the TSV files while piloting.
 
 ## Results
 
