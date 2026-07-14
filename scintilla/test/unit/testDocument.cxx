@@ -546,6 +546,67 @@ TEST_CASE("Document") {
 		REQUIRE(pos == 3);
 	}
 
+	SECTION("Invalid UTF-8 acts as one-byte characters") {
+		// Policy test: bytes that are not part of a valid UTF-8 sequence are stored
+		// unchanged and treated as one-byte characters. See the Document doc comment.
+		// H [80] [C2] EURO z
+		// [80] is a stray trail byte, [C2] is a lead byte whose trail byte is missing,
+		// EURO is the valid 3-byte U+20AC at positions 3..5.
+		DocPlus doc("H\x80\xc2\xe2\x82\xacz", CpUtf8);
+		REQUIRE(doc.document.Length() == 7);
+		// test GetCharacterAndWidth(): invalid bytes are reported as 0xDC80 + byte
+		Sci::Position width = 0;
+		int ch = doc.document.GetCharacterAndWidth(0, &width);
+		REQUIRE(width == 1);
+		REQUIRE(ch == 'H');
+		width = 0;
+		ch = doc.document.GetCharacterAndWidth(1, &width);
+		REQUIRE(width == 1);
+		REQUIRE(ch == 0xDC80 + 0x80);
+		width = 0;
+		ch = doc.document.GetCharacterAndWidth(2, &width);
+		REQUIRE(width == 1);
+		REQUIRE(ch == 0xDC80 + 0xC2);
+		width = 0;
+		ch = doc.document.GetCharacterAndWidth(3, &width);
+		REQUIRE(width == 3);
+		REQUIRE(ch == 0x20AC);
+		// test LenChar()
+		REQUIRE(doc.document.LenChar(1) == 1);
+		REQUIRE(doc.document.LenChar(2) == 1);
+		REQUIRE(doc.document.LenChar(3) == 3);
+		// test MovePositionOutsideChar(): positions next to invalid bytes are valid positions
+		REQUIRE(doc.document.MovePositionOutsideChar(1, 1) == 1);
+		REQUIRE(doc.document.MovePositionOutsideChar(2, 1) == 2);
+		REQUIRE(doc.document.MovePositionOutsideChar(4, 1) == 6);
+		REQUIRE(doc.document.MovePositionOutsideChar(4, -1) == 3);
+		// test NextPosition(): each invalid byte is one step
+		REQUIRE(doc.document.NextPosition(0, 1) == 1);
+		REQUIRE(doc.document.NextPosition(1, 1) == 2);
+		REQUIRE(doc.document.NextPosition(2, 1) == 3);
+		REQUIRE(doc.document.NextPosition(3, 1) == 6);
+		REQUIRE(doc.document.NextPosition(6, -1) == 3);
+		REQUIRE(doc.document.NextPosition(3, -1) == 2);
+		REQUIRE(doc.document.NextPosition(2, -1) == 1);
+		REQUIRE(doc.document.NextPosition(1, -1) == 0);
+		// test GetRelativePosition(): the text is 5 characters
+		REQUIRE(doc.document.GetRelativePosition(0, 4) == 6);
+		REQUIRE(doc.document.GetRelativePosition(0, 5) == 7);
+		REQUIRE(doc.document.GetRelativePosition(7, -5) == 0);
+		// test FindText(): search crosses invalid bytes and finds valid characters after them
+		Sci::Position lengthFinding = 1;
+		REQUIRE(doc.document.FindText(0, 7, "z", FindOption::MatchCase, &lengthFinding) == 6);
+		lengthFinding = 3;
+		REQUIRE(doc.document.FindText(0, 7, "\xe2\x82\xac", FindOption::MatchCase, &lengthFinding) == 3);
+		// test DelCharBack(): deleting back over an invalid byte removes exactly that byte
+		doc.document.DelCharBack(3);
+		REQUIRE(doc.document.Length() == 6);
+		width = 0;
+		ch = doc.document.GetCharacterAndWidth(2, &width);
+		REQUIRE(width == 3);
+		REQUIRE(ch == 0x20AC);
+	}
+
 	SECTION("NextPosition Valid DBCS") {
 		Document doc(DocumentOption::Default);
 		doc.SetDBCSCodePage(932);

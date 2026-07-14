@@ -42,6 +42,15 @@ This fixture is an editor-state and host-interaction test tool. It is not eviden
 
 Remove DBCS and code-page support before it can shape the new API: delete `DBCS.cxx`, code-page messages and documentation, non-UTF-8 branches in `Document`, `EditView`, case conversion, search, and measurement, and code-page parameters threaded through call chains. Collapse the parallel encoded and UTF-8 surface methods into one UTF-8 path. Decide and test what happens when invalid UTF-8 reaches the editor boundary so the invariant is explicit rather than assumed.
 
+Steps, each landing green through `./check.sh`:
+
+1. Make the invalid-UTF-8 policy explicit and pin it with tests. The policy keeps the current UTF-8-mode behavior: the document stores the bytes it is given without validating or rewriting them; each byte that is not part of a valid UTF-8 sequence acts as a one-byte character for movement, width, and deletion; `GetCharacterAndWidth` reports such a byte as `0xDC80 + byte` (an escape value that is never a real code point); the view draws it as a hex blob. Write the policy as a doc comment on `Document` and add focused document and editor tests: movement and width over invalid bytes, search across them, byte-exact text round-trip through the editor, and case conversion leaving them unchanged.
+2. Remove the code-page API: the `SetCodePage` and `GetCodePage` messages with their `ScintillaDoc.html` prose, `Editor::ValidCodePage`, and `Document::SetDBCSCodePage`. `dbcsCodePage` becomes a constant until later steps delete its uses. Delete the DBCS sections of the upstream unit tests in the same change.
+3. Dissolve the encoding branches inside `Document` — character iteration, movement, case folding, search, and regular expressions — and delete `DBCS.cxx` and `DBCS.h`. `IDocument::CodePage()` and `IsDBCSLeadByte()` stay with fixed answers because Lexilla lexers call them through the retained lexer interface.
+4. Remove code-page values threaded through layout, measurement, and clipboard: `SurfaceMode::codePage` in `Platform.h`, `SpecialRepresentations::SetDefaultRepresentations`, `EditView`, `EditModel`, `CallTip`, `SelectionText`, and the test platform.
+5. Collapse the parallel encoded and UTF-8 surface into one UTF-8 path: delete `TargetAsUTF8`, `EncodedFromUTF8`, and `SetLengthForEncode` with the `UTF8FromEncoded`/`EncodedFromUTF8` virtual pair, and fold Unicode case conversion (`CaseConvertString`) into `Editor::CaseMapString`, which was ASCII-only in the base class because real case conversion lived in the deleted platform layers.
+6. Sweep the repository for leftover code-page and DBCS references, finish the documentation cleanup, and mark the phase done.
+
 Deliverable: no code path asks which encoding is in use; no API accepts a code page; retained UTF-8 behavior and the invalid-input policy have focused tests; adjusted upstream tests pass.
 
 ## Phase 4 — Dissolve the dispatch

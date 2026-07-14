@@ -279,6 +279,13 @@ struct CharacterExtracted {
 bool DiscardLastCombinedCharacter(std::string_view &text) noexcept;
 
 /**
+ * Invalid UTF-8 policy: the document stores the bytes it is given and never validates,
+ * rejects, or rewrites them. In UTF-8 mode, each byte that is not part of a valid UTF-8
+ * sequence acts as a one-byte character for movement, width, and deletion.
+ * GetCharacterAndWidth reports such a byte as 0xDC80 + byte, an escape value that is never
+ * a real code point, and the view draws it as a hex blob (see
+ * SpecialRepresentations::SetDefaultRepresentations). Callers that need valid UTF-8 output,
+ * such as file saving, must handle invalid bytes themselves.
  */
 class Document : PerLine, public Scintilla::IDocument, public Scintilla::ILoader, public Scintilla::IDocumentEditable {
 

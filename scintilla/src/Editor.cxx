@@ -4417,6 +4417,9 @@ Sci::Position Editor::SearchText(
 	return pos;
 }
 
+// Only converts ASCII letters. Upstream, Unicode case conversion lived in platform-layer
+// overrides that this project deleted; folding CaseConvertString in here is planned as
+// part of roadmap phase 3.
 std::string Editor::CaseMapString(const std::string &s, CaseMapping caseMapping) {
 	std::string ret(s);
 	for (char &ch : ret) {
