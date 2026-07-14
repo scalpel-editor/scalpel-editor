@@ -390,7 +390,7 @@ Sci::Position Editor::PositionFromLocation(Point pt, bool canReturnInvalid, bool
 
 /**
 * Find the document position corresponding to an x coordinate on a particular document line.
-* Ensure is between whole characters when document is in multi-byte or UTF-8 mode.
+* Ensure the result is on a UTF-8 character boundary.
 * This method is used for rectangular selections and does not work on wrapped lines.
 */
 SelectionPosition Editor::SPositionFromLineX(Sci::Line lineDoc, int x) {
@@ -733,7 +733,7 @@ void Editor::MultipleSelectAdd(AddNumber addNumber) {
 	} else {
 
 		if (!pdoc->HasCaseFolder())
-			pdoc->SetCaseFolder(CaseFolderForEncoding());
+			pdoc->SetCaseFolder(std::make_unique<CaseFolderUnicode>());
 
 		const Range rangeMainSelection(sel.RangeMain().Start().Position(), sel.RangeMain().End().Position());
 		const std::string selectedText = RangeText(rangeMainSelection.start, rangeMainSelection.end);
@@ -2096,7 +2096,7 @@ void Editor::FilterSelections() {
 	}
 }
 
-// InsertCharacter inserts a character encoded in document code page.
+// InsertCharacter inserts UTF-8 bytes into the document.
 void Editor::InsertCharacter(std::string_view sv, CharacterSource charSource) {
 	if (sv.empty()) {
 		return;
@@ -4287,10 +4287,6 @@ void Editor::Indent(bool forwards, bool lineIndent) {
 	ContainerNeedsUpdate(Update::Selection);
 }
 
-std::unique_ptr<CaseFolder> Editor::CaseFolderForEncoding() {
-	return std::make_unique<CaseFolderUnicode>();
-}
-
 /**
  * Search of a text in the document, in the given range.
  * @return The position of the found text, -1 if not found.
@@ -4303,7 +4299,7 @@ Sci::Position Editor::FindText(
 	TextToFind *ft = static_cast<TextToFind *>(PtrFromSPtr(lParam));
 	Sci::Position lengthFound = strlen(ft->lpstrText);
 	if (!pdoc->HasCaseFolder())
-		pdoc->SetCaseFolder(CaseFolderForEncoding());
+		pdoc->SetCaseFolder(std::make_unique<CaseFolderUnicode>());
 	try {
 		const Sci::Position pos = pdoc->FindText(
 			static_cast<Sci::Position>(ft->chrg.cpMin),
@@ -4334,7 +4330,7 @@ Sci::Position Editor::FindTextFull(
 	TextToFindFull *ft = static_cast<TextToFindFull *>(PtrFromSPtr(lParam));
 	Sci::Position lengthFound = strlen(ft->lpstrText);
 	if (!pdoc->HasCaseFolder())
-		pdoc->SetCaseFolder(CaseFolderForEncoding());
+		pdoc->SetCaseFolder(std::make_unique<CaseFolderUnicode>());
 	try {
 		const Sci::Position pos = pdoc->FindText(
 			ft->chrg.cpMin,
@@ -4383,7 +4379,7 @@ Sci::Position Editor::SearchText(
 	Sci::Position pos = Sci::invalidPosition;
 	Sci::Position lengthFound = strlen(txt);
 	if (!pdoc->HasCaseFolder())
-		pdoc->SetCaseFolder(CaseFolderForEncoding());
+		pdoc->SetCaseFolder(std::make_unique<CaseFolderUnicode>());
 	try {
 		if (iMessage == Message::SearchNext) {
 			pos = pdoc->FindText(searchAnchor, pdoc->Length(), txt,
@@ -4424,7 +4420,7 @@ Sci::Position Editor::SearchInTarget(const char *text, Sci::Position length) {
 	Sci::Position lengthFound = length;
 
 	if (!pdoc->HasCaseFolder())
-		pdoc->SetCaseFolder(CaseFolderForEncoding());
+		pdoc->SetCaseFolder(std::make_unique<CaseFolderUnicode>());
 	try {
 		const Sci::Position pos = pdoc->FindText(targetRange.start.Position(), targetRange.end.Position(), text,
 				searchFlags,
@@ -5989,11 +5985,6 @@ Sci::Position Editor::ReplaceTarget(ReplaceType replaceType, std::string_view te
 	targetRange = replaceRange;
 
 	return text.length();
-}
-
-bool Editor::IsUnicodeMode() const noexcept {
-	// Document is always UTF-8; true whenever an editor document exists.
-	return pdoc != nullptr;
 }
 
 std::unique_ptr<Surface> Editor::CreateMeasurementSurface() const {

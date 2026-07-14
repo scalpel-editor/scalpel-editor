@@ -90,7 +90,7 @@ void FontRealised::Realise(Surface &surface, int zoomLevel, Technology technolog
 		// python: ''.join(chr(ch) for ch in range(32, 127))
 		" !\"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~");
 		std::array<XYPOSITION, allASCIIGraphic.length()> positions {};
-		surface.MeasureWidthsUTF8(font.get(), allASCIIGraphic, positions.data());
+		surface.MeasureWidths(font.get(), allASCIIGraphic, positions.data());
 		std::adjacent_difference(positions.begin(), positions.end(), positions.begin());
 		const XYPOSITION maxWidth = *std::max_element(positions.begin(), positions.end());
 		const XYPOSITION minWidth = *std::min_element(positions.begin(), positions.end());

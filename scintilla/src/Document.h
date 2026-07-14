@@ -326,8 +326,6 @@ private:
 public:
 
 	Scintilla::EndOfLine eolMode;
-	/// Always UTF-8. A constant until the remaining phase 3 steps delete its uses.
-	static constexpr int dbcsCodePage = Scintilla::CpUtf8;
 	Scintilla::LineEndType lineEndBitSet;
 	int tabInChars;
 	int indentInChars;

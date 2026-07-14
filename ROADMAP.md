@@ -38,7 +38,7 @@ The first contract tests construct and destroy the fixture under the sanitizers,
 
 This fixture is an editor-state and host-interaction test tool. It is not evidence that glyphs look correct, that Wayland lifecycles are correct, or that asynchronous clipboard and IME behavior works; phase 6 renderer checks and phase 7 shell tests cover those boundaries. The test platform must not become a reason to retain `Platform.h`: when phase 6 installs the concrete renderer, replace the test surface with that renderer's deterministic offscreen path and retain only the test editor's host-observation state.
 
-## Phase 3 — UTF-8 only
+## Phase 3 — UTF-8 only ✅ (2026-07-13)
 
 Remove DBCS and code-page support before it can shape the new API: delete `DBCS.cxx`, code-page messages and documentation, non-UTF-8 branches in `Document`, `EditView`, case conversion, search, and measurement, and code-page parameters threaded through call chains. Collapse the parallel encoded and UTF-8 surface methods into one UTF-8 path. Decide and test what happens when invalid UTF-8 reaches the editor boundary so the invariant is explicit rather than assumed.
 
@@ -52,6 +52,8 @@ Steps, each landing green through `./check.sh`:
 6. Sweep the repository for leftover code-page and DBCS references, finish the documentation cleanup, and mark the phase done.
 
 Deliverable: no code path asks which encoding is in use; no API accepts a code page; retained UTF-8 behavior and the invalid-input policy have focused tests; adjusted upstream tests pass.
+
+Done: document movement, search, regular expressions, case conversion, layout, measurement, clipboard text, autocomplete, and drawing now have one UTF-8 path. The parallel encoded surface methods and constant encoding flags are gone, and the seed platform reflects the same interface. `IDocument::CodePage()` and `IsDBCSLeadByte()` remain only because Lexilla requires those methods; they return UTF-8 and false. The generated interface inventory and remaining HTML descriptions match the reduced API, completion searches find no removed encoding path, and the local check matrix passes.
 
 ## Phase 4 — Dissolve the dispatch
 

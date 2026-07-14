@@ -133,7 +133,6 @@ EditModel::~EditModel() {
 }
 
 bool EditModel::BidirectionalEnabled() const noexcept {
-	// Document is always UTF-8; bidirectional only needs that encoding.
 	return bidirectional != Bidirectional::Disabled;
 }
 

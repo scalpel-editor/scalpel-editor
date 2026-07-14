@@ -525,7 +525,6 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 
 	void Indent(bool forwards, bool lineIndent);
 
-	virtual std::unique_ptr<CaseFolder> CaseFolderForEncoding();
 	Sci::Position FindText(Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
 	Sci::Position FindTextFull(Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
 	void SearchAnchor() noexcept;
@@ -713,8 +712,6 @@ public:
 	void SetWrapMode(Scintilla::Wrap wrapMode);
 	Scintilla::Wrap GetWrapMode() const noexcept;
 
-	// Public so the COM thunks can access it.
-	bool IsUnicodeMode() const noexcept;
 	// Public so scintilla_send_message can use it.
 	virtual Scintilla::sptr_t WndProc(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
 	// Public so scintilla_set_id can use it.

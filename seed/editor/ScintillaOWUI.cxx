@@ -76,7 +76,7 @@ namespace {
 	class NullListBox final : public ListBox {
 	public:
 		void SetFont(const Font*) override {}
-		void Create(Window&, int, Point, int, bool, Scintilla::Technology) override {}
+		void Create(Window&, int, Point, int, Scintilla::Technology) override {}
 		void SetAverageCharWidth(int) override {}
 		void SetVisibleRows(int rows) override { visible_rows = rows; }
 		int GetVisibleRows() const override { return visible_rows; }

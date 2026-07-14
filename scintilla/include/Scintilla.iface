@@ -2462,12 +2462,12 @@ fun void ParaUp=2415(,)
 # Extend selection up one paragraph (delimited by empty lines).
 fun void ParaUpExtend=2416(,)
 
-# Given a valid document position, return the previous position taking code
-# page into account. Returns 0 if passed 0.
+# Given a valid document position, return the previous UTF-8 character boundary.
+# Returns 0 if passed 0.
 fun position PositionBefore=2417(position pos,)
 
-# Given a valid document position, return the next position taking code
-# page into account. Maximum value returned is the last position in the document.
+# Given a valid document position, return the next UTF-8 character boundary.
+# Maximum value returned is the last position in the document.
 fun position PositionAfter=2418(position pos,)
 
 # Given a valid document position, return a position that differs in a number
@@ -3169,7 +3169,7 @@ enu LineEndType=SC_LINE_END_TYPE_
 val SC_LINE_END_TYPE_DEFAULT=0
 val SC_LINE_END_TYPE_UNICODE=1
 
-# Set the line end types that the application wants to use. May not be used if incompatible with lexer or encoding.
+# Set the line end types that the application wants to use. May not be used if incompatible with the lexer.
 set void SetLineEndTypesAllowed=2656(LineEndType lineEndBitSet,)
 
 # Get the line end types currently allowed.

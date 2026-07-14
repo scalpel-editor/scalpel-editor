@@ -238,12 +238,6 @@ public:
 	virtual void MeasureWidths(const Font *font_, std::string_view text, XYPOSITION *positions) = 0;
 	virtual XYPOSITION WidthText(const Font *font_, std::string_view text) = 0;
 
-	virtual void DrawTextNoClipUTF8(PRectangle rc, const Font *font_, XYPOSITION ybase, std::string_view text, ColourRGBA fore, ColourRGBA back) = 0;
-	virtual void DrawTextClippedUTF8(PRectangle rc, const Font *font_, XYPOSITION ybase, std::string_view text, ColourRGBA fore, ColourRGBA back) = 0;
-	virtual void DrawTextTransparentUTF8(PRectangle rc, const Font *font_, XYPOSITION ybase, std::string_view text, ColourRGBA fore) = 0;
-	virtual void MeasureWidthsUTF8(const Font *font_, std::string_view text, XYPOSITION *positions) = 0;
-	virtual XYPOSITION WidthTextUTF8(const Font *font_, std::string_view text) = 0;
-
 	virtual XYPOSITION Ascent(const Font *font_)=0;
 	virtual XYPOSITION Descent(const Font *font_)=0;
 	virtual XYPOSITION InternalLeading(const Font *font_)=0;
@@ -326,7 +320,7 @@ public:
 	static std::unique_ptr<ListBox> Allocate();
 
 	virtual void SetFont(const Font *font)=0;
-	virtual void Create(Window &parent, int ctrlID, Point location, int lineHeight_, bool unicodeMode_, Scintilla::Technology technology_)=0;
+	virtual void Create(Window &parent, int ctrlID, Point location, int lineHeight_, Scintilla::Technology technology_)=0;
 	virtual void SetAverageCharWidth(int width)=0;
 	virtual void SetVisibleRows(int rows)=0;
 	virtual int GetVisibleRows() const=0;

@@ -338,7 +338,6 @@ void LayoutSegments(IPositionCache *pCache,
 	LineLayout *ll,
 	const std::vector<TextSegment> &segments,
 	std::atomic<uint32_t> &nextIndex,
-	const bool textUnicode,
 	const bool multiThreaded) {
 	while (true) {
 		const uint32_t i = nextIndex.fetch_add(1, std::memory_order_acq_rel);
@@ -359,7 +358,7 @@ void LayoutSegments(IPositionCache *pCache,
 						assert(ts.representation->stringRep.length() <= Representation::maxLength);
 						std::array<XYPOSITION, Representation::maxLength + 1> positionsRepr;
 						// ts.representation->stringRep is UTF-8.
-						pCache->MeasureWidths(surface, vstyle, StyleControlChar, true, ts.representation->stringRep,
+						pCache->MeasureWidths(surface, vstyle, StyleControlChar, ts.representation->stringRep,
 							positionsRepr.data(), multiThreaded);
 						representationWidth = positionsRepr[ts.representation->stringRep.length() - 1];
 						if (FlagSet(ts.representation->appearance, RepresentationAppearance::Blob)) {
@@ -373,7 +372,7 @@ void LayoutSegments(IPositionCache *pCache,
 					// Over half the segments are single characters and of these about half are space characters.
 					positions[0] = vstyle.styles[styleSegment].spaceWidth;
 				} else {
-					pCache->MeasureWidths(surface, vstyle, styleSegment, textUnicode,
+					pCache->MeasureWidths(surface, vstyle, styleSegment,
 						std::string_view(&ll->chars[ts.start], ts.length), positions, multiThreaded);
 				}
 			}
@@ -381,7 +380,7 @@ void LayoutSegments(IPositionCache *pCache,
 			const std::string_view text = vstyle.styles[styleSegment].invisibleRepresentation;
 			std::array<XYPOSITION, Representation::maxLength + 1> positionsRepr;
 			// invisibleRepresentation is UTF-8.
-			pCache->MeasureWidths(surface, vstyle, styleSegment, true, text, positionsRepr.data(), multiThreaded);
+			pCache->MeasureWidths(surface, vstyle, styleSegment, text, positionsRepr.data(), multiThreaded);
 			const XYPOSITION representationWidth = positionsRepr[text.length() - 1];
 			std::fill(positions, positions + ts.length, representationWidth);
 		}
@@ -494,7 +493,6 @@ void EditView::LayoutLine(const EditModel &model, Surface *surface, const ViewSt
 
 			std::atomic<uint32_t> nextIndex = 0;
 
-			const bool textUnicode = true;
 			const bool multiThreaded = threads > 1;
 			const bool multiThreadedContext = multiThreaded || callerMultiThreaded;
 			IPositionCache *pCache = posCache.get();
@@ -506,9 +504,9 @@ void EditView::LayoutLine(const EditModel &model, Surface *surface, const ViewSt
 			for (size_t th = 0; th < threads; th++) {
 				// Find relative positions of everything except for tabs
 				std::future<void> fut = std::async(policy,
-					[pCache, surface, &vstyle, &ll, &segments, &nextIndex, textUnicode, multiThreadedContext]() {
-					LayoutSegments(pCache, surface, vstyle, ll, segments, nextIndex, textUnicode, multiThreadedContext);
-				});
+					[pCache, surface, &vstyle, &ll, &segments, &nextIndex, multiThreadedContext]() {
+						LayoutSegments(pCache, surface, vstyle, ll, segments, nextIndex, multiThreadedContext);
+					});
 				futures.push_back(std::move(fut));
 			}
 			for (const std::future<void> &f : futures) {
@@ -759,7 +757,7 @@ SelectionPosition EditView::SPositionFromLocation(Surface *surface, const EditMo
 
 /**
 * Find the document position corresponding to an x coordinate on a particular document line.
-* Ensure is between whole characters when document is in multi-byte or UTF-8 mode.
+* Ensure the result is on a UTF-8 character boundary.
 * This method is used for rectangular selections and does not work on wrapped lines.
 */
 SelectionPosition EditView::SPositionFromLineX(Surface *surface, const EditModel &model, Sci::Line lineDoc, int x, const ViewStyle &vs) {
@@ -910,13 +908,13 @@ void DrawTextBlob(Surface *surface, const ViewStyle &vsDraw, PRectangle rcSegmen
 	rcCChar.bottom = rcSegment.top + vsDraw.maxAscent + 1;
 
 	// Ensure pixels to left and right coloured for central part avoiding top and bottom
-	// pixels which will be drawn by DrawTextClippedUTF8.
+	// pixels which will be drawn by DrawTextClipped.
 	const PRectangle rcCentral = rcCChar.Inset(Point(0, 1));
 	surface->FillRectangleAligned(rcCentral, Fill(textFore));
 
 	const PRectangle rcChar = rcCChar.Inset(Point(1, 0));
 	// NOLINTNEXTLINE(readability-suspicious-call-argument) Inverted text
-	surface->DrawTextClippedUTF8(rcChar, ctrlCharsFont,
+	surface->DrawTextClipped(rcChar, ctrlCharsFont,
 		rcSegment.top + vsDraw.maxAscent, text,
 		textBack, textFore);
 }
@@ -1093,7 +1091,7 @@ void EditView::DrawEOL(Surface *surface, const EditModel &model, const ViewStyle
 			if (FlagSet(appearance, RepresentationAppearance::Blob)) {
 				DrawTextBlob(surface, vsDraw, rcBlob, ctrlChar, blobText, textFore, phasesDraw == PhasesDraw::One);
 			} else {
-				surface->DrawTextTransparentUTF8(rcBlob, vsDraw.styles[StyleControlChar].font.get(),
+				surface->DrawTextTransparent(rcBlob, vsDraw.styles[StyleControlChar].font.get(),
 					rcBlob.top + vsDraw.maxAscent, ctrlChar, textFore);
 			}
 			if (drawEOLSelection && (vsDraw.selection.layer == Layer::OverText)) {
@@ -1254,7 +1252,7 @@ void EditView::DrawEOLAnnotationText(Surface *surface, const EditModel &model, c
 
 	const HorizontalPadding padding = StadiumPadding(vsDraw.eolAnnotationVisible, rcLine.Height());
 
-	const int widthEOLAnnotationText = static_cast<int>(surface->WidthTextUTF8(fontText, eolAnnotationText) +
+	const int widthEOLAnnotationText = static_cast<int>(surface->WidthText(fontText, eolAnnotationText) +
 		padding.left + padding.right);
 
 	const XYPOSITION spaceWidth = vsDraw.styles[ll->EndLineStyle()].spaceWidth;
@@ -1296,7 +1294,7 @@ void EditView::DrawEOLAnnotationText(Surface *surface, const EditModel &model, c
 	// For single phase drawing, draw the text then any box over it
 	if (FlagSet(phase, DrawPhase::text)) {
 		if (phasesDraw == PhasesDraw::One) {
-			surface->DrawTextNoClipUTF8(rcText, fontText,
+			surface->DrawTextNoClip(rcText, fontText,
 			rcText.top + vsDraw.maxAscent, eolAnnotationText,
 			textFore, textBack);
 		}
@@ -1338,7 +1336,7 @@ void EditView::DrawEOLAnnotationText(Surface *surface, const EditModel &model, c
 	// For multi-phase drawing draw the text last as transparent over any box
 	if (FlagSet(phase, DrawPhase::text)) {
 		if (phasesDraw != PhasesDraw::One) {
-			surface->DrawTextTransparentUTF8(rcText, fontText,
+			surface->DrawTextTransparent(rcText, fontText,
 				rcText.top + vsDraw.maxAscent, eolAnnotationText,
 				textFore);
 		}
@@ -2235,7 +2233,7 @@ void EditView::DrawForeground(Surface *surface, const EditModel &model, const Vi
 							DrawTextBlob(surface, vsDraw, rcSegment, ts.representation->stringRep,
 								textBack, textFore, phasesDraw == PhasesDraw::One);
 						} else {
-							surface->DrawTextTransparentUTF8(rcSegment, vsDraw.styles[StyleControlChar].font.get(),
+							surface->DrawTextTransparent(rcSegment, vsDraw.styles[StyleControlChar].font.get(),
 								ybase, ts.representation->stringRep, textFore);
 						}
 					}
@@ -2254,10 +2252,10 @@ void EditView::DrawForeground(Surface *surface, const EditModel &model, const Vi
 				} else if (vsDraw.styles[styleMain].invisibleRepresentation[0]) {
 					const std::string_view text = vsDraw.styles[styleMain].invisibleRepresentation;
   					if (phasesDraw != PhasesDraw::One) {
-						surface->DrawTextTransparentUTF8(rcSegment, textFont,
+						surface->DrawTextTransparent(rcSegment, textFont,
 							ybase, text, textFore);
 					} else {
-						surface->DrawTextNoClipUTF8(rcSegment, textFont,
+						surface->DrawTextNoClip(rcSegment, textFont,
 							ybase, text, textFore, textBack);
 					}
 				}

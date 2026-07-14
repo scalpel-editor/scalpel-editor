@@ -220,31 +220,7 @@ public:
 		RecordText("DrawTextTransparent", rc, ybase, text, fore);
 	}
 
-	void MeasureWidths(const Font *font_, std::string_view text, XYPOSITION *positions) override {
-		// Surface text is always UTF-8.
-		MeasureWidthsUTF8(font_, text, positions);
-	}
-
-	XYPOSITION WidthText(const Font *, std::string_view text) override {
-		return testCharWidth * static_cast<XYPOSITION>(CodePointsIn(text));
-	}
-
-	void DrawTextNoClipUTF8(PRectangle rc, const Font *, XYPOSITION ybase, std::string_view text,
-		ColourRGBA fore, ColourRGBA) override {
-		RecordText("DrawTextNoClipUTF8", rc, ybase, text, fore);
-	}
-
-	void DrawTextClippedUTF8(PRectangle rc, const Font *, XYPOSITION ybase, std::string_view text,
-		ColourRGBA fore, ColourRGBA) override {
-		RecordText("DrawTextClippedUTF8", rc, ybase, text, fore);
-	}
-
-	void DrawTextTransparentUTF8(PRectangle rc, const Font *, XYPOSITION ybase, std::string_view text,
-		ColourRGBA fore) override {
-		RecordText("DrawTextTransparentUTF8", rc, ybase, text, fore);
-	}
-
-	void MeasureWidthsUTF8(const Font *, std::string_view text, XYPOSITION *positions) override {
+	void MeasureWidths(const Font *, std::string_view text, XYPOSITION *positions) override {
 		// Each code point advances testCharWidth. Every byte of a code point
 		// reports the code point's end position, matching the real platform
 		// layers, so position arrays are filled for all requested bytes.
@@ -262,7 +238,7 @@ public:
 		}
 	}
 
-	XYPOSITION WidthTextUTF8(const Font *, std::string_view text) override {
+	XYPOSITION WidthText(const Font *, std::string_view text) override {
 		return testCharWidth * static_cast<XYPOSITION>(CodePointsIn(text));
 	}
 
@@ -331,7 +307,7 @@ public:
 	void SetFont(const Font *) override {
 		RecordInto(UnsupportedRequests(), "ListBox::SetFont");
 	}
-	void Create(Window &, int, Point location, int lineHeight_, bool, Scintilla::Technology) override {
+	void Create(Window &, int, Point location, int lineHeight_, Scintilla::Technology) override {
 		RecordInto(UnsupportedRequests(), "ListBox::Create at %.1f,%.1f lineHeight=%d",
 			location.x, location.y, lineHeight_);
 	}

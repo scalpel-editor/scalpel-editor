@@ -800,8 +800,6 @@ TEST_CASE("SafeSegment") {
 		REQUIRE(text[length] == '\t');
 
 		// Without a space, UTF-8 breaks before the last whole character.
-		// The word and punctuation boundary breaks tested here before were
-		// behavior of the removed single-byte code page path.
 		text = "(IsBreakSpace(text[j]))";
 		length = doc.document.SafeSegment(text);
 		REQUIRE(text[length - 1] == ')');

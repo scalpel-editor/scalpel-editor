@@ -770,7 +770,7 @@ int RESearch::Execute(const CharacterIndexer &ci, Sci::Position lp, Sci::Positio
 		while (lp < endp) {
 			ep = PMatch(ci, lp, endp, ap);
 			if (ep != NOTFOUND) {
-				// fix match started from middle of character like DBCS trailing ASCII byte
+				// Reject a match that starts inside a UTF-8 character.
 				const Sci::Position pos = ci.MovePositionOutsideChar(lp, -1);
 				if (pos != lp) {
 					ep = NOTFOUND;

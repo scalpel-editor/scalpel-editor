@@ -28,7 +28,7 @@ Wrap mode is application-facing because the editor's chrome chooses whether long
 
 ## Interface Inventory
 
-Generated from `scintilla/include/Scintilla.iface` on 2026-07-13. It contains all 823 `fun`, `get`, and `set` entries and all 32 `evt` entries, grouped for phase 4. It does not assign a removal classification without tracing the code. Constants, aliases, and enum declarations are type definitions rather than dispatch cases; phase 5 handles them when it replaces generated client headers.
+Generated from `scintilla/include/Scintilla.iface` on 2026-07-13. It contains all 821 `fun`, `get`, and `set` entries and all 32 `evt` entries, grouped for phase 4. It does not assign a removal classification without tracing the code. Constants, aliases, and enum declarations are type definitions rather than dispatch cases; phase 5 handles them when it replaces generated client headers.
 
 ### Document and text (30)
 
@@ -106,9 +106,9 @@ Generated from `scintilla/include/Scintilla.iface` on 2026-07-13. It contains al
 
 `fun ChangeLexerState=2617`, `get GetLexer=4002`, `fun Colourise=4003`, `set SetProperty=4004`, `set SetKeyWords=4005`, `get GetProperty=4008`, `get GetPropertyExpanded=4009`, `get GetPropertyInt=4010`, `get GetLexerLanguage=4012`, `fun PrivateLexerCall=4013`, `fun PropertyNames=4014`, `fun PropertyType=4015`, `fun DescribeProperty=4016`, `fun DescribeKeyWordSets=4017`, `fun AllocateSubStyles=4020`, `get GetSubStylesStart=4021`, `get GetSubStylesLength=4022`, `get GetStyleFromSubStyle=4027`, `get GetPrimaryStyleFromStyle=4028`, `fun FreeSubStyles=4023`, `set SetIdentifiers=4024`, `get DistanceToSecondaryStyles=4025`, `get GetSubStyleBases=4026`, `get GetNamedStyles=4029`, `fun NameOfStyle=4030`, `fun TagsOfStyle=4031`, `fun DescriptionOfStyle=4032`, `set SetILexer=4033`
 
-### Encoding and character boundaries (10)
+### Encoding and character boundaries (8)
 
-`set SetCodePage=2037`, `set SetCharacterCategoryOptimization=2720`, `get GetCharacterCategoryOptimization=2721`, `get GetCodePage=2137`, `fun PositionBefore=2417`, `fun PositionAfter=2418`, `fun PositionRelative=2670`, `fun PositionRelativeCodeUnits=2716`, `fun SetCharsDefault=2444`, `get GetCharacterPointer=2520`
+`set SetCharacterCategoryOptimization=2720`, `get GetCharacterCategoryOptimization=2721`, `fun PositionBefore=2417`, `fun PositionAfter=2418`, `fun PositionRelative=2670`, `fun PositionRelativeCodeUnits=2716`, `fun SetCharsDefault=2444`, `get GetCharacterPointer=2520`
 
 ### Printing (8)
 

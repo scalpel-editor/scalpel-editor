@@ -970,7 +970,7 @@ int SCI_METHOD Document::GetCharacterAndWidth(Sci_Position position, Sci_Positio
 }
 
 int SCI_METHOD Document::CodePage() const {
-	return dbcsCodePage;
+	return Scintilla::CpUtf8;
 }
 
 bool SCI_METHOD Document::IsDBCSLeadByte(char) const {
@@ -1105,8 +1105,7 @@ bool Scintilla::Internal::DiscardLastCombinedCharacter(std::string_view &text) n
 // Break text into segments near the end without cutting inside a UTF-8 character
 // or a combining sequence. Prefer space/control breaks; otherwise discard any
 // incomplete final fragment and the last combined character; as a last resort
-// drop the final whole character. Word/punctuation boundary scanning was a
-// single-byte code-page preference and is not used under UTF-8.
+// drop the final whole character.
 // TODO: implement grapheme cluster boundaries,
 // see https://www.unicode.org/reports/tr29/#Grapheme_Cluster_Boundaries.
 //
@@ -2660,7 +2659,7 @@ Sci::Position Document::BraceMatch(Sci::Position position, Sci::Position /*maxRe
 	position = useStartPos ? startPos : position + direction;
 
 	// Brace characters are ASCII, so they cannot be UTF-8 trail bytes; a simple
-	// style check is enough (the old DBCS trail-byte guard is gone).
+	// style check is enough.
 	while ((position >= 0) && (position < LengthNoExcept())) {
 		const unsigned char chAtPos = CharAt(position);
 		if (AnyOf(chAtPos, chBrace, chSeek)) {

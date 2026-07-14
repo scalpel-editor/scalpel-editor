@@ -78,29 +78,6 @@ Rectanglei ScissorRectangle(PRectangle rectangle, Vector2f origin) noexcept
 		{static_cast<int>(std::ceil(rectangle.right + origin.x)), static_cast<int>(std::ceil(rectangle.bottom + origin.y))});
 }
 
-std::string Latin1ToUTF8(std::string_view text, std::vector<size_t>* byte_ends = nullptr)
-{
-	std::string result;
-	result.reserve(text.size() * 2);
-	if (byte_ends)
-		byte_ends->reserve(text.size());
-
-	for (const char byte : text)
-	{
-		const unsigned char character = static_cast<unsigned char>(byte);
-		if (character < 0x80)
-			result.push_back(static_cast<char>(character));
-		else
-		{
-			result.push_back(static_cast<char>(0xc0 | (character >> 6)));
-			result.push_back(static_cast<char>(0x80 | (character & 0x3f)));
-		}
-		if (byte_ends)
-			byte_ends->push_back(result.size());
-	}
-	return result;
-}
-
 class FontImpl final : public Font {
 public:
 	explicit FontImpl(const FontParameters& parameters)
@@ -192,51 +169,11 @@ public:
 	void DrawTextNoClip(PRectangle rectangle, const Font* font, XYPOSITION ybase, std::string_view text, ColourRGBA fore,
 		ColourRGBA back) override
 	{
-		DrawTextEncoded(rectangle, font, ybase, text, fore, back, false);
-	}
-
-	void DrawTextClipped(PRectangle rectangle, const Font* font, XYPOSITION ybase, std::string_view text, ColourRGBA fore,
-		ColourRGBA back) override
-	{
-		DrawTextEncoded(rectangle, font, ybase, text, fore, back, true);
-	}
-
-	void DrawTextTransparent(PRectangle rectangle, const Font* font, XYPOSITION ybase, std::string_view text, ColourRGBA fore) override
-	{
-		const std::string converted = ConvertText(text);
-		DrawText(rectangle, font, ybase, converted, fore);
-	}
-
-	void MeasureWidths(const Font* font, std::string_view text, XYPOSITION* positions) override
-	{
-		if (mode.codePage == Scintilla::CpUtf8)
-		{
-			MeasureWidthsUTF8(font, text, positions);
-			return;
-		}
-
-		std::vector<size_t> byte_ends;
-		const std::string converted = Latin1ToUTF8(text, &byte_ends);
-		std::vector<XYPOSITION> converted_positions(converted.size());
-		MeasureWidthsUTF8(font, converted, converted_positions.data());
-		for (size_t i = 0; i < byte_ends.size(); ++i)
-			positions[i] = converted_positions[byte_ends[i] - 1];
-	}
-
-	XYPOSITION WidthText(const Font* font, std::string_view text) override
-	{
-		const std::string converted = ConvertText(text);
-		return WidthTextUTF8(font, converted);
-	}
-
-	void DrawTextNoClipUTF8(PRectangle rectangle, const Font* font, XYPOSITION ybase, std::string_view text, ColourRGBA fore,
-		ColourRGBA back) override
-	{
 		FillRectangleAligned(rectangle, back);
 		DrawText(rectangle, font, ybase, text, fore);
 	}
 
-	void DrawTextClippedUTF8(PRectangle rectangle, const Font* font, XYPOSITION ybase, std::string_view text, ColourRGBA fore,
+	void DrawTextClipped(PRectangle rectangle, const Font* font, XYPOSITION ybase, std::string_view text, ColourRGBA fore,
 		ColourRGBA back) override
 	{
 		FillRectangleAligned(rectangle, back);
@@ -245,12 +182,12 @@ public:
 		PopClip();
 	}
 
-	void DrawTextTransparentUTF8(PRectangle rectangle, const Font* font, XYPOSITION ybase, std::string_view text, ColourRGBA fore) override
+	void DrawTextTransparent(PRectangle rectangle, const Font* font, XYPOSITION ybase, std::string_view text, ColourRGBA fore) override
 	{
 		DrawText(rectangle, font, ybase, text, fore);
 	}
 
-	void MeasureWidthsUTF8(const Font* font, std::string_view text, XYPOSITION* positions) override
+	void MeasureWidths(const Font* font, std::string_view text, XYPOSITION* positions) override
 	{
 		if (!font || !positions || text.empty())
 			return;
@@ -267,7 +204,7 @@ public:
 			[](int position) { return static_cast<XYPOSITION>(position); });
 	}
 
-	XYPOSITION WidthTextUTF8(const Font* font, std::string_view text) override
+	XYPOSITION WidthText(const Font* font, std::string_view text) override
 	{
 		if (!font)
 			return 0.0;
@@ -292,7 +229,7 @@ public:
 		return metrics.ascent + metrics.descent;
 	}
 
-	XYPOSITION AverageCharWidth(const Font* font) override { return WidthTextUTF8(font, "n"); }
+	XYPOSITION AverageCharWidth(const Font* font) override { return WidthText(font, "n"); }
 
 	void SetClip(PRectangle rectangle) override
 	{
@@ -342,11 +279,6 @@ private:
 		return font_impl->font_engine->GetFontMetrics(font_impl->handle);
 	}
 
-	std::string ConvertText(std::string_view text) const
-	{
-		return mode.codePage == Scintilla::CpUtf8 ? std::string(text) : Latin1ToUTF8(text);
-	}
-
 	void DrawRectangle(PRectangle rectangle, ColourRGBA colour, bool align)
 	{
 		RenderManager* render_manager = RenderManagerForDrawing();
@@ -385,16 +317,6 @@ private:
 			Geometry geometry = render_manager->MakeGeometry(std::move(textured_mesh.mesh));
 			geometry.Render(target->origin.Round(), textured_mesh.texture);
 		}
-	}
-
-	void DrawTextEncoded(PRectangle rectangle, const Font* font, XYPOSITION ybase, std::string_view text, ColourRGBA fore,
-		ColourRGBA back, bool clipped)
-	{
-		const std::string converted = ConvertText(text);
-		if (clipped)
-			DrawTextClippedUTF8(rectangle, font, ybase, converted, fore, back);
-		else
-			DrawTextNoClipUTF8(rectangle, font, ybase, converted, fore, back);
 	}
 
 	SurfaceMode mode;

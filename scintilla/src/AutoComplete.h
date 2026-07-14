@@ -55,7 +55,7 @@ public:
 
 	/// Display the auto completion list positioned to be near a character position
 	void Start(Window &parent, int ctrlID, Sci::Position position, Point location,
-		Sci::Position startLen_, int lineHeight, bool unicodeMode, Scintilla::Technology technology,
+		Sci::Position startLen_, int lineHeight, Scintilla::Technology technology,
 		ListOptions listOptions);
 
 	/// The stop chars are characters which, when typed, cause the auto completion list to disappear

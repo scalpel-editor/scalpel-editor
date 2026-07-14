@@ -455,8 +455,7 @@
     information. The combination of a character byte and a style byte is called a cell. Style bytes
     are interpreted an index into an array of styles.</p>
 
-    <p>In this document, 'character' normally refers to a byte even when multi-byte characters are used.
-    Lengths measure the numbers of bytes, not the amount of characters in those bytes.</p>
+    <p>Document positions and lengths count UTF-8 bytes. Operations that move by characters step over complete UTF-8 sequences.</p>
 
     <p>Positions within the Scintilla document refer to a character or the gap before that
     character. The first character in a document is 0, the second 1 and so on. If a document
@@ -464,9 +463,7 @@
     The caret exists between character positions and can be located from before the first character (0)
     to after the last character (<code>nLen</code>).</p>
 
-    <p>There are places where the caret can not go where two character bytes make up one character.
-    This occurs when a DBCS character from a language like Japanese is included in the document or
-    when line ends are marked with the CP/M standard of a carriage return followed by a line feed.
+    <p>The caret can not go inside a valid multi-byte UTF-8 character or between the carriage return and line feed of a CRLF line end.
     The <code>INVALID_POSITION</code> constant (-1) represents an invalid position within the
     document.</p>
 
@@ -803,20 +800,20 @@ struct Sci_TextRangeFull {
     taking the width of tabs into account. This returns the column number of the last tab on the
     line before <code class="parameter">pos</code>, plus the number of characters between the last tab and
     <code class="parameter">pos</code>. If there are no tab characters on the line, the return value is the number of
-    characters up to the position on the line. In both cases, double byte characters count as a
+    characters up to the position on the line. In both cases, each UTF-8 character counts as a
     single character. This is probably only useful with monospaced fonts.</p>
 
     <p><b id="SCI_FINDCOLUMN">SCI_FINDCOLUMN(line line, position column) &rarr; position</b><br />
      This message returns the position of a <code class="parameter">column</code> on a <code class="parameter">line</code>
-    taking the width of tabs into account. It treats a multi-byte character as a single column.
+    taking the width of tabs into account. It treats each UTF-8 character as a single column.
     Column numbers, like lines start at 0.</p>
 
     <p><b id="SCI_POSITIONBEFORE">SCI_POSITIONBEFORE(position pos) &rarr; position</b><br />
      <b id="SCI_POSITIONAFTER">SCI_POSITIONAFTER(position pos) &rarr; position</b><br />
-     These messages return the position before and after another position
-     in the document taking into account the current code page. The minimum
+     These messages return the UTF-8 character boundary before and after another position
+     in the document. The minimum
      position returned is 0 and the maximum is the last position in the document.
-     If called with a position within a multi byte character will return the position
+     If called with a position within a multi-byte UTF-8 character, they return the position
      of the start/end of that character.</p>
 
     <p><b id="SCI_TEXTWIDTH">SCI_TEXTWIDTH(int style, const char *text) &rarr; int</b><br />
@@ -3048,10 +3045,8 @@ struct Sci_TextToFindFull {
 
     <p>Words are defined in terms of characters and the sets of characters in each category can be customised to an extent.
     The NUL character (0) is always a space as the APIs to set categories use NUL-terminated strings.
-    For single-byte encodings a category may be assigned to any character (1 to 0xFF).
-    For multi-byte encodings a category may be assigned to characters from 1 to 0x7F with static behaviour from 0x80.
-    For UTF-8, characters from 0x80 will use a category based on their Unicode general category.
-    For Asian encodings, code pages 932, 936, 949, 950, and 1361, characters from 0x80 are treated as word characters.
+    A category may be assigned to ASCII characters from 1 to 0x7F.
+    Non-ASCII UTF-8 characters use a category based on their Unicode general category.
     </p>
 
     <p>Identifiers in programming languages are often sequences of words with capitalisation
@@ -3180,7 +3175,7 @@ struct Sci_TextToFindFull {
      If the <code class="parameter">characters</code> parameter is 0 then the length that should be allocated
      to store the entire set is returned.</p>
 
-    <p>For multi-byte encodings, this API will not return meaningful values for 0x80 and above.</p>
+    <p>This API returns the customizable ASCII set. Non-ASCII UTF-8 characters are categorized from Unicode data and are not enumerated here.</p>
 
     <p><b id="SCI_SETWHITESPACECHARS">SCI_SETWHITESPACECHARS(&lt;unused&gt;, const char *characters)</b><br />
     <b id="SCI_GETWHITESPACECHARS">SCI_GETWHITESPACECHARS(&lt;unused&gt;, char *characters) &rarr; int</b><br />
@@ -3644,7 +3639,6 @@ struct Sci_TextToFindFull {
     number used by the C and C++ lexer to display literal strings; it has the value 6). This
     feature works differently on Windows and GTK.<br />
     The default character set is <code>SC_CHARSET_DEFAULT</code>.</p>
-    <p><code>SC_CHARSET_ANSI</code> and <code>SC_CHARSET_DEFAULT</code> specify European Windows code page 1252 unless the code page is set.</p>
 
 <table class="standard" summary="Character Sets supported"><tbody>
   <tr>
@@ -4478,7 +4472,7 @@ struct Sci_TextToFindFull {
 
     <p>Some characters, such as control characters and invalid bytes, do not have a visual glyph or use a glyph that is hard to distinguish.</p>
 
-    <p>Control characters (characters with codes less than 32, or between 128 and 159 in some encodings)
+    <p>Control characters in the C0 and C1 ranges
     are displayed by Scintilla using their mnemonics inverted in a rounded rectangle. These mnemonics come from the
     early days of signalling, though some are still used (LF = Line Feed, BS = Back Space, CR =
     Carriage Return, for example).</p>
@@ -4515,11 +4509,11 @@ struct Sci_TextToFindFull {
     Unicode string inverted in a rounded rectangle.</p>
 
     <p>For example, the Ohm sign &#x2126; U+2126 looks very similar to the Greek Omega character &#x3a9; U+03C9 so,
-    for the UTF-8 encoding, to distinguish the Ohm sign as "U+2126 &#x2126;" this call could be made:
+    to distinguish the Ohm sign as "U+2126 &#x2126;" this call could be made:
     <code>SCI_SETREPRESENTATION("\xe2\x84\xa6", "U+2126 \xe2\x84\xa6")</code></p>
 
     <p>The <code class="parameter">encodedCharacter</code> parameter is a NUL-terminated string of the bytes for one character in the
-    current encoding. This can not be used to set a representation for multiple-character strings. </p>
+    UTF-8 encoding. This can not be used to set a representation for multiple-character strings. </p>
 
     <p>The <code class="parameter">representation</code> parameter is a NUL-terminated UTF-8 string with a maximum length of 200 bytes.</p>
 
@@ -4530,7 +4524,7 @@ struct Sci_TextToFindFull {
     <p>The NUL (0) character is a special case since the <code class="parameter">encodedCharacter</code> parameter is NUL terminated, the NUL
     character is specified as an empty string.</p>
 
-    <p>For UTF-8 and DBCS code pages, clear representation for single byte &ge; 128 may cause unexpected behaviour.</p>
+    <p>An isolated byte &ge; 128 is invalid UTF-8 and normally uses a hexadecimal representation. Clearing that representation may make the byte difficult to see.</p>
 
     <p><b id="SCI_CLEARALLREPRESENTATIONS">SCI_CLEARALLREPRESENTATIONS</b><br />
     Reset representations to defaults with <code>SCI_CLEARALLREPRESENTATIONS</code>.</p>
@@ -4925,7 +4919,7 @@ struct Sci_TextToFindFull {
      <b id="SCI_EOLANNOTATIONGETSTYLE">SCI_EOLANNOTATIONGETSTYLE(line line) &rarr; int</b><br />
      <b id="SCI_EOLANNOTATIONCLEARALL">SCI_EOLANNOTATIONCLEARALL</b><br />
      A different string may be set for each line with <code>SCI_EOLANNOTATIONSETTEXT</code>.
-     The text argument is always in UTF-8, not the document encoding.
+     The text argument is UTF-8, like all document text.
      To clear end of line annotations call <code>SCI_EOLANNOTATIONSETTEXT</code> with a NULL pointer.
      The whole of the text EOLANNOTATION on a line may be displayed in a particular style with
      <code>SCI_EOLANNOTATIONSETSTYLE</code>.
@@ -9103,8 +9097,7 @@ To allow lexers to determine the end position of a line and thus more easily sup
 line end characters.</p>
 <p><code>GetRelativePosition</code> navigates the document by whole characters,
 returning <code>INVALID_POSITION</code> for movement beyond the start and end of the document.</p>
-<p><code>GetCharacterAndWidth</code> provides a standard
-conversion from UTF-8 bytes to a UTF-32 character or from DBCS to a 16 bit value.
+<p><code>GetCharacterAndWidth</code> converts UTF-8 bytes to a UTF-32 character.
 Bytes in invalid UTF-8 are reported individually with values 0xDC80+byteValue, which are
 not valid Unicode code points.
 The <code class="parameter">pWidth</code> argument can be NULL if the caller does not need to know the number of
@@ -9273,9 +9266,7 @@ struct SCNotification {
     character) that is entered into the text. The container can use this to decide to display a <a
     class="jump" href="#CallTips">call tip</a> or an <a class="jump" href="#Autocompletion">auto
     completion list</a>. The character is in <code>SCNotification::ch</code>.
-        For single byte character sets, this is the byte value of the character;
-        for UTF-8, it is the Unicode code point;
-        for DBCS, it is (first byte * 256 + second byte) for 2 byte characters and the byte value for 1 byte characters.
+        For valid UTF-8, it is the Unicode code point. A one-byte input, including an invalid UTF-8 byte, is reported as its byte value.
         This notification is sent before the character has been styled so processing that depends on
         styling should instead be performed in the SCN_UPDATEUI notification.</p>
     <p>The <code>SCNotification::characterSource</code> field is the source of the character.</p>

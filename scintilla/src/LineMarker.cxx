@@ -581,11 +581,11 @@ void LineMarker::Draw(Surface *surface, const PRectangle &rcWhole, const Font *f
 			char character[UTF8MaxBytes + 1] {};
 			const int uch = static_cast<int>(markType) - static_cast<int>(MarkerSymbol::Character);
 			UTF8FromUTF32Character(uch, character);
-			const XYPOSITION width = surface->WidthTextUTF8(fontForCharacter, character);
+			const XYPOSITION width = surface->WidthText(fontForCharacter, character);
 			PRectangle rcText = rc;
 			rcText.left += (rc.Width() - width) / 2;
 			rcText.right = rcText.left + width;
-			surface->DrawTextNoClipUTF8(rcText, fontForCharacter, rcText.bottom - 2,
+			surface->DrawTextNoClip(rcText, fontForCharacter, rcText.bottom - 2,
 						 character, fore, back);
 		} else {
 			// treat as MarkerSymbol::FullRect
