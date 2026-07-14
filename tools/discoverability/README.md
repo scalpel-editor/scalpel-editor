@@ -25,12 +25,18 @@ tools/discoverability/run-searches.sh --label smoke --output /tmp/scalpel-discov
 After the wrapping pilot, use target expectations only for the moved features:
 
 ```sh
-tools/discoverability/run-searches.sh --label wrapping-pilot --output benchmark-results/wrapping-pilot --target-feature SetWrapMode --target-feature WrapCount
+tools/discoverability/run-searches.sh --label wrapping-pilot --output benchmark-results/wrapping-pilot --set all --target-feature SetWrapMode --target-feature WrapCount
 ```
 
 Use `--set held-out` for the held-out pass alone and `--all-target` only after every benchmark feature has reached its final Phase 4 location. The runner searches the existing index.
 
-grepai has no command-line hybrid switch in this build. The runner creates temporary project roots containing a mode-adjusted copy of `.grepai/config.yaml` and a symlink to the live read-only index. It does not modify the live config or index. Vector and hybrid runs therefore use the same indexed chunks and differ only in `search.hybrid.enabled`.
+Use `--feature` to limit a diagnostic run without changing the fixed corpus. The wrapping boundary check uses both moved features:
+
+```sh
+tools/discoverability/run-searches.sh --label wrapping-pilot-boundary --output benchmark-results/wrapping-pilot/boundary --set all --feature SetWrapMode --feature WrapCount --target-feature SetWrapMode --target-feature WrapCount
+```
+
+grepai has no command-line hybrid switch in this build. The runner takes a hash-verified snapshot of the live index, then creates temporary project roots containing a mode-adjusted copy of `.grepai/config.yaml` and a symlink to that snapshot. It does not modify the live config or index. Vector and hybrid runs therefore use the same indexed chunks and differ only in `search.hybrid.enabled`.
 
 ## Checked-in baseline
 

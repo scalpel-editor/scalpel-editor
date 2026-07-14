@@ -72,4 +72,5 @@ In Markdown files, do not hard-wrap prose. Write each paragraph and each list it
 ## Tooling notes
 
 - grepai (semantic search): make sure the index includes `.cxx` and `.iface` files — a missing extension silently returns no results for most of the Scintilla core.
+- Codex commands normally run in a separate PID namespace, so sandboxed `grepai status` cannot see a host watcher and may report that it is not running. Run watcher-status checks outside the sandbox. When waiting for indexing, confirm that the watcher log contains an `Indexed <file>` entry after the file's modification time before taking an index snapshot.
 - Do not add a `.*/` pattern to `.gitignore`. grepai's ignore matcher mis-reads it as "every directory" and indexes nothing. The checked-in `.gitignore` avoids it deliberately; keep it that way or list hidden directories explicitly.

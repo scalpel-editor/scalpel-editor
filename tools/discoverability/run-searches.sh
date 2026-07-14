@@ -11,6 +11,7 @@ Options:
   --scope repository|source|both Search scope to run (default: both)
   --set normal|held-out|all       Query set to run (default: normal)
   --query-id ID                   Run only one query
+  --feature NAME                  Run only one feature; repeatable
   --target-feature NAME           Use target expectations for one feature; repeatable
   --all-target                    Use target expectations for every feature
   -h, --help                      Show this help
@@ -29,6 +30,7 @@ scope=both
 query_set=normal
 query_id=
 all_target=false
+features=()
 target_features=()
 
 while (($#)); do
@@ -61,6 +63,11 @@ while (($#)); do
 	--query-id)
 		(($# >= 2)) || fail "--query-id needs a value"
 		query_id=$2
+		shift 2
+		;;
+	--feature)
+		(($# >= 2)) || fail "--feature needs a value"
+		features+=("$2")
 		shift 2
 		;;
 	--target-feature)
@@ -100,6 +107,25 @@ index_file=$project_root/.grepai/index.gob
 [[ -f $config_file ]] || fail "missing grepai config: $config_file"
 [[ -f $index_file ]] || fail "missing grepai index: $index_file"
 [[ ! -e $output ]] || fail "output already exists: $output"
+
+project_dirty=false
+[[ -z $(git -C "$project_root" status --short) ]] || project_dirty=true
+
+temporary_root=$(mktemp -d)
+trap 'rm -rf "$temporary_root"' EXIT
+snapshot_index=$temporary_root/index.gob
+snapshot_index_sha256=
+for attempt in {1..5}; do
+	index_sha256_before=$(sha256sum "$index_file" | cut -d' ' -f1)
+	cp "$index_file" "$snapshot_index"
+	snapshot_index_sha256=$(sha256sum "$snapshot_index" | cut -d' ' -f1)
+	index_sha256_after=$(sha256sum "$index_file" | cut -d' ' -f1)
+	if [[ $index_sha256_before == "$snapshot_index_sha256" && $snapshot_index_sha256 == "$index_sha256_after" ]]; then
+		break
+	fi
+	((attempt < 5)) || fail "grepai index did not stay unchanged while taking a snapshot"
+	sleep 1
+done
 
 validate_corpus() {
 	local corpus=$1
@@ -145,8 +171,7 @@ if git -C "$grepai_source" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
 fi
 
 target_features_json=$(printf '%s\n' "${target_features[@]}" | jq -Rsc 'split("\n") | map(select(length > 0))')
-project_dirty=false
-[[ -z $(git -C "$project_root" status --short) ]] || project_dirty=true
+features_json=$(printf '%s\n' "${features[@]}" | jq -Rsc 'split("\n") | map(select(length > 0))')
 
 jq -n \
 	--arg schema_version "1" \
@@ -163,12 +188,13 @@ jq -n \
 	--argjson grepai_source_dirty "$grepai_source_dirty" \
 	--arg grepai_source_diff_sha256 "$grepai_source_diff_sha256" \
 	--arg config_sha256 "$(sha256sum "$config_file" | cut -d' ' -f1)" \
-	--arg index_sha256 "$(sha256sum "$index_file" | cut -d' ' -f1)" \
+	--arg index_sha256 "$snapshot_index_sha256" \
 	--arg mode "$mode" \
 	--arg scope "$scope" \
 	--arg query_set "$query_set" \
 	--arg query_id "$query_id" \
 	--argjson all_target "$all_target" \
+	--argjson features "$features_json" \
 	--argjson target_features "$target_features_json" \
 	'{
 		schema_version: ($schema_version | tonumber),
@@ -193,12 +219,10 @@ jq -n \
 			query_set: $query_set,
 			query_id: (if $query_id == "" then null else $query_id end),
 			all_target: $all_target,
+			features: $features,
 			target_features: $target_features
 		}
 	}' >"$output/metadata.json"
-
-temporary_root=$(mktemp -d)
-trap 'rm -rf "$temporary_root"' EXIT
 
 prepare_mode_root() {
 	local search_mode=$1
@@ -208,7 +232,7 @@ prepare_mode_root() {
 	mkdir -p "$mode_root/.grepai"
 	sed "/^[[:space:]]*hybrid:/,/^[[:space:]]*k:/ s/^\([[:space:]]*enabled:\).*/\1 $enabled/" \
 		"$config_file" >"$mode_root/.grepai/config.yaml"
-	ln -s "$index_file" "$mode_root/.grepai/index.gob"
+	ln -s "$snapshot_index" "$mode_root/.grepai/index.gob"
 	printf '%s\n' "$mode_root"
 }
 
@@ -242,6 +266,16 @@ uses_target_expectation() {
 	return 1
 }
 
+feature_selected() {
+	local feature=$1
+	((${#features[@]} == 0)) && return 0
+	local selected_feature
+	for selected_feature in "${features[@]}"; do
+		[[ $selected_feature == "$feature" ]] && return 0
+	done
+	return 1
+}
+
 queries_run=0
 for search_mode in "${modes[@]}"; do
 	mode_root=$(prepare_mode_root "$search_mode")
@@ -252,6 +286,7 @@ for search_mode in "${modes[@]}"; do
 			while IFS=$'\t' read -r id feature kind query baseline_file target_file baseline_definition target_definition test obsolete_locations disposition; do
 				[[ $id == id ]] && continue
 				[[ -z $query_id || $query_id == "$id" ]] || continue
+				feature_selected "$feature" || continue
 
 				expectation=baseline
 				expected_file=$baseline_file
@@ -315,4 +350,5 @@ done
 ((queries_run > 0)) || fail "no query matched the selection"
 jq -n --arg completed_at "$(date --utc +%Y-%m-%dT%H:%M:%SZ)" --argjson queries_run "$queries_run" \
 	'{completed_at: $completed_at, searches_run: $queries_run}' >"$output/completion.json"
+jq -s -f "$script_dir/summarize-results.jq" "$results_file" >"$output/summary.json"
 printf 'wrote %d search results to %s\n' "$queries_run" "$output"
