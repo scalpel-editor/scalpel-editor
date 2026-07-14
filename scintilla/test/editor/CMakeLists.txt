@@ -1,6 +1,7 @@
 # Editor tests link the whole editor path against a deterministic test host.
 
 add_executable(editorTest
+  EditorWrappingTest.cxx
   TestEditor.cxx
   TestEditorTest.cxx
   TestPlatform.cxx

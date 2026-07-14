@@ -81,61 +81,6 @@ TEST_CASE("Test editor contract") {
 	CHECK(editor.ClientRectangle() == PRectangle(0, 0, 500, 300));
 }
 
-static TestEditorSnapshot WrapSnapshot(bool throughMessage) {
-	TestHost host;
-	TestEditor editor(host, PRectangle(0, 0, 320, 200));
-	editor.SetText("a line long enough to wrap in the test window");
-	editor.SetHorizontalOffset(40);
-	editor.PaintAll();
-	editor.ClearObservations();
-
-	if (throughMessage) {
-		editor.WndProc(Message::SetWrapMode, static_cast<uptr_t>(Wrap::Word), 0);
-	} else {
-		editor.SetWrapMode(Wrap::Word);
-	}
-	editor.FlushUpdateNotifications();
-	return editor.Snapshot();
-}
-
-TEST_CASE("Wrap mode changes editor and host state") {
-	const TestEditorSnapshot snapshot = WrapSnapshot(false);
-
-	CHECK(snapshot.wrapMode == Wrap::Word);
-	CHECK(snapshot.horizontalOffset == 0);
-	CHECK(snapshot.invalidatedRectangles == 1);
-	CHECK(snapshot.scrollbarReconfigurations == 1);
-	REQUIRE(snapshot.updateNotifications.size() == 1);
-	CHECK(FlagSet(snapshot.updateNotifications[0], Update::HScroll));
-}
-
-TEST_CASE("Setting the current wrap mode has no change effects") {
-	TestHost host;
-	TestEditor editor(host);
-	editor.SetWrapMode(Wrap::Word);
-	editor.FlushUpdateNotifications();
-	editor.ClearObservations();
-
-	editor.SetWrapMode(Wrap::Word);
-	editor.FlushUpdateNotifications();
-
-	const TestEditorSnapshot snapshot = editor.Snapshot();
-	CHECK(snapshot.wrapMode == Wrap::Word);
-	CHECK(snapshot.invalidateAllCount == 0);
-	CHECK(snapshot.invalidatedRectangles == 0);
-	CHECK(snapshot.scrollbarReconfigurations == 0);
-	CHECK(snapshot.updateNotifications.empty());
-}
-
-TEST_CASE("Wrap message forwards to the named method") {
-	CHECK(WrapSnapshot(true) == WrapSnapshot(false));
-
-	TestHost host;
-	TestEditor editor(host);
-	editor.SetWrapMode(Wrap::Char);
-	CHECK(static_cast<Wrap>(editor.WndProc(Message::GetWrapMode, 0, 0)) == editor.GetWrapMode());
-}
-
 TEST_CASE("Invalid UTF-8 passes through the editor unchanged") {
 	// Policy test: the editor never validates, rejects, or rewrites the bytes it is
 	// given. See the Document doc comment for the invalid-UTF-8 policy.
