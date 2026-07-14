@@ -82,7 +82,6 @@ bool TestEditorSnapshot::operator==(const TestEditorSnapshot &other) const noexc
 TestEditor::TestEditor(TestHost &host_, PRectangle clientRectangle) : host(host_) {
 	host.mainWindow.rect = clientRectangle;
 	wMain = static_cast<WindowID>(&host.mainWindow);
-	WndProc(Scintilla::Message::SetCodePage, Scintilla::CpUtf8, 0);
 }
 
 TestEditor::~TestEditor() {

@@ -379,7 +379,6 @@ public:
 		};
 		wMain = static_cast<WindowID>(&target);
 
-		WndProc(Message::SetCodePage, CpUtf8, 0);
 		WndProc(Message::SetBufferedDraw, 0, 0);
 		// These flags also control Scintilla's width tracking. This port creates no native
 		// scrollbars, so leave them enabled and mirror their state through ElementScroll.
@@ -477,7 +476,6 @@ public:
 		// invalidates a paste started in the previous document so it cannot edit this one.
 		++document_generation;
 		WndProc(Message::SetDocPointer, 0, reinterpret_cast<sptr_t>(document));
-		WndProc(Message::SetCodePage, CpUtf8, 0);
 		UpdateLineNumberWidth();
 	}
 

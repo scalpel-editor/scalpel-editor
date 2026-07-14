@@ -136,7 +136,6 @@ public:
 	void ClearTabStops(Line line);
 	void AddTabStop(Line line, int x);
 	int GetNextTabStop(Line line, int x);
-	void SetCodePage(int codePage);
 	void SetFontLocale(const char *localeName);
 	int FontLocale(char *localeName);
 	std::string FontLocale();
@@ -343,7 +342,6 @@ public:
 	void SetHighlightGuide(Position column);
 	Position HighlightGuide();
 	Position LineEndPosition(Line line);
-	int CodePage();
 	Colour CaretFore();
 	bool ReadOnly();
 	void SetCurrentPos(Position caret);

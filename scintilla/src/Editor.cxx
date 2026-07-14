@@ -7465,21 +7465,6 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 	case Message::GetLineEndPosition:
 		return pdoc->LineEnd(LineFromUPtr(wParam));
 
-	case Message::SetCodePage:
-		if (ValidCodePage(static_cast<int>(wParam))) {
-			if (pdoc->SetDBCSCodePage(static_cast<int>(wParam))) {
-				pcs->Clear();
-				pcs->InsertLines(0, pdoc->LinesTotal() - 1);
-				SetAnnotationHeights(0, pdoc->LinesTotal());
-				InvalidateStyleRedraw();
-				SetRepresentations();
-			}
-		}
-		break;
-
-	case Message::GetCodePage:
-		return pdoc->dbcsCodePage;
-
 	case Message::SetIMEInteraction:
 		imeInteraction = static_cast<IMEInteraction>(wParam);
 		break;

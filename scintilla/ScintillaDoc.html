@@ -5099,8 +5099,6 @@ struct Sci_TextToFindFull {
      <a class="message" href="#SCI_GETTECHNOLOGY">SCI_GETTECHNOLOGY &rarr; int</a><br />
      <a class="message" href="#SCI_SETFONTQUALITY">SCI_SETFONTQUALITY(int fontQuality)</a><br />
      <a class="message" href="#SCI_GETFONTQUALITY">SCI_GETFONTQUALITY &rarr; int</a><br />
-     <a class="message" href="#SCI_SETCODEPAGE">SCI_SETCODEPAGE(int codePage)</a><br />
-     <a class="message" href="#SCI_GETCODEPAGE">SCI_GETCODEPAGE &rarr; int</a><br />
      <a class="message" href="#SCI_SETIMEINTERACTION">SCI_SETIMEINTERACTION(int imeInteraction)</a><br />
      <a class="message" href="#SCI_GETIMEINTERACTION">SCI_GETIMEINTERACTION &rarr; int</a><br />
     </code>
@@ -5251,28 +5249,6 @@ struct Sci_TextToFindFull {
      <code>SC_EFF_QUALITY_LCD_OPTIMIZED</code>.</p>
      <p>In case it is necessary to squeeze more options into this property, only a limited number of bits defined
      by <code>SC_EFF_QUALITY_MASK</code> (0xF) will be used for quality.</p>
-
-    <p><b id="SCI_SETCODEPAGE">SCI_SETCODEPAGE(int codePage)</b><br />
-     <b id="SCI_GETCODEPAGE">SCI_GETCODEPAGE &rarr; int</b><br />
-     Scintilla supports UTF-8, Japanese, Chinese and Korean DBCS along with single byte encodings like Latin-1.
-     UTF-8 (<code>SC_CP_UTF8</code>) is the default. Use this message with
-    <code class="parameter">codePage</code> set to the code page number to set Scintilla to use code page information
-    to ensure multiple byte characters are treated as one character rather than multiple. This also stops
-    the caret from moving between the bytes in a multi-byte character.
-    Do not use this message to choose between different single byte character sets - use
-    <a class="seealso" href="#SCI_STYLESETCHARACTERSET">SCI_STYLESETCHARACTERSET</a>.
-    Call with
-    <code class="parameter">codePage</code> set to zero to disable multi-byte support.</p>
-
-    <p>Code page <code>SC_CP_UTF8</code> (65001) sets Scintilla into Unicode mode with the document
-    treated as a sequence of characters expressed in UTF-8. The text is converted to the platform's
-    normal Unicode encoding before being drawn by the OS and thus can display Hebrew, Arabic,
-    Cyrillic, and Han characters. Languages which can use two characters stacked vertically in one
-    horizontal space, such as Thai, will mostly work but there are some issues where the characters
-    are drawn separately leading to visual glitches. Bi-directional text is not supported. </p>
-
-    <p>Code page can be set to 65001 (UTF-8), 932 (Japanese Shift-JIS), 936 (Simplified Chinese GBK),
-    949 (Korean Unified Hangul Code), 950 (Traditional Chinese Big5), or 1361 (Korean Johab).</p>
 
     <p><b id="SCI_SETIMEINTERACTION">SCI_SETIMEINTERACTION(int imeInteraction)</b><br />
      <b id="SCI_GETIMEINTERACTION">SCI_GETIMEINTERACTION &rarr; int</b><br />
@@ -10488,10 +10464,6 @@ EM_SETTARGETDEVICE
     <h2 id="RemovedFeatures">Removed features</h2>
 
     <p>These features have now been removed completely.</p>
-
-    <p><b id="SC_CP_DBCS">SC_CP_DBCS</b> Removed in 2016 with release 3.7.1<br />
-     This was used to set a DBCS (Double Byte Character Set) mode on GTK.
-     An explicit DBCS code page should be used when calling <a class="seealso" href="#SCI_SETCODEPAGE">SCI_SETCODEPAGE</a></p>
 
     <p><b id="SCI_SETUSEPALETTE">SCI_SETUSEPALETTE(bool usePalette)</b> Removed in 2016 with release 3.7.1<br />
     <b id="SCI_GETUSEPALETTE">SCI_GETUSEPALETTE &rarr; bool</b> Removed in 2016 with release 3.7.1<br />

@@ -291,13 +291,9 @@ fun void AddTabStop=2676(line line, int x)
 # Find the next explicit tab stop position on a line after a position.
 fun int GetNextTabStop=2677(line line, int x)
 
-# The SC_CP_UTF8 value can be used to enter Unicode mode.
+# The document is always UTF-8; this value names that encoding.
 # This is the same value as CP_UTF8 in Windows
 val SC_CP_UTF8=65001
-
-# Set the code page used to interpret the bytes of the document as characters.
-# The SC_CP_UTF8 value can be used to enter Unicode mode.
-set void SetCodePage=2037(int codePage,)
 
 # Set the locale for displaying text.
 set void SetFontLocale=2760(, string localeName)
@@ -1256,9 +1252,6 @@ get position GetHighlightGuide=2135(,)
 
 # Get the position after the last visible characters on a line.
 get position GetLineEndPosition=2136(line line,)
-
-# Get the code page used to interpret the bytes of the document as characters.
-get int GetCodePage=2137(,)
 
 # Get the foreground colour of the caret.
 get colour GetCaretFore=2138(,)

@@ -337,8 +337,8 @@ private:
 public:
 
 	Scintilla::EndOfLine eolMode;
-	/// Can also be SC_CP_UTF8 to enable UTF-8 mode
-	int dbcsCodePage;
+	/// Always UTF-8. A constant until the remaining phase 3 steps delete its uses.
+	static constexpr int dbcsCodePage = Scintilla::CpUtf8;
 	Scintilla::LineEndType lineEndBitSet;
 	int tabInChars;
 	int indentInChars;
@@ -368,7 +368,6 @@ public:
 	void RemoveLine(Sci::Line line) override;
 
 	Scintilla::LineEndType LineEndTypesSupported() const;
-	bool SetDBCSCodePage(int dbcsCodePage_);
 	Scintilla::LineEndType GetLineEndTypesAllowed() const noexcept { return cb.GetLineEndTypes(); }
 	bool SetLineEndTypesAllowed(Scintilla::LineEndType lineEndBitSet_);
 	Scintilla::LineEndType GetLineEndTypesActive() const noexcept { return cb.GetLineEndTypes(); }

@@ -165,7 +165,6 @@ Document::Document(DocumentOption options) :
 #else
 	eolMode(EndOfLine::Lf),
 #endif
-	dbcsCodePage(CpUtf8),
 	lineEndBitSet(LineEndType::Default),
 	tabInChars(8),
 	indentInChars(0),
@@ -264,18 +263,6 @@ LineEndType Document::LineEndTypesSupported() const {
 	if ((CpUtf8 == dbcsCodePage) && pli)
 		return pli->LineEndTypesSupported();
 	return LineEndType::Default;
-}
-
-bool Document::SetDBCSCodePage(int dbcsCodePage_) {
-	if (dbcsCodePage != dbcsCodePage_) {
-		dbcsCodePage = dbcsCodePage_;
-		SetCaseFolder(nullptr);
-		cb.SetLineEndTypes(lineEndBitSet & LineEndTypesSupported());
-		cb.SetUTF8Substance(CpUtf8 == dbcsCodePage);
-		ModifiedAt(0);	// Need to restyle whole document
-		return true;
-	}
-	return false;
 }
 
 bool Document::SetLineEndTypesAllowed(LineEndType lineEndBitSet_) {

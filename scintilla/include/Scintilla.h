@@ -106,7 +106,6 @@ typedef sptr_t (*SciFnDirectStatus)(sptr_t ptr, unsigned int iMessage, uptr_t wP
 #define SCI_ADDTABSTOP 2676
 #define SCI_GETNEXTTABSTOP 2677
 #define SC_CP_UTF8 65001
-#define SCI_SETCODEPAGE 2037
 #define SCI_SETFONTLOCALE 2760
 #define SCI_GETFONTLOCALE 2761
 #define SC_IME_WINDOWED 0
@@ -499,7 +498,6 @@ typedef sptr_t (*SciFnDirectStatus)(sptr_t ptr, unsigned int iMessage, uptr_t wP
 #define SCI_SETHIGHLIGHTGUIDE 2134
 #define SCI_GETHIGHLIGHTGUIDE 2135
 #define SCI_GETLINEENDPOSITION 2136
-#define SCI_GETCODEPAGE 2137
 #define SCI_GETCARETFORE 2138
 #define SCI_GETREADONLY 2140
 #define SCI_SETCURRENTPOS 2141

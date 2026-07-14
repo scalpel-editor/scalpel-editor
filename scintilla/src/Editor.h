@@ -627,7 +627,6 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void SetHoverIndicatorPoint(Point pt);
 
 	int CodePage() const noexcept;
-	virtual bool ValidCodePage(int /* codePage */) const { return true; }
 	virtual std::string UTF8FromEncoded(std::string_view encoded) const = 0;
 	virtual std::string EncodedFromUTF8(std::string_view utf8) const = 0;
 	virtual std::unique_ptr<Surface> CreateMeasurementSurface() const;
