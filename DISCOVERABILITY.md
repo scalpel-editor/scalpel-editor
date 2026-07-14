@@ -46,6 +46,8 @@ Run `grepai trace` and `grepai refs` only as recorded observations until their C
 
 Create the benchmark queries before the Phase 4 pilots and keep them unchanged while adjusting names, file boundaries, comments, or grepai settings. Include held-out paraphrases that were not consulted during the refactor.
 
+The fixed corpus, runner, and result format live in [`tools/discoverability/`](tools/discoverability/README.md).
+
 The initial corpus should cover at least these different shapes:
 
 - Wrapping and view settings: `SetWrapMode`, `WrapCount`, and `SetScrollWidth`.
