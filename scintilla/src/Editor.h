@@ -8,6 +8,8 @@
 #ifndef EDITOR_H
 #define EDITOR_H
 
+#include "EditorCommands.h"
+
 namespace Scintilla::Internal {
 
 /**
@@ -523,11 +525,11 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	Sci::Position VCHomeDisplayPosition(Sci::Position position);
 	Sci::Position VCHomeWrapPosition(Sci::Position position);
 	Sci::Position LineEndWrapPosition(Sci::Position position);
-	SelectionPosition PositionMove(Scintilla::Message iMessage, SelectionPosition spCaretNow);
-	SelectionRange SelectionMove(Scintilla::Message iMessage, size_t r);
-	int HorizontalMove(Scintilla::Message iMessage);
-	int DelWordOrLine(Scintilla::Message iMessage);
-	virtual int KeyCommand(Scintilla::Message iMessage);
+	SelectionPosition PositionMove(EditorCommand command, SelectionPosition spCaretNow);
+	SelectionRange SelectionMove(EditorCommand command, size_t r);
+	int HorizontalMove(EditorCommand command);
+	int DelWordOrLine(EditorCommand command);
+	virtual int ExecuteCommand(EditorCommand command);
 	virtual int KeyDefault(Scintilla::Keys /* key */, Scintilla::KeyMod /*modifiers*/);
 	int KeyDownWithModifiers(Scintilla::Keys key, Scintilla::KeyMod modifiers, bool *consumed);
 
@@ -536,7 +538,7 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	Sci::Position FindText(Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
 	Sci::Position FindTextFull(Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
 	void SearchAnchor() noexcept;
-	Sci::Position SearchText(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
+	Sci::Position SearchText(EditorCommand command, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
 	Sci::Position SearchInTarget(const char *text, Sci::Position length);
 	void GoToLine(Sci::Line lineNo);
 

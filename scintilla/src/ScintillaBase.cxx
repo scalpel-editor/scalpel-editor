@@ -59,6 +59,7 @@
 #include "MarginView.h"
 #include "EditView.h"
 #include "Editor.h"
+#include "EditorCommands.h"
 #include "AutoComplete.h"
 #include "ScintillaBase.h"
 
@@ -140,43 +141,43 @@ void ScintillaBase::Command(int cmdId) {
 	}
 }
 
-int ScintillaBase::KeyCommand(Message iMessage) {
+int ScintillaBase::ExecuteCommand(EditorCommand command) {
 	// Most key commands cancel autocompletion mode
 	if (ac.Active()) {
-		switch (iMessage) {
+		switch (command) {
 			// Except for these
-		case Message::LineDown:
+		case EditorCommand::LineDown:
 			AutoCompleteMove(1);
 			return 0;
-		case Message::LineUp:
+		case EditorCommand::LineUp:
 			AutoCompleteMove(-1);
 			return 0;
-		case Message::PageDown:
+		case EditorCommand::PageDown:
 			AutoCompleteMove(ac.lb->GetVisibleRows());
 			return 0;
-		case Message::PageUp:
+		case EditorCommand::PageUp:
 			AutoCompleteMove(-ac.lb->GetVisibleRows());
 			return 0;
-		case Message::VCHome:
+		case EditorCommand::VCHome:
 			AutoCompleteMove(-5000);
 			return 0;
-		case Message::LineEnd:
+		case EditorCommand::LineEnd:
 			AutoCompleteMove(5000);
 			return 0;
-		case Message::DeleteBack:
+		case EditorCommand::DeleteBack:
 			DelCharBack(true);
 			AutoCompleteCharacterDeleted();
 			EnsureCaretVisible();
 			return 0;
-		case Message::DeleteBackNotLine:
+		case EditorCommand::DeleteBackNotLine:
 			DelCharBack(false);
 			AutoCompleteCharacterDeleted();
 			EnsureCaretVisible();
 			return 0;
-		case Message::Tab:
+		case EditorCommand::Tab:
 			AutoCompleteCompleted(0, CompletionMethods::Tab);
 			return 0;
-		case Message::NewLine:
+		case EditorCommand::NewLine:
 			AutoCompleteCompleted(0, CompletionMethods::Newline);
 			return 0;
 
@@ -187,23 +188,23 @@ int ScintillaBase::KeyCommand(Message iMessage) {
 
 	if (ct.inCallTipMode) {
 		if (
-		    (iMessage != Message::CharLeft) &&
-		    (iMessage != Message::CharLeftExtend) &&
-		    (iMessage != Message::CharRight) &&
-		    (iMessage != Message::CharRightExtend) &&
-		    (iMessage != Message::EditToggleOvertype) &&
-		    (iMessage != Message::DeleteBack) &&
-		    (iMessage != Message::DeleteBackNotLine)
+		    (command != EditorCommand::CharLeft) &&
+		    (command != EditorCommand::CharLeftExtend) &&
+		    (command != EditorCommand::CharRight) &&
+		    (command != EditorCommand::CharRightExtend) &&
+		    (command != EditorCommand::EditToggleOvertype) &&
+		    (command != EditorCommand::DeleteBack) &&
+		    (command != EditorCommand::DeleteBackNotLine)
 		) {
 			ct.CallTipCancel();
 		}
-		if ((iMessage == Message::DeleteBack) || (iMessage == Message::DeleteBackNotLine)) {
+		if ((command == EditorCommand::DeleteBack) || (command == EditorCommand::DeleteBackNotLine)) {
 			if (sel.MainCaret() <= ct.posStartCallTip) {
 				ct.CallTipCancel();
 			}
 		}
 	}
-	return Editor::KeyCommand(iMessage);
+	return Editor::ExecuteCommand(command);
 }
 
 void ScintillaBase::ListNotify(ListBoxEvent *plbe) {

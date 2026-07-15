@@ -8,6 +8,8 @@
 #ifndef KEYMAP_H
 #define KEYMAP_H
 
+#include "EditorCommands.h"
+
 namespace Scintilla::Internal {
 
 #define SCI_NORM KeyMod::Norm
@@ -43,21 +45,21 @@ class KeyToCommand {
 public:
 	Scintilla::Keys key;
 	Scintilla::KeyMod modifiers;
-	Scintilla::Message msg;
+	EditorCommand msg;
 };
 
 /**
  */
 class KeyMap {
-	std::map<KeyModifiers, Scintilla::Message> kmap;
+	std::map<KeyModifiers, EditorCommand> kmap;
 	static const KeyToCommand MapDefault[];
 
 public:
 	KeyMap();
 	void Clear() noexcept;
-	void AssignCmdKey(Scintilla::Keys key, Scintilla::KeyMod modifiers, Scintilla::Message msg);
-	Scintilla::Message Find(Scintilla::Keys key, Scintilla::KeyMod modifiers) const;	// 0 returned on failure
-	const std::map<KeyModifiers, Scintilla::Message> &GetKeyMap() const noexcept;
+	void AssignCmdKey(Scintilla::Keys key, Scintilla::KeyMod modifiers, EditorCommand command);
+	EditorCommand Find(Scintilla::Keys key, Scintilla::KeyMod modifiers) const;	// None returned on failure
+	const std::map<KeyModifiers, EditorCommand> &GetKeyMap() const noexcept;
 };
 
 }

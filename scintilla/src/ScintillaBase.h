@@ -64,7 +64,7 @@ protected:
 	void InsertCharacter(std::string_view sv, Scintilla::CharacterSource charSource) override;
 	void Command(int cmdId);
 	void CancelModes() override;
-	int KeyCommand(Scintilla::Message iMessage) override;
+	int ExecuteCommand(EditorCommand command) override;
 
 	void MoveImeCarets(Sci::Position offset) noexcept;
 	void DrawImeIndicator(int indicator, Sci::Position len);
