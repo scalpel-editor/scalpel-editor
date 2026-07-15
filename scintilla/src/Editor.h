@@ -765,7 +765,7 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void MarginSetStyle(Sci::Line line, int style);
 	int MarginGetStyle(Sci::Line line) const noexcept;
 	void MarginSetStyles(Sci::Line line, const unsigned char *styles);
-	std::string MarginGetStyles(Sci::Line line) const;
+	Sci::Position MarginGetStyles(Sci::Line line, char *buffer) const;
 	void MarginTextClearAll();
 	void MarginSetStyleOffset(int style);
 	int MarginGetStyleOffset() const noexcept;

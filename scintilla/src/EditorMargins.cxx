@@ -1,6 +1,12 @@
 // Scintilla source code edit control
 /** @file EditorMargins.cxx
  ** Margin widths, types, masks, sensitivity, text, styles, and fold-margin colours.
+ **
+ ** There may be multiple numbered margins to the left of the text, plus blank gaps on each side of the text. Initially MaxMargin+1 slots exist (indices 0..MaxMargin). Out-of-range margin numbers have no effect on set and return zero-ish values on get.
+ **
+ ** Defaults: margin 0 is line numbers at width 0 (hidden); margin 1 is non-folding symbols at 16 pixels; margin 2 is a symbol margin at width 0. Blank left and right text gaps default to one pixel each. All margins start insensitive to clicks. Fold-margin colours start unset so the platform can supply its own face and highlight colours.
+ **
+ ** Markers that do not appear in any visible margin's mask are drawn as text-line background changes instead. MaskFolders and MaskHistory select the fold and change-history marker groups. When a mask does not include MaskFolders, that margin's background follows the line-number style.
  **/
 // Copyright 1998-2011 by Neil Hodgson <neilh@scintilla.org>
 // The License.txt file describes the conditions under which this software may be distributed.
@@ -78,17 +84,21 @@ bool Editor::ValidMargin(uptr_t margin) const noexcept {
 	return margin < vs.ms.size();
 }
 
-// Number of margin slots. Initially MaxMargin+1 (0..4); resize with SetMargins.
+// Allocate margin slots, or shrink the slot list. Growing appends default-width-zero margins. Shrinking drops trailing slots; if a removed slot was visible, layout must refresh (this invalidates on any size change).
 void Editor::SetMargins(size_t margins) {
-	if (margins < 1000)
-		vs.ms.resize(margins);
+	if (margins >= 1000)
+		return;
+	if (margins == vs.ms.size())
+		return;
+	vs.ms.resize(margins);
+	InvalidateStyleRedraw();
 }
 
 size_t Editor::GetMargins() const noexcept {
 	return vs.ms.size();
 }
 
-// Margin type: symbol, line number, text, right-justified text, or colour background.
+// Margin type: Symbol, Number, Back/Fore (background from default style colours), Text / RText (application text, right-justified for RText), or Colour (background from SetMarginBackN). Conventionally 0 is line numbers and the next slots are symbols.
 void Editor::SetMarginTypeN(size_t margin, MarginType marginType) {
 	if (ValidMargin(margin)) {
 		vs.ms[margin].style = marginType;
@@ -103,7 +113,7 @@ MarginType Editor::GetMarginTypeN(size_t margin) const noexcept {
 	return static_cast<MarginType>(0);
 }
 
-// Pixel width of a numbered margin. Zero hides the margin. Unchanged width skips redraw.
+// Pixel width of a numbered margin. Zero hides the margin completely. Unchanged width skips redraw. Line-number widths should fit the document; TextWidth on the line-number style is a common measure.
 void Editor::SetMarginWidthN(size_t margin, int pixelWidth) {
 	if (ValidMargin(margin)) {
 		if (vs.ms[margin].width != pixelWidth) {
@@ -120,7 +130,7 @@ int Editor::GetMarginWidthN(size_t margin) const noexcept {
 	return 0;
 }
 
-// Which marker bits this margin may show. Markers outside every mask draw as line background.
+// Which of the 32 marker bits this margin may show. Markers outside every visible mask draw as line background. Default for margin 1 is ~MaskFolders; a fold margin uses MaskFolders.
 void Editor::SetMarginMaskN(size_t margin, int mask) {
 	if (ValidMargin(margin)) {
 		vs.ms[margin].mask = mask;
@@ -134,7 +144,7 @@ int Editor::GetMarginMaskN(size_t margin) const noexcept {
 	return 0;
 }
 
-// Sensitive margins send MarginClick / MarginRightClick; insensitive ones select lines.
+// Sensitive margins send MarginClick / MarginRightClick; insensitive ones select lines (or a wrap sub-line when MarginOption::SubLineSelect is set). Default is insensitive.
 void Editor::SetMarginSensitiveN(size_t margin, bool sensitive) {
 	if (ValidMargin(margin)) {
 		vs.ms[margin].sensitive = sensitive;
@@ -148,7 +158,7 @@ bool Editor::GetMarginSensitiveN(size_t margin) const noexcept {
 	return false;
 }
 
-// Mouse cursor shape over this margin (arrow or reverse arrow by convention).
+// Mouse cursor over this margin. Default is reverse arrow; CursorShape::Arrow is the usual alternative.
 void Editor::SetMarginCursorN(size_t margin, CursorShape cursor) {
 	if (ValidMargin(margin))
 		vs.ms[margin].cursor = cursor;
@@ -175,7 +185,7 @@ int Editor::GetMarginBackN(size_t margin) const noexcept {
 	return 0;
 }
 
-// Blank gap between the numbered margins and the text (left) or after the text (right).
+// Blank gap between the numbered margins and the text (left) or after the text (right). Default is one pixel each.
 void Editor::SetMarginLeft(int pixelWidth) {
 	lastXChosen += pixelWidth - vs.leftMarginWidth;
 	vs.leftMarginWidth = pixelWidth;
@@ -195,7 +205,7 @@ int Editor::GetMarginRight() const noexcept {
 	return vs.rightMarginWidth;
 }
 
-// Fold-margin fill and highlight. useSetting false clears the override.
+// Fold-margin fill and highlight. useSetting false clears the override so the platform default applies again.
 void Editor::SetFoldMarginColour(bool useSetting, int rgb) {
 	vs.foldmarginColour = OptionalColour(useSetting ? 1 : 0, rgb);
 	InvalidateStyleRedraw();
@@ -206,7 +216,7 @@ void Editor::SetFoldMarginHiColour(bool useSetting, int rgb) {
 	InvalidateStyleRedraw();
 }
 
-// Per-line text for MarginType::Text / RText margins. ChangeMargin notifies the host.
+// Per-line text for MarginType::Text / RText. Setting text notifies ChangeMargin. Active style attributes in text margins are font, size/sizeFractional, bold/weight, italics, fore, back, and characterSet only.
 void Editor::MarginSetText(Sci::Line line, const char *text) {
 	pdoc->MarginSetText(line, text);
 }
@@ -215,6 +225,7 @@ std::string Editor::MarginGetText(Sci::Line line) const {
 	return std::string(pdoc->MarginStyledText(line).AsView());
 }
 
+// One style for the whole margin line (before style offset is applied at look-up).
 void Editor::MarginSetStyle(Sci::Line line, int style) {
 	pdoc->MarginSetStyle(line, style);
 }
@@ -223,23 +234,28 @@ int Editor::MarginGetStyle(Sci::Line line) const noexcept {
 	return static_cast<int>(pdoc->MarginStyledText(line).style);
 }
 
+// Per-byte style indices for margin text, same idea as SetStylingEx.
 void Editor::MarginSetStyles(Sci::Line line, const unsigned char *styles) {
 	pdoc->MarginSetStyles(line, styles);
 }
 
-// Per-character style bytes for a margin line (empty when the line has one style).
-std::string Editor::MarginGetStyles(Sci::Line line) const {
+// Copy per-character style bytes into buffer. When the line uses one shared style, there is no style array: returns 0 and, if buffer is non-null and the line has text, writes a single 0 byte so the message path matches the old BytesResult(null pointer, length) behavior. When per-character styles exist, returns their length and copies that many bytes (no NUL). buffer may be null to measure only.
+Sci::Position Editor::MarginGetStyles(Sci::Line line, char *buffer) const {
 	const StyledText st = pdoc->MarginStyledText(line);
-	if (!st.styles)
-		return {};
-	return std::string(reinterpret_cast<const char *>(st.styles), st.length);
+	if (buffer && st.length > 0) {
+		if (st.styles)
+			std::memcpy(buffer, st.styles, st.length);
+		else
+			*buffer = 0;
+	}
+	return st.styles ? static_cast<Sci::Position>(st.length) : 0;
 }
 
 void Editor::MarginTextClearAll() {
 	pdoc->MarginClearAll();
 }
 
-// Added to style numbers before looking up margin styles (keeps them off lexer styles).
+// Added to style numbers before looking up margin styles so they stay off lexer styles. Call AllocateExtendedStyles first and pass its result as the offset (for example 256 yields margin styles 256..511).
 void Editor::MarginSetStyleOffset(int style) {
 	vs.marginStyleOffset = style;
 	InvalidateStyleRedraw();
@@ -249,7 +265,7 @@ int Editor::MarginGetStyleOffset() const noexcept {
 	return vs.marginStyleOffset;
 }
 
-// MarginOption::SubLineSelect selects one wrap sub-line when clicking the margin.
+// MarginOption::SubLineSelect selects only the wrap sub-line under the click; default MarginOption::None selects the whole wrapped line.
 void Editor::SetMarginOptions(MarginOption options) {
 	marginOptions = options;
 }

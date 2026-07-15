@@ -6884,9 +6884,8 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		MarginSetStyles(LineFromUPtr(wParam), ConstUCharPtrFromSPtr(lParam));
 		break;
 
-	case Message::MarginGetStyles: {
-			return BytesResult(lParam, MarginGetStyles(LineFromUPtr(wParam)));
-		}
+	case Message::MarginGetStyles:
+		return MarginGetStyles(LineFromUPtr(wParam), CharPtrFromSPtr(lParam));
 
 	case Message::MarginTextClearAll:
 		MarginTextClearAll();

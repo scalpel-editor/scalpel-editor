@@ -173,9 +173,40 @@ TEST_CASE("Margin text style offset clear and change notification") {
 	CHECK(static_cast<unsigned char>(styleBuf[1]) == 2);
 	CHECK(static_cast<unsigned char>(styleBuf[2]) == 3);
 
+	// Single shared style (no per-character array): return 0 and clear the first output byte.
+	editor.WndProc(Message::MarginSetStyle, 1, 7);
+	styleBuf[0] = static_cast<char>(0x5A);
+	styleBuf[1] = static_cast<char>(0x5A);
+	const sptr_t singleLen = editor.WndProc(Message::MarginGetStyles, 1, reinterpret_cast<sptr_t>(styleBuf));
+	CHECK(singleLen == 0);
+	CHECK(styleBuf[0] == 0);
+	CHECK(styleBuf[1] == static_cast<char>(0x5A));
+
 	editor.WndProc(Message::MarginTextClearAll, 0, 0);
 	const sptr_t clearedLen = editor.WndProc(Message::MarginGetText, 1, 0);
 	CHECK(clearedLen == 0);
+}
+
+TEST_CASE("SetMargins shrink of a visible margin invalidates layout") {
+	TestHost host;
+	TestEditor editor(host);
+
+	const size_t count = static_cast<size_t>(editor.WndProc(Message::GetMargins, 0, 0));
+	REQUIRE(count >= 2);
+	// Make the last allocated margin visible so shrinking drops real width.
+	editor.WndProc(Message::SetMarginWidthN, count - 1, 20);
+	editor.PaintAll();
+	editor.ClearObservations();
+
+	editor.WndProc(Message::SetMargins, count - 1, 0);
+	CHECK(static_cast<size_t>(editor.WndProc(Message::GetMargins, 0, 0)) == count - 1);
+	CHECK(editor.Snapshot().invalidatedRectangles > 0);
+
+	// Same count is a no-op for layout.
+	editor.PaintAll();
+	editor.ClearObservations();
+	editor.WndProc(Message::SetMargins, count - 1, 0);
+	CHECK(editor.Snapshot().invalidatedRectangles == 0);
 }
 
 TEST_CASE("Fold margin colours request style redraw") {
