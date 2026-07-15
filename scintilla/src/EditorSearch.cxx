@@ -77,56 +77,69 @@ using namespace Scintilla::Internal;
 
 // --- Target range and search (application + private) ---
 
+// Start of the search/replace target range (byte position).
 void Editor::SetTargetStart(Sci::Position pos) {
 	targetRange.start.SetPosition(pos);
 }
 
+// Start position of the target range.
 Sci::Position Editor::GetTargetStart() const noexcept {
 	return targetRange.start.Position();
 }
 
+// Virtual space on the target start (for rectangular targets).
 void Editor::SetTargetStartVirtualSpace(Sci::Position space) {
 	targetRange.start.SetVirtualSpace(space);
 }
 
+// Virtual space of the target start.
 Sci::Position Editor::GetTargetStartVirtualSpace() const noexcept {
 	return targetRange.start.VirtualSpace();
 }
 
+// End of the search/replace target range (byte position).
 void Editor::SetTargetEnd(Sci::Position pos) {
 	targetRange.end.SetPosition(pos);
 }
 
+// End position of the target range.
 Sci::Position Editor::GetTargetEnd() const noexcept {
 	return targetRange.end.Position();
 }
 
+// Virtual space on the target end.
 void Editor::SetTargetEndVirtualSpace(Sci::Position space) {
 	targetRange.end.SetVirtualSpace(space);
 }
 
+// Virtual space of the target end.
 Sci::Position Editor::GetTargetEndVirtualSpace() const noexcept {
 	return targetRange.end.VirtualSpace();
 }
 
+// Set both ends of the target range in one call.
 void Editor::SetTargetRange(Sci::Position start, Sci::Position end) {
 	targetRange.start.SetPosition(start);
 	targetRange.end.SetPosition(end);
 }
 
+// Set the target to cover the entire document.
 void Editor::TargetWholeDocument() {
 	targetRange.start.SetPosition(0);
 	targetRange.end.SetPosition(pdoc->Length());
 }
 
+// Bytes currently covered by the target range.
 std::string Editor::GetTargetText() const {
 	return RangeText(targetRange.start.Position(), targetRange.end.Position());
 }
 
+// FindOption flags for SearchInTarget: match case, whole word, word start, regexp, posix, etc.
 void Editor::SetSearchFlags(FindOption flags) {
 	searchFlags = flags;
 }
 
+// Current FindOption flags used by SearchInTarget.
 FindOption Editor::GetSearchFlags() const noexcept {
 	return searchFlags;
 }
@@ -151,15 +164,21 @@ void Editor::ReplaceRectangular(std::string_view text) {
 	InsertPasteShape(text, PasteShape::rectangular);
 }
 
+// Search for text inside the target using searchFlags.
+// On success moves the target to the match and returns the start position; on failure -1.
+// Invalid regular expressions set Status::RegEx and return -1.
 Sci::Position Editor::SearchInTarget(std::string_view text) {
 	const std::string copy(text);
 	return SearchInTarget(copy.c_str(), static_cast<Sci::Position>(copy.size()));
 }
 
+// Remember SelectionStart as the anchor for SearchNext / SearchPrev commands.
 void Editor::SearchAnchor() noexcept {
 	searchAnchor = SelectionStart().Position();
 }
 
+// SearchNext or SearchPrev from the search anchor with flags in wParam and C string in lParam.
+// On success selects the match and returns its start; otherwise invalidPosition.
 Sci::Position Editor::SearchText(
     EditorCommand command,		///< Accepts both @c EditorCommand::SearchNext and @c EditorCommand::SearchPrev.
     uptr_t wParam,				///< Search modes : @c FindOption::MatchCase, @c FindOption::WholeWord,
@@ -192,6 +211,7 @@ Sci::Position Editor::SearchText(
 	return pos;
 }
 
+// C-string form of SearchInTarget; length is the byte count of text.
 Sci::Position Editor::SearchInTarget(const char *text, Sci::Position length) {
 	Sci::Position lengthFound = length;
 
@@ -212,6 +232,9 @@ Sci::Position Editor::SearchInTarget(const char *text, Sci::Position length) {
 	}
 }
 
+// Replace the target with text. ReplaceType::patterns expands \1-style backreferences;
+// minimal trims a common prefix/suffix before replacing. Returns the inserted length.
+// Realizes virtual space at the target start. One undo action.
 Sci::Position Editor::ReplaceTarget(ReplaceType replaceType, std::string_view text) {
 	pdoc->CheckPosition(targetRange.start.Position());
 

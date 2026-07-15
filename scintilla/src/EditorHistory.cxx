@@ -112,6 +112,7 @@ void Editor::BeginUndoAction() {
 	pdoc->BeginUndoAction();
 }
 
+// Close one nested undo group started with BeginUndoAction.
 void Editor::EndUndoAction() {
 	pdoc->EndUndoAction();
 }
@@ -128,6 +129,7 @@ void Editor::SetUndoCollection(bool collectUndo) {
 	pdoc->SetUndoCollection(collectUndo);
 }
 
+// True when edits are being recorded on the undo stack.
 bool Editor::GetUndoCollection() const noexcept {
 	return pdoc->IsCollectingUndo();
 }
@@ -137,58 +139,72 @@ int Editor::GetUndoSequence() const noexcept {
 	return pdoc->UndoSequenceDepth();
 }
 
+// Number of actions currently stored on the undo stack.
 int Editor::GetUndoActions() const noexcept {
 	return pdoc->UndoActions();
 }
 
+// Set which action index is the save point (-1 if none).
 void Editor::SetUndoSavePoint(int action) {
 	pdoc->SetUndoSavePoint(action);
 }
 
+// Action index of the save point, or -1.
 int Editor::GetUndoSavePoint() const noexcept {
 	return pdoc->UndoSavePoint();
 }
 
+// Set the detach point where history branched from the saved state.
 void Editor::SetUndoDetach(int action) {
 	pdoc->SetUndoDetach(action);
 }
 
+// Action index of the detach point, or -1.
 int Editor::GetUndoDetach() const noexcept {
 	return pdoc->UndoDetach();
 }
 
+// Set the tentative (IME) action point, or -1 when none.
 void Editor::SetUndoTentative(int action) {
 	pdoc->SetUndoTentative(action);
 }
 
+// Action index of the tentative point, or -1.
 int Editor::GetUndoTentative() const noexcept {
 	return pdoc->UndoTentative();
 }
 
+// Set the current action index (boundary between undo and redo).
 void Editor::SetUndoCurrent(int action) {
 	pdoc->SetUndoCurrent(action);
 }
 
+// Current action index on the undo stack.
 int Editor::GetUndoCurrent() const noexcept {
 	return pdoc->UndoCurrent();
 }
 
+// Type flags of the action at the given index.
 int Editor::GetUndoActionType(int action) const noexcept {
 	return pdoc->UndoActionType(action);
 }
 
+// Document position associated with the action at the given index.
 Sci::Position Editor::GetUndoActionPosition(int action) const noexcept {
 	return pdoc->UndoActionPosition(action);
 }
 
+// Text bytes stored with the action at the given index.
 std::string_view Editor::GetUndoActionText(int action) const noexcept {
 	return pdoc->UndoActionText(action);
 }
 
+// Push a typed action without text at position onto the undo stack.
 void Editor::PushUndoActionType(int type, Sci::Position position) {
 	pdoc->PushUndoActionType(type, position);
 }
 
+// Replace the text of the most recent undo action.
 void Editor::ChangeLastUndoActionText(std::string_view text) {
 	pdoc->ChangeLastUndoActionText(text.size(), text.data());
 }
@@ -207,6 +223,7 @@ void Editor::SetChangeHistory(ChangeHistoryOption option) {
 	pdoc->ChangeHistorySet(static_cast<int>(option) & 1);
 }
 
+// Current change-history option (markers / indicators in the margin and text).
 ChangeHistoryOption Editor::GetChangeHistory() const noexcept {
 	return changeHistoryOption;
 }

@@ -164,6 +164,7 @@ void Editor::SetMultiPaste(MultiPaste multiPaste) {
 	multiPasteMode = multiPaste;
 }
 
+// Current multi-paste mode (Once or Each).
 MultiPaste Editor::GetMultiPaste() const noexcept {
 	return multiPasteMode;
 }
@@ -174,6 +175,7 @@ void Editor::SetPasteConvertEndings(bool convert) {
 	convertPastes = convert;
 }
 
+// True when paste rewrites line endings to the document EOL mode.
 bool Editor::GetPasteConvertEndings() const noexcept {
 	return convertPastes;
 }
@@ -184,6 +186,7 @@ void Editor::SetCopySeparator(std::string_view separator) {
 	copySeparator = std::string(separator);
 }
 
+// Separator string used between parts of a multi-stream copy.
 std::string Editor::GetCopySeparator() const {
 	return copySeparator;
 }

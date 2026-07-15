@@ -109,6 +109,7 @@ void Editor::SetReadOnly(bool readOnly) {
 	pdoc->SetReadOnly(readOnly);
 }
 
+// True when the owned document rejects edits.
 bool Editor::GetReadOnly() const noexcept {
 	return pdoc->IsReadOnly();
 }
@@ -198,6 +199,7 @@ void Editor::AddStyledText(const char *buffer, Sci::Position appendLength) {
 	SetEmptySelection(sel.MainCaret() + lengthInserted);
 }
 
+// Byte length of the document. Same as GetTextLength.
 Sci::Position Editor::GetLength() const noexcept {
 	return pdoc->Length();
 }

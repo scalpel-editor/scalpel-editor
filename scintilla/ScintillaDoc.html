@@ -450,6 +450,13 @@
     described and the <code>GET</code> routine is left to your imagination.</p>
 
     <h2 id="TextRetrievalAndModification">Text retrieval and modification</h2>
+    <p>Whole-document text, read-only, insertion, deletion, and range reads:
+    <code>scintilla/src/EditorDocument.cxx</code>. Save point:
+    <code>scintilla/src/EditorHistory.cxx</code>. Line text and allocate-lines:
+    <code>scintilla/src/EditorLines.cxx</code>. Replace selection:
+    <code>scintilla/src/EditorSearch.cxx</code>. Styling, drag-drop, and change-insertion
+    remain until those concerns move.</p>
+
 
     <p>Each byte in a Scintilla document is associated with a byte of styling
     information. The combination of a character byte and a style byte is called a cell. Style bytes
@@ -478,62 +485,33 @@
     <code>SCI_GETSTYLEDTEXTFULL</code> are deleted: the project uses one native position type and
     the typed <code>GetTextRange</code> / <code>GetStyledText</code> operations.</p>
 
-    <code><a class="message" href="#SCI_SETSAVEPOINT">SCI_SETSAVEPOINT</a><br />
-     <a class="message" href="#SCI_GETLINE">SCI_GETLINE(line line, char *text) &rarr; position</a><br />
-     <a class="message" href="#SCI_REPLACESEL">SCI_REPLACESEL(&lt;unused&gt;, const char
-    *text)</a><br />
+    <code>
      <a class="message" href="#SCI_GETDRAGDROPENABLED">SCI_GETDRAGDROPENABLED &rarr; bool</a><br />
      <a class="message" href="#SCI_SETDRAGDROPENABLED">SCI_SETDRAGDROPENABLED(bool dragDropEnabled)</a><br />
-     <a class="message" href="#SCI_ALLOCATELINES">SCI_ALLOCATELINES(line lines)</a><br />
      <a class="message" href="#SCI_CHANGEINSERTION">SCI_CHANGEINSERTION(position length, const char *text)</a><br />
      <a class="message" href="#SCI_CLEARDOCUMENTSTYLE">SCI_CLEARDOCUMENTSTYLE</a><br />
      <a class="message" href="#SCI_GETSTYLEAT">SCI_GETSTYLEAT(position pos) &rarr; int</a><br />
      <a class="message" href="#SCI_GETSTYLEINDEXAT">SCI_GETSTYLEINDEXAT(position pos) &rarr; int</a><br />
      <a class="message" href="#SCI_RELEASEALLEXTENDEDSTYLES">SCI_RELEASEALLEXTENDEDSTYLES</a><br />
-     <a class="message" href="#SCI_ALLOCATEEXTENDEDSTYLES">SCI_ALLOCATEEXTENDEDSTYLES(int numberStyles) &rarr; int</a><br />
-    </code>
+     <a class="message" href="#SCI_ALLOCATEEXTENDEDSTYLES">SCI_ALLOCATEEXTENDEDSTYLES(int numberStyles) &rarr; int</a></code>
 
-    <p><b id="SCI_SETSAVEPOINT">SCI_SETSAVEPOINT</b><br />
-     This message tells Scintilla that the current state of the document is unmodified. This is
-    usually done when the file is saved or loaded, hence the name "save point". As Scintilla
-    performs undo and redo operations, it notifies the container that it has entered or left the
-    save point with <code><a class="message"
-    href="#SCN_SAVEPOINTREACHED">SCN_SAVEPOINTREACHED</a></code> and <code><a class="message"
-    href="#SCN_SAVEPOINTLEFT">SCN_SAVEPOINTLEFT</a></code> <a class="jump"
-    href="#Notifications">notification messages</a>, allowing the container to know if the file
-    should be considered dirty or not.</p>
+    
 
     <p>See also: <code><a class="message" href="#SCI_EMPTYUNDOBUFFER">SCI_EMPTYUNDOBUFFER</a>,
     <code>Editor::GetModify</code> in <code>EditorDocument.cxx</code></code></p>
 
-    <p><b id="SCI_GETLINE">SCI_GETLINE(line line, char *text) &rarr; position</b><br />
-     This fills the buffer defined by text with the contents of the nominated line (lines start at
-    0). The buffer is not terminated by a NUL(0) character. It is up to you to make sure that the buffer
-    is long enough for the text, use <a class="message"
-    href="#SCI_LINELENGTH"><code>SCI_LINELENGTH(line line)</code></a>. The returned value is the
-    number of characters copied to the buffer. The returned text includes any end of line
-    characters. If you ask for a line number outside the range of lines in the document, 0
-    characters are copied. If the text argument is 0 then the length that should be allocated
-    to store the entire line is returned.</p>
+    
 
     <p>See also: <code><a class="seealso" href="#SCI_GETCURLINE">SCI_GETCURLINE</a>,
     <a class="seealso" href="#SCI_GETSELTEXT">SCI_GETSELTEXT</a></code></p>
 
-    <p><b id="SCI_REPLACESEL">SCI_REPLACESEL(&lt;unused&gt;, const char *text)</b><br />
-     The currently selected text between the <a class="jump" href="#Selection">anchor
-    and the current position</a> is replaced by the 0 terminated text string. If the anchor and
-    current position are the same, the text is inserted at the caret position. The caret is
-    positioned after the inserted text and the caret is scrolled into view.</p>
+    
 
     <p><b id="SCI_GETDRAGDROPENABLED">SCI_GETDRAGDROPENABLED &rarr; bool</b><br />
      <b id="SCI_SETDRAGDROPENABLED">SCI_SETDRAGDROPENABLED(bool dragDropEnabled)</b><br />
      These messages get and set the flag controlling whether drag-and-drop is enabled or not.</p>
 
-    <p><b id="SCI_ALLOCATELINES">SCI_ALLOCATELINES(line lines)</b><br />
-     Allocate line indices to match the <code class="parameter">lines</code> argument.
-     This is an optimization that can prevent multiple reallocations of the indices as text is inserted
-     if the application can estimate the number of lines in the document.
-     The number of lines will not be reduced by this call.</p>
+    
 
     <p><b id="SCI_CHANGEINSERTION">SCI_CHANGEINSERTION(position length, const char *text)</b><br />
      This may only be called from a <a class="message" href="#SC_MOD_INSERTCHECK">SC_MOD_INSERTCHECK</a>
@@ -605,6 +583,12 @@ struct Sci_TextRangeFull {
 </pre>
 
     <h2 id="Information">Information</h2>
+    <p>Document length, modify flag, and gap/range pointer helpers:
+    <code>scintilla/src/EditorDocument.cxx</code>. Line count, line/position/column mapping,
+    and line length: <code>scintilla/src/EditorLines.cxx</code>. Point-from-position:
+    <code>scintilla/src/EditorScrolling.cxx</code>. Descriptions live beside the named
+    definitions. Remaining hit-test and measurement messages stay here until their concerns move.</p>
+
 
      <a class="message" href="#SCI_GETTEXTLENGTH">SCI_GETTEXTLENGTH &rarr; position</a><br />
      <a class="message" href="#SCI_GETLENGTH">SCI_GETLENGTH &rarr; position</a><br />
@@ -628,14 +612,9 @@ struct Sci_TextRangeFull {
      <a class="message" href="#SCI_POINTXFROMPOSITION">SCI_POINTXFROMPOSITION(&lt;unused&gt;, position pos) &rarr; int</a><br />
      <a class="message" href="#SCI_POINTYFROMPOSITION">SCI_POINTYFROMPOSITION(&lt;unused&gt;, position pos) &rarr; int</a><br />
 
-    <p>
-     <b id="SCI_GETTEXTLENGTH">SCI_GETTEXTLENGTH &rarr; position</b><br />
-     <b id="SCI_GETLENGTH">SCI_GETLENGTH &rarr; position</b><br />
-     Both these messages return the length of the document in bytes.</p>
+    
 
-    <p><b id="SCI_GETLINECOUNT">SCI_GETLINECOUNT &rarr; line</b><br />
-     This returns the number of lines in the document. An empty document contains 1 line. A
-    document holding only an end of line sequence has 2 lines.</p>
+    
 
     <p><b id="SCI_LINESONSCREEN">SCI_LINESONSCREEN &rarr; line</b><br />
      This returns the number of complete lines visible on the screen. With a constant line height,
@@ -643,11 +622,7 @@ struct Sci_TextRangeFull {
     your window to an integral number of lines, there may be a partial line visible at the bottom
     of the view.</p>
 
-    <p><b id="SCI_GETMODIFY">SCI_GETMODIFY &rarr; bool</b><br />
-     This returns non-zero if the document is modified and 0 if it is unmodified. The modified
-    status of a document is determined by the undo position relative to the save point. The save
-    point is set by <a class="message" href="#SCI_SETSAVEPOINT"><code>SCI_SETSAVEPOINT</code></a>,
-    usually when you have saved data to a file.</p>
+    
 
     <p>If you need to be notified when the document becomes modified, Scintilla notifies the
     container that it has entered or left the save point with the <a class="message"
@@ -655,43 +630,17 @@ struct Sci_TextRangeFull {
     href="#SCN_SAVEPOINTLEFT"><code>SCN_SAVEPOINTLEFT</code></a> <a class="jump"
     href="#Notifications">notification messages</a>.</p>
     
-    <p><b id="SCI_LINEFROMPOSITION">SCI_LINEFROMPOSITION(position pos) &rarr; line</b><br />
-     This message returns the line that contains the position <code class="parameter">pos</code> in the document. The
-    return value is 0 if <code class="parameter">pos</code> &lt;= 0. The return value is the last line if
-    <code class="parameter">pos</code> is beyond the end of the document.</p>
+    
 
-    <p><b id="SCI_POSITIONFROMLINE">SCI_POSITIONFROMLINE(line line) &rarr; position</b><br />
-     This returns the document position that corresponds with the start of the line. If
-    <code class="parameter">line</code> is negative, the position of the line holding the start of the selection is
-    returned. If <code class="parameter">line</code> is greater than the lines in the document, the return value is
-    -1. If <code class="parameter">line</code> is equal to the number of lines in the document (i.e. 1 line past the
-    last line), the return value is the end of the document.</p>
+    
 
-    <p><b id="SCI_GETLINEENDPOSITION">SCI_GETLINEENDPOSITION(line line) &rarr; position</b><br />
-     This returns the position at the end of the line, before any line end characters. If <code class="parameter">line</code>
-    is the last line in the document (which does not have any end of line characters) or greater,
-    the result is the size of the document.
-    If <code class="parameter">line</code> is negative the result is undefined.</p>
+    
 
-    <p><b id="SCI_LINELENGTH">SCI_LINELENGTH(line line) &rarr; position</b><br />
-     This returns the length of the line, including any line end characters. If <code class="parameter">line</code>
-    is negative or beyond the last line in the document, the result is 0. If you want the length of
-    the line not including any end of line characters, use <a class="message"
-    href="#SCI_GETLINEENDPOSITION"><code>SCI_GETLINEENDPOSITION(line)</code></a> - <a class="message"
-    href="#SCI_POSITIONFROMLINE"><code>SCI_POSITIONFROMLINE(line)</code></a>.</p>
+    
 
-    <p><b id="SCI_GETCOLUMN">SCI_GETCOLUMN(position pos) &rarr; position</b><br />
-     This message returns the column number of a position <code class="parameter">pos</code> within the document
-    taking the width of tabs into account. This returns the column number of the last tab on the
-    line before <code class="parameter">pos</code>, plus the number of characters between the last tab and
-    <code class="parameter">pos</code>. If there are no tab characters on the line, the return value is the number of
-    characters up to the position on the line. In both cases, each UTF-8 character counts as a
-    single character. This is probably only useful with monospaced fonts.</p>
+    
 
-    <p><b id="SCI_FINDCOLUMN">SCI_FINDCOLUMN(line line, position column) &rarr; position</b><br />
-     This message returns the position of a <code class="parameter">column</code> on a <code class="parameter">line</code>
-    taking the width of tabs into account. It treats each UTF-8 character as a single column.
-    Column numbers, like lines start at 0.</p>
+    
 
     <p><b id="SCI_POSITIONBEFORE">SCI_POSITIONBEFORE(position pos) &rarr; position</b><br />
      <b id="SCI_POSITIONAFTER">SCI_POSITIONAFTER(position pos) &rarr; position</b><br />
@@ -723,12 +672,13 @@ struct Sci_TextRangeFull {
     window or not close to any characters. This is similar to the previous methods but finds characters rather than
     inter-character positions.</p>
 
-    <p><b id="SCI_POINTXFROMPOSITION">SCI_POINTXFROMPOSITION(&lt;unused&gt;, position pos) &rarr; int</b><br />
-     <b id="SCI_POINTYFROMPOSITION">SCI_POINTYFROMPOSITION(&lt;unused&gt;, position pos) &rarr; int</b><br />
-     These messages return the x and y display pixel location of text at position <code class="parameter">pos</code>
-    in the document.</p>
+    
 
     <h2 id="ByCharacterOrCodeUnit">By character or UTF-16 code unit</h2>
+    <p>Character/code-unit counts and line character indexes moved to
+    <code>scintilla/src/EditorLines.cxx</code>. Remaining position-before/after style
+    navigation stays until the text-boundaries concern moves.</p>
+
 
     <p>Most Scintilla APIs use byte positions but some applications want to use positions based on counting
     (UTF-32) characters or (UTF-16) code units
@@ -752,27 +702,16 @@ struct Sci_TextRangeFull {
      If the position goes past the document end then 0 is returned.
      </p>
 
-    <p><b id="SCI_COUNTCHARACTERS">SCI_COUNTCHARACTERS(position start, position end) &rarr; position</b><br />
-     Returns the number of whole characters between two positions.</p>
+    
 
     <p><b id="SCI_POSITIONRELATIVECODEUNITS">SCI_POSITIONRELATIVECODEUNITS(position pos, position relative) &rarr; position</b><br />
-    <b id="SCI_COUNTCODEUNITS">SCI_COUNTCODEUNITS(position start, position end) &rarr; position</b><br />
+    
      These are the UTF-16 versions of <code>SCI_POSITIONRELATIVE</code> and <code>SCI_COUNTCHARACTERS</code>
      working in terms of UTF-16 code units.</p>
 
-    <p><b id="SCI_GETLINECHARACTERINDEX">SCI_GETLINECHARACTERINDEX &rarr; int</b><br />
-     Returns which if any indexes are active. It may be <code>SC_LINECHARACTERINDEX_NONE</code> (0) or one or more
-     of <code>SC_LINECHARACTERINDEX_UTF32</code> (1) if whole characters are indexed or
-     <code>SC_LINECHARACTERINDEX_UTF16</code> (2) if UTF-16 code units are indexed.
-     Character indexes are currently only supported for UTF-8 documents.</p>
+    
 
-    <p><b id="SCI_ALLOCATELINECHARACTERINDEX">SCI_ALLOCATELINECHARACTERINDEX(int lineCharacterIndex)</b><br />
-    <b id="SCI_RELEASELINECHARACTERINDEX">SCI_RELEASELINECHARACTERINDEX(int lineCharacterIndex)</b><br />
-     Allocate or release one or more indexes using same enumeration as <code>SCI_GETLINECHARACTERINDEX</code>.
-     Different aspects of an application may need indexes for different periods and should allocate for those periods.
-     Indexes use additional memory so releasing them can help minimize memory but they also take time to recalculate.
-     Scintilla may also allocate indexes to support features like accessibility or input method editors.
-     Only one index of each type is created for a document at a time.</p>
+    
 
     <p><b id="SCI_LINEFROMINDEXPOSITION">SCI_LINEFROMINDEXPOSITION(position pos, int lineCharacterIndex) &rarr; line</b><br />
     <b id="SCI_INDEXPOSITIONFROMLINE">SCI_INDEXPOSITIONFROMLINE(line line, int lineCharacterIndex) &rarr; position</b><br />
@@ -838,554 +777,24 @@ struct Sci_TextRangeFull {
 
     <h2 id="Selection">Selection</h2>
 
-    <p>Basic selection and multi-selection operations moved to
-    <code>scintilla/src/EditorSelection.cxx</code>. Named operations and their behavior descriptions
-    live beside the definitions there. Temporary message forwarders remain until the generated
-    message layer is removed. Caret appearance and policies remain until the caret concern move;
-    <code>SCI_GETCURLINE</code> remains until text-boundary or selection follow-up cleanup.</p>
+    <p>Selection ranges, multi-selection, rectangular selection, goto, hide, serialization,
+    selection layer, and undo selection history moved to
+    <code>scintilla/src/EditorSelection.cxx</code>. Named operations and their behavior
+    descriptions live beside the definitions there. Temporary message forwarders remain until
+    the generated message layer is removed.</p>
 
-    <p>Scintilla maintains a selection that stretches between two points, the anchor and the
-    current position. If the anchor and the current position are the same, there is no selected
-    text. Positions in the document range from 0 (before the first character), to the document size
-    (after the last character).</p>
-    <code>
-     <a class="message" href="#SCI_SETSEL">SCI_SETSEL(position anchor, position caret)</a><br />
-     <a class="message" href="#SCI_GOTOPOS">SCI_GOTOPOS(position caret)</a><br />
-     <a class="message" href="#SCI_GOTOLINE">SCI_GOTOLINE(line line)</a><br />
-     <a class="message" href="#SCI_SETCURRENTPOS">SCI_SETCURRENTPOS(position caret)</a><br />
-     <a class="message" href="#SCI_GETCURRENTPOS">SCI_GETCURRENTPOS &rarr; position</a><br />
-     <a class="message" href="#SCI_SETANCHOR">SCI_SETANCHOR(position anchor)</a><br />
-     <a class="message" href="#SCI_GETANCHOR">SCI_GETANCHOR &rarr; position</a><br />
-     <a class="message" href="#SCI_SETSELECTIONSTART">SCI_SETSELECTIONSTART(position anchor)</a><br />
-     <a class="message" href="#SCI_GETSELECTIONSTART">SCI_GETSELECTIONSTART &rarr; position</a><br />
-     <a class="message" href="#SCI_SETSELECTIONEND">SCI_SETSELECTIONEND(position caret)</a><br />
-     <a class="message" href="#SCI_GETSELECTIONEND">SCI_GETSELECTIONEND &rarr; position</a><br />
-     <a class="message" href="#SCI_SETEMPTYSELECTION">SCI_SETEMPTYSELECTION(position caret)</a><br />
-     <a class="message" href="#SCI_SELECTALL">SCI_SELECTALL</a><br />
-     <a class="message" href="#SCI_HIDESELECTION">SCI_HIDESELECTION(bool hide)</a><br />
-     <a class="message" href="#SCI_GETSELECTIONHIDDEN">SCI_GETSELECTIONHIDDEN &rarr; bool</a><br />
-     <a class="message" href="#SCI_GETSELTEXT">SCI_GETSELTEXT(&lt;unused&gt;, char *text) &rarr; position</a><br />
-     <a class="message" href="#SCI_GETCURLINE">SCI_GETCURLINE(position length, char *text) &rarr; position</a><br />
-     <a class="message" href="#SCI_SELECTIONISRECTANGLE">SCI_SELECTIONISRECTANGLE &rarr; bool</a><br />
-     <a class="message" href="#SCI_SETSELECTIONMODE">SCI_SETSELECTIONMODE(int selectionMode)</a><br />
-     <a class="message" href="#SCI_CHANGESELECTIONMODE">SCI_CHANGESELECTIONMODE(int selectionMode)</a><br />
-     <a class="message" href="#SCI_GETSELECTIONMODE">SCI_GETSELECTIONMODE &rarr; int</a><br />
-     <a class="message" href="#SCI_SETMOVEEXTENDSSELECTION">SCI_SETMOVEEXTENDSSELECTION(bool moveExtendsSelection)</a><br />
-     <a class="message" href="#SCI_GETMOVEEXTENDSSELECTION">SCI_GETMOVEEXTENDSSELECTION &rarr; bool</a><br />
-     <a class="message" href="#SCI_GETLINESELSTARTPOSITION">SCI_GETLINESELSTARTPOSITION(line line) &rarr; position</a><br />
-     <a class="message" href="#SCI_GETLINESELENDPOSITION">SCI_GETLINESELENDPOSITION(line line) &rarr; position</a><br />
-     <a class="message" href="#SCI_MOVECARETINSIDEVIEW">SCI_MOVECARETINSIDEVIEW</a><br />
-     <a class="message" href="#SCI_CHOOSECARETX">SCI_CHOOSECARETX</a><br />
-     <a class="message" href="#SCI_MOVESELECTEDLINESUP">SCI_MOVESELECTEDLINESUP</a><br />
-     <a class="message" href="#SCI_MOVESELECTEDLINESDOWN">SCI_MOVESELECTEDLINESDOWN</a><br />
-     <a class="message" href="#SCI_SETMOUSESELECTIONRECTANGULARSWITCH">SCI_SETMOUSESELECTIONRECTANGULARSWITCH(bool mouseSelectionRectangularSwitch)</a><br />
-     <a class="message" href="#SCI_GETMOUSESELECTIONRECTANGULARSWITCH">SCI_GETMOUSESELECTIONRECTANGULARSWITCH &rarr; bool</a><br />
-    </code>
-
-    <p><b id="SCI_SETSEL">SCI_SETSEL(position anchor, position caret)</b><br />
-     This message sets both the anchor and the current position. If <code class="parameter">caret</code> is
-    negative, it means the end of the document. If <code class="parameter">anchor</code> is negative, it means
-    remove any selection (i.e. set the anchor to the same position as <code class="parameter">caret</code>). The
-    caret is scrolled into view after this operation.</p>
-
-    <p><b id="SCI_GOTOPOS">SCI_GOTOPOS(position caret)</b><br />
-     This removes any selection, sets the caret at <code class="parameter">caret</code> and scrolls the view to make
-    the caret visible, if necessary. It is equivalent to
-    <code>SCI_SETSEL(caret, caret)</code>. The anchor position is set the same as the current
-    position.</p>
-
-    <p><b id="SCI_GOTOLINE">SCI_GOTOLINE(line line)</b><br />
-     This removes any selection and sets the caret at the start of line number <code class="parameter">line</code>
-    and scrolls the view (if needed) to make it visible. The anchor position is set the same as the
-    current position. If <code class="parameter">line</code> is outside the lines in the document (first line is 0),
-    the line set is the first or last.</p>
-
-    <p><b id="SCI_SETCURRENTPOS">SCI_SETCURRENTPOS(position caret)</b><br />
-     This sets the current position and creates a selection between the anchor and the current
-    position. The caret is not scrolled into view.</p>
-
-    <p>See also: <a class="message" href="#SCI_SCROLLCARET"><code>SCI_SCROLLCARET</code></a></p>
-
-    <p><b id="SCI_GETCURRENTPOS">SCI_GETCURRENTPOS &rarr; position</b><br />
-     This returns the current position.</p>
-
-    <p><b id="SCI_SETANCHOR">SCI_SETANCHOR(position anchor)</b><br />
-     This sets the anchor position and creates a selection between the anchor position and the
-    current position. The caret is not scrolled into view.</p>
-
-    <p>See also: <a class="message" href="#SCI_SCROLLCARET"><code>SCI_SCROLLCARET</code></a></p>
-
-    <p><b id="SCI_GETANCHOR">SCI_GETANCHOR &rarr; position</b><br />
-     This returns the current anchor position.</p>
-
-    <p><b id="SCI_SETSELECTIONSTART">SCI_SETSELECTIONSTART(position anchor)</b><br />
-     <b id="SCI_SETSELECTIONEND">SCI_SETSELECTIONEND(position caret)</b><br />
-     These set the selection based on the assumption that the anchor position is less than the
-    current position. They do not make the caret visible. The table shows the positions of the
-    anchor and the current position after using these messages.</p>
-
-    <table class="standard" summary="SetSelection caret positioning">
-      <thead align="center">
-        <tr>
-          <th>
-	  New value for
-          </th>
-
-          <th>anchor</th>
-
-          <th>caret</th>
-        </tr>
-      </thead>
-
-      <tbody align="center">
-        <tr>
-          <th><code>SCI_SETSELECTIONSTART</code></th>
-
-          <td><code class="parameter">anchor</code></td>
-
-          <td><code>Max(</code><code class="parameter">anchor</code><code>, current)</code></td>
-        </tr>
-
-        <tr>
-          <th><code>SCI_SETSELECTIONEND</code></th>
-
-          <td><code>Min(anchor, </code><code class="parameter">caret</code><code>)</code></td>
-
-          <td><code class="parameter">caret</code></td>
-        </tr>
-      </tbody>
-    </table>
-
-    <p>See also: <a class="message" href="#SCI_SCROLLCARET"><code>SCI_SCROLLCARET</code></a></p>
-
-    <p><b id="SCI_GETSELECTIONSTART">SCI_GETSELECTIONSTART &rarr; position</b><br />
-     <b id="SCI_GETSELECTIONEND">SCI_GETSELECTIONEND &rarr; position</b><br />
-     These return the start and end of the selection without regard to which end is the current
-    position and which is the anchor. <code>SCI_GETSELECTIONSTART</code> returns the smaller of the
-    current position or the anchor position. <code>SCI_GETSELECTIONEND</code> returns the larger of
-    the two values.</p>
-
-    <p><b id="SCI_SETEMPTYSELECTION">SCI_SETEMPTYSELECTION(position caret)</b><br />
-     This removes any selection and sets the caret at <code class="parameter">caret</code>. The caret is not scrolled into view.</p>
-
-    <p><b id="SCI_SELECTALL">SCI_SELECTALL</b><br />
-     This selects all the text in the document. The current position is not scrolled into view.</p>
-
-    <p><b id="SCI_HIDESELECTION">SCI_HIDESELECTION(bool hide)</b><br />
-     <b id="SCI_GETSELECTIONHIDDEN">SCI_GETSELECTIONHIDDEN &rarr; bool</b><br />
-     The normal state is to make the selection visible by drawing it as set by <a class="message"
-    href="#SCI_SETSELFORE"><code>SCI_SETSELFORE</code></a>, <a class="message"
-    href="#SCI_SETSELBACK"><code>SCI_SETSELBACK</code></a>, and related calls.
-    However, if you hide the selection, it is drawn as normal text.</p>
-
-    <p><b id="SCI_GETSELTEXT">SCI_GETSELTEXT(&lt;unused&gt;, char *text NUL-terminated) &rarr; position</b><br />
-     This copies the currently selected text and a terminating NUL(0) byte to the <code class="parameter">text</code>
-    buffer. The buffer size should be determined by calling with a NULL pointer for the <code class="parameter">text</code> argument:
-    <code>1 + SCI_GETSELTEXT(0, NULL)</code>.
-    This allows for rectangular and discontiguous selections as well as simple selections.
-    See <a class="toc" href="#MultipleSelectionAndVirtualSpace">Multiple Selection</a> for information on
-    how multiple and rectangular selections and virtual space are copied.</p>
-
-    <p>See also: <code><a class="seealso" href="#SCI_GETCURLINE">SCI_GETCURLINE</a>,
-    <a class="seealso" href="#SCI_GETLINE">SCI_GETLINE</a>,
-    <a class="seealso" href="#SCI_GETTEXT">SCI_GETTEXT</a>,
-    <a class="seealso" href="#SCI_GETSTYLEDTEXT">SCI_GETSTYLEDTEXT</a>,
-    <a class="seealso" href="#SCI_GETTEXTRANGE">SCI_GETTEXTRANGE</a>
-    </code></p>
-
-    <p><b id="SCI_GETCURLINE">SCI_GETCURLINE(position length, char *text NUL-terminated) &rarr; position</b><br />
-     This retrieves the text of the line containing the caret and returns the position within the
-    line of the caret. Pass in <code>char* text</code> pointing at a buffer large enough to hold
-    the text you wish to retrieve and a terminating NUL(0) character.
-    Set <code class="parameter">length</code> to the
-    length of the buffer not including the terminating NUL character.
-    If the text argument is NULL(0) then the length that should be allocated
-    to store the entire current line is returned.</p>
-
-    <p>See also: <code>
-    <a class="seealso" href="#SCI_GETSELTEXT">SCI_GETSELTEXT</a>,
-    <a class="seealso" href="#SCI_GETLINE">SCI_GETLINE</a>,
-    <a class="seealso" href="#SCI_GETTEXT">SCI_GETTEXT</a>,
-    <a class="seealso" href="#SCI_GETSTYLEDTEXT">SCI_GETSTYLEDTEXT</a>,
-    <a class="seealso" href="#SCI_GETTEXTRANGE">SCI_GETTEXTRANGE</a></code></p>
-
-    <p><b id="SCI_SELECTIONISRECTANGLE">SCI_SELECTIONISRECTANGLE &rarr; bool</b><br />
-     This returns 1 if the current selection is in rectangle mode, 0 if not.</p>
-
-    <p>
-    <b id="SCI_SETSELECTIONMODE">SCI_SETSELECTIONMODE(int selectionMode)</b><br />
-    <b id="SCI_CHANGESELECTIONMODE">SCI_CHANGESELECTIONMODE(int selectionMode)</b><br />
-    <b id="SCI_GETSELECTIONMODE">SCI_GETSELECTIONMODE &rarr; int</b><br />
-    The functions set, change, and get the selection mode, which can be
-     stream (<code>SC_SEL_STREAM</code>=0) or
-     rectangular (<code>SC_SEL_RECTANGLE</code>=1) or
-     by lines (<code>SC_SEL_LINES</code>=2)
-     or thin rectangular (<code>SC_SEL_THIN</code>=3).
-     When <code>SCI_SETSELECTIONMODE</code> sets these modes, regular caret moves will extend or reduce the selection,
-     until the mode is cancelled by a call with same value, or with <code>SCI_CANCEL</code>, or with <code>SCI_SETMOVEEXTENDSSELECTION</code>.
-     <code>SCI_CHANGESELECTIONMODE</code> sets the mode but does not make regular caret moves extend or reduce the selection.</p>
-     <p>The get function returns the current mode even if the selection was made by mouse or with regular extended moves.
-     <code>SC_SEL_THIN</code> is the mode after a rectangular selection has been typed into and ensures
-     that no characters are selected.</p>
-
-    <p>
-    <b id="SCI_SETMOVEEXTENDSSELECTION">SCI_SETMOVEEXTENDSSELECTION(bool moveExtendsSelection)</b><br />
-    <b id="SCI_GETMOVEEXTENDSSELECTION">SCI_GETMOVEEXTENDSSELECTION &rarr; bool</b><br />
-     This controls whether regular caret moves extends the selection leaving the anchor unchanged.
-     It is 1 if regular caret moves will extend or reduce the selection, 0 if not.
-     <code>SCI_SETSELECTIONMODE</code> toggles this setting between on and off.</p>
-
-    <p><b id="SCI_GETLINESELSTARTPOSITION">SCI_GETLINESELSTARTPOSITION(line line) &rarr; position</b><br />
-    <b id="SCI_GETLINESELENDPOSITION">SCI_GETLINESELENDPOSITION(line line) &rarr; position</b><br />
-    Retrieve the position of the start and end of the selection at the given line with
-    <code>INVALID_POSITION</code> returned if no selection on this line.</p>
-
-    <p><b id="SCI_MOVECARETINSIDEVIEW">SCI_MOVECARETINSIDEVIEW</b><br />
-     If the caret is off the top or bottom of the view, it is moved to the nearest line that is
-    visible to its current position. Any selection is lost.</p>
-
-    <p><b id="SCI_CHOOSECARETX">SCI_CHOOSECARETX</b><br />
-     Scintilla remembers the x value of the last position horizontally moved to explicitly by the
-    user and this value is then used when moving vertically such as by using the up and down keys.
-    This message sets the current x position of the caret as the remembered value.</p>
-
-    <p><b id="SCI_MOVESELECTEDLINESUP">SCI_MOVESELECTEDLINESUP</b><br />
-     Move the selected lines up one line, shifting the line above after the selection.
-     The selection will be automatically extended to the beginning of the selection's first line and the end of the selection's last line.
-     If nothing was selected, the line the cursor is currently at will be selected.</p>
-
-    <p><b id="SCI_MOVESELECTEDLINESDOWN">SCI_MOVESELECTEDLINESDOWN</b><br />
-     Move the selected lines down one line, shifting the line below before the selection.
-     The selection will be automatically extended to the beginning of the selection's first line and the end of the selection's last line.
-     If nothing was selected, the line the cursor is currently at will be selected.</p>
-
-    <p><b id="SCI_SETMOUSESELECTIONRECTANGULARSWITCH">SCI_SETMOUSESELECTIONRECTANGULARSWITCH(bool
-     mouseSelectionRectangularSwitch)</b><br />
-    <b id="SCI_GETMOUSESELECTIONRECTANGULARSWITCH">SCI_GETMOUSESELECTIONRECTANGULARSWITCH &rarr; bool</b><br />
-     Enable or disable the ability to switch to rectangular selection mode while making a selection with the mouse.
-     When this option is turned on, mouse selections in stream mode can be switched to rectangular mode by pressing
-     the corresponding modifier key. They then stick to rectangular mode even when the modifier key is released again.
-     When this option is turned off, mouse selections will always stick to the mode the selection was started in. It
-     is off by default.</p>
+    
 
     <h2 id="MultipleSelectionAndVirtualSpace">Multiple Selection and Virtual Space</h2>
 
-    <code>
-     <a class="message" href="#SCI_SETMULTIPLESELECTION">SCI_SETMULTIPLESELECTION(bool multipleSelection)</a><br />
-     <a class="message" href="#SCI_GETMULTIPLESELECTION">SCI_GETMULTIPLESELECTION &rarr; bool</a><br />
-     <a class="message" href="#SCI_SETADDITIONALSELECTIONTYPING">SCI_SETADDITIONALSELECTIONTYPING(bool additionalSelectionTyping)</a><br />
-     <a class="message" href="#SCI_GETADDITIONALSELECTIONTYPING">SCI_GETADDITIONALSELECTIONTYPING &rarr; bool</a><br />
-     <a class="message" href="#SCI_SETMULTIPASTE">SCI_SETMULTIPASTE(int multiPaste)</a><br />
-     <a class="message" href="#SCI_GETMULTIPASTE">SCI_GETMULTIPASTE &rarr; int</a><br />
-     <a class="message" href="#SCI_SETVIRTUALSPACEOPTIONS">SCI_SETVIRTUALSPACEOPTIONS(int virtualSpaceOptions)</a><br />
-     <a class="message" href="#SCI_GETVIRTUALSPACEOPTIONS">SCI_GETVIRTUALSPACEOPTIONS &rarr; int</a><br />
-     <a class="message" href="#SCI_SETRECTANGULARSELECTIONMODIFIER">SCI_SETRECTANGULARSELECTIONMODIFIER(int modifier)</a><br />
-     <a class="message" href="#SCI_GETRECTANGULARSELECTIONMODIFIER">SCI_GETRECTANGULARSELECTIONMODIFIER &rarr; int</a><br />
-     <br />
+    <p>Multiple selection, virtual space, rectangular selection ends, additional typing,
+    selection-N accessors, rotate/swap commands, and multi-select-add moved to
+    <code>scintilla/src/EditorSelection.cxx</code>. Multi-paste options moved to
+    <code>scintilla/src/EditorClipboard.cxx</code>. Named operations and their behavior
+    descriptions live beside the definitions there. Temporary message forwarders remain until
+    the generated message layer is removed.</p>
 
-     <a class="message" href="#SCI_GETSELECTIONS">SCI_GETSELECTIONS &rarr; int</a><br />
-     <a class="message" href="#SCI_GETSELECTIONEMPTY">SCI_GETSELECTIONEMPTY &rarr; bool</a><br />
-     <a class="message" href="#SCI_CLEARSELECTIONS">SCI_CLEARSELECTIONS</a><br />
-     <a class="message" href="#SCI_SETSELECTION">SCI_SETSELECTION(position caret, position anchor)</a><br />
-     <a class="message" href="#SCI_ADDSELECTION">SCI_ADDSELECTION(position caret, position anchor)</a><br />
-     <a class="message" href="#SCI_SELECTIONFROMPOINT">SCI_SELECTIONFROMPOINT(int x, int y) &rarr; int</a><br />
-     <a class="message" href="#SCI_DROPSELECTIONN">SCI_DROPSELECTIONN(int selection)</a><br />
-     <a class="message" href="#SCI_SETMAINSELECTION">SCI_SETMAINSELECTION(int selection)</a><br />
-     <a class="message" href="#SCI_GETMAINSELECTION">SCI_GETMAINSELECTION &rarr; int</a><br />
-     <br />
-
-     <a class="message" href="#SCI_SETSELECTIONNCARET">SCI_SETSELECTIONNCARET(int selection, position caret)</a><br />
-     <a class="message" href="#SCI_GETSELECTIONNCARET">SCI_GETSELECTIONNCARET(int selection) &rarr; position</a><br />
-     <a class="message" href="#SCI_SETSELECTIONNCARETVIRTUALSPACE">SCI_SETSELECTIONNCARETVIRTUALSPACE(int selection, position space)</a><br />
-     <a class="message" href="#SCI_GETSELECTIONNCARETVIRTUALSPACE">SCI_GETSELECTIONNCARETVIRTUALSPACE(int selection) &rarr; position</a><br />
-     <a class="message" href="#SCI_SETSELECTIONNANCHOR">SCI_SETSELECTIONNANCHOR(int selection, position anchor)</a><br />
-     <a class="message" href="#SCI_GETSELECTIONNANCHOR">SCI_GETSELECTIONNANCHOR(int selection) &rarr; position</a><br />
-     <a class="message" href="#SCI_SETSELECTIONNANCHORVIRTUALSPACE">SCI_SETSELECTIONNANCHORVIRTUALSPACE(int selection, position space)</a><br />
-     <a class="message" href="#SCI_GETSELECTIONNANCHORVIRTUALSPACE">SCI_GETSELECTIONNANCHORVIRTUALSPACE(int selection) &rarr; position</a><br />
-     <a class="message" href="#SCI_SETSELECTIONNSTART">SCI_SETSELECTIONNSTART(int selection, position anchor)</a><br />
-     <a class="message" href="#SCI_GETSELECTIONNSTART">SCI_GETSELECTIONNSTART(int selection) &rarr; position</a><br />
-     <a class="message" href="#SCI_GETSELECTIONNSTARTVIRTUALSPACE">SCI_GETSELECTIONNSTARTVIRTUALSPACE(int selection) &rarr; position</a><br />
-     <a class="message" href="#SCI_SETSELECTIONNEND">SCI_SETSELECTIONNEND(int selection, position caret)</a><br />
-     <a class="message" href="#SCI_GETSELECTIONNEND">SCI_GETSELECTIONNEND(int selection) &rarr; position</a><br />
-     <a class="message" href="#SCI_GETSELECTIONNENDVIRTUALSPACE">SCI_GETSELECTIONNENDVIRTUALSPACE(int selection) &rarr; position</a><br />
-     <br />
-
-     <a class="message" href="#SCI_SETRECTANGULARSELECTIONCARET">SCI_SETRECTANGULARSELECTIONCARET(position caret)</a><br />
-     <a class="message" href="#SCI_GETRECTANGULARSELECTIONCARET">SCI_GETRECTANGULARSELECTIONCARET &rarr; position</a><br />
-     <a class="message" href="#SCI_SETRECTANGULARSELECTIONCARETVIRTUALSPACE">SCI_SETRECTANGULARSELECTIONCARETVIRTUALSPACE(position space)</a><br />
-     <a class="message" href="#SCI_GETRECTANGULARSELECTIONCARETVIRTUALSPACE">SCI_GETRECTANGULARSELECTIONCARETVIRTUALSPACE &rarr; position</a><br />
-     <a class="message" href="#SCI_SETRECTANGULARSELECTIONANCHOR">SCI_SETRECTANGULARSELECTIONANCHOR(position anchor)</a><br />
-     <a class="message" href="#SCI_GETRECTANGULARSELECTIONANCHOR">SCI_GETRECTANGULARSELECTIONANCHOR &rarr; position</a><br />
-     <a class="message" href="#SCI_SETRECTANGULARSELECTIONANCHORVIRTUALSPACE">SCI_SETRECTANGULARSELECTIONANCHORVIRTUALSPACE(position space)</a><br />
-     <a class="message" href="#SCI_GETRECTANGULARSELECTIONANCHORVIRTUALSPACE">SCI_GETRECTANGULARSELECTIONANCHORVIRTUALSPACE &rarr; position</a><br />
-     <br />
-
-     <a class="message" href="#SCI_SETSELECTIONSERIALIZED">SCI_SETSELECTIONSERIALIZED(&lt;unused&gt;, const char *selectionString)</a><br />
-     <a class="message" href="#SCI_GETSELECTIONSERIALIZED">SCI_GETSELECTIONSERIALIZED(&lt;unused&gt;, char *selectionString) &rarr; position</a><br />
-     <br />
-
-     <a class="element" href="#SC_ELEMENT_SELECTION_ADDITIONAL_TEXT">SC_ELEMENT_SELECTION_ADDITIONAL_TEXT : colouralpha</a><br />
-     <a class="element" href="#SC_ELEMENT_SELECTION_ADDITIONAL_BACK">SC_ELEMENT_SELECTION_ADDITIONAL_BACK : colouralpha</a><br />
-     <a class="discouraged message" href="#SCI_SETADDITIONALSELALPHA">SCI_SETADDITIONALSELALPHA(alpha alpha)</a><br />
-     <a class="discouraged message" href="#SCI_GETADDITIONALSELALPHA">SCI_GETADDITIONALSELALPHA &rarr; int</a><br />
-     <a class="discouraged message" href="#SCI_SETADDITIONALSELFORE">SCI_SETADDITIONALSELFORE(colour fore)</a><br />
-     <a class="discouraged message" href="#SCI_SETADDITIONALSELBACK">SCI_SETADDITIONALSELBACK(colour back)</a><br />
-     <a class="element" href="#SC_ELEMENT_CARET_ADDITIONAL">SC_ELEMENT_CARET_ADDITIONAL : colouralpha</a><br />
-     <a class="discouraged message" href="#SCI_SETADDITIONALCARETFORE">SCI_SETADDITIONALCARETFORE(colour fore)</a><br />
-     <a class="discouraged message" href="#SCI_GETADDITIONALCARETFORE">SCI_GETADDITIONALCARETFORE &rarr; colour</a><br />
-     <a class="message" href="#SCI_SETADDITIONALCARETSBLINK">SCI_SETADDITIONALCARETSBLINK(bool additionalCaretsBlink)</a><br />
-     <a class="message" href="#SCI_GETADDITIONALCARETSBLINK">SCI_GETADDITIONALCARETSBLINK &rarr; bool</a><br />
-     <a class="message" href="#SCI_SETADDITIONALCARETSVISIBLE">SCI_SETADDITIONALCARETSVISIBLE(bool additionalCaretsVisible)</a><br />
-     <a class="message" href="#SCI_GETADDITIONALCARETSVISIBLE">SCI_GETADDITIONALCARETSVISIBLE &rarr; bool</a><br />
-     <br />
-
-     <a class="message" href="#SCI_SWAPMAINANCHORCARET">SCI_SWAPMAINANCHORCARET</a><br />
-     <a class="message" href="#SCI_ROTATESELECTION">SCI_ROTATESELECTION</a><br />
-     <a class="message" href="#SCI_MULTIPLESELECTADDNEXT">SCI_MULTIPLESELECTADDNEXT</a><br />
-     <a class="message" href="#SCI_MULTIPLESELECTADDEACH">SCI_MULTIPLESELECTADDEACH</a><br />
-    </code>
-
-    <p>
-    There may be multiple selections active at one time.
-    More selections are made by holding down the Ctrl key while dragging with the mouse.
-    The most recent selection is the main selection and determines which part of the document is shown automatically.
-    Any selection apart from the main selection is called an additional selection.
-    The calls in the previous section operate on the main selection.
-    There is always at least one selection.
-    The selection can be simplified down to just the main selection by
-    <a class="message" href="#SCI_CANCEL"><code>SCI_CANCEL</code></a>
-    which is normally mapped to the Esc key.
-    </p>
-
-    <p>
-    Rectangular selections are handled as multiple selections although the original rectangular range is remembered so that
-    subsequent operations may be handled differently for rectangular selections. For example, pasting a rectangular selection
-    places each piece in a vertical column.
-    </p>
-
-    <p>
-    Virtual space is space beyond the end of each line. The caret may be moved into virtual space but no real space will be
-    added to the document until there is some text typed or some other text insertion command is used.
-    </p>
-
-    <p>When discontiguous selections are copied to the clipboard, each selection is added to the clipboard text
-    in order with no delimiting characters.
-    For rectangular selections the document's line end is added after each line's text. Rectangular selections
-    are always copied from top line to bottom, not in the in order of selection.Virtual space is not copied.</p>
-
-    <p>
-    <b id="SCI_SETMULTIPLESELECTION">SCI_SETMULTIPLESELECTION(bool multipleSelection)</b><br />
-    <b id="SCI_GETMULTIPLESELECTION">SCI_GETMULTIPLESELECTION &rarr; bool</b><br />
-     Enable or disable multiple selection. When multiple selection is disabled, it is not possible to select
-     multiple ranges by holding down the Ctrl key while dragging with the mouse.</p>
-
-    <p>
-    <b id="SCI_SETADDITIONALSELECTIONTYPING">SCI_SETADDITIONALSELECTIONTYPING(bool additionalSelectionTyping)</b><br />
-    <b id="SCI_GETADDITIONALSELECTIONTYPING">SCI_GETADDITIONALSELECTIONTYPING &rarr; bool</b><br />
-     Whether typing, new line, cursor left/right/up/down, backspace, delete, home, and end work
-     with multiple selections simultaneously.
-     Also allows selection and word and line deletion commands.</p>
-
-    <p>
-    <b id="SCI_SETMULTIPASTE">SCI_SETMULTIPASTE(int multiPaste)</b><br />
-    <b id="SCI_GETMULTIPASTE">SCI_GETMULTIPASTE &rarr; int</b><br />
-     When pasting into multiple selections, the pasted text can go into just the main selection with <code>SC_MULTIPASTE_ONCE</code>=0
-     or into each selection with <code>SC_MULTIPASTE_EACH</code>=1. <code>SC_MULTIPASTE_ONCE</code> is the default.</p>
-
-    <p>
-    <b id="SCI_SETVIRTUALSPACEOPTIONS">SCI_SETVIRTUALSPACEOPTIONS(int virtualSpaceOptions)</b><br />
-    <b id="SCI_GETVIRTUALSPACEOPTIONS">SCI_GETVIRTUALSPACEOPTIONS &rarr; int</b><br />
-     Virtual space can be enabled or disabled for rectangular selections or in other circumstances or in both.
-     There are three bit flags <code>SCVS_RECTANGULARSELECTION</code>=1,
-     <code>SCVS_USERACCESSIBLE</code>=2, and
-     <code>SCVS_NOWRAPLINESTART</code>=4 which can be set independently.
-     <code>SCVS_NONE</code>=0, the default, disables all use of virtual space.</p>
-     <p><code>SCVS_NOWRAPLINESTART</code> prevents left arrow movement and selection
-     from wrapping to the previous line.
-     This is most commonly desired in conjunction with virtual space but is an independent
-     setting so works without virtual space.</p>
-
-    <table class="standard" summary="Virtual space options">
-      <tbody valign="top">
-        <tr>
-          <th align="left"><code>SCVS_NONE</code></th>
-          <td>0</td>
-          <td>The default: no virtual space.</td>
-        </tr>
-
-        <tr>
-          <th align="left"><code>SCVS_RECTANGULARSELECTION</code></th>
-          <td>1</td>
-          <td>Virtual space is enabled for rectangular selections.</td>
-        </tr>
-
-        <tr>
-          <th align="left"><code>SCVS_USERACCESSIBLE</code></th>
-          <td>2</td>
-          <td>Virtual space is enabled for user actions such as right arrow key or clicking beyond line end.</td>
-        </tr>
-
-        <tr>
-          <th align="left"><code>SCVS_NOWRAPLINESTART</code></th>
-          <td>4</td>
-          <td>Left arrow does not wrap to the previous line.</td>
-        </tr>
-
-      </tbody>
-    </table>
-
-    <p>
-    <b id="SCI_SETRECTANGULARSELECTIONMODIFIER">SCI_SETRECTANGULARSELECTIONMODIFIER(int modifier)</b><br />
-    <b id="SCI_GETRECTANGULARSELECTIONMODIFIER">SCI_GETRECTANGULARSELECTIONMODIFIER &rarr; int</b><br />
-     On GTK and Qt, the key used to indicate that a rectangular selection should be created when combined with a mouse drag can be set.
-     The three possible values are <code>SCMOD_CTRL</code>=2, <code>SCMOD_ALT</code>=4 (default) or <code>SCMOD_SUPER</code>=8.
-     Since <code>SCMOD_ALT</code> may already be used by a window manager, the window manager may need configuring to allow this choice.
-     <code>SCMOD_SUPER</code> is often a system dependent modifier key such as the Left Windows key on a Windows keyboard or the
-     Command key on a Mac.</p>
-
-    <p>
-    <b id="SCI_GETSELECTIONS">SCI_GETSELECTIONS &rarr; int</b><br />
-     Return the number of selections currently active. There is always at least one selection.</p>
-
-    <p>
-    <b id="SCI_GETSELECTIONEMPTY">SCI_GETSELECTIONEMPTY &rarr; bool</b><br />
-     Return 1 if every selected range is empty else 0.</p>
-
-    <p>
-    <b id="SCI_CLEARSELECTIONS">SCI_CLEARSELECTIONS</b><br />
-     Set a single empty selection at 0 as the only selection.</p>
-
-    <p>
-    <b id="SCI_SETSELECTION">SCI_SETSELECTION(position caret, position anchor)</b><br />
-     Set a single selection from <code class="parameter">anchor</code> to <code class="parameter">caret</code> as the only selection.</p>
-
-    <p>
-    <b id="SCI_ADDSELECTION">SCI_ADDSELECTION(position caret, position anchor)</b><br />
-     Add a new selection from <code class="parameter">anchor</code> to <code class="parameter">caret</code> as the main selection retaining all other
-     selections as additional selections.
-     Since there is always at least one selection, to set a list of selections, the first selection should be
-     added with <code>SCI_SETSELECTION</code> and later selections added with <code>SCI_ADDSELECTION</code></p>
-
-    <p>
-    <b id="SCI_SELECTIONFROMPOINT">SCI_SELECTIONFROMPOINT(int x, int y) &rarr; int</b><br />
-     Return the index of the selection at the point. If there is no selection at the point, return -1.
-     This can be used to drop a selection or make it the main selection.</p>
-
-    <p>
-    <b id="SCI_DROPSELECTIONN">SCI_DROPSELECTIONN(int selection)</b><br />
-     If there are multiple selections, remove the indicated selection.
-     If this was the main selection then make the previous selection the main and if it was the first then the last selection becomes main.
-     If there is only one selection, or there is no selection <code class="parameter">selection</code>, then there is no effect.</p>
-
-    <p>
-    <b id="SCI_SETMAINSELECTION">SCI_SETMAINSELECTION(int selection)</b><br />
-    <b id="SCI_GETMAINSELECTION">SCI_GETMAINSELECTION &rarr; int</b><br />
-     One of the selections is the main selection which is used to determine what range of text is automatically visible.
-     The main selection may be displayed in different colours or with a differently styled caret.
-     Only an already existing selection can be made main.</p>
-
-    <p>
-     <b id="SCI_SETSELECTIONNCARET">SCI_SETSELECTIONNCARET(int selection, position caret)</b><br />
-     <b id="SCI_GETSELECTIONNCARET">SCI_GETSELECTIONNCARET(int selection) &rarr; position</b><br />
-     <b id="SCI_SETSELECTIONNCARETVIRTUALSPACE">SCI_SETSELECTIONNCARETVIRTUALSPACE(int selection, position space)</b><br />
-     <b id="SCI_GETSELECTIONNCARETVIRTUALSPACE">SCI_GETSELECTIONNCARETVIRTUALSPACE(int selection) &rarr; position</b><br />
-     <b id="SCI_SETSELECTIONNANCHOR">SCI_SETSELECTIONNANCHOR(int selection, position anchor)</b><br />
-     <b id="SCI_GETSELECTIONNANCHOR">SCI_GETSELECTIONNANCHOR(int selection) &rarr; position</b><br />
-     <b id="SCI_SETSELECTIONNANCHORVIRTUALSPACE">SCI_SETSELECTIONNANCHORVIRTUALSPACE(int selection, position space)</b><br />
-     <b id="SCI_GETSELECTIONNANCHORVIRTUALSPACE">SCI_GETSELECTIONNANCHORVIRTUALSPACE(int selection) &rarr; position</b><br />
-     Set or query the position and amount of virtual space for the caret and anchor of each already existing selection.</p>
-
-    <p>
-     <b id="SCI_SETSELECTIONNSTART">SCI_SETSELECTIONNSTART(int selection, position anchor)</b><br />
-     <b id="SCI_GETSELECTIONNSTART">SCI_GETSELECTIONNSTART(int selection) &rarr; position</b><br />
-     <b id="SCI_GETSELECTIONNSTARTVIRTUALSPACE">SCI_GETSELECTIONNSTARTVIRTUALSPACE(int selection) &rarr; position</b><br />
-     <b id="SCI_SETSELECTIONNEND">SCI_SETSELECTIONNEND(int selection, position caret)</b><br />
-     <b id="SCI_GETSELECTIONNEND">SCI_GETSELECTIONNEND(int selection) &rarr; position</b><br />
-     <b id="SCI_GETSELECTIONNENDVIRTUALSPACE">SCI_GETSELECTIONNENDVIRTUALSPACE(int selection) &rarr; position</b><br />
-     Set or query the start and end position of each already existing selection.
-     Query the virtual space at start and end of each selection.
-     Mostly of use to query each range for its text. The <code class="parameter">selection</code> parameter is zero-based. </p>
-
-    <p>
-     <b id="SCI_SETRECTANGULARSELECTIONCARET">SCI_SETRECTANGULARSELECTIONCARET(position caret)</b><br />
-     <b id="SCI_GETRECTANGULARSELECTIONCARET">SCI_GETRECTANGULARSELECTIONCARET &rarr; position</b><br />
-     <b id="SCI_SETRECTANGULARSELECTIONCARETVIRTUALSPACE">SCI_SETRECTANGULARSELECTIONCARETVIRTUALSPACE(position space)</b><br />
-     <b id="SCI_GETRECTANGULARSELECTIONCARETVIRTUALSPACE">SCI_GETRECTANGULARSELECTIONCARETVIRTUALSPACE &rarr; position</b><br />
-     <b id="SCI_SETRECTANGULARSELECTIONANCHOR">SCI_SETRECTANGULARSELECTIONANCHOR(position anchor)</b><br />
-     <b id="SCI_GETRECTANGULARSELECTIONANCHOR">SCI_GETRECTANGULARSELECTIONANCHOR &rarr; position</b><br />
-     <b id="SCI_SETRECTANGULARSELECTIONANCHORVIRTUALSPACE">SCI_SETRECTANGULARSELECTIONANCHORVIRTUALSPACE(position space)</b><br />
-     <b id="SCI_GETRECTANGULARSELECTIONANCHORVIRTUALSPACE">SCI_GETRECTANGULARSELECTIONANCHORVIRTUALSPACE &rarr; position</b><br />
-     Set or query the position and amount of virtual space for the caret and anchor of the rectangular selection.
-     After setting the rectangular selection, this is broken down into multiple selections, one for each line.</p>
-
-    <p>
-     <b id="SCI_SETSELECTIONSERIALIZED">SCI_SETSELECTIONSERIALIZED(&lt;unused&gt;, const char *selectionString)</b><br />
-     <b id="SCI_GETSELECTIONSERIALIZED">SCI_GETSELECTIONSERIALIZED(&lt;unused&gt;, char *selectionString) &rarr; position</b><br />
-     Set or query the selection type and positions as a serialized string.
-     The format of this string may change in future versions so should not be persisted beyond the current session.</p>
-     <p>The format is currently<br/><code>[selType:R|L|T] [# mainRange ,] [anchor [v virtualSpace] [- caret [v virtualSpace]]] [, ...]</code>
-     <br/>Example of a multiple selection with virtual space: <code>#1,5v3-2,1</code>
-     </p>
-
-    <p>
-     <b id="SC_ELEMENT_SELECTION_ADDITIONAL_TEXT">SC_ELEMENT_SELECTION_ADDITIONAL_TEXT : colouralpha</b><br />
-     <b id="SC_ELEMENT_SELECTION_ADDITIONAL_BACK">SC_ELEMENT_SELECTION_ADDITIONAL_BACK : colouralpha</b><br />
-     <b id="SCI_SETADDITIONALSELALPHA">SCI_SETADDITIONALSELALPHA(<a class="jump" href="#alpha">alpha</a> alpha)</b><br />
-     <b id="SCI_GETADDITIONALSELALPHA">SCI_GETADDITIONALSELALPHA &rarr; int</b><br />
-     <b id="SCI_SETADDITIONALSELFORE">SCI_SETADDITIONALSELFORE(<a class="jump" href="#colour">colour</a> fore)</b><br />
-     <b id="SCI_SETADDITIONALSELBACK">SCI_SETADDITIONALSELBACK(<a class="jump" href="#colour">colour</a> back)</b><br />
-     Modify the appearance of additional selections so that they can be differentiated from the main selection which has its appearance set with
-     <a class="element" href="#SC_ELEMENT_SELECTION_TEXT"><code>SC_ELEMENT_SELECTION_TEXT</code></a>,
-     <a class="element" href="#SC_ELEMENT_SELECTION_BACK"><code>SC_ELEMENT_SELECTION_BACK</code></a>,
-     <a class="message" href="#SCI_SETSELALPHA"><code>SCI_SETSELALPHA</code></a>,
-     <a class="message" href="#SCI_GETSELALPHA"><code>SCI_GETSELALPHA</code></a>,
-     <a class="message" href="#SCI_SETSELFORE"><code>SCI_SETSELFORE</code></a>, and
-     <a class="message" href="#SCI_SETSELBACK"><code>SCI_SETSELBACK</code></a>.
-     The element APIs are preferred and the following messages discouraged.
-     The additional selection background is drawn on the layer defined for all selection backgrounds by
-     <a class="message" href="#SCI_SETSELECTIONLAYER"><code>SCI_SETSELECTIONLAYER</code></a>.
-     <code>SCI_SETADDITIONALSELFORE</code> and
-     <code>SCI_SETADDITIONALSELBACK</code> calls have no
-     effect until <a class="message" href="#SCI_SETSELFORE"><code>SCI_SETSELFORE</code></a>
-     and <a class="message" href="#SCI_SETSELBACK"><code>SCI_SETSELBACK</code></a> are
-     called with <code class="parameter">useSetting</code> value set to true. Subsequent calls to
-     <a class="message" href="#SCI_SETSELFORE"><code>SCI_SETSELFORE</code></a>,
-     and <a class="message" href="#SCI_SETSELBACK"><code>SCI_SETSELBACK</code></a> will
-     overwrite the values set by <code>SCI_SETADDITIONALSEL*</code> functions.</p>
-
-    <p>
-     <b id="SC_ELEMENT_CARET_ADDITIONAL">SC_ELEMENT_CARET_ADDITIONAL : colouralpha</b><br />
-     <b id="SCI_SETADDITIONALCARETFORE">SCI_SETADDITIONALCARETFORE(<a class="jump" href="#colour">colour</a> fore)</b><br />
-     <b id="SCI_GETADDITIONALCARETFORE">SCI_GETADDITIONALCARETFORE &rarr; colour</b><br />
-     <b id="SCI_SETADDITIONALCARETSBLINK">SCI_SETADDITIONALCARETSBLINK(bool additionalCaretsBlink)</b><br />
-     <b id="SCI_GETADDITIONALCARETSBLINK">SCI_GETADDITIONALCARETSBLINK &rarr; bool</b><br />
-     Modify the appearance of additional carets so that they can be differentiated from the main caret which has its appearance set with
-     <a class="element" href="#SC_ELEMENT_CARET"><code>SC_ELEMENT_CARET</code></a>,
-     <a class="message" href="#SCI_SETCARETFORE"><code>SCI_SETCARETFORE</code></a>,
-     <a class="message" href="#SCI_GETCARETFORE"><code>SCI_GETCARETFORE</code></a>,
-     <a class="message" href="#SCI_SETCARETPERIOD"><code>SCI_SETCARETPERIOD</code></a>, and
-     <a class="message" href="#SCI_GETCARETPERIOD"><code>SCI_GETCARETPERIOD</code></a>.</p>
-
-    <p>
-     <b id="SCI_SETADDITIONALCARETSVISIBLE">SCI_SETADDITIONALCARETSVISIBLE(bool additionalCaretsVisible)</b><br />
-     <b id="SCI_GETADDITIONALCARETSVISIBLE">SCI_GETADDITIONALCARETSVISIBLE &rarr; bool</b><br />
-     Determine whether to show additional carets (defaults to <code>true</code>).</p>
-
-    <p>
-     <b id="SCI_SWAPMAINANCHORCARET">SCI_SWAPMAINANCHORCARET</b><br />
-     <b id="SCI_ROTATESELECTION">SCI_ROTATESELECTION</b><br />
-     <b id="SCI_MULTIPLESELECTADDNEXT">SCI_MULTIPLESELECTADDNEXT</b><br />
-     <b id="SCI_MULTIPLESELECTADDEACH">SCI_MULTIPLESELECTADDEACH</b><br />
-     These commands may be assigned to keys to make it possible to manipulate multiple selections.
-     <code>SCI_SWAPMAINANCHORCARET</code> moves the caret to the opposite end of the main selection.
-     <code>SCI_ROTATESELECTION</code> makes the next selection be the main selection.<br />
-     <code>SCI_MULTIPLESELECTADDNEXT</code> adds the next occurrence of the main selection
-     within the target to the set of selections as main. If the current selection is empty then select word around caret.
-      The current <a class="jump" href="#searchFlags"><code>searchFlags</code></a>
-      are used so the application may choose case sensitivity and word search options.<br />
-     <code>SCI_MULTIPLESELECTADDEACH</code> is similar to
-     <code>SCI_MULTIPLESELECTADDNEXT</code> but adds multiple occurrences instead of just one.
-     </p>
+    
 
     <h2 id="Overtype">Overtype</h2>
 
@@ -1402,1115 +811,77 @@ struct Sci_TextRangeFull {
     mode.</p>
 
     <h2 id="Searching">Searching</h2>
-    <p>
-    There are methods to search for text and for regular expressions.
-    Most applications should use
-    <a class="seealso" href="#SCI_SEARCHINTARGET">SCI_SEARCHINTARGET</a>
-    as the basis for their search implementations.
-    Other calls augment this or were implemented before <code>SCI_SEARCHINTARGET</code>.
-    </p>
-    <p>
-    The base regular expression support
-    is limited and should only be used for simple cases and initial development.
-    The C++ runtime &lt;regex&gt; library may be used by setting the <code>SCFIND_CXX11REGEX</code> search flag.
-    The C++11 &lt;regex&gt; support may be disabled by
-    compiling Scintilla with <code>NO_CXX11_REGEX</code> defined.
-    A different regular expression
-    library can be <a class="jump" href="#AlternativeRegEx">integrated into Scintilla</a>
-    or can be called from the container using direct access to the buffer contents through
-    <a class="seealso" href="#SCI_GETCHARACTERPOINTER">SCI_GETCHARACTERPOINTER</a>.
-    </p>
 
-    <h3 id="SearchAndReplaceUsingTheTarget">Search and replace using the target</h3>
-
-    <p>Searching can be performed within the target range with <code>SCI_SEARCHINTARGET</code>,
-    which uses a counted string to allow searching for null characters. It returns the
-    position of the start of the matching text range or -1 for failure, in which case the target is not moved. The flags used by
-    <code>SCI_SEARCHINTARGET</code> such as <code>SCFIND_MATCHCASE</code>,
-    <code>SCFIND_WHOLEWORD</code>, <code>SCFIND_WORDSTART</code>, and <code>SCFIND_REGEXP</code>
-    can be set with <code>SCI_SETSEARCHFLAGS</code>.</p>
-    <code>
-     <a class="message" href="#SCI_SETTARGETSTART">SCI_SETTARGETSTART(position start)</a><br />
-     <a class="message" href="#SCI_GETTARGETSTART">SCI_GETTARGETSTART &rarr; position</a><br />
-     <a class="message" href="#SCI_SETTARGETSTARTVIRTUALSPACE">SCI_SETTARGETSTARTVIRTUALSPACE(position space)</a><br />
-     <a class="message" href="#SCI_GETTARGETSTARTVIRTUALSPACE">SCI_GETTARGETSTARTVIRTUALSPACE &rarr; position</a><br />
-     <a class="message" href="#SCI_SETTARGETEND">SCI_SETTARGETEND(position end)</a><br />
-     <a class="message" href="#SCI_GETTARGETEND">SCI_GETTARGETEND &rarr; position</a><br />
-     <a class="message" href="#SCI_SETTARGETENDVIRTUALSPACE">SCI_SETTARGETENDVIRTUALSPACE(position space)</a><br />
-     <a class="message" href="#SCI_GETTARGETENDVIRTUALSPACE">SCI_GETTARGETENDVIRTUALSPACE &rarr; position</a><br />
-     <a class="message" href="#SCI_SETTARGETRANGE">SCI_SETTARGETRANGE(position start, position end)</a><br />
-     <a class="message" href="#SCI_TARGETFROMSELECTION">SCI_TARGETFROMSELECTION</a><br />
-     <a class="message" href="#SCI_TARGETWHOLEDOCUMENT">SCI_TARGETWHOLEDOCUMENT</a><br />
-     <a class="message" href="#SCI_SETSEARCHFLAGS">SCI_SETSEARCHFLAGS(int searchFlags)</a><br />
-     <a class="message" href="#SCI_GETSEARCHFLAGS">SCI_GETSEARCHFLAGS &rarr; int</a><br />
-     <a class="message" href="#SCI_SEARCHINTARGET">SCI_SEARCHINTARGET(position length, const char *text) &rarr; position</a><br />
-     <a class="message" href="#SCI_GETTARGETTEXT">SCI_GETTARGETTEXT(&lt;unused&gt;, char *text) &rarr; position</a><br />
-     <a class="message" href="#SCI_REPLACETARGET">SCI_REPLACETARGET(position length, const char *text) &rarr; position</a><br />
-     <a class="message" href="#SCI_REPLACETARGETMINIMAL">SCI_REPLACETARGETMINIMAL(position length, const char *text) &rarr; position</a><br />
-     <a class="message" href="#SCI_REPLACETARGETRE">SCI_REPLACETARGETRE(position length, const char *text) &rarr; position</a><br />
-     <a class="message" href="#SCI_GETTAG">SCI_GETTAG(int tagNumber, char *tagValue) &rarr; int</a><br />
-    </code>
-
-    <p><b id="SCI_SETTARGETSTART">SCI_SETTARGETSTART(position start)</b><br />
-     <b id="SCI_GETTARGETSTART">SCI_GETTARGETSTART &rarr; position</b><br />
-     <b id="SCI_SETTARGETSTARTVIRTUALSPACE">SCI_SETTARGETSTARTVIRTUALSPACE(position space)</b><br />
-     <b id="SCI_GETTARGETSTARTVIRTUALSPACE">SCI_GETTARGETSTARTVIRTUALSPACE &rarr; position</b><br />
-     <b id="SCI_SETTARGETEND">SCI_SETTARGETEND(position end)</b><br />
-     <b id="SCI_GETTARGETEND">SCI_GETTARGETEND &rarr; position</b><br />
-     <b id="SCI_SETTARGETENDVIRTUALSPACE">SCI_SETTARGETENDVIRTUALSPACE(position space)</b><br />
-     <b id="SCI_GETTARGETENDVIRTUALSPACE">SCI_GETTARGETENDVIRTUALSPACE &rarr; position</b><br />
-     <b id="SCI_SETTARGETRANGE">SCI_SETTARGETRANGE(position start, position end)</b><br />
-     These functions set and return the start and end of the target. When searching
-     you can set start greater than end to find the last matching text in the
-    target rather than the first matching text.
-    Setting a target position with <code>SCI_SETTARGETSTART</code>, <code>SCI_SETTARGETEND</code>, or <code>SCI_SETTARGETRANGE</code>
-    sets the virtual space to 0.
-    The target is also set by a successful
-    <code>SCI_SEARCHINTARGET</code>.</p>
-    <p>The virtual space of the target range can be set and retrieved with the corresponding <code>...VIRTUALSPACE</code>
-    methods. This allows text to be inserted in virtual space more easily.</p>
-
-     <p><b id="SCI_TARGETFROMSELECTION">SCI_TARGETFROMSELECTION</b><br />
-     Set the target start and end to the start and end positions of the selection.</p>
-
-     <p><b id="SCI_TARGETWHOLEDOCUMENT">SCI_TARGETWHOLEDOCUMENT</b><br />
-     Set the target start to the start of the document and target end to the end of the document.</p>
-
-    <p><b id="SCI_SETSEARCHFLAGS">SCI_SETSEARCHFLAGS(int searchFlags)</b><br />
-     <b id="SCI_GETSEARCHFLAGS">SCI_GETSEARCHFLAGS &rarr; int</b><br />
-     These get and set the <a class="jump" href="#searchFlags"><code class="parameter">searchFlags</code></a> used by
-    <code>SCI_SEARCHINTARGET</code>. There are several option flags including a simple regular
-    expression search.</p>
-
-    <p><b id="SCI_SEARCHINTARGET">SCI_SEARCHINTARGET(position length, const char *text) &rarr; position</b><br />
-     This searches for the first occurrence of a text string in the target defined by
-    <code>SCI_SETTARGETSTART</code> and <code>SCI_SETTARGETEND</code>. The text string is not zero
-    terminated; the size is set by <code class="parameter">length</code>. The search is modified by the search flags
-    set by <code>SCI_SETSEARCHFLAGS</code>. If the search succeeds, the target is set to the found
-    text and the return value is the position of the start of the matching text. If the search
-    fails, the result is -1.</p>
-
-    <p><b id="SCI_GETTARGETTEXT">SCI_GETTARGETTEXT(&lt;unused&gt;, char *text) &rarr; position</b><br />
-     Retrieve the value in the target.</p>
-
-    <p><b id="SCI_REPLACETARGET">SCI_REPLACETARGET(position length, const char *text) &rarr; position</b><br />
-     If <code class="parameter">length</code> is -1, <code class="parameter">text</code> is a zero terminated string, otherwise
-    <code class="parameter">length</code> sets the number of character to replace the target with.
-    After replacement, the target range refers to the replacement text.
-    The return value is the length of the replacement string.<br />
-    Note that the recommended way to delete text in the document is to set the target to the text to be removed,
-    and to perform a replace target with an empty string.</p>
-
-    <p><b id="SCI_REPLACETARGETMINIMAL">SCI_REPLACETARGETMINIMAL(position length, const char *text) &rarr; position</b><br />
-    This is similar to <a class="message" href="#SCI_REPLACETARGET"><code>SCI_REPLACETARGET</code></a>
-    but tries to minimize change history when the current target text shares a common prefix or suffix with the replacement.
-    Only the text that is actually different is marked as changed.
-    This might be used when automatically reformatting some text
-    so that the whole area formatted doesn't show change marks.
-     If <code class="parameter">length</code> is -1, <code class="parameter">text</code> is a zero terminated string, otherwise
-    <code class="parameter">length</code> sets the number of character to replace the target with.
-    After replacement, the target range refers to the replacement text.
-    The return value is the length of the replacement string.<br />
-    Note that the recommended way to delete text in the document is to set the target to the text to be removed,
-    and to perform a replace target with an empty string.</p>
-
-    <p><b id="SCI_REPLACETARGETRE">SCI_REPLACETARGETRE(position length, const char *text) &rarr; position</b><br />
-     This replaces the target using regular expressions. If <code class="parameter">length</code> is -1,
-    <code class="parameter">text</code> is a zero terminated string, otherwise <code class="parameter">length</code> is the number of
-    characters to use. The replacement string is formed from the text string with any sequences of
-    <code>\1</code> through <code>\9</code> replaced by tagged matches from the most recent regular
-    expression search. <code>\0</code> is replaced with all the matched text from the most recent search.
-    After replacement, the target range refers to the replacement text.
-    The return value is the length of the replacement string.</p>
-
-    <p><b id="SCI_GETTAG">SCI_GETTAG(int tagNumber, char *tagValue NUL-terminated) &rarr; int</b><br />
-     Discover what text was matched by tagged expressions in a regular expression search.
-     This is useful if the application wants to interpret the replacement string itself.</p>
-
-    <p>See also: <a class="message" href="#SCI_FINDTEXT"><code>SCI_FINDTEXT</code></a></p>
-
-    <p><b id="searchFlags"><code class="parameter">searchFlags</code></b><br />
-     Several of the search routines use flag options, which include a simple regular expression
-    search. Combine the flag options by adding them:</p>
-
-    <table class="standard" summary="Search flags">
-      <tbody>
-        <tr>
-          <td><code>SCFIND_NONE</code></td>
-
-          <td>Default setting is case-insensitive literal match.</td>
-        </tr>
-
-        <tr>
-          <td><code>SCFIND_MATCHCASE</code></td>
-
-          <td>A match only occurs with text that matches the case of the search string.</td>
-        </tr>
-
-        <tr>
-          <td><code>SCFIND_WHOLEWORD</code></td>
-
-          <td>A match only occurs if the characters before and after are not word characters as defined
-	  by <a class="message" href="#SCI_SETWORDCHARS"><code>SCI_SETWORDCHARS</code></a>.</td>
-        </tr>
-
-        <tr>
-          <td><code>SCFIND_WORDSTART</code></td>
-
-          <td>A match only occurs if the character before is not a word character as defined
-	  by <a class="message" href="#SCI_SETWORDCHARS"><code>SCI_SETWORDCHARS</code></a>.</td>
-        </tr>
-
-        <tr>
-          <td><code>SCFIND_REGEXP</code></td>
-
-          <td>The search string should be interpreted as a regular expression.
-            Uses Scintilla's base implementation unless combined with <code>SCFIND_CXX11REGEX</code>.</td>
-        </tr>
-        <tr>
-          <td><code>SCFIND_POSIX</code></td>
-
-          <td>Treat regular expression in a more POSIX compatible manner
-            by interpreting bare ( and ) for tagged sections rather than \( and \).
-            Has no effect when <code>SCFIND_CXX11REGEX</code> is set.</td>
-        </tr>
-        <tr>
-          <td><code>SCFIND_CXX11REGEX</code></td>
-
-          <td>This flag may be set to use C++11 &lt;regex&gt; instead of Scintilla's basic regular expressions.
-            If the regular expression is invalid then -1 is returned and status is set to
-            <code>SC_STATUS_WARN_REGEX</code>.
-            The ECMAScript flag is set on the regex object and UTF-8 documents will exhibit Unicode-compliant
-            behaviour. For MSVC, where wchar_t is 16-bits, the regular expression ".." will match a single
-            astral-plane character. There may be other differences between compilers.
-            Must also have <code>SCFIND_REGEXP</code> set.</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <p>In a regular expression, using Scintilla's base implementation,
-    special characters interpreted are:</p>
-
-    <table class="standard" summary="Regular expression synopsis">
-      <tbody>
-        <tr>
-          <td><code>.</code></td>
-
-          <td>Matches any character</td>
-        </tr>
-
-        <tr>
-          <td><code>\(</code></td>
-
-          <td>This marks the start of a region for tagging a match.</td>
-        </tr>
-
-        <tr>
-          <td><code>\)</code></td>
-
-          <td>This marks the end of a tagged region.</td>
-        </tr>
-
-        <tr>
-          <td><code>\n</code></td>
-
-          <td>Where <code>n</code> is 1 through 9 refers to the first through ninth tagged region
-          when replacing. For example, if the search string was <code>Fred\([1-9]\)XXX</code> and
-          the replace string was <code>Sam\1YYY</code>, when applied to <code>Fred2XXX</code> this
-          would generate <code>Sam2YYY</code>.
-	  <code>\0</code> refers to all of the matching text.</td>
-        </tr>
-
-        <tr>
-          <td><code>\&lt;</code></td>
-
-          <td>This matches the start of a word using Scintilla's definitions of words.</td>
-        </tr>
-
-        <tr>
-          <td><code>\&gt;</code></td>
-
-          <td>This matches the end of a word using Scintilla's definition of words.</td>
-        </tr>
-
-        <tr>
-          <td><code>\x</code></td>
-
-          <td>This allows you to use a character x that would otherwise have a special meaning. For
-          example, \[ would be interpreted as [ and not as the start of a character set.</td>
-        </tr>
-
-        <tr>
-          <td><code>[...]</code></td>
-
-          <td>This indicates a set of characters, for example, [abc] means any of the characters a,
-          b or c. You can also use ranges, for example [a-z] for any lower case character.</td>
-        </tr>
-
-        <tr>
-          <td><code>[^...]</code></td>
-
-          <td>The complement of the characters in the set. For example, [^A-Za-z] means any
-          character except an alphabetic character.</td>
-        </tr>
-
-        <tr>
-          <td><code>^</code></td>
-
-          <td>This matches the start of a line (unless used inside a set, see above).</td>
-        </tr>
-
-        <tr>
-          <td><code>$</code></td>
-
-          <td>This matches the end of a line.</td>
-        </tr>
-
-        <tr>
-          <td><code>*</code></td>
-
-          <td>This matches 0 or more times. For example, <code>Sa*m</code> matches <code>Sm</code>,
-          <code>Sam</code>, <code>Saam</code>, <code>Saaam</code> and so on.</td>
-        </tr>
-
-        <tr>
-          <td><code>+</code></td>
-
-          <td>This matches 1 or more times. For example, <code>Sa+m</code> matches
-          <code>Sam</code>, <code>Saam</code>, <code>Saaam</code> and so on.</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <p>Regular expressions will only match ranges within a single line, never matching over multiple lines.</p>
-
-    <p>When using <code>SCFIND_CXX11REGEX</code> more features are available,
-    generally similar to regular expression support in JavaScript.
-    See the documentation of your C++ runtime for details on what is supported.</p>
-
-    <code><a class="message" href="#SCI_FINDTEXT">SCI_FINDTEXT(int searchFlags, Sci_TextToFind *ft) &rarr; position</a><br />
-     <a class="message" href="#SCI_FINDTEXTFULL">SCI_FINDTEXTFULL(int searchFlags, Sci_TextToFindFull *ft) &rarr; position</a><br />
-     <a class="message" href="#SCI_SEARCHANCHOR">SCI_SEARCHANCHOR</a><br />
-     <a class="message" href="#SCI_SEARCHNEXT">SCI_SEARCHNEXT(int searchFlags, const char *text) &rarr; position</a><br />
-     <a class="message" href="#SCI_SEARCHPREV">SCI_SEARCHPREV(int searchFlags, const char *text) &rarr; position</a><br />
-    </code>
-
-    <p><b id="SCI_FINDTEXT">SCI_FINDTEXT(int searchFlags, <a class="jump" href="#Sci_TextToFind">Sci_TextToFind</a> *ft) &rarr; position</b><br />
-     <b id="SCI_FINDTEXTFULL">SCI_FINDTEXTFULL(int searchFlags, <a class="jump" href="#Sci_TextToFindFull">Sci_TextToFindFull</a> *ft) &rarr; position</b><br />
-     These messages search for text in the document. They do not use or move the current selection.
-    The <a class="jump" href="#searchFlags"><code class="parameter">searchFlags</code></a> argument controls the
-    search type, which includes regular expression searches.</p>
-
-    <p>You can
-    search backwards to find the previous occurrence of a search string by setting the end of the
-    search range before the start.</p>
-
-    <p>The <code>Sci_TextToFind</code> and <code>Sci_TextToFindFull</code> structures are defined in <code>Scintilla.h</code>; set
-    <code>chrg.cpMin</code> and <code>chrg.cpMax</code> with the range of positions in the document
-    to search. You can search backwards by
-    setting <code>chrg.cpMax</code> less than <code>chrg.cpMin</code>.
-    Set the <code>lpstrText</code> member of <code>Sci_TextToFind</code> to point at a zero terminated
-    text string holding the search pattern. If your language makes the use of <code>Sci_TextToFind</code>
-    difficult, you should consider using <code>SCI_SEARCHINTARGET</code> instead.
-    On 64-bit Win32, <code>SCI_FINDTEXT</code> is limited to the first 2G of text and <code>SCI_FINDTEXTFULL</code> removes this limitation.</p>
-
-    <p>The return value is -1 if the search fails or the position of the start of the found text if
-    it succeeds. The <code>chrgText.cpMin</code> and <code>chrgText.cpMax</code> members of
-    <code>Sci_TextToFind</code> are filled in with the start and end positions of the found text.</p>
-
-    <p>See also: <code><a class="message"
-    href="#SCI_SEARCHINTARGET">SCI_SEARCHINTARGET</a></code></p>
-
-    <p><b id="Sci_TextToFind">Sci_TextToFind</b><br />
-     This structure is defined to have exactly the same shape as the Win32 structure
-    <code>FINDTEXTEX</code> for old code that treated Scintilla as a RichEdit control.</p>
-<pre>
-struct Sci_TextToFind {
-    struct <a class="jump" href="#Sci_CharacterRange">Sci_CharacterRange</a> chrg;     // range to search
-    const char *lpstrText;                // the search pattern (zero terminated)
-    struct Sci_CharacterRange chrgText; // returned as position of matching text
-};
-</pre>
-
-    <p><b id="Sci_TextToFindFull">Sci_TextToFindFull</b><br />
-     This structure extends <code>Sci_TextToFind</code> to support huge documents on Win32.</p>
-<pre>
-struct Sci_TextToFindFull {
-    struct <a class="jump" href="#Sci_CharacterRangeFull">Sci_CharacterRangeFull</a> chrg;     // range to search
-    const char *lpstrText;                // the search pattern (zero terminated)
-    struct Sci_CharacterRangeFull chrgText; // returned as position of matching text
-};
-</pre>
-
-    <p><b id="SCI_SEARCHANCHOR">SCI_SEARCHANCHOR</b><br />
-     <b id="SCI_SEARCHNEXT">SCI_SEARCHNEXT(int searchFlags, const char *text) &rarr; position</b><br />
-     <b id="SCI_SEARCHPREV">SCI_SEARCHPREV(int searchFlags, const char *text) &rarr; position</b><br />
-     These messages provide relocatable search support. This allows multiple incremental
-    interactive searches to be macro recorded while still setting the selection to found text so
-    the find/select operation is self-contained. These three messages send <a class="message"
-    href="#SCN_MACRORECORD"><code>SCN_MACRORECORD</code></a> <a class="jump"
-    href="#Notifications">notifications</a> if macro recording is enabled.</p>
-
-    <p><code>SCI_SEARCHANCHOR</code> sets the search start point used by
-    <code>SCI_SEARCHNEXT</code> and <code>SCI_SEARCHPREV</code> to the start of the current
-    selection, that is, the end of the selection that is nearer to the start of the document. You
-    should always call this before calling either of <code>SCI_SEARCHNEXT</code> or
-    <code>SCI_SEARCHPREV</code>.</p>
-
-    <p><code>SCI_SEARCHNEXT</code> and <code>SCI_SEARCHPREV</code> search for the next and previous
-    occurrence of the zero terminated search string pointed at by text. The search is modified by
-    the <a class="jump" href="#searchFlags"><code class="parameter">searchFlags</code></a>. </p>
-
-    <p>The return value is -1 if nothing is found, otherwise the return value is the start position
-    of the matching text. The selection is updated to show the matched text, but is not scrolled
-    into view.</p>
-
-    <p>See also: <a class="message" href="#SCI_SEARCHINTARGET"><code>SCI_SEARCHINTARGET</code></a>,
-    <a class="message" href="#SCI_FINDTEXT"><code>SCI_FINDTEXT</code></a></p>
+    <p>Target range, search flags, <code>SearchInTarget</code>, replace-target variants,
+    <code>ReplaceSel</code>, rectangular replace, and search-anchor helpers moved to
+    <code>scintilla/src/EditorSearch.cxx</code>. Named operations and their behavior
+    descriptions live beside the definitions there. Temporary message forwarders remain until
+    the generated message layer is removed. <code>FindText</code> / <code>FindTextFull</code>
+    were deleted: use typed target search.</p>
+
+    
 
     <h2 id="CutCopyAndPaste">Cut, copy and paste</h2>
 
     <p>Moved to <code>scintilla/src/EditorClipboard.cxx</code>. Named cut/copy helpers,
-    <code>CanPaste</code>, multi-paste and ending-conversion options, and range-to-clipboard
-    operations live beside the definitions there. <code>Copy</code> and <code>Paste</code> remain
-    host hooks on the platform subclass. Temporary message forwarders remain.
-    <code>SCI_CLEAR</code> is the keyboard clear command in <code>EditorDocument.cxx</code>.</p>
-    <code><a class="message" href="#SCI_REPLACERECTANGULAR">SCI_REPLACERECTANGULAR(position length, const char *text)</a><br />
-    </code>
+    <code>CanPaste</code>, multi-paste and ending-conversion options, copy separator, and
+    range-to-clipboard operations live beside the definitions there.
+    <code>Copy</code> and <code>Paste</code> remain host hooks on the platform subclass.
+    Rectangular paste-shaped replace is <code>ReplaceRectangular</code> in
+    <code>scintilla/src/EditorSearch.cxx</code>. Temporary message forwarders remain until the
+    generated message layer is removed. <code>Clear</code> is the keyboard clear command in
+    <code>EditorDocument.cxx</code>.</p>
 
-    <p><b id="SCI_SETCOPYSEPARATOR">SCI_SETCOPYSEPARATOR(&lt;unused&gt;, const char *separator)</b><br />
-     <b id="SCI_GETCOPYSEPARATOR">SCI_GETCOPYSEPARATOR(&lt;unused&gt;, char *separator) &rarr; int</b><br />
-     When a multiple selection is copied, this string property is added between each part.
-     Defaults to empty.</p>
-
-    <p><b id="SCI_REPLACERECTANGULAR">SCI_REPLACERECTANGULAR(position length, const char *text)</b><br/>
-      Replaces the selected text or empty selection with the given text.
-      The insertion is performed similarly to rectangular pastes: new lines in the given text are interpreted as
-      moving to the next line without inserting new lines unless at the end of the document.</p>
+    
 
     <h2 id="UndoAndRedo">Undo and Redo</h2>
 
     <p>Moved to <code>scintilla/src/EditorHistory.cxx</code>. The named operations
     (<code>Undo</code>, <code>Redo</code>, <code>CanUndo</code>, <code>CanRedo</code>,
-    <code>SetSavePoint</code>, undo groups, collection control, and related history
-    inspection) and their behavior descriptions live beside the definitions there.
+    <code>SetSavePoint</code>, undo groups, collection control, change history, and related
+    history inspection) and their behavior descriptions live beside the definitions there.
+    Undo selection history moved to <code>scintilla/src/EditorSelection.cxx</code>
+    (<code>SetUndoSelectionHistory</code> / <code>GetUndoSelectionHistory</code>).
     Temporary message forwarders remain until the generated message layer is removed.</p>
-    <code><a class="message" href="#SCI_SETUNDOSELECTIONHISTORY">SCI_SETUNDOSELECTIONHISTORY(int undoSelectionHistory)</a><br />
-     <a class="message" href="#SCI_GETUNDOSELECTIONHISTORY">SCI_GETUNDOSELECTIONHISTORY &rarr; int</a><br />
-    </code>
 
-    <p><b id="SCI_SETUNDOSELECTIONHISTORY">SCI_SETUNDOSELECTIONHISTORY(int undoSelectionHistory)</b><br />
-     <b id="SCI_GETUNDOSELECTIONHISTORY">SCI_GETUNDOSELECTIONHISTORY &rarr; int</b><br />
-     The selection for each action can be saved and then restored when undo or redo is performed.
-      <code>SCI_SETUNDOSELECTIONHISTORY</code> controls this.
-      There is a memory cost for this feature with a minimum of 150 bytes for each of undo and redo for each recorded action.
-      Recording may be turned on at any time.</p>
-
-    <p>The <code class="parameter">undoSelectionHistory</code> argument can be:</p>
-    <table class="standard" summary="Undo selection history state">
-      <tbody valign="top">
-        <tr>
-          <th align="left"><code>SC_UNDO_SELECTION_HISTORY_DISABLED</code></th>
-
-          <td>0</td>
-
-          <td>The default: undo selection history turned off.</td>
-        </tr>
-
-        <tr>
-          <th align="left"><code>SC_UNDO_SELECTION_HISTORY_ENABLED</code></th>
-
-          <td>1</td>
-
-          <td>Restore selection for each undo and redo.</td>
-        </tr>
-
-        <tr>
-          <th align="left"><code>SC_UNDO_SELECTION_HISTORY_SCROLL</code></th>
-
-          <td>2</td>
-
-          <td>Restore vertical scroll position. Has no effect without <code>SC_UNDO_SELECTION_HISTORY_ENABLED</code>.</td>
-        </tr>
-
-      </tbody>
-    </table>
+    
 
     <h2 id="UndoSaveRestore">Undo Save and Restore</h2>
 
-    <p>This feature is unfinished and has limitations.
-    When change history is active, it may show different changes than the previous session as undo actions
-    performed in that session are discarded in some circumstances such as when detaching from a save point.
-    A future version may add an API for archiving change history alongside undo history.
-    The operation sequences discussed here are a 'golden path' that has been tested to some extent and calling
-    the APIs in other circumstances or with out-of-bounds values may fail.</p>
+    <p>Undo stack inspection and save/restore points
+    (<code>GetUndoActions</code>, save/detach/tentative/current indices, action type/position/text,
+    push/change helpers) moved to <code>scintilla/src/EditorHistory.cxx</code>. Named operations
+    and their behavior descriptions live beside the definitions there. Temporary message
+    forwarders remain until the generated message layer is removed.</p>
 
-    <p>The behaviour of tentative actions in save and restore is uncertain as these are meant to be short-term states in language input
-    and which need to synchronize with a language IME (input method editor).
-    For now, restore the tentative point to -1 as it seems safest to regard the tentative change as committed.</p>
-
-    <p>Scintilla stores each change in an undo stack.
-    Various inter-action points play roles in undo behaviour: actions count, save point, detach point,
-    tentative point, and current action. Just like positions in documents, these points are between actions in the 
-    undo stack. Thus the current action specifies the number of actions that led to the current document state and
-    actions after this are for redo.
-    The save point specifies that the actions before this point are in the most recent save and actions after this are not yet saved.</p>
-    <p>When the user undoes from a save point and then performs a new change, the save point can no longer be reached and is -1.
-    The detach point is the point at which the undo stack branched away from the saved state and is used by
-    change history.</p>
-
-    <p>It is possible to retrieve the undo stack from Scintilla and subsequently restore the state of the stack.</p>
-
-    <p>An application may save both the document and its save stack between sessions to enable the user to return
-    to the same state the next time they edit.
-    For this to work, the loaded file must be exactly the same as when the undo stack was saved.
-    If the file was changed, even in minor ways like converting line ends from Windows to Unix style then
-    the undo actions will not line up so undo may fail completely and will produce unexpected results.</p>
-
-    <code><a class="message" href="#SCI_GETUNDOACTIONS">SCI_GETUNDOACTIONS &rarr; int</a><br />
-     <a class="message" href="#SCI_SETUNDOSAVEPOINT">SCI_SETUNDOSAVEPOINT(int action)</a><br />
-     <a class="message" href="#SCI_GETUNDOSAVEPOINT">SCI_GETUNDOSAVEPOINT &rarr; int</a><br />
-     <a class="message" href="#SCI_SETUNDODETACH">SCI_SETUNDODETACH(int action)</a><br />
-     <a class="message" href="#SCI_GETUNDODETACH">SCI_GETUNDODETACH &rarr; int</a><br />
-     <a class="message" href="#SCI_SETUNDOTENTATIVE">SCI_SETUNDOTENTATIVE(int action)</a><br />
-     <a class="message" href="#SCI_GETUNDOTENTATIVE">SCI_GETUNDOTENTATIVE &rarr; int</a><br />
-     <a class="message" href="#SCI_SETUNDOCURRENT">SCI_SETUNDOCURRENT(int action)</a><br />
-     <a class="message" href="#SCI_GETUNDOCURRENT">SCI_GETUNDOCURRENT &rarr; int</a><br />
-     <a class="message" href="#SCI_PUSHUNDOACTIONTYPE">SCI_PUSHUNDOACTIONTYPE(int type, position pos)</a><br />
-     <a class="message" href="#SCI_CHANGELASTUNDOACTIONTEXT">SCI_CHANGELASTUNDOACTIONTEXT(position length, const char *text)</a><br />
-     <a class="message" href="#SCI_GETUNDOACTIONTYPE">SCI_GETUNDOACTIONTYPE(int action) &rarr; int</a><br />
-     <a class="message" href="#SCI_GETUNDOACTIONPOSITION">SCI_GETUNDOACTIONPOSITION(int action) &rarr; position</a><br />
-     <a class="message" href="#SCI_GETUNDOACTIONTEXT ">SCI_GETUNDOACTIONTEXT(int action, char *text) &rarr; int</a><br />
-    </code>
-
-    <h3 id="UndoSave">Save</h3>
-
-    <p>The retrieval APIs are the 'GET*' ones:
-    <code>SCI_GETUNDOACTIONS</code>,
-    <code>SCI_GETUNDOSAVEPOINT</code>,
-    <code>SCI_GETUNDODETACH</code>,
-    <code>SCI_GETUNDOTENTATIVE</code>,
-    <code>SCI_GETUNDOCURRENT</code>,
-    <code>SCI_GETUNDOACTIONTYPE</code>,
-    <code>SCI_GETUNDOACTIONPOSITION</code>, and
-    <code>SCI_GETUNDOACTIONTEXT</code>.
-    </p>
-
-    <p>The <code>SCI_GETUNDOACTIONS</code>,
-    <code>SCI_GETUNDOSAVEPOINT</code>, <code>SCI_GETUNDODETACH</code>,
-    <code>SCI_GETUNDOTENTATIVE</code>, and <code>SCI_GETUNDOCURRENT</code>
-     APIs each return a single value and may be called in any order.
-    </p>
-
-    <p>The <code>SCI_GETUNDOACTIONTYPE</code>,
-    <code>SCI_GETUNDOACTIONPOSITION</code>, and <code>SCI_GETUNDOACTIONTEXT</code>
-    APIs take an action index and should be called with indices from 0 to one less than the result of
-    <code>SCI_GETUNDOACTIONS</code>.
-    The actions should only be iterated in the positive direction and should start from 0.
-    That is because undo stack data is not all randomly accessible and iterating in other orders may take O(n^2) time.
-    Data may also be inaccurate if a cursor is not initialised first with 0 index calls.
-    </p>
-
-    <h3 id="UndoRestore">Restore</h3>
-
-    <p>Restoration is only possible when the undo state is empty so <code>SCI_EMPTYUNDOBUFFER</code>
-    should be called first if there may already be some undo actions.</p>
-
-    <p>The restore APIs are the 'SET*' and others:
-    <code>SCI_SETUNDOSAVEPOINT</code>,
-    <code>SCI_SETUNDODETACH</code>,
-    <code>SCI_SETUNDOTENTATIVE</code>,
-    <code>SCI_SETUNDOCURRENT</code>,
-    <code>SCI_PUSHUNDOACTIONTYPE</code>, and
-    <code>SCI_CHANGELASTUNDOACTIONTEXT</code>.
-    </p>
-
-    <p>The history should first be set up with <code>SCI_PUSHUNDOACTIONTYPE</code> and
-    <code>SCI_CHANGELASTUNDOACTIONTEXT</code> then the save, detach, tentative, and current points set
-    with <code>SCI_SETUNDOSAVEPOINT</code>, <code>SCI_SETUNDODETACH</code>, <code>SCI_SETUNDOTENTATIVE</code>, and
-    <code>SCI_SETUNDOCURRENT</code>.
-    </p>
-
-    <p><code>SCI_PUSHUNDOACTIONTYPE(int type, position pos)</code> appends an action to the undo stack
-    with a particular type and position then the text and length of that action are set with
-    <code>SCI_CHANGELASTUNDOACTIONTEXT(position length, const char *text)</code>.
-    </p>
-
-    <p>
-    The last restoration API called should be <code>SCI_SETUNDOCURRENT</code> as this validates
-    the restored history and values against the document. For example, an undo history that could cause a negative
-    document length or insert / remove text outside the document is invalid.
-    If the restored undo state is invalid then a failure status is set and the undo history cleared.
-    Check for failure with <a class="seealso" href="#SCI_GETSTATUS">SCI_GETSTATUS</a>.
-    </p>
-
-    <p>The current implementation may only work when there is no tentative point.
-    </p>
+    
 
     <h2 id="ChangeHistory">Change history</h2>
 
-    <p>Scintilla can display document changes (modified, saved, ...) in the margin or in the text.</p>
+    <p>Change-history enablement moved to <code>scintilla/src/EditorHistory.cxx</code>
+    (<code>SetChangeHistory</code> / <code>GetChangeHistory</code>). Marker and indicator
+    visuals for modified/saved/reverted states remain styling and marker concerns until those
+    moves. Temporary message forwarders remain until the generated message layer is removed.</p>
 
-    <p>The main states are original text that has not been modified, modified, and modified then saved.
-    As it is possible to undo to before the save point, there are additional states for reverted from save and
-    reverted back to original from save.
-    The reverted states are different to the saved document on disk so some applications may want to
-    display these states just like the main modified state.</p>
-
-    <p><img src="ChangeHistory.png" alt="Change history markers and indicators." /></p>
-
-    <p>The image shows the default visuals which can be altered by the application.
-    In the text, inserted characters appear with coloured underlines and points where characters were deleted are shown with small triangles.
-    The margin shows a block indicating the overall state of the line, prioritizing the more consequential modified states.
-    The states are
-    modified (<span style="color:#FF8000">orange</span>),
-    saved (<span style="color:#00A000">green</span>),
-    saved then reverted to modified (<span style="color:#A0C000">green-yellow</span>),
-    and saved then reverted to original (<span style="color:#40A0BF">cyan</span>).
-    </p>
-
-    <p>This feature uses a moderate amount of memory proportional to the amount of modifications made.
-    On huge documents, this could be significant so could be disabled when it would cause excessive memory use.</p>
-
-    <p>If the applications wants to display a simplified set of visuals without differentiating between modifications
-    that have been reverted then assign the same attributes to multiple markers and indicators.</p>
-
-    <code><a class="message" href="#SCI_SETCHANGEHISTORY">SCI_SETCHANGEHISTORY(int changeHistory)</a><br />
-     <a class="message" href="#SCI_GETCHANGEHISTORY">SCI_GETCHANGEHISTORY &rarr; int</a><br />
-    </code>
-
-    <p><b id="SCI_SETCHANGEHISTORY">SCI_SETCHANGEHISTORY(int changeHistory)</b><br />
-     <b id="SCI_GETCHANGEHISTORY">SCI_GETCHANGEHISTORY &rarr; int</b><br />
-     <code>SCI_SETCHANGEHISTORY</code> turns this feature on and off and determines whether changes are visible in
-     the margin or text or both.</p>
-     <p>Change history depends on the undo history and can only be enabled when undo history is enabled and empty.
-     It should be enabled once when a file is loaded after calling
-     <a class="seealso" href="#SCI_SETUNDOCOLLECTION">SCI_SETUNDOCOLLECTION(true)</a> and
-     <a class="seealso" href="#SCI_SETSAVEPOINT">SCI_SETSAVEPOINT</a>.</p>
-     <p>The <code class="parameter">changeHistory</code> argument can be a combination of:</p>
-
-    <table class="standard" summary="Change history state">
-      <tbody valign="top">
-        <tr>
-          <th align="left"><code>SC_CHANGE_HISTORY_DISABLED</code></th>
-
-          <td>0</td>
-
-          <td>The default: change history turned off.</td>
-        </tr>
-
-        <tr>
-          <th align="left"><code>SC_CHANGE_HISTORY_ENABLED</code></th>
-
-          <td>1</td>
-
-          <td>Track changes to the document.</td>
-        </tr>
-
-        <tr>
-          <th align="left"><code>SC_CHANGE_HISTORY_MARKERS</code></th>
-
-          <td>2</td>
-
-          <td>Display changes in the margin using the <code>SC_MARKNUM_HISTORY</code> markers.</td>
-        </tr>
-
-        <tr>
-          <th align="left"><code>SC_CHANGE_HISTORY_INDICATORS</code></th>
-
-          <td>4</td>
-
-          <td>Display changes in the text using the <code>INDICATOR_HISTORY</code> indicators.</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <p>There are default visuals assigned to each history marker and indicator but these may be overridden by the application.</p>
-
-    <p>Markers:</p>
-
-    <table class="standard" summary="Change history markers">
-      <tbody valign="top">
-        <tr>
-          <th align="left"><code>SC_MARKNUM_HISTORY_REVERTED_TO_ORIGIN</code></th>
-
-          <td>21</td>
-
-          <td>A change was made to this line and saved but then reverted to its original state.</td>
-          <td>This line is different to its state on disk.</td>
-        </tr>
-
-        <tr>
-          <th align="left"><code>SC_MARKNUM_HISTORY_SAVED</code></th>
-
-          <td>22</td>
-
-          <td>This line was modified and saved.</td>
-          <td>This line is the same as its state on disk.</td>
-        </tr>
-
-        <tr>
-          <th align="left"><code>SC_MARKNUM_HISTORY_MODIFIED</code></th>
-
-          <td>23</td>
-
-          <td>This line was modified but not yet saved.</td>
-          <td>This line is different to its state on disk.</td>
-        </tr>
-
-        <tr>
-          <th align="left"><code>SC_MARKNUM_HISTORY_REVERTED_TO_MODIFIED</code></th>
-
-          <td>24</td>
-
-          <td>A change was made to this line and saved but then reverted but not to its original state.</td>
-          <td>This line is different to its state on disk.</td>
-        </tr>
-      </tbody>
-    </table>
     
-    <p>The bits used for change history markers are specified by <code>SC_MASK_HISTORY</code>, which is commonly
-    used as an argument to <code>SCI_SETMARGINMASKN</code> when defining a margin to be used for change history.</p>
-
-    <p>Indicators:</p>
-
-    <table class="standard" summary="Change history indicators">
-      <tbody valign="top">
-        <tr>
-          <th align="left"><code>INDICATOR_HISTORY_REVERTED_TO_ORIGIN_INSERTION</code></th>
-          <td>36</td>
-          <td>Text was deleted and saved but then reverted to its original state.</td>
-          <td>This text has not been saved to disk.</td>
-        </tr>
-
-        <tr>
-          <th align="left"><code>INDICATOR_HISTORY_REVERTED_TO_ORIGIN_DELETION</code></th>
-          <td>37</td>
-          <td>Text was inserted and saved but then reverted to its original state.</td>
-          <td>There is text on disk that is missing.</td>
-        </tr>
-
-        <tr>
-          <th align="left"><code>INDICATOR_HISTORY_SAVED_INSERTION</code></th>
-          <td>38</td>
-          <td>Text was inserted and saved.</td>
-          <td>This text is the same as on disk.</td>
-        </tr>
-        <tr>
-          <th align="left"><code>INDICATOR_HISTORY_SAVED_DELETION</code></th>
-          <td>39</td>
-          <td>Text was deleted and saved.</td>
-          <td>This range is the same as on disk.</td>
-        </tr>
-
-        <tr>
-          <th align="left"><code>INDICATOR_HISTORY_MODIFIED_INSERTION</code></th>
-          <td>40</td>
-          <td>Text was inserted but not yet saved.</td>
-          <td>This text has not been saved to disk.</td>
-        </tr>
-        <tr>
-          <th align="left"><code>INDICATOR_HISTORY_MODIFIED_DELETION</code></th>
-          <td>41</td>
-          <td>Text was deleted but not yet saved.</td>
-          <td>There is text on disk that is missing.</td>
-        </tr>
-
-        <tr>
-          <th align="left"><code>INDICATOR_HISTORY_REVERTED_TO_MODIFIED_INSERTION</code></th>
-          <td>42</td>
-          <td>Text was deleted and saved but then reverted but not to its original state.</td>
-          <td>This text has not been saved to disk.</td>
-        </tr>
-        <tr>
-          <th align="left"><code>INDICATOR_HISTORY_REVERTED_TO_MODIFIED_DELETION</code></th>
-          <td>43</td>
-          <td>Text was inserted and saved but then reverted but not to its original state.</td>
-          <td>There is text on disk that is missing.</td>
-        </tr>
-      </tbody>
-    </table>
 
     <h2 id="ScrollingAndAutomaticScrolling">Scrolling and automatic scrolling</h2>
-    <code>
-     <a class="message" href="#SCI_SETFIRSTVISIBLELINE">SCI_SETFIRSTVISIBLELINE(line displayLine)</a><br />
-     <a class="message" href="#SCI_GETFIRSTVISIBLELINE">SCI_GETFIRSTVISIBLELINE &rarr; line</a><br />
-     <a class="message" href="#SCI_SETXOFFSET">SCI_SETXOFFSET(int xOffset)</a><br />
-     <a class="message" href="#SCI_GETXOFFSET">SCI_GETXOFFSET &rarr; int</a><br />
-     <a class="message" href="#SCI_SCROLLVERTICAL">SCI_SCROLLVERTICAL(line docLine, line subLine)</a><br />
-     <a class="message" href="#SCI_LINESCROLL">SCI_LINESCROLL(position columns, line lines)</a><br />
-     <a class="message" href="#SCI_SCROLLCARET">SCI_SCROLLCARET</a><br />
-     <a class="message" href="#SCI_SCROLLRANGE">SCI_SCROLLRANGE(position secondary, position primary)</a><br />
-     <a class="message" href="#SCI_SETXCARETPOLICY">SCI_SETXCARETPOLICY(int caretPolicy, int
-    caretSlop)</a><br />
-     <a class="message" href="#SCI_SETYCARETPOLICY">SCI_SETYCARETPOLICY(int caretPolicy, int
-    caretSlop)</a><br />
-     <a class="message" href="#SCI_SETVISIBLEPOLICY">SCI_SETVISIBLEPOLICY(int visiblePolicy, int
-    visibleSlop)</a><br />
-     <a class="message" href="#SCI_SETHSCROLLBAR">SCI_SETHSCROLLBAR(bool visible)</a><br />
-     <a class="message" href="#SCI_GETHSCROLLBAR">SCI_GETHSCROLLBAR &rarr; bool</a><br />
-     <a class="message" href="#SCI_SETVSCROLLBAR">SCI_SETVSCROLLBAR(bool visible)</a><br />
-     <a class="message" href="#SCI_GETVSCROLLBAR">SCI_GETVSCROLLBAR &rarr; bool</a><br />
-     <a class="message" href="#SCI_SETSCROLLWIDTH">SCI_SETSCROLLWIDTH(int pixelWidth)</a><br />
-     <a class="message" href="#SCI_GETSCROLLWIDTH">SCI_GETSCROLLWIDTH &rarr; int</a><br />
-     <a class="message" href="#SCI_SETSCROLLWIDTHTRACKING">SCI_SETSCROLLWIDTHTRACKING(bool tracking)</a><br />
-     <a class="message" href="#SCI_GETSCROLLWIDTHTRACKING">SCI_GETSCROLLWIDTHTRACKING &rarr; bool</a><br />
-     <a class="message" href="#SCI_SETENDATLASTLINE">SCI_SETENDATLASTLINE(bool
-    endAtLastLine)</a><br />
-     <a class="message" href="#SCI_GETENDATLASTLINE">SCI_GETENDATLASTLINE &rarr; bool</a><br />
-    </code>
 
-    <p><b id="SCI_SETFIRSTVISIBLELINE">SCI_SETFIRSTVISIBLELINE(line displayLine)</b><br />
-     <b id="SCI_GETFIRSTVISIBLELINE">SCI_GETFIRSTVISIBLELINE &rarr; line</b><br />
-     These messages retrieve and set the line number of the first visible line in the Scintilla view. The first line
-    in the document is numbered 0. The value is a visible line rather than a document line.</p>
-
-    <p><b id="SCI_SETXOFFSET">SCI_SETXOFFSET(int xOffset)</b><br />
-     <b id="SCI_GETXOFFSET">SCI_GETXOFFSET &rarr; int</b><br />
-     The <code class="parameter">xOffset</code> is the horizontal scroll position in pixels of the start of the text
-    view. A value of 0 is the normal position with the first text column visible at the left of the
-    view.</p>
-
-    <p><b id="SCI_SCROLLVERTICAL">SCI_SCROLLVERTICAL(line docLine, line subLine)</b><br />
-     Sets the vertical scroll position to be the display line for the
-     <code class="parameter">subLine</code> of the <code class="parameter">docLine</code>, similar to<br>
-     <code>SCI_SETFIRSTVISIBLELINE(SCI_VISIBLEFROMDOCLINE(docLine) + subLine)</code>.</p>
-
-     <p>The <code class="parameter">subLine</code> is capped to the maximum number of sublines
-     for that document line which may change because of styling and wrapping. It is ignored when line
-     wrapping is off.</p>
-
-     <p>If line wrapping is on, then that
-     <code class="parameter">docLine</code>/<code class="parameter">subLine</code>
-     is remembered and reapplied as lines are wrapped.
-     This ensures that when wrapping is completed, which may take some time, the line at the top of the view is that
-     requested by the application and the view range is stable during the wrapping process.
-     It is forgotten once the document is fully wrapped or the user
-     performs scrolling manually such as by dragging the scroll bar.</p>
-
-     <p>This method is a good way for applications to restore the user's positional context when re-selecting a
-     document as it is robust to changes in window width and styles.</p>
-
-    <p><b id="SCI_LINESCROLL">SCI_LINESCROLL(position columns, line lines)</b><br />
-     This will attempt to scroll the display by the number of columns and lines that you specify.
-    Positive line values increase the line number at the top of the screen (i.e. they move the text
-    upwards as far as the user is concerned), Negative line values do the reverse.</p>
-
-    <p>The column measure is the width of a space in the default style. Positive values increase
-    the column at the left edge of the view (i.e. they move the text leftwards as far as the user
-    is concerned). Negative values do the reverse.</p>
-
-    <p>See also: <a class="message" href="#SCI_SETXOFFSET"><code>SCI_SETXOFFSET</code></a></p>
-
-    <p><b id="SCI_SCROLLCARET">SCI_SCROLLCARET</b><br />
-     If the current position (this is the caret if there is no selection) is not visible, the view
-    is scrolled to make it visible according to the current caret policy.</p>
-
-    <p><b id="SCI_SCROLLRANGE">SCI_SCROLLRANGE(position secondary, position primary)</b><br />
-     Scroll the argument positions and the range between them into view giving
-     priority to the primary position then the secondary position.
-     The behaviour is similar to <a class="message" href="#SCI_SCROLLCARET"><code>SCI_SCROLLCARET</code></a>
-     with the primary position used instead of the caret. An effort is then made to ensure that the secondary
-     position and range between are also visible.
-     This may be used to make a search match visible.</p>
-
-    <p><b id="SCI_SETXCARETPOLICY">SCI_SETXCARETPOLICY(int caretPolicy, int caretSlop)</b><br />
-     <b id="SCI_SETYCARETPOLICY">SCI_SETYCARETPOLICY(int caretPolicy, int caretSlop)</b><br />
-     These set the caret policy. The value of <code class="parameter">caretPolicy</code> is a combination of
-    <code>CARET_SLOP</code>, <code>CARET_STRICT</code>, <code>CARET_JUMPS</code> and
-    <code>CARET_EVEN</code>.</p>
-
-    <table class="standard" summary="Caret policy">
-      <tbody valign="top">
-        <tr>
-          <th align="left"><code>CARET_SLOP</code></th>
-
-          <td>If set, we can define a slop value: <code class="parameter">caretSlop</code>. This value defines an
-          unwanted zone (UZ) where the caret is... unwanted. This zone is defined as a number of
-          pixels near the vertical margins, and as a number of lines near the horizontal margins.
-          By keeping the caret away from the edges, it is seen within its context. This makes it
-          likely that the identifier that the caret is on can be completely seen, and that the
-          current line is seen with some of the lines following it, which are often dependent on
-          that line.</td>
-        </tr>
-
-        <tr>
-          <th align="left"><code>CARET_STRICT</code></th>
-
-          <td>If set, the policy set by <code>CARET_SLOP</code> is enforced... strictly. The caret
-          is centred on the display if <code class="parameter">caretSlop</code> is not set, and cannot go in the UZ
-          if <code class="parameter">caretSlop</code> is set.</td>
-        </tr>
-
-        <tr>
-          <th align="left"><code>CARET_JUMPS</code></th>
-
-          <td>If set, the display is moved more energetically so the caret can move in the same
-          direction longer before the policy is applied again. '3UZ' notation is used to indicate
-          three time the size of the UZ as a distance to the margin.</td>
-        </tr>
-
-        <tr>
-          <th align="left"><code>CARET_EVEN</code></th>
-
-          <td>If not set, instead of having symmetrical UZs, the left and bottom UZs are extended
-          up to right and top UZs respectively. This way, we favour the displaying of useful
-          information: the beginning of lines, where most code reside, and the lines after the
-          caret, for example, the body of a function.</td>
-        </tr>
-      </tbody>
-    </table>
-    <br />
-
-    <table class="standard" summary="Caret positioning">
-      <thead align="center">
-        <tr>
-          <th>slop</th>
-
-          <th>strict</th>
-
-          <th>jumps</th>
-
-          <th>even</th>
-
-          <th>Caret can go to the margin</th>
-
-          <th>On reaching limit (going out of visibility<br />
-           or going into the UZ) display is...</th>
-        </tr>
-      </thead>
-
-      <tbody align="center">
-        <tr>
-          <td>0</td>
-
-          <td>0</td>
-
-          <td>0</td>
-
-          <td>0</td>
-
-          <td>Yes</td>
-
-          <td>moved to put caret on top/on right</td>
-        </tr>
-
-        <tr>
-          <td>0</td>
-
-          <td>0</td>
-
-          <td>0</td>
-
-          <td>1</td>
-
-          <td>Yes</td>
-
-          <td>moved by one position</td>
-        </tr>
-
-        <tr>
-          <td>0</td>
-
-          <td>0</td>
-
-          <td>1</td>
-
-          <td>0</td>
-
-          <td>Yes</td>
-
-          <td>moved to put caret on top/on right</td>
-        </tr>
-
-        <tr>
-          <td>0</td>
-
-          <td>0</td>
-
-          <td>1</td>
-
-          <td>1</td>
-
-          <td>Yes</td>
-
-          <td>centred on the caret</td>
-        </tr>
-
-        <tr>
-          <td>0</td>
-
-          <td>1</td>
-
-          <td>-</td>
-
-          <td>0</td>
-
-          <td>Caret is always on top/on right of display</td>
-
-          <td>-</td>
-        </tr>
-
-        <tr>
-          <td>0</td>
-
-          <td>1</td>
-
-          <td>-</td>
-
-          <td>1</td>
-
-          <td>No, caret is always centred</td>
-
-          <td>-</td>
-        </tr>
-
-        <tr>
-          <td>1</td>
-
-          <td>0</td>
-
-          <td>0</td>
-
-          <td>0</td>
-
-          <td>Yes</td>
-
-          <td>moved to put caret out of the asymmetrical UZ</td>
-        </tr>
-
-        <tr>
-          <td>1</td>
-
-          <td>0</td>
-
-          <td>0</td>
-
-          <td>1</td>
-
-          <td>Yes</td>
-
-          <td>moved to put caret out of the UZ</td>
-        </tr>
-
-        <tr>
-          <td>1</td>
-
-          <td>0</td>
-
-          <td>1</td>
-
-          <td>0</td>
-
-          <td>Yes</td>
-
-          <td>moved to put caret at 3UZ of the top or right margin</td>
-        </tr>
-
-        <tr>
-          <td>1</td>
-
-          <td>0</td>
-
-          <td>1</td>
-
-          <td>1</td>
-
-          <td>Yes</td>
-
-          <td>moved to put caret at 3UZ of the margin</td>
-        </tr>
-
-        <tr>
-          <td>1</td>
-
-          <td>1</td>
-
-          <td>-</td>
-
-          <td>0</td>
-
-          <td>Caret is always at UZ of top/right margin</td>
-
-          <td>-</td>
-        </tr>
-
-        <tr>
-          <td>1</td>
-
-          <td>1</td>
-
-          <td>0</td>
-
-          <td>1</td>
-
-          <td>No, kept out of UZ</td>
-
-          <td>moved by one position</td>
-        </tr>
-
-        <tr>
-          <td>1</td>
-
-          <td>1</td>
-
-          <td>1</td>
-
-          <td>0</td>
-
-          <td>No, kept out of UZ</td>
-
-          <td>moved to put caret at 3UZ of the margin</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <p><b id="SCI_SETVISIBLEPOLICY">SCI_SETVISIBLEPOLICY(int visiblePolicy, int visibleSlop)</b><br />
-     This determines how the vertical positioning is determined when <a class="message"
-    href="#SCI_ENSUREVISIBLEENFORCEPOLICY"><code>SCI_ENSUREVISIBLEENFORCEPOLICY</code></a> is
-    called. It takes <code>VISIBLE_SLOP</code> and <code>VISIBLE_STRICT</code> flags for the <code class="parameter">visiblePolicy</code>
-    parameter. It is similar in operation to <a class="message"
-    href="#SCI_SETYCARETPOLICY"><code>SCI_SETYCARETPOLICY(int caretPolicy, int
-    caretSlop)</code></a>.</p>
-
-    <p><b id="SCI_SETHSCROLLBAR">SCI_SETHSCROLLBAR(bool visible)</b><br />
-     <b id="SCI_GETHSCROLLBAR">SCI_GETHSCROLLBAR &rarr; bool</b><br />
-     The horizontal scroll bar is only displayed if it is needed for the assumed width.
-     If you never wish to see it, call
-    <code>SCI_SETHSCROLLBAR(0)</code>. Use <code>SCI_SETHSCROLLBAR(1)</code> to enable it again.
-    <code>SCI_GETHSCROLLBAR</code> returns the current state. The default state is to display it
-    when needed.</p>
-    <p>See also: <a class="seealso" href="#SCI_SETSCROLLWIDTH">SCI_SETSCROLLWIDTH</a>.</p>
-
-    <p><b id="SCI_SETVSCROLLBAR">SCI_SETVSCROLLBAR(bool visible)</b><br />
-     <b id="SCI_GETVSCROLLBAR">SCI_GETVSCROLLBAR &rarr; bool</b><br />
-     By default, the vertical scroll bar is always displayed when required. You can choose to hide
-    or show it with <code>SCI_SETVSCROLLBAR</code> and get the current state with
-    <code>SCI_GETVSCROLLBAR</code>.</p>
-
-    <p>See also: <a class="message" href="#SCI_LINESCROLL"><code>SCI_LINESCROLL</code></a></p>
-
-    <p><b id="SCI_SETSCROLLWIDTH">SCI_SETSCROLLWIDTH(int pixelWidth)</b><br />
-     <b id="SCI_GETSCROLLWIDTH">SCI_GETSCROLLWIDTH &rarr; int</b><br />
-     For performance, Scintilla does not measure the display width of the document to determine
-     the properties of the horizontal scroll bar. Instead, an assumed width is used.
-     These messages set and get the document width in pixels assumed by Scintilla.
-     The default value is 2000.
-     To ensure the width of the currently visible lines can be scrolled use
-     <a class="message" href="#SCI_SETSCROLLWIDTHTRACKING"><code>SCI_SETSCROLLWIDTHTRACKING</code></a></p>
-
-    <p><b id="SCI_SETSCROLLWIDTHTRACKING">SCI_SETSCROLLWIDTHTRACKING(bool tracking)</b><br />
-     <b id="SCI_GETSCROLLWIDTHTRACKING">SCI_GETSCROLLWIDTHTRACKING &rarr; bool</b><br />
-     If scroll width tracking is enabled then the scroll width is adjusted to ensure that all of the lines currently
-     displayed can be completely scrolled. This mode never adjusts the scroll width to be narrower.</p>
-
-    <p><b id="SCI_SETENDATLASTLINE">SCI_SETENDATLASTLINE(bool endAtLastLine)</b><br />
-     <b id="SCI_GETENDATLASTLINE">SCI_GETENDATLASTLINE &rarr; bool</b><br />
-     <code>SCI_SETENDATLASTLINE</code> sets the scroll range so that maximum scroll position has
-    the last line at the bottom of the view (default). Setting this to <code>false</code> allows
-    scrolling one page below the last line.</p>
+    <p>First visible line, x-offset, line/vertical scroll, scrollbar visibility, scroll width
+    and tracking, end-at-last-line, visible policy, and point-from-position helpers moved to
+    <code>scintilla/src/EditorScrolling.cxx</code>. Caret-relative scroll policy
+    (<code>SetXCaretPolicy</code> / <code>SetYCaretPolicy</code>, <code>ScrollCaret</code>,
+    <code>VerticalCentreCaret</code>, <code>MoveCaretInsideView</code>, <code>ChooseCaretX</code>)
+    moved to <code>scintilla/src/EditorCaret.cxx</code>. Named operations and their behavior
+    descriptions live beside the definitions there. Temporary message forwarders remain until
+    the generated message layer is removed.</p>
+
+    
 
     <h2 id="WhiteSpace">White space</h2>
+    <p>Tab draw mode moved to <code>scintilla/src/EditorLines.cxx</code>. View-whitespace,
+    whitespace colours/size, and extra ascent/descent remain until the styling concern moves.</p>
+
     <code><a class="message" href="#SCI_SETVIEWWS">SCI_SETVIEWWS(int viewWS)</a><br />
      <a class="message" href="#SCI_GETVIEWWS">SCI_GETVIEWWS &rarr; int</a><br />
      <a class="element" href="#SC_ELEMENT_WHITE_SPACE">SC_ELEMENT_WHITE_SPACE : colouralpha</a><br />
@@ -2522,13 +893,10 @@ struct Sci_TextToFindFull {
      <a class="message" href="#SCI_SETWHITESPACESIZE">SCI_SETWHITESPACESIZE(int
     size)</a><br />
      <a class="message" href="#SCI_GETWHITESPACESIZE">SCI_GETWHITESPACESIZE &rarr; int</a><br />
-     <a class="message" href="#SCI_SETTABDRAWMODE">SCI_SETTABDRAWMODE(int tabDrawMode)</a><br />
-     <a class="message" href="#SCI_GETTABDRAWMODE">SCI_GETTABDRAWMODE &rarr; int</a><br />
      <a class="message" href="#SCI_SETEXTRAASCENT">SCI_SETEXTRAASCENT(int extraAscent)</a><br />
      <a class="message" href="#SCI_GETEXTRAASCENT">SCI_GETEXTRAASCENT &rarr; int</a><br />
      <a class="message" href="#SCI_SETEXTRADESCENT">SCI_SETEXTRADESCENT(int extraDescent)</a><br />
-     <a class="message" href="#SCI_GETEXTRADESCENT">SCI_GETEXTRADESCENT &rarr; int</a><br />
-    </code>
+     <a class="message" href="#SCI_GETEXTRADESCENT">SCI_GETEXTRADESCENT &rarr; int</a></code>
 
     <p><b id="SCI_SETVIEWWS">SCI_SETVIEWWS(int viewWS)</b><br />
      <b id="SCI_GETVIEWWS">SCI_GETVIEWWS &rarr; int</b><br />
@@ -2599,40 +967,9 @@ struct Sci_TextToFindFull {
      The value 0 is valid and makes the dots invisible.
     </p>
 
-    <p><b id="SCI_SETTABDRAWMODE">SCI_SETTABDRAWMODE(int tabDrawMode)</b><br />
-     <b id="SCI_GETTABDRAWMODE">SCI_GETTABDRAWMODE &rarr; int</b><br />
-    These two messages get and set how tab characters are drawn when white space is visible.
-    The <code class="parameter">tabDrawMode</code> argument can be one of:</p>
+    
 
-    <table class="standard" summary="White space policy">
-      <tbody valign="top">
-        <tr>
-          <th align="left"><code>SCTD_LONGARROW</code></th>
-
-          <td>0</td>
-
-          <td>The default mode of an arrow stretching until the tabstop.</td>
-        </tr>
-
-        <tr>
-          <th align="left"><code>SCTD_STRIKEOUT</code></th>
-
-          <td>1</td>
-
-          <td>A horizontal line stretching until the tabstop.</td>
-        </tr>
-
-        <tr>
-          <th align="left"><code>SCTD_CONTROLCHAR</code></th>
-
-          <td>2</td>
-
-          <td>Will be drawn as a control code according to the configured
-          <a href="#CharacterRepresentations">character representation</a>
-          without any indentation.</td>
-        </tr>
-      </tbody>
-    </table>
+    
 
     <p>The effect of using any other <code class="parameter">tabDrawMode</code> value is undefined.</p>
 
@@ -2729,6 +1066,10 @@ struct Sci_TextToFindFull {
      These values are also used by the other messages concerned with Unicode line ends.</p>
 
     <h2 id="Words">Words</h2>
+    <p>Word, whitespace, and punctuation character classes moved to
+    <code>scintilla/src/EditorLines.cxx</code>. Word-boundary queries remain until the text-boundaries
+    concern moves.</p>
+
 
     <p>There is support for selecting, navigating by, and searching for words.</p>
 
@@ -2860,36 +1201,15 @@ struct Sci_TextToFindFull {
       </tbody>
     </table>
 
-    <p><b id="SCI_SETWORDCHARS">SCI_SETWORDCHARS(&lt;unused&gt;, const char *characters)</b><br />
-     This message defines which characters are members of the word category.
-     The character categories are set to default values before processing this function.
-    For example, if you don't allow '_' in your set of characters
-    use:<br />
-     <code>SCI_SETWORDCHARS(0, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")</code>;</p>
+    
 
-    <p><b id="SCI_GETWORDCHARS">SCI_GETWORDCHARS(&lt;unused&gt;, char *characters) &rarr; int</b><br />
-     This fills the <code class="parameter">characters</code> parameter with all the characters included in words.
-     The <code class="parameter">characters</code> parameter must be large enough to hold all of the characters.
-     If the <code class="parameter">characters</code> parameter is 0 then the length that should be allocated
-     to store the entire set is returned.</p>
+    
 
     <p>This API returns the customizable ASCII set. Non-ASCII UTF-8 characters are categorized from Unicode data and are not enumerated here.</p>
 
-    <p><b id="SCI_SETWHITESPACECHARS">SCI_SETWHITESPACECHARS(&lt;unused&gt;, const char *characters)</b><br />
-    <b id="SCI_GETWHITESPACECHARS">SCI_GETWHITESPACECHARS(&lt;unused&gt;, char *characters) &rarr; int</b><br />
-     Similar to <code>SCI_SETWORDCHARS</code>, this message allows the user to define which chars Scintilla considers
-          as whitespace.  Setting the whitespace chars allows the user to fine-tune Scintilla's behaviour doing
-          such things as moving the cursor to the start or end of a word; for example, by defining punctuation chars
-          as whitespace, they will be skipped over when the user presses ctrl+left or ctrl+right.
-          This function should be called after <code>SCI_SETWORDCHARS</code> as it will
-          reset the whitespace characters to the default set.
-	  <code>SCI_GETWHITESPACECHARS</code> behaves similarly to <code>SCI_GETWORDCHARS</code>.</p>
+    
 
-    <p><b id="SCI_SETPUNCTUATIONCHARS">SCI_SETPUNCTUATIONCHARS(&lt;unused&gt;, const char *characters)</b><br />
-    <b id="SCI_GETPUNCTUATIONCHARS">SCI_GETPUNCTUATIONCHARS(&lt;unused&gt;, char *characters) &rarr; int</b><br />
-     Similar to <code>SCI_SETWORDCHARS</code> and <code>SCI_SETWHITESPACECHARS</code>, this message
-     allows the user to define which chars Scintilla considers as punctuation.
-	  <code>SCI_GETPUNCTUATIONCHARS</code> behaves similarly to <code>SCI_GETWORDCHARS</code>.</p>
+    
 
     <p><b id="SCI_SETCHARSDEFAULT">SCI_SETCHARSDEFAULT</b><br />
      Use the default sets of word and whitespace characters. This sets whitespace to space, tab and other
@@ -3811,6 +2131,14 @@ struct Sci_TextToFindFull {
      </table>
 
     <h2 id="CaretAndSelectionStyles">Selection, caret, and hotspot styles</h2>
+    <p>Caret colour, style, width, blink period, sticky policy, caret-line highlight, caret policies,
+    and additional-caret appearance moved to <code>scintilla/src/EditorCaret.cxx</code>.
+    Selection layer moved to <code>scintilla/src/EditorSelection.cxx</code>.
+    Selection EOL fill moved to <code>scintilla/src/EditorLines.cxx</code>.
+    Named operations and their behavior descriptions live beside the definitions there.
+    Temporary message forwarders remain. Selection fore/back/alpha and hotspot styles remain
+    here until the styling and decorations concerns move.</p>
+
 
     <p>The selection is shown by changing the text and/or background colours.
     If the selected text colour is not set then that attribute is not changed for the selection.
@@ -3826,51 +2154,16 @@ struct Sci_TextToFindFull {
     <a class="discouraged message" href="#SCI_SETSELFORE">SCI_SETSELFORE(bool useSetting, colour fore)</a><br />
     <a class="element" href="#SC_ELEMENT_SELECTION_BACK">SC_ELEMENT_SELECTION_BACK : colouralpha</a><br />
     <a class="discouraged message" href="#SCI_SETSELBACK">SCI_SETSELBACK(bool useSetting, colour back)</a><br />
-    <a class="message" href="#SCI_SETSELECTIONLAYER">SCI_SETSELECTIONLAYER(int layer)</a><br />
-    <a class="message" href="#SCI_GETSELECTIONLAYER">SCI_GETSELECTIONLAYER &rarr; int</a><br />
     <a class="discouraged message" href="#SCI_SETSELALPHA">SCI_SETSELALPHA(alpha alpha)</a><br />
     <a class="discouraged message" href="#SCI_GETSELALPHA">SCI_GETSELALPHA &rarr; int</a><br />
-    <a class="message" href="#SCI_SETSELEOLFILLED">SCI_SETSELEOLFILLED(bool filled)</a><br />
-    <a class="message" href="#SCI_GETSELEOLFILLED">SCI_GETSELEOLFILLED &rarr; bool</a><br />
-    <br />
     <a class="element" href="#SC_ELEMENT_CARET">SC_ELEMENT_CARET : colouralpha</a><br />
-    <a class="discouraged message" href="#SCI_SETCARETFORE">SCI_SETCARETFORE(colour fore)</a><br />
-    <a class="discouraged message" href="#SCI_GETCARETFORE">SCI_GETCARETFORE &rarr; colour</a><br />
-    <br />
     <a class="element" href="#SC_ELEMENT_SELECTION_SECONDARY_TEXT">SC_ELEMENT_SELECTION_SECONDARY_TEXT : colouralpha</a><br />
     <a class="element" href="#SC_ELEMENT_SELECTION_SECONDARY_BACK">SC_ELEMENT_SELECTION_SECONDARY_BACK : colouralpha</a><br />
-    <br />
     <a class="element" href="#SC_ELEMENT_SELECTION_INACTIVE_TEXT">SC_ELEMENT_SELECTION_INACTIVE_TEXT : colouralpha</a><br />
     <a class="element" href="#SC_ELEMENT_SELECTION_INACTIVE_BACK">SC_ELEMENT_SELECTION_INACTIVE_BACK : colouralpha</a><br />
     <a class="element" href="#SC_ELEMENT_SELECTION_INACTIVE_TEXT">SC_ELEMENT_SELECTION_INACTIVE_ADDITIONAL_TEXT : colouralpha</a><br />
     <a class="element" href="#SC_ELEMENT_SELECTION_INACTIVE_BACK">SC_ELEMENT_SELECTION_INACTIVE_ADDITIONAL_BACK : colouralpha</a><br />
-    <br />
     <a class="element" href="#SC_ELEMENT_CARET_LINE_BACK">SC_ELEMENT_CARET_LINE_BACK : colouralpha</a><br />
-    <a class="message" href="#SCI_SETCARETLINELAYER">SCI_SETCARETLINELAYER(int layer)</a><br />
-    <a class="message" href="#SCI_GETCARETLINELAYER">SCI_GETCARETLINELAYER &rarr; int</a><br />
-    <a class="discouraged message" href="#SCI_SETCARETLINEVISIBLE">SCI_SETCARETLINEVISIBLE(bool show)</a><br />
-    <a class="discouraged message" href="#SCI_GETCARETLINEVISIBLE">SCI_GETCARETLINEVISIBLE &rarr; bool</a><br />
-    <a class="discouraged message" href="#SCI_SETCARETLINEBACK">SCI_SETCARETLINEBACK(colour back)</a><br />
-    <a class="discouraged message" href="#SCI_GETCARETLINEBACK">SCI_GETCARETLINEBACK &rarr; colour</a><br />
-    <a class="discouraged message" href="#SCI_SETCARETLINEBACKALPHA">SCI_SETCARETLINEBACKALPHA(alpha alpha)</a><br />
-    <a class="discouraged message" href="#SCI_GETCARETLINEBACKALPHA">SCI_GETCARETLINEBACKALPHA &rarr; int</a><br />
-    <a class="message" href="#SCI_SETCARETLINEFRAME">SCI_SETCARETLINEFRAME(int width)</a><br />
-    <a class="message" href="#SCI_GETCARETLINEFRAME">SCI_GETCARETLINEFRAME &rarr; int</a><br />
-    <a class="message" href="#SCI_SETCARETLINEVISIBLEALWAYS">SCI_SETCARETLINEVISIBLEALWAYS(bool alwaysVisible)</a><br />
-    <a class="message" href="#SCI_GETCARETLINEVISIBLEALWAYS">SCI_GETCARETLINEVISIBLEALWAYS &rarr; bool</a><br />
-    <a class="message" href="#SCI_SETCARETLINEHIGHLIGHTSUBLINE">SCI_SETCARETLINEHIGHLIGHTSUBLINE(bool subLine)</a><br />
-    <a class="message" href="#SCI_GETCARETLINEHIGHLIGHTSUBLINE">SCI_GETCARETLINEHIGHLIGHTSUBLINE &rarr; bool</a><br />
-    <br />
-    <a class="message" href="#SCI_SETCARETPERIOD">SCI_SETCARETPERIOD(int periodMilliseconds)</a><br />
-    <a class="message" href="#SCI_GETCARETPERIOD">SCI_GETCARETPERIOD &rarr; int</a><br />
-    <a class="message" href="#SCI_SETCARETSTYLE">SCI_SETCARETSTYLE(int caretStyle)</a><br />
-    <a class="message" href="#SCI_GETCARETSTYLE">SCI_GETCARETSTYLE &rarr; int</a><br />
-    <a class="message" href="#SCI_SETCARETWIDTH">SCI_SETCARETWIDTH(int pixelWidth)</a><br />
-    <a class="message" href="#SCI_GETCARETWIDTH">SCI_GETCARETWIDTH &rarr; int</a><br />
-     <a class="message" href="#SCI_SETCARETSTICKY">SCI_SETCARETSTICKY(int useCaretStickyBehaviour)</a><br />
-     <a class="message" href="#SCI_GETCARETSTICKY">SCI_GETCARETSTICKY &rarr; int</a><br />
-     <a class="message" href="#SCI_TOGGLECARETSTICKY">SCI_TOGGLECARETSTICKY</a><br />
-    <br />
     <a class="element" href="#SC_ELEMENT_HOT_SPOT_ACTIVE">SC_ELEMENT_HOT_SPOT_ACTIVE : colouralpha</a><br />
     <a class="discouraged message" href="#SCI_SETHOTSPOTACTIVEFORE">SCI_SETHOTSPOTACTIVEFORE(bool useSetting, colour fore)</a><br />
     <a class="discouraged message" href="#SCI_GETHOTSPOTACTIVEFORE">SCI_GETHOTSPOTACTIVEFORE &rarr; colour</a><br />
@@ -3880,8 +2173,7 @@ struct Sci_TextToFindFull {
     <a class="message" href="#SCI_SETHOTSPOTACTIVEUNDERLINE">SCI_SETHOTSPOTACTIVEUNDERLINE(bool underline)</a><br />
     <a class="message" href="#SCI_GETHOTSPOTACTIVEUNDERLINE">SCI_GETHOTSPOTACTIVEUNDERLINE &rarr; bool</a><br />
     <a class="message" href="#SCI_SETHOTSPOTSINGLELINE">SCI_SETHOTSPOTSINGLELINE(bool singleLine)</a><br />
-    <a class="message" href="#SCI_GETHOTSPOTSINGLELINE">SCI_GETHOTSPOTSINGLELINE &rarr; bool</a><br />
-    </code>
+    <a class="message" href="#SCI_GETHOTSPOTSINGLELINE">SCI_GETHOTSPOTSINGLELINE &rarr; bool</a></code>
 
     <p>
      <b id="SC_ELEMENT_SELECTION_TEXT">SC_ELEMENT_SELECTION_TEXT : colouralpha</b><br />
@@ -3897,42 +2189,9 @@ struct Sci_TextToFindFull {
     <code class="parameter">fore</code> or <code class="parameter">back</code>
     argument has no effect.</p>
 
-     <p><b id="SCI_SETSELECTIONLAYER">SCI_SETSELECTIONLAYER(int layer)</b><br />
-     <b id="SCI_GETSELECTIONLAYER">SCI_GETSELECTIONLAYER &rarr; int</b><br />
-     The selection background can be drawn translucently over the text
-     or opaquely on the base layer.
-     The <code class="parameter">layer</code> argument can be one of:</p>
+     
 
-    <table class="standard" summary="Layer">
-      <tbody valign="top">
-        <tr>
-          <th align="left"><code>SC_LAYER_BASE</code></th>
-
-          <td>0</td>
-
-          <td>Draw the selection background opaquely on the base layer</td>
-        </tr>
-
-        <tr>
-          <th align="left"><code>SC_LAYER_UNDER_TEXT</code></th>
-
-          <td>1</td>
-
-          <td>Draw the selection background translucently under the text.<br />
-	  This will not work in single phase drawing mode (<code class="deprecated">SC_PHASES_ONE</code>)
-	  as there is no under-text phase.</td>
-        </tr>
-
-        <tr>
-          <th align="left"><code>SC_LAYER_OVER_TEXT</code></th>
-
-          <td>2</td>
-
-          <td>Draw the selection background translucently over the text.</td>
-        </tr>
-
-      </tbody>
-    </table>
+    
 
      <p><b id="SCI_SETSELALPHA">SCI_SETSELALPHA(<a class="jump" href="#alpha">alpha</a> alpha)</b><br />
      <b id="SCI_GETSELALPHA">SCI_GETSELALPHA &rarr; int</b><br />
@@ -3940,20 +2199,9 @@ struct Sci_TextToFindFull {
      a combination of setting the layer with SCI_SETSELECTIONLAYER and
      setting translucency through the SC_ELEMENT_SELECTION_BACK element.</p>
 
-     <p><b id="SCI_SETSELEOLFILLED">SCI_SETSELEOLFILLED(bool filled)</b><br />
-     <b id="SCI_GETSELEOLFILLED">SCI_GETSELEOLFILLED &rarr; bool</b><br />
-     The selection can be drawn up to the right hand border by setting this property.</p>
+     
 
-    <p>
-     <b id="SC_ELEMENT_CARET">SC_ELEMENT_CARET : colouralpha</b><br />
-     <b id="SCI_SETCARETFORE">SCI_SETCARETFORE(<a class="jump" href="#colour">colour</a> fore)</b><br />
-     <b id="SCI_GETCARETFORE">SCI_GETCARETFORE &rarr; colour</b><br />
-     The colour of the caret can be set with
-     <a class="message" href="#SCI_SETELEMENTCOLOUR"><code>SCI_SETELEMENTCOLOUR(SC_ELEMENT_CARET)</code></a> or
-     <code>SCI_SETCARETFORE</code> and retrieved with
-     <a class="message" href="#SCI_GETELEMENTCOLOUR"><code>SCI_GETELEMENTCOLOUR(SC_ELEMENT_CARET)</code></a> or
-     <code>SCI_GETCARETFORE</code>.
-     The element APIs are preferred and allow setting the translucency of carets.</p>
+    
 
     <p>
      <b id="SC_ELEMENT_SELECTION_SECONDARY_TEXT">SC_ELEMENT_SELECTION_SECONDARY_TEXT : colouralpha</b><br />
@@ -3977,164 +2225,25 @@ struct Sci_TextToFindFull {
      <code>SC_ELEMENT_SELECTION_INACTIVE_ADDITIONAL_BACK</code>&rarr;<code>SC_ELEMENT_SELECTION_INACTIVE_BACK</code>.
      </p>
 
-    <p>
-    <b id="SC_ELEMENT_CARET_LINE_BACK">SC_ELEMENT_CARET_LINE_BACK : colouralpha</b><br />
-    <b id="SCI_SETCARETLINELAYER">SCI_SETCARETLINELAYER(int layer)</b><br />
-    <b id="SCI_GETCARETLINELAYER">SCI_GETCARETLINELAYER &rarr; int</b><br />
-     You can choose to make the background colour of the line containing the caret different by setting the
-     <code>SC_ELEMENT_CARET_LINE_BACK</code> element with
-     <a class="message" href="#SCI_SETELEMENTCOLOUR"><code>SCI_SETELEMENTCOLOUR(SC_ELEMENT_CARET_LINE_BACK)</code></a>.
-    This effect may be drawn translucently over the text or opaquely on the base layer with <code>SCI_SETCARETLINELAYER</code>.
-    Background colouring has highest priority when a line has markers that would otherwise change
-    the background colour. When drawn translucently other background colours can show through.
-    The <code class="parameter">layer</code> argument can be one of:</p>
+    
 
-    <table class="standard" summary="Layer">
-      <tbody valign="top">
-        <tr>
-          <th align="left"><code>SC_LAYER_BASE</code></th>
+    
 
-          <td>0</td>
+    
 
-          <td>Draw the selection background opaquely on the base layer</td>
-        </tr>
+     
 
-        <tr>
-          <th align="left"><code>SC_LAYER_UNDER_TEXT</code></th>
+    
 
-          <td>1</td>
+    
 
-          <td>Draw the selection background translucently under the text.<br />
-	  This will not work in single phase drawing mode (<code class="deprecated">SC_PHASES_ONE</code>)
-	  as there is no under-text phase.</td>
-        </tr>
+    
 
-        <tr>
-          <th align="left"><code>SC_LAYER_OVER_TEXT</code></th>
+    
 
-          <td>2</td>
+    
 
-          <td>Draw the selection background translucently over the text.</td>
-        </tr>
-
-      </tbody>
-    </table>
-
-    <p><b id="SCI_SETCARETLINEVISIBLE">SCI_SETCARETLINEVISIBLE(bool show)</b><br />
-     <b id="SCI_GETCARETLINEVISIBLE">SCI_GETCARETLINEVISIBLE &rarr; bool</b><br />
-     <b id="SCI_SETCARETLINEBACK">SCI_SETCARETLINEBACK(<a class="jump" href="#colour">colour</a> back)</b><br />
-     <b id="SCI_GETCARETLINEBACK">SCI_GETCARETLINEBACK &rarr; colour</b><br />
-     <b id="SCI_SETCARETLINEBACKALPHA">SCI_SETCARETLINEBACKALPHA(<a class="jump" href="#alpha">alpha</a> alpha)</b><br />
-     <b id="SCI_GETCARETLINEBACKALPHA">SCI_GETCARETLINEBACKALPHA &rarr; int</b><br />
-     These APIs are discouraged. It is better to use the <code>SC_ELEMENT_CARET_LINE_BACK</code>
-     element mentioned in the previous section.<br />
-     You can choose to make the background colour of the line containing the caret different with
-    these messages. To do this, set the desired background colour with
-    <code>SCI_SETCARETLINEBACK</code>, then use <code>SCI_SETCARETLINEVISIBLE(true)</code> to
-    enable the effect. You can cancel the effect with <code>SCI_SETCARETLINEVISIBLE(false)</code>.
-    The two <code>SCI_GETCARET*</code> functions return the state and the colour. This form of
-    background colouring has highest priority when a line has markers that would otherwise change
-    the background colour.
-           The caret line may also be drawn translucently which allows other background colours to show
-           through. This is done by setting the alpha (translucency) value by calling
-           SCI_SETCARETLINEBACKALPHA. When the alpha is not SC_ALPHA_NOALPHA,
-           the caret line is drawn after all other features so will affect the colour of all other features.
-          </p>
-
-     <p>
-     <b id="SCI_SETCARETLINEFRAME">SCI_SETCARETLINEFRAME(int width)</b><br />
-     <b id="SCI_GETCARETLINEFRAME">SCI_GETCARETLINEFRAME &rarr; int</b><br />
-           <code>SCI_SETCARETLINEFRAME</code> can be used to display the caret line framed
-           instead of filling the whole background. Set width != 0 to enable this option and width = 0 to disable it.
-     </p>
-
-    <p><b id="SCI_SETCARETLINEVISIBLEALWAYS">SCI_SETCARETLINEVISIBLEALWAYS(bool alwaysVisible)</b><br />
-     <b id="SCI_GETCARETLINEVISIBLEALWAYS">SCI_GETCARETLINEVISIBLEALWAYS &rarr; bool</b><br />
-     Choose to make the caret line always visible even when the window is not in focus.
-     Default behaviour <code>SCI_SETCARETLINEVISIBLEALWAYS(false)</code> the caret line is only visible when the window is in focus.
-          </p>
-
-    <p><b id="SCI_SETCARETLINEHIGHLIGHTSUBLINE">SCI_SETCARETLINEHIGHLIGHTSUBLINE(bool subLine)</b><br />
-     <b id="SCI_GETCARETLINEHIGHLIGHTSUBLINE">SCI_GETCARETLINEHIGHLIGHTSUBLINE &rarr; bool</b><br />
-     Choose to highlight only the subline containing the caret instead of the whole line.
-     Default behaviour <code>SCI_SETCARETLINEHIGHLIGHTSUBLINE(false)</code> the whole caret line is highlighted.
-          </p>
-
-    <p><b id="SCI_SETCARETPERIOD">SCI_SETCARETPERIOD(int periodMilliseconds)</b><br />
-     <b id="SCI_GETCARETPERIOD">SCI_GETCARETPERIOD &rarr; int</b><br />
-     The rate at which the caret blinks can be set with <code>SCI_SETCARETPERIOD</code> which
-    determines the time in milliseconds that the caret is visible or invisible before changing
-    state. Setting the period to 0 stops the caret blinking. The default value is 500 milliseconds.
-    <code>SCI_GETCARETPERIOD</code> returns the current setting.</p>
-
-    <p><b id="SCI_SETCARETSTYLE">SCI_SETCARETSTYLE(int caretStyle)</b><br />
-     <b id="SCI_GETCARETSTYLE">SCI_GETCARETSTYLE &rarr; int</b><br />
-     The style of the caret can be set with <code>SCI_SETCARETSTYLE</code>.
-     There are separate styles for insert mode (lower 4-bits, <code>CARETSTYLE_INS_MASK</code>),
-     overtype mode (bit 4), and curses mode (bit 5).
-
-     <table class="standard" summary="Caret Styles">
-       <tbody valign="top">
-         <tr>
-           <th align="left"><code>CARETSTYLE_INVISIBLE</code></th>
-           <td>0</td>
-           <td>Carets are not drawn at all.</td>
-         </tr>
-         <tr>
-           <th align="left"><code>CARETSTYLE_LINE</code></th>
-           <td>1</td>
-           <td>Draws insertion carets as lines. This is the default.</td>
-         </tr>
-         <tr>
-           <th align="left"><code>CARETSTYLE_BLOCK</code></th>
-           <td>2</td>
-           <td>Draws insertion carets as blocks.</td>
-         </tr>
-         <tr>
-           <th align="left"><code>CARETSTYLE_OVERSTRIKE_BAR</code></th>
-           <td>0</td>
-           <td>Draws an overstrike caret as a bar. This is the default.</td>
-         </tr>
-         <tr>
-           <th align="left"><code>CARETSTYLE_OVERSTRIKE_BLOCK</code></th>
-           <td>16</td>
-           <td>Draws an overstrike caret as a block. This should be ored with one of the first three styles.</td>
-         </tr>
-         <tr>
-           <th align="left"><code>CARETSTYLE_CURSES</code></th>
-           <td>32</td>
-           <td>Draws carets that cannot be drawn in a curses (terminal) environment (such as additional carets),
-           and draws them as blocks. The main caret is left to be drawn by the terminal itself. This setting is
-           typically a standalone setting.</td>
-         </tr>
-         <tr>
-           <th align="left"><code>CARETSTYLE_BLOCK_AFTER</code></th>
-           <td>256</td>
-           <td>When the caret end of a range is at the end and a block caret style is chosen, draws the block
-           outside the selection instead of inside. This can be ored with <code>CARETSTYLE_BLOCK</code> or <code>CARETSTYLE_CURSES</code>.</td>
-         </tr>
-       </tbody>
-     </table>
-
-    <p>The block caret draws most combining and multibyte character sequences successfully,
-    though some fonts like Thai Fonts (and possibly others) can sometimes appear strange when
-    the cursor is positioned at these characters, which may result in only drawing a part of the
-    cursor character sequence. This is most notable on Windows platforms.</p>
-
-    <p><b id="SCI_SETCARETWIDTH">SCI_SETCARETWIDTH(int pixelWidth)</b><br />
-     <b id="SCI_GETCARETWIDTH">SCI_GETCARETWIDTH &rarr; int</b><br />
-     The width of the line caret can be set with <code>SCI_SETCARETWIDTH</code> to a value of
-    between 0 and 20 pixels. The default width is 1 pixel. You can read back the current width with
-    <code>SCI_GETCARETWIDTH</code>. A width of 0 makes the caret invisible,
-    similar to setting the caret style to CARETSTYLE_INVISIBLE (though not interchangeable).
-    This setting only affects the width of the cursor when the cursor style is set to line caret
-    mode, it does not affect the width for a block caret.</p>
-
-    <p><b id="SCI_SETCARETSTICKY">SCI_SETCARETSTICKY(int useCaretStickyBehaviour)</b><br />
-    <b id="SCI_GETCARETSTICKY">SCI_GETCARETSTICKY &rarr; int</b><br />
-    <b id="SCI_TOGGLECARETSTICKY">SCI_TOGGLECARETSTICKY</b><br />
-    These messages set, get or toggle the caretSticky setting which controls when the last position
-    of the caret on the line is saved.</p>
+    
 
     <p>When set to <code>SC_CARETSTICKY_OFF</code> (0), the sticky flag is off; all text changes
     (and all caret position changes) will remember the
@@ -6499,14 +4608,15 @@ struct Sci_RangeToFormatFull {
      <code>SC_WRAP_CHAR</code> is not supported for printing.</p>
 
     <h2 id="DirectAccess">Direct access</h2>
+    <p>Range pointer and gap position moved to <code>scintilla/src/EditorDocument.cxx</code>.
+    Direct function/pointer accessors are scheduled for deletion with the message layer.
+    Descriptions for retained range/gap helpers live beside the definitions.</p>
+
     <code>
      <a class="message" href="#SCI_GETDIRECTFUNCTION">SCI_GETDIRECTFUNCTION &rarr; pointer</a><br />
      <a class="message" href="#SCI_GETDIRECTSTATUSFUNCTION">SCI_GETDIRECTSTATUSFUNCTION &rarr; pointer</a><br />
      <a class="message" href="#SCI_GETDIRECTPOINTER">SCI_GETDIRECTPOINTER &rarr; pointer</a><br />
-     <a class="message" href="#SCI_GETCHARACTERPOINTER">SCI_GETCHARACTERPOINTER &rarr; pointer</a><br />
-     <a class="message" href="#SCI_GETRANGEPOINTER">SCI_GETRANGEPOINTER(position start, position lengthRange) &rarr; pointer</a><br />
-     <a class="message" href="#SCI_GETGAPPOSITION">SCI_GETGAPPOSITION &rarr; position</a><br />
-    </code>
+     <a class="message" href="#SCI_GETCHARACTERPOINTER">SCI_GETCHARACTERPOINTER &rarr; pointer</a></code>
 
     <p>On Windows, the message-passing scheme used to communicate between the container and
     Scintilla is mediated by the operating system <code>SendMessage</code> function and can lead to
@@ -6557,8 +4667,8 @@ sptr_t CallScintilla(unsigned int iMessage, uptr_t wParam, sptr_t lParam){
     pass in the direct pointer associated with the target window.</p>
 
     <p><b id="SCI_GETCHARACTERPOINTER">SCI_GETCHARACTERPOINTER &rarr; pointer</b><br />
-    <b id="SCI_GETRANGEPOINTER">SCI_GETRANGEPOINTER(position start, position lengthRange) &rarr; pointer</b><br />
-    <b id="SCI_GETGAPPOSITION">SCI_GETGAPPOSITION &rarr; position</b><br />
+    
+    
      Grant temporary direct read-only access to the memory used by Scintilla to store
      the document.</p>
      <p><code>SCI_GETCHARACTERPOINTER</code> moves the gap within Scintilla so that the
@@ -6611,390 +4721,13 @@ sptr_t CallScintilla(unsigned int iMessage, uptr_t wParam, sptr_t lParam){
 
     <h2 id="Folding">Folding</h2>
 
-    <p>The fundamental operation in folding is making lines invisible or visible. Line visibility
-    is a property of the view rather than the document so each view may be displaying a different
-    set of lines. From the point of view of the user, lines are hidden and displayed using fold
-    points. Generally, the fold points of a document are based on the hierarchical structure of the
-    document contents. In Python, the hierarchy is determined by indentation and in C++ by brace
-    characters. This hierarchy can be represented within a Scintilla document object by attaching a
-    numeric "fold level" to each line. The fold level is most easily set by a lexer, but you can
-    also set it with messages.</p>
+    <p>Fold levels, expand/collapse, automatic fold, fold flags, display text, show/hide lines,
+    ensure-visible, last-child/parent, contracted-fold walk, and document↔display line mapping
+    moved to <code>scintilla/src/EditorFolding.cxx</code>. Named operations and their behavior
+    descriptions live beside the definitions there. Temporary message forwarders remain until
+    the generated message layer is removed.</p>
 
-    <p>It is up to your code to set the connection between user actions and folding and unfolding.
-    The best way to see how this is done is to search the SciTE source code for the messages used
-    in this section of the documentation and see how they are used. You will also need to use
-    markers and a folding margin to complete your folding implementation.
-    The <code>"fold"</code> property should be set to <code>"1"</code> with
-    <code>SCI_SETPROPERTY("fold", "1")</code> to enable folding. </p>
-    <code><a class="message" href="#SCI_VISIBLEFROMDOCLINE">SCI_VISIBLEFROMDOCLINE(line docLine) &rarr; line</a><br />
-     <a class="message" href="#SCI_DOCLINEFROMVISIBLE">SCI_DOCLINEFROMVISIBLE(line displayLine) &rarr; line</a><br />
-     <a class="message" href="#SCI_SHOWLINES">SCI_SHOWLINES(line lineStart, line lineEnd)</a><br />
-     <a class="message" href="#SCI_HIDELINES">SCI_HIDELINES(line lineStart, line lineEnd)</a><br />
-     <a class="element" href="#SC_ELEMENT_HIDDEN_LINE">SC_ELEMENT_HIDDEN_LINE : colouralpha</a><br />
-     <a class="message" href="#SCI_GETLINEVISIBLE">SCI_GETLINEVISIBLE(line line) &rarr; bool</a><br />
-     <a class="message" href="#SCI_GETALLLINESVISIBLE">SCI_GETALLLINESVISIBLE &rarr; bool</a><br />
-     <a class="message" href="#SCI_SETFOLDLEVEL">SCI_SETFOLDLEVEL(line line, int level)</a><br />
-     <a class="message" href="#SCI_GETFOLDLEVEL">SCI_GETFOLDLEVEL(line line) &rarr; int</a><br />
-     <a class="message" href="#SCI_SETAUTOMATICFOLD">SCI_SETAUTOMATICFOLD(int automaticFold)</a><br />
-     <a class="message" href="#SCI_GETAUTOMATICFOLD">SCI_GETAUTOMATICFOLD &rarr; int</a><br />
-     <a class="message" href="#SCI_SETFOLDFLAGS">SCI_SETFOLDFLAGS(int flags)</a><br />
-     <a class="element" href="#SC_ELEMENT_FOLD_LINE">SC_ELEMENT_FOLD_LINE : colouralpha</a><br />
-     <a class="message" href="#SCI_GETLASTCHILD">SCI_GETLASTCHILD(line line, int level) &rarr; line</a><br />
-     <a class="message" href="#SCI_GETFOLDPARENT">SCI_GETFOLDPARENT(line line) &rarr; line</a><br />
-     <a class="message" href="#SCI_SETFOLDEXPANDED">SCI_SETFOLDEXPANDED(line line, bool
-    expanded)</a><br />
-     <a class="message" href="#SCI_GETFOLDEXPANDED">SCI_GETFOLDEXPANDED(line line) &rarr; bool</a><br />
-     <a class="message" href="#SCI_CONTRACTEDFOLDNEXT">SCI_CONTRACTEDFOLDNEXT(line lineStart) &rarr; line</a><br />
-     <a class="message" href="#SCI_TOGGLEFOLD">SCI_TOGGLEFOLD(line line)</a><br />
-     <a class="message" href="#SCI_TOGGLEFOLDSHOWTEXT">SCI_TOGGLEFOLDSHOWTEXT(line line, const char *text)</a><br />
-     <a class="message" href="#SCI_FOLDDISPLAYTEXTSETSTYLE">SCI_FOLDDISPLAYTEXTSETSTYLE(int style)</a><br />
-     <a class="message" href="#SCI_FOLDDISPLAYTEXTGETSTYLE">SCI_FOLDDISPLAYTEXTGETSTYLE &rarr; int</a><br />
-     <a class="message" href="#SCI_SETDEFAULTFOLDDISPLAYTEXT">SCI_SETDEFAULTFOLDDISPLAYTEXT(&lt;unused&gt;, const char *text)</a><br />
-     <a class="message" href="#SCI_GETDEFAULTFOLDDISPLAYTEXT">SCI_GETDEFAULTFOLDDISPLAYTEXT(&lt;unused&gt;, char *text) &rarr; int</a><br />
-     <a class="message" href="#SCI_FOLDLINE">SCI_FOLDLINE(line line, int action)</a><br />
-     <a class="message" href="#SCI_FOLDCHILDREN">SCI_FOLDCHILDREN(line line, int action)</a><br />
-     <a class="message" href="#SCI_FOLDALL">SCI_FOLDALL(int action)</a><br />
-     <a class="message" href="#SCI_EXPANDCHILDREN">SCI_EXPANDCHILDREN(line line, int level)</a><br />
-     <a class="message" href="#SCI_ENSUREVISIBLE">SCI_ENSUREVISIBLE(line line)</a><br />
-     <a class="message" href="#SCI_ENSUREVISIBLEENFORCEPOLICY">SCI_ENSUREVISIBLEENFORCEPOLICY(line
-    line)</a><br />
-    </code>
-
-    <p><b id="SCI_VISIBLEFROMDOCLINE">SCI_VISIBLEFROMDOCLINE(line docLine) &rarr; line</b><br />
-     When some lines are hidden and/or annotations are displayed, then a particular line in the
-     document may be displayed at a
-    different position to its document position. If no lines are hidden and there are no annotations,
-    this message returns
-    <code class="parameter">docLine</code>. Otherwise, this returns the display line (counting the very first visible
-    line as 0). The display line of an invisible line is the same as the previous visible line. The
-    display line number of the first line in the document is 0. If lines are hidden and
-    <code class="parameter">docLine</code> is outside the range of lines in the document, the return value is -1.
-    Lines can occupy more than one display line if they wrap.</p>
-
-    <p><b id="SCI_DOCLINEFROMVISIBLE">SCI_DOCLINEFROMVISIBLE(line displayLine) &rarr; line</b><br />
-     When some lines are hidden and/or annotations are displayed, then a particular line in the
-     document may be displayed at a
-    different position to its document position. This message returns the document line number that
-    corresponds to a display line (counting the display line of the first line in the document as
-    0). If <code class="parameter">displayLine</code> is less than or equal to 0, the result is 0. If
-    <code class="parameter">displayLine</code> is greater than or equal to the number of displayed lines, the result
-    is the number of lines in the document.</p>
-
-    <p><b id="SCI_SHOWLINES">SCI_SHOWLINES(line lineStart, line lineEnd)</b><br />
-     <b id="SCI_HIDELINES">SCI_HIDELINES(line lineStart, line lineEnd)</b><br />
-     <b id="SC_ELEMENT_HIDDEN_LINE">SC_ELEMENT_HIDDEN_LINE : colouralpha</b><br />
-     <b id="SCI_GETLINEVISIBLE">SCI_GETLINEVISIBLE(line line) &rarr; bool</b><br />
-     <b id="SCI_GETALLLINESVISIBLE">SCI_GETALLLINESVISIBLE &rarr; bool</b><br />
-     The first two messages mark a range of lines as visible or invisible and then redraw the
-    display.
-    If <a class="element" href="#SCI_SETELEMENTCOLOUR"><code>SC_ELEMENT_HIDDEN_LINE</code></a>
-    is set then a horizontal line is drawn in that colour to indicate that there are hidden lines.
-    A fold line drawn in that position overrides the hidden line indicator.
-    <code>SCI_GETLINEVISIBLE</code> reports on the visible state of a line and returns 1 if it is
-    visible and 0 if it is not visible.
-    <code>SCI_GETALLLINESVISIBLE</code> returns 1 if all lines are visible and 0
-    if some lines are hidden.
-    These messages have no effect on fold levels or fold flags.</p>
-
-    <p><b id="SCI_SETFOLDLEVEL">SCI_SETFOLDLEVEL(line line, int level)</b><br />
-     <b id="SCI_GETFOLDLEVEL">SCI_GETFOLDLEVEL(line line) &rarr; int</b><br />
-     These two messages set and get a 32-bit value that contains the fold level of a line and some
-    flags associated with folding. The fold level is a number in the range 0 to
-    <code>SC_FOLDLEVELNUMBERMASK</code> (0x0FFF). However, the initial fold level is set to
-    <code>SC_FOLDLEVELBASE</code> (0x400) to allow unsigned arithmetic on folding levels. There are
-    two addition flag bits. <code>SC_FOLDLEVELWHITEFLAG</code> indicates that the line is blank and
-    allows it to be treated slightly different then its level may indicate. For example, blank
-    lines should generally not be fold points and will be considered part of the preceding section even though
-    they may have a lesser fold level.
-    <code>SC_FOLDLEVELHEADERFLAG</code> indicates that the line is a header (fold point).
-    <code>SC_FOLDLEVELNONE</code> is a default level that may occur before folding.
-    </p>
-
-    <p>Use <code>SCI_GETFOLDLEVEL(line) &amp; SC_FOLDLEVELNUMBERMASK</code> to get the fold level
-    of a line. Likewise, use <code>SCI_GETFOLDLEVEL(line) &amp; SC_FOLDLEVEL*FLAG</code> to get the
-    state of the flags. To set the fold level you must or in the associated flags. For instance, to
-    set the level to <code>thisLevel</code> and mark a line as being a fold point use:
-    <code>SCI_SETFOLDLEVEL(line, thisLevel | SC_FOLDLEVELHEADERFLAG)</code>.</p>
-    If you use a lexer, you should not need to use <code>SCI_SETFOLDLEVEL</code> as this is far
-    better handled by the lexer. You will need to use <code>SCI_GETFOLDLEVEL</code> to decide how
-    to handle user folding requests. If you do change the fold levels, the folding margin will
-    update to match your changes.
-
-    <p><b id="SCI_SETFOLDFLAGS">SCI_SETFOLDFLAGS(int flags)</b><br />
-     <b id="SC_ELEMENT_FOLD_LINE">SC_ELEMENT_FOLD_LINE : colouralpha</b><br />
-     In addition to showing markers in the folding margin, you can indicate folds to the user by
-    drawing lines in the text area.
-    The lines are drawn in the <a class="element" href="#SCI_SETELEMENTCOLOUR"><code>SC_ELEMENT_FOLD_LINE</code></a>
-    colour if set.
-    If it is not set then the foreground colour set for <a
-    class="message" href="#StyleDefinition"><code>STYLE_DEFAULT</code></a> is used.
-    Bits set in
-    <code class="parameter">flags</code> determine where folding lines are drawn:<br />
-    </p>
-
-    <table class="standard" summary="Fold flags">
-      <tbody>
-        <tr>
-          <th align="left">Symbol</th>
-          <th align="left">Value</th>
-          <th align="left">Effect</th>
-        </tr>
-      </tbody>
-
-      <tbody valign="top">
-        <tr>
-          <td align="left">SC_FOLDFLAG_NONE</td>
-          <td align="left">0</td>
-          <td align="left">Default value.</td>
-        </tr>
-
-        <tr>
-          <td align="left"></td>
-          <td align="left">1</td>
-          <td align="left">Experimental feature that has been removed.</td>
-        </tr>
-
-        <tr>
-          <td align="left">SC_FOLDFLAG_LINEBEFORE_EXPANDED</td>
-          <td align="left">2</td>
-          <td align="left">Draw above if expanded</td>
-        </tr>
-
-        <tr>
-          <td align="left">SC_FOLDFLAG_LINEBEFORE_CONTRACTED</td>
-          <td align="left">4</td>
-          <td align="left">Draw above if not expanded</td>
-        </tr>
-
-        <tr>
-          <td align="left">SC_FOLDFLAG_LINEAFTER_EXPANDED</td>
-          <td align="left">8</td>
-          <td align="left">Draw below if expanded</td>
-        </tr>
-
-        <tr>
-          <td align="left">SC_FOLDFLAG_LINEAFTER_CONTRACTED</td>
-          <td align="left">16</td>
-          <td align="left">Draw below if not expanded</td>
-        </tr>
-
-        <tr>
-          <td align="left">SC_FOLDFLAG_LEVELNUMBERS</td>
-          <td align="left">64</td>
-          <td align="left">Display hexadecimal fold levels in line margin to aid debugging of
-          folding. The appearance of this feature may change in the future.</td>
-        </tr>
-
-        <tr>
-          <td align="left">SC_FOLDFLAG_LINESTATE</td>
-          <td align="left">128</td>
-          <td align="left">Display hexadecimal line state in line margin to aid debugging of lexing and folding.
-	  May not be used at the same time as <code>SC_FOLDFLAG_LEVELNUMBERS</code>.</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <p>This message causes the display to redraw.</p>
-
-    <p><b id="SCI_GETLASTCHILD">SCI_GETLASTCHILD(line line, int level) &rarr; line</b><br />
-     This message searches for the next line after <code class="parameter">line</code>, that has a folding level
-    that is less than or equal to <code class="parameter">level</code> and then returns the previous line number. If
-    you set <code class="parameter">level</code> to -1, <code class="parameter">level</code> is set to the folding level of line
-    <code class="parameter">line</code>. If <code>from</code> is a fold point, <code>SCI_GETLASTCHILD(from,
-    -1)</code> returns the last line that would be in made visible or hidden by toggling the fold
-    state.</p>
-
-    <p><b id="SCI_GETFOLDPARENT">SCI_GETFOLDPARENT(line line) &rarr; line</b><br />
-     This message returns the line number of the first line before <code class="parameter">line</code> that is
-    marked as a fold point with <code>SC_FOLDLEVELHEADERFLAG</code> and has a fold level less than
-    the <code class="parameter">line</code>. If no line is found, or if the header flags and fold levels are
-    inconsistent, the return value is -1.</p>
-
-    <p><b id="SCI_TOGGLEFOLD">SCI_TOGGLEFOLD(line line)</b><br />
-    <b id="SCI_TOGGLEFOLDSHOWTEXT">SCI_TOGGLEFOLDSHOWTEXT(line line, const char *text)</b><br />
-     Each fold point may be either expanded, displaying all its child lines, or contracted, hiding
-    all the child lines. These messages toggle the folding state of the given line as long as it has
-    the <code>SC_FOLDLEVELHEADERFLAG</code> set. These messages take care of folding or expanding
-    all the lines that depend on the line. The display updates after this message.</p>
-    <p>An optional text tag may be shown to the right of the folded text with the
-    <code class="parameter">text</code> argument to
-    <code>SCI_TOGGLEFOLDSHOWTEXT</code>.
-    The default text for all header lines can be set with <code><a class="seealso" href="#SCI_SETDEFAULTFOLDDISPLAYTEXT">SCI_SETDEFAULTFOLDDISPLAYTEXT</a></code>.
-    The text is drawn with the
-    <code><a class="message" href="#StyleDefinition">STYLE_FOLDDISPLAYTEXT</a></code> style.</p>
-
-    <p><b id="SCI_FOLDDISPLAYTEXTSETSTYLE">SCI_FOLDDISPLAYTEXTSETSTYLE(int style)</b><br />
-    <b id="SCI_FOLDDISPLAYTEXTGETSTYLE">SCI_FOLDDISPLAYTEXTGETSTYLE &rarr; int</b><br />
-    These message changes the appearance of fold text tags.</p>
-    <table class="standard" summary="Fold flags">
-      <tbody>
-        <tr>
-          <th align="left">Symbol</th>
-          <th align="left">Value</th>
-          <th align="left">Effect</th>
-        </tr>
-      </tbody>
-
-      <tbody valign="top">
-        <tr>
-          <td align="left">SC_FOLDDISPLAYTEXT_HIDDEN</td>
-          <td align="left">0</td>
-          <td align="left">Do not display the text tags. This is the default.</td>
-        </tr>
-
-        <tr>
-          <td align="left">SC_FOLDDISPLAYTEXT_STANDARD</td>
-          <td align="left">1</td>
-          <td align="left">Display the text tags.</td>
-        </tr>
-
-        <tr>
-          <td align="left">SC_FOLDDISPLAYTEXT_BOXED</td>
-          <td align="left">2</td>
-          <td align="left">Display the text tags with a box drawn around them.</td>
-        </tr>
-
-      </tbody>
-    </table>
-
-    <p><b id="SCI_SETDEFAULTFOLDDISPLAYTEXT">SCI_SETDEFAULTFOLDDISPLAYTEXT(&lt;unused&gt;, const char *text)</b><br />
-     <b id="SCI_GETDEFAULTFOLDDISPLAYTEXT">SCI_GETDEFAULTFOLDDISPLAYTEXT(&lt;unused&gt;, char *text) &rarr; int</b><br />
-     These messages set and get the default text displayed at the right of the folded text.</p>
-
-    <p><b id="SCI_SETFOLDEXPANDED">SCI_SETFOLDEXPANDED(line line, bool expanded)</b><br />
-     <b id="SCI_GETFOLDEXPANDED">SCI_GETFOLDEXPANDED(line line) &rarr; bool</b><br />
-     These messages set and get the expanded state of a single line. The set message has no effect
-    on the visible state of the line or any lines that depend on it. It does change the markers in
-    the folding margin. If you ask for the expansion state of a line that is outside the document,
-    the result is <code>false</code> (0).</p>
-
-    <p>If you just want to toggle the fold state of one line and handle all the lines that are
-    dependent on it, it is much easier to use <code>SCI_TOGGLEFOLD</code>. You would use the
-    <code>SCI_SETFOLDEXPANDED</code> message to process many folds without updating the display
-    until you had finished. See <code>SciTEBase::FoldAll()</code> and
-    <code>SciTEBase::Expand()</code> for examples of the use of these messages.</p>
-
-    <p><b id="SCI_FOLDLINE">SCI_FOLDLINE(line line, int action)</b><br />
-    <b id="SCI_FOLDCHILDREN">SCI_FOLDCHILDREN(line line, int action)</b><br />
-    <b id="SCI_FOLDALL">SCI_FOLDALL(int action)</b><br />
-    These messages provide a higher-level approach to folding instead of setting expanded flags and showing
-    or hiding individual lines.</p>
-    <p>An individual fold can be contracted/expanded/toggled with <code>SCI_FOLDLINE</code>.
-    To affect all child folds as well call <code>SCI_FOLDCHILDREN</code>.</p>
-    <p>To affect the entire document call <code>SCI_FOLDALL</code>. With <code>SC_FOLDACTION_TOGGLE</code>
-    the first fold header in the document is examined to decide whether to expand or contract.
-    </p>
-    <table class="standard" summary="Fold flags">
-      <tbody>
-        <tr>
-          <th align="left">Symbol</th>
-          <th align="left">Value</th>
-          <th align="left">Effect</th>
-        </tr>
-      </tbody>
-
-      <tbody valign="top">
-        <tr>
-          <td align="left">SC_FOLDACTION_CONTRACT</td>
-          <td align="left">0</td>
-          <td align="left">Contract.</td>
-        </tr>
-
-        <tr>
-          <td align="left">SC_FOLDACTION_EXPAND</td>
-          <td align="left">1</td>
-          <td align="left">Expand.</td>
-        </tr>
-
-        <tr>
-          <td align="left">SC_FOLDACTION_TOGGLE</td>
-          <td align="left">2</td>
-          <td align="left">Toggle between contracted and expanded.</td>
-        </tr>
-
-        <tr>
-          <td align="left">SC_FOLDACTION_CONTRACT_EVERY_LEVEL</td>
-          <td align="left">4</td>
-          <td align="left">Used for SCI_FOLDALL only, can be combined with SC_FOLDACTION_CONTRACT or SC_FOLDACTION_TOGGLE to contract all levels instead of only top-level.</td>
-        </tr>
-
-      </tbody>
-    </table>
-
-    <p><b id="SCI_EXPANDCHILDREN">SCI_EXPANDCHILDREN(line line, int level)</b><br />
-    This is used to respond to a change to a line causing its fold level or whether it is a header to change,
-    perhaps when adding or removing a '{'.</p>
-    <p>By the time the container has received the notification that the line has changed,
-    the fold level has already been set, so the container has to use the previous level in this call
-    so that any range hidden underneath this line can be shown.
-    </p>
-
-    <p><b id="SCI_SETAUTOMATICFOLD">SCI_SETAUTOMATICFOLD(int automaticFold)</b><br />
-    <b id="SCI_GETAUTOMATICFOLD">SCI_GETAUTOMATICFOLD &rarr; int</b><br />
-    Instead of implementing all the logic for handling folding in the container, Scintilla can provide behaviour
-    that is adequate for many applications. The <code class="parameter">automaticFold</code> argument is a bit set defining
-    which of the 3 pieces of folding implementation should be enabled. Most applications should be able to use the
-    <code>SC_AUTOMATICFOLD_SHOW</code> and <code>SC_AUTOMATICFOLD_CHANGE</code>
-    flags unless they wish to implement quite different behaviour such as defining their own fold structure.
-    <code>SC_AUTOMATICFOLD_CLICK</code> is more likely to be set off when an application would
-    like to add or change click behaviour such as showing method headers only when Shift+Alt is used in
-    conjunction with a click.
-    </p>
-    <table class="standard" summary="Fold flags">
-      <tbody>
-        <tr>
-          <th align="left">Symbol</th>
-          <th align="left">Value</th>
-          <th align="left">Effect</th>
-        </tr>
-      </tbody>
-
-      <tbody valign="top">
-        <tr>
-          <td align="left">SC_AUTOMATICFOLD_NONE</td>
-          <td align="left">0</td>
-          <td align="left">Value with no automatic behaviour.</td>
-        </tr>
-
-        <tr>
-          <td align="left">SC_AUTOMATICFOLD_SHOW</td>
-          <td align="left">1</td>
-          <td align="left">Automatically show lines as needed.
-          This avoids sending the <code>SCN_NEEDSHOWN</code> notification.</td>
-        </tr>
-
-        <tr>
-          <td align="left">SC_AUTOMATICFOLD_CLICK</td>
-          <td align="left">2</td>
-          <td align="left">Handle clicks in fold margin automatically.
-          This avoids sending the <code>SCN_MARGINCLICK</code> notification for folding margins.</td>
-        </tr>
-
-        <tr>
-          <td align="left">SC_AUTOMATICFOLD_CHANGE</td>
-          <td align="left">4</td>
-          <td align="left">Show lines as needed when fold structure is changed.
-          The <code>SCN_MODIFIED</code> notification is still sent unless it is disabled by the
-          container.</td>
-        </tr>
-
-      </tbody>
-    </table>
-
-    <p><b id="SCI_CONTRACTEDFOLDNEXT">SCI_CONTRACTEDFOLDNEXT(line lineStart) &rarr; line</b><br />
-     Search efficiently for lines that are contracted fold headers.
-     This is useful when saving the user's folding when switching documents or saving folding with a file.
-     The search starts at line number <code class="parameter">lineStart</code> and continues forwards to the end of the file.
-     <code class="parameter">lineStart</code> is returned if it is a contracted fold header otherwise the next contracted
-     fold header is returned. If there are no more contracted fold headers then -1 is returned.</p>
-
-    <p><b id="SCI_ENSUREVISIBLE">SCI_ENSUREVISIBLE(line line)</b><br />
-     <b id="SCI_ENSUREVISIBLEENFORCEPOLICY">SCI_ENSUREVISIBLEENFORCEPOLICY(line line)</b><br />
-     A line may be hidden because more than one of its parent lines is contracted. Both these
-    message travels up the fold hierarchy, expanding any contracted folds until they reach the top
-    level. The line will then be visible. If you use <code>SCI_ENSUREVISIBLEENFORCEPOLICY</code>,
-    the vertical caret policy set by <a class="message"
-    href="#SCI_SETVISIBLEPOLICY"><code>SCI_SETVISIBLEPOLICY</code></a> is then applied.</p>
+    
 
     <h2 id="LineWrapping">Line wrapping</h2>
 
@@ -7116,21 +4849,19 @@ sptr_t CallScintilla(unsigned int iMessage, uptr_t wParam, sptr_t lParam){
     is a good idea.</p>
 
     <h2 id="LongLines">Long lines</h2>
+    <p>Single edge column and multi-edge column queries moved to
+    <code>scintilla/src/EditorLines.cxx</code>. Edge mode/colour and multi-edge add/clear
+    remain until the styling concern moves.</p>
+
 
     <p>You can choose to mark lines that exceed a given length by drawing a vertical line or by
     colouring the background of characters that exceed the set length.</p>
     <code><a class="message" href="#SCI_SETEDGEMODE">SCI_SETEDGEMODE(int edgeMode)</a><br />
      <a class="message" href="#SCI_GETEDGEMODE">SCI_GETEDGEMODE &rarr; int</a><br />
-     <a class="message" href="#SCI_SETEDGECOLUMN">SCI_SETEDGECOLUMN(position column)</a><br />
-     <a class="message" href="#SCI_GETEDGECOLUMN">SCI_GETEDGECOLUMN &rarr; position</a><br />
      <a class="message" href="#SCI_SETEDGECOLOUR">SCI_SETEDGECOLOUR(colour edgeColour)</a><br />
      <a class="message" href="#SCI_GETEDGECOLOUR">SCI_GETEDGECOLOUR &rarr; colour</a><br />
-     <br />
      <a class="message" href="#SCI_MULTIEDGEADDLINE">SCI_MULTIEDGEADDLINE(position column, colour edgeColour)</a><br />
-     <a class="message" href="#SCI_MULTIEDGECLEARALL">SCI_MULTIEDGECLEARALL</a><br />
-     <a class="message" href="#SCI_GETMULTIEDGECOLUMN">SCI_GETMULTIEDGECOLUMN(int which) &rarr; position</a>
-     <br />
-    </code>
+     <a class="message" href="#SCI_MULTIEDGECLEARALL">SCI_MULTIEDGECLEARALL</a></code>
 
     <p><b id="SCI_SETEDGEMODE">SCI_SETEDGEMODE(int edgeMode)</b><br />
      <b id="SCI_GETEDGEMODE">SCI_GETEDGEMODE &rarr; int</b><br />
@@ -7192,12 +4923,7 @@ sptr_t CallScintilla(unsigned int iMessage, uptr_t wParam, sptr_t lParam){
       </tbody>
     </table>
 
-    <p><b id="SCI_SETEDGECOLUMN">SCI_SETEDGECOLUMN(position column)</b><br />
-     <b id="SCI_GETEDGECOLUMN">SCI_GETEDGECOLUMN &rarr; position</b><br />
-     These messages set and get the column number at which to display the long line marker. When
-    drawing lines, the column sets a position in units of the width of a space character in
-    <code>STYLE_DEFAULT</code>. When setting the background colour, the column is a character count
-    (allowing for tabs) into the line.</p>
+    
 
     <p><b id="SCI_SETEDGECOLOUR">SCI_SETEDGECOLOUR(<a class="jump" href="#colour">colour</a> edgeColour)</b><br />
      <b id="SCI_GETEDGECOLOUR">SCI_GETEDGECOLOUR &rarr; colour</b><br />
@@ -7207,7 +4933,7 @@ sptr_t CallScintilla(unsigned int iMessage, uptr_t wParam, sptr_t lParam){
     <p><b id="SCI_MULTIEDGEADDLINE">SCI_MULTIEDGEADDLINE(position column,
     <a class="jump" href="#colour">colour</a> edgeColour)</b><br />
      <b id="SCI_MULTIEDGECLEARALL">SCI_MULTIEDGECLEARALL</b><br />
-     <b id="SCI_GETMULTIEDGECOLUMN">SCI_GETMULTIEDGECOLUMN(int which) &rarr; position</b><br />
+     
      <code>SCI_MULTIEDGEADDLINE</code> adds a new vertical edge to the view. The edge will be
     displayed at the given column number. The resulting edge position depends on the metric
     of a space character in <code>STYLE_DEFAULT</code>. All the edges can be cleared with

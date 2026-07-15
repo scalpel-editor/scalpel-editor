@@ -94,6 +94,7 @@ void Editor::SetMargins(size_t margins) {
 	InvalidateStyleRedraw();
 }
 
+// Number of margin slots.
 size_t Editor::GetMargins() const noexcept {
 	return vs.ms.size();
 }
@@ -106,6 +107,7 @@ void Editor::SetMarginTypeN(size_t margin, MarginType marginType) {
 	}
 }
 
+// Type of margin (Symbol, Number, Text, …).
 MarginType Editor::GetMarginTypeN(size_t margin) const noexcept {
 	if (ValidMargin(margin))
 		return vs.ms[margin].style;
@@ -124,6 +126,7 @@ void Editor::SetMarginWidthN(size_t margin, int pixelWidth) {
 	}
 }
 
+// Pixel width of margin; 0 means hidden.
 int Editor::GetMarginWidthN(size_t margin) const noexcept {
 	if (ValidMargin(margin))
 		return vs.ms[margin].width;
@@ -138,6 +141,7 @@ void Editor::SetMarginMaskN(size_t margin, int mask) {
 	}
 }
 
+// Marker mask drawn in this margin.
 int Editor::GetMarginMaskN(size_t margin) const noexcept {
 	if (ValidMargin(margin))
 		return vs.ms[margin].mask;
@@ -152,6 +156,7 @@ void Editor::SetMarginSensitiveN(size_t margin, bool sensitive) {
 	}
 }
 
+// True when the margin receives mouse clicks.
 bool Editor::GetMarginSensitiveN(size_t margin) const noexcept {
 	if (ValidMargin(margin))
 		return vs.ms[margin].sensitive;
@@ -164,6 +169,7 @@ void Editor::SetMarginCursorN(size_t margin, CursorShape cursor) {
 		vs.ms[margin].cursor = cursor;
 }
 
+// Cursor shape shown over the margin.
 CursorShape Editor::GetMarginCursorN(size_t margin) const noexcept {
 	if (ValidMargin(margin))
 		return vs.ms[margin].cursor;
@@ -179,6 +185,7 @@ void Editor::SetMarginBackN(size_t margin, int rgb) {
 	}
 }
 
+// Background colour for Colour margins.
 int Editor::GetMarginBackN(size_t margin) const noexcept {
 	if (ValidMargin(margin))
 		return vs.ms[margin].back.OpaqueRGB();
@@ -192,15 +199,18 @@ void Editor::SetMarginLeft(int pixelWidth) {
 	InvalidateStyleRedraw();
 }
 
+// Blank pixel gap left of the text.
 int Editor::GetMarginLeft() const noexcept {
 	return vs.leftMarginWidth;
 }
 
+// Blank pixel gap right of the text.
 void Editor::SetMarginRight(int pixelWidth) {
 	vs.rightMarginWidth = pixelWidth;
 	InvalidateStyleRedraw();
 }
 
+// Blank pixel gap right of the text.
 int Editor::GetMarginRight() const noexcept {
 	return vs.rightMarginWidth;
 }
@@ -211,6 +221,7 @@ void Editor::SetFoldMarginColour(bool useSetting, int rgb) {
 	InvalidateStyleRedraw();
 }
 
+// Highlight colour of the fold margin, or platform default when useSetting is false.
 void Editor::SetFoldMarginHiColour(bool useSetting, int rgb) {
 	vs.foldmarginHighlightColour = OptionalColour(useSetting ? 1 : 0, rgb);
 	InvalidateStyleRedraw();
@@ -221,6 +232,7 @@ void Editor::MarginSetText(Sci::Line line, const char *text) {
 	pdoc->MarginSetText(line, text);
 }
 
+// Application text for a Text/RText margin line.
 std::string Editor::MarginGetText(Sci::Line line) const {
 	return std::string(pdoc->MarginStyledText(line).AsView());
 }
@@ -230,6 +242,7 @@ void Editor::MarginSetStyle(Sci::Line line, int style) {
 	pdoc->MarginSetStyle(line, style);
 }
 
+// Style index for margin text on line, or 0.
 int Editor::MarginGetStyle(Sci::Line line) const noexcept {
 	return static_cast<int>(pdoc->MarginStyledText(line).style);
 }
@@ -251,6 +264,7 @@ Sci::Position Editor::MarginGetStyles(Sci::Line line, char *buffer) const {
 	return st.styles ? static_cast<Sci::Position>(st.length) : 0;
 }
 
+// Clear all per-line margin text and styles.
 void Editor::MarginTextClearAll() {
 	pdoc->MarginClearAll();
 }
@@ -261,6 +275,7 @@ void Editor::MarginSetStyleOffset(int style) {
 	InvalidateStyleRedraw();
 }
 
+// Style index base for margin text styles.
 int Editor::MarginGetStyleOffset() const noexcept {
 	return vs.marginStyleOffset;
 }
@@ -270,6 +285,7 @@ void Editor::SetMarginOptions(MarginOption options) {
 	marginOptions = options;
 }
 
+// MarginOptions for sub-line selection behaviour.
 MarginOption Editor::GetMarginOptions() const noexcept {
 	return marginOptions;
 }

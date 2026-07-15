@@ -79,6 +79,7 @@ void Editor::SetEOLMode(EndOfLine eolMode) {
 	pdoc->eolMode = eolMode;
 }
 
+// Current EOL mode used for new line inserts (CrLf, Cr, or Lf).
 EndOfLine Editor::GetEOLMode() const noexcept {
 	return pdoc->eolMode;
 }
@@ -151,6 +152,7 @@ void Editor::SetTabDrawMode(TabDrawMode tabDrawMode) {
 	Redraw();
 }
 
+// How tab arrows are drawn when white space is visible.
 TabDrawMode Editor::GetTabDrawMode() const noexcept {
 	return vs.tabDrawMode;
 }
@@ -167,6 +169,7 @@ void Editor::SetTabWidth(int tabWidth) {
 	InvalidateStyleRedraw();
 }
 
+// Tab size in columns.
 int Editor::GetTabWidth() const noexcept {
 	return pdoc->tabInChars;
 }
@@ -176,6 +179,7 @@ void Editor::SetTabMinimumWidth(int pixels) {
 	SetAppearance(view.tabWidthMinimumPixels, pixels);
 }
 
+// Minimum pixel width of a tab when drawing.
 int Editor::GetTabMinimumWidth() const noexcept {
 	return view.tabWidthMinimumPixels;
 }
@@ -209,6 +213,7 @@ void Editor::SetSelEOLFilled(bool filled) {
 	InvalidateStyleRedraw();
 }
 
+// True when selection background continues past the last character to the edge.
 bool Editor::GetSelEOLFilled() const noexcept {
 	return vs.selection.eolFilled;
 }
@@ -241,6 +246,7 @@ void Editor::SetIndent(int indentSize) {
 	InvalidateStyleRedraw();
 }
 
+// Indent size in columns for indent/dedent commands.
 int Editor::GetIndent() const noexcept {
 	return pdoc->indentInChars;
 }
@@ -250,6 +256,7 @@ void Editor::SetUseTabs(bool useTabs) {
 	pdoc->useTabs = useTabs;
 }
 
+// True when indentation inserts tab characters; false uses spaces.
 bool Editor::GetUseTabs() const noexcept {
 	return pdoc->useTabs;
 }
@@ -260,6 +267,7 @@ void Editor::SetLineIndentation(Sci::Line line, Sci::Position indentSize) {
 	pdoc->SetLineIndentation(line, indentSize);
 }
 
+// Indentation column count of line.
 int Editor::GetLineIndentation(Sci::Line line) const {
 	return pdoc->GetLineIndentation(line);
 }
@@ -290,6 +298,7 @@ void Editor::SetIndentationGuides(IndentView indentView) {
 	Redraw();
 }
 
+// Indentation guide look: None, Real, LookForward, or LookBoth.
 IndentView Editor::GetIndentationGuides() const noexcept {
 	return vs.viewIndentationGuides;
 }
@@ -353,6 +362,7 @@ void Editor::SetTabIndents(bool tabIndents) {
 	pdoc->tabIndents = tabIndents;
 }
 
+// True when Tab indents selected lines instead of inserting a tab.
 bool Editor::GetTabIndents() const noexcept {
 	return pdoc->tabIndents;
 }
@@ -363,6 +373,7 @@ void Editor::SetBackSpaceUnIndents(bool bsUnIndents) {
 	pdoc->backspaceUnindents = bsUnIndents;
 }
 
+// True when BackSpace unindents at indentation instead of deleting one character.
 bool Editor::GetBackSpaceUnIndents() const noexcept {
 	return pdoc->backspaceUnindents;
 }
@@ -380,6 +391,7 @@ void Editor::SetViewEOL(bool visible) {
 	InvalidateStyleRedraw();
 }
 
+// True when end-of-line glyphs are drawn.
 bool Editor::GetViewEOL() const noexcept {
 	return vs.viewEOL;
 }
@@ -390,6 +402,7 @@ void Editor::SetEdgeColumn(int column) {
 	InvalidateStyleRedraw();
 }
 
+// Column of the single long-line edge marker.
 int Editor::GetEdgeColumn() const noexcept {
 	return vs.theEdge.column;
 }
@@ -436,6 +449,7 @@ void Editor::SetWhitespaceChars(std::string_view characters) {
 	pdoc->SetCharClasses(reinterpret_cast<const unsigned char *>(copy.c_str()), CharacterClass::space);
 }
 
+// Characters currently classified as white space for word motion.
 int Editor::GetWhitespaceChars(unsigned char *buffer) const {
 	return pdoc->GetCharsOfClass(CharacterClass::space, buffer);
 }
@@ -449,6 +463,7 @@ void Editor::SetPunctuationChars(std::string_view characters) {
 	pdoc->SetCharClasses(reinterpret_cast<const unsigned char *>(copy.c_str()), CharacterClass::punctuation);
 }
 
+// Characters currently classified as punctuation for word motion.
 int Editor::GetPunctuationChars(unsigned char *buffer) const {
 	return pdoc->GetCharsOfClass(CharacterClass::punctuation, buffer);
 }
@@ -470,6 +485,7 @@ void Editor::SetLineEndTypesAllowed(LineEndType lineEndBitSet) {
 	}
 }
 
+// Extra Unicode line-ending forms allowed in this document.
 LineEndType Editor::GetLineEndTypesAllowed() const noexcept {
 	return pdoc->GetLineEndTypesAllowed();
 }
@@ -484,10 +500,12 @@ LineCharacterIndexType Editor::GetLineCharacterIndex() const noexcept {
 	return pdoc->LineCharacterIndex();
 }
 
+// Build a line index for UTF-16 or UTF-32 unit lookups.
 void Editor::AllocateLineCharacterIndex(LineCharacterIndexType lineCharacterIndex) {
 	pdoc->AllocateLineCharacterIndex(lineCharacterIndex);
 }
 
+// Drop a previously allocated line character index.
 void Editor::ReleaseLineCharacterIndex(LineCharacterIndexType lineCharacterIndex) {
 	pdoc->ReleaseLineCharacterIndex(lineCharacterIndex);
 }
