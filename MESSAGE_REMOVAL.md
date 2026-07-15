@@ -161,10 +161,12 @@ Moved (2026-07-15): retained operations live in `EditorSelection.cxx` with tempo
 
 ### Caret (37)
 
+Moved (2026-07-15): retained operations live in `EditorCaret.cxx` with temporary `WndProc` forwarders; focused coverage in `EditorCaretTest.cxx`.
+
 | Entries | Owner | Classification | Target and named entry point | Focused test | Documentation | Deletion reason |
 | --- | --- | --- | --- | --- | --- | --- |
-| `VerticalCentreCaret` | `Editor` | Keyboard command | `EditorCommand::VerticalCentreCaret` in `EditorCaret.cxx` | Add a command test observing vertical scroll and caret position | Move command prose | Not deleted |
-| All remaining entries below | `Editor` caret state and `ViewStyle` | Private editor operation | `EditorCaret.cxx`; named operations keep their interface names and use typed policy values | Add editor tests for caret appearance invalidation, blink requests, sticky state, policies, and scrolling into view | Move API prose | Not deleted |
+| `VerticalCentreCaret` | `Editor` | Keyboard command | `EditorCommand::VerticalCentreCaret` in `EditorCaret.cxx` | `EditorCaretTest.cxx` safe command run | Moved with caret helpers | Not deleted |
+| All remaining entries below | `Editor` caret state and `ViewStyle` | Private editor operation | `EditorCaret.cxx`; named operations keep their interface names and use typed policy values | `EditorCaretTest.cxx`: period, sticky, style, width, caret line, additional carets | Moved to `EditorCaret.cxx` | Not deleted |
 
 `get GetCaretLineLayer=2764`, `set SetCaretLineLayer=2765`, `get GetCaretLineHighlightSubLine=2773`, `set SetCaretLineHighlightSubLine=2774`, `set SetCaretFore=2069`, `get GetCaretPeriod=2075`, `set SetCaretPeriod=2076`, `get GetCaretLineVisible=2095`, `set SetCaretLineVisible=2096`, `get GetCaretLineBack=2097`, `set SetCaretLineBack=2098`, `get GetCaretLineFrame=2704`, `set SetCaretLineFrame=2705`, `get GetCaretFore=2138`, `fun ScrollCaret=2169`, `set SetCaretWidth=2188`, `get GetCaretWidth=2189`, `fun MoveCaretInsideView=2401`, `fun ChooseCaretX=2399`, `fun SetXCaretPolicy=2402`, `fun SetYCaretPolicy=2403`, `get GetCaretSticky=2457`, `set SetCaretSticky=2458`, `fun ToggleCaretSticky=2459`, `set SetCaretLineBackAlpha=2470`, `get GetCaretLineBackAlpha=2471`, `set SetCaretStyle=2512`, `get GetCaretStyle=2513`, `set SetAdditionalCaretsBlink=2567`, `get GetAdditionalCaretsBlink=2568`, `set SetAdditionalCaretsVisible=2608`, `get GetAdditionalCaretsVisible=2609`, `set SetAdditionalCaretFore=2604`, `get GetAdditionalCaretFore=2605`, `fun VerticalCentreCaret=2619`, `get GetCaretLineVisibleAlways=2654`, `set SetCaretLineVisibleAlways=2655`
 

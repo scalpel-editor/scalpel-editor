@@ -21,6 +21,7 @@ add_library(scintilla_core STATIC
   src/Editor.cxx
   src/EditorAutocomplete.cxx
   src/EditorCallTips.cxx
+  src/EditorCaret.cxx
   src/EditorClipboard.cxx
   src/EditorCommands.cxx
   src/EditorDocument.cxx

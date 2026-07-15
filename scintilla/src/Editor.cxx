@@ -879,17 +879,6 @@ void Editor::HorizontalScrollTo(int xPos) {
 	}
 }
 
-void Editor::VerticalCentreCaret() {
-	const Sci::Line lineDoc =
-		pdoc->SciLineFromPosition(sel.IsRectangular() ? sel.Rectangular().caret.Position() : sel.MainCaret());
-	const Sci::Line lineDisplay = pcs->DisplayFromDoc(lineDoc);
-	const Sci::Line newTop = lineDisplay - (LinesOnScreen() / 2);
-	if (topLine != newTop) {
-		SetTopLine(newTop > 0 ? newTop : 0);
-		SetVerticalScrollPos();
-		RedrawRect(GetClientRectangle());
-	}
-}
 
 void Editor::MoveSelectedLines(int lineDelta) {
 
@@ -970,22 +959,6 @@ void Editor::MoveSelectedLinesDown() {
 	MoveSelectedLines(1);
 }
 
-void Editor::MoveCaretInsideView(bool ensureVisible) {
-	const PRectangle rcClient = GetTextRectangle();
-	const Point pt = PointMainCaret();
-	if (pt.y < rcClient.top) {
-		MovePositionTo(SPositionFromLocation(
-		            Point::FromInts(lastXChosen - xOffset, static_cast<int>(rcClient.top)),
-					false, false, UserVirtualSpace()),
-					Selection::SelTypes::none, ensureVisible);
-	} else if ((pt.y + vs.lineHeight - 1) > rcClient.bottom) {
-		const ptrdiff_t yOfLastLineFullyDisplayed = static_cast<ptrdiff_t>(rcClient.top) + ((LinesOnScreen() - 1) * vs.lineHeight);
-		MovePositionTo(SPositionFromLocation(
-		            Point::FromInts(lastXChosen - xOffset, static_cast<int>(rcClient.top + static_cast<XYPOSITION>(yOfLastLineFullyDisplayed))),
-					false, false, UserVirtualSpace()),
-		        Selection::SelTypes::none, ensureVisible);
-	}
-}
 
 Sci::Line Editor::DisplayFromPosition(Sci::Position pos) {
 	AutoSurface surface(this);
@@ -1317,48 +1290,9 @@ void Editor::EnsureCaretVisible(bool useMargin, bool vert, bool horiz) {
 		caretPolicies));
 }
 
-void Editor::ShowCaretAtCurrentPosition() {
-	if (hasFocus) {
-		caret.active = true;
-		caret.on = true;
-		FineTickerCancel(TickReason::caret);
-		if (caret.period > 0)
-			FineTickerStart(TickReason::caret, caret.period, caret.period/10);
-	} else {
-		caret.active = false;
-		caret.on = false;
-		FineTickerCancel(TickReason::caret);
-	}
-	InvalidateCaret();
-}
 
-void Editor::DropCaret() {
-	caret.active = false;
-	FineTickerCancel(TickReason::caret);
-	InvalidateCaret();
-}
 
-void Editor::CaretSetPeriod(int period) {
-	if (caret.period != period) {
-		caret.period = period;
-		caret.on = true;
-		FineTickerCancel(TickReason::caret);
-		if ((caret.active) && (caret.period > 0))
-			FineTickerStart(TickReason::caret, caret.period, caret.period/10);
-		InvalidateCaret();
-	}
-}
 
-void Editor::InvalidateCaret() {
-	if (posDrag.IsValid()) {
-		InvalidateRange(posDrag.Position(), posDrag.Position() + 1);
-	} else {
-		for (size_t r=0; r<sel.Count(); r++) {
-			InvalidateRange(sel.Range(r).caret.Position(), sel.Range(r).caret.Position() + 1);
-		}
-	}
-	UpdateSystemCaret();
-}
 
 void Editor::NotifyCaretMove() {
 }
@@ -5502,11 +5436,11 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return xOffset;
 
 	case Message::ChooseCaretX:
-		SetLastXChosen();
+		ChooseCaretX();
 		break;
 
 	case Message::ScrollCaret:
-		EnsureCaretVisible();
+		ScrollCaret();
 		break;
 
 	case Message::SetReadOnly:
@@ -5686,10 +5620,10 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::GetCaretPeriod:
-		return caret.period;
+		return GetCaretPeriod();
 
 	case Message::SetCaretPeriod:
-		CaretSetPeriod(static_cast<int>(wParam));
+		SetCaretPeriod(static_cast<int>(wParam));
 		break;
 
 	case Message::GetWordChars:
@@ -6173,16 +6107,14 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 
 	case Message::SetCaretSticky:
 		PLATFORM_ASSERT(static_cast<CaretSticky>(wParam) <= CaretSticky::WhiteSpace);
-		if (static_cast<CaretSticky>(wParam) <= CaretSticky::WhiteSpace) {
-			caretSticky = static_cast<CaretSticky>(wParam);
-		}
+		SetCaretSticky(static_cast<CaretSticky>(wParam));
 		break;
 
 	case Message::GetCaretSticky:
-		return static_cast<sptr_t>(caretSticky);
+		return static_cast<sptr_t>(GetCaretSticky());
 
 	case Message::ToggleCaretSticky:
-		caretSticky = (caretSticky == CaretSticky::Off) ? CaretSticky::On : CaretSticky::Off;
+		ToggleCaretSticky();
 		break;
 
 	case Message::GetColumn:
@@ -6602,72 +6534,46 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return pdoc->GetMaxLineState();
 
 	case Message::GetCaretLineVisible:
-		return vs.ElementColour(Element::CaretLineBack) ? 1 : 0;
+		return GetCaretLineVisible() ? 1 : 0;
 	case Message::SetCaretLineVisible:
-		if (wParam) {
-			if (!vs.elementColours.count(Element::CaretLineBack)) {
-				// Yellow default
-				vs.elementColours[Element::CaretLineBack] = ColourRGBA(maximumByte, maximumByte, 0);
-				InvalidateStyleRedraw();
-			}
-		} else {
-			if (vs.ResetElement(Element::CaretLineBack)) {
-				InvalidateStyleRedraw();
-			}
-		}
+		SetCaretLineVisible(wParam != 0);
 		break;
 	case Message::GetCaretLineVisibleAlways:
-		return vs.caretLine.alwaysShow;
+		return GetCaretLineVisibleAlways() ? 1 : 0;
 	case Message::SetCaretLineVisibleAlways:
-		vs.caretLine.alwaysShow = wParam != 0;
-		InvalidateStyleRedraw();
+		SetCaretLineVisibleAlways(wParam != 0);
 		break;
 
 	case Message::GetCaretLineHighlightSubLine:
-		return vs.caretLine.subLine;
+		return GetCaretLineHighlightSubLine() ? 1 : 0;
 	case Message::SetCaretLineHighlightSubLine:
-		vs.caretLine.subLine = wParam != 0;
-		InvalidateStyleRedraw();
+		SetCaretLineHighlightSubLine(wParam != 0);
 		break;
 
 	case Message::GetCaretLineFrame:
-		return vs.caretLine.frame;
+		return GetCaretLineFrame();
 	case Message::SetCaretLineFrame:
-		vs.caretLine.frame = static_cast<int>(wParam);
-		InvalidateStyleRedraw();
+		SetCaretLineFrame(static_cast<int>(wParam));
 		break;
 	case Message::GetCaretLineBack:
-		return vs.ElementColourForced(Element::CaretLineBack).OpaqueRGB();
+		return GetCaretLineBack();
 
 	case Message::SetCaretLineBack:
-		vs.SetElementRGB(Element::CaretLineBack, static_cast<int>(wParam));
-		InvalidateStyleRedraw();
+		SetCaretLineBack(static_cast<int>(wParam));
 		break;
 
 	case Message::GetCaretLineLayer:
-		return static_cast<sptr_t>(vs.caretLine.layer);
+		return static_cast<sptr_t>(GetCaretLineLayer());
 
 	case Message::SetCaretLineLayer:
-		if (vs.caretLine.layer != static_cast<Layer>(wParam)) {
-			vs.caretLine.layer = static_cast<Layer>(wParam);
-			UpdateBaseElements();
-			InvalidateStyleRedraw();
-		}
+		SetCaretLineLayer(static_cast<Layer>(wParam));
 		break;
 
 	case Message::GetCaretLineBackAlpha:
-		if (vs.caretLine.layer == Layer::Base)
-			return static_cast<sptr_t>(Alpha::NoAlpha);
-		return vs.ElementColour(Element::CaretLineBack).value_or(ColourRGBA()).GetAlpha();
+		return GetCaretLineBackAlpha();
 
-	case Message::SetCaretLineBackAlpha: {
-			const Layer layerNew = (static_cast<Alpha>(wParam) == Alpha::NoAlpha) ? Layer::Base : Layer::OverText;
-			vs.caretLine.layer = layerNew;
-			if (vs.ElementColour(Element::CaretLineBack)) {
-				vs.SetElementAlpha(Element::CaretLineBack, static_cast<int>(wParam));
-			}
-			InvalidateStyleRedraw();
-		}
+	case Message::SetCaretLineBackAlpha:
+		SetCaretLineBackAlpha(static_cast<int>(wParam));
 		break;
 
 		// Folding messages
@@ -6798,11 +6704,11 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return SearchText(CommandFromMessage(iMessage), wParam, lParam);
 
 	case Message::SetXCaretPolicy:
-		caretPolicies.x = CaretPolicySlop(wParam, lParam);
+		SetXCaretPolicy(wParam, lParam);
 		break;
 
 	case Message::SetYCaretPolicy:
-		caretPolicies.y = CaretPolicySlop(wParam, lParam);
+		SetYCaretPolicy(wParam, lParam);
 		break;
 
 	case Message::SetVisiblePolicy:
@@ -6876,32 +6782,25 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return static_cast<sptr_t>(GetSelectionLayer());
 
 	case Message::SetCaretFore:
-		vs.elementColours[Element::Caret] = ColourRGBA::FromIpRGB(SPtrFromUPtr(wParam));
-		InvalidateStyleRedraw();
+		SetCaretFore(static_cast<int>(SPtrFromUPtr(wParam)));
 		break;
 
 	case Message::GetCaretFore:
-		return vs.ElementColourForced(Element::Caret).OpaqueRGB();
+		return GetCaretFore();
 
 	case Message::SetCaretStyle:
-		if (static_cast<CaretStyle>(wParam) <= (CaretStyle::Block | CaretStyle::OverstrikeBlock | CaretStyle::Curses | CaretStyle::BlockAfter))
-			vs.caret.style = static_cast<CaretStyle>(wParam);
-		else
-			/* Default to the line caret */
-			vs.caret.style = CaretStyle::Line;
-		InvalidateStyleRedraw();
+		SetCaretStyle(static_cast<CaretStyle>(wParam));
 		break;
 
 	case Message::GetCaretStyle:
-		return static_cast<sptr_t>(vs.caret.style);
+		return static_cast<sptr_t>(GetCaretStyle());
 
 	case Message::SetCaretWidth:
-		vs.caret.width = std::clamp(static_cast<int>(wParam), 0, 20);
-		InvalidateStyleRedraw();
+		SetCaretWidth(static_cast<int>(wParam));
 		break;
 
 	case Message::GetCaretWidth:
-		return vs.caret.width;
+		return GetCaretWidth();
 
 	case Message::AssignCmdKey:
 		if (const EditorCommand command = CommandFromMessage(static_cast<Message>(lParam));
@@ -7673,20 +7572,18 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return static_cast<sptr_t>(GetMultiPaste());
 
 	case Message::SetAdditionalCaretsBlink:
-		view.additionalCaretsBlink = wParam != 0;
-		InvalidateCaret();
+		SetAdditionalCaretsBlink(wParam != 0);
 		break;
 
 	case Message::GetAdditionalCaretsBlink:
-		return view.additionalCaretsBlink;
+		return GetAdditionalCaretsBlink() ? 1 : 0;
 
 	case Message::SetAdditionalCaretsVisible:
-		view.additionalCaretsVisible = wParam != 0;
-		InvalidateCaret();
+		SetAdditionalCaretsVisible(wParam != 0);
 		break;
 
 	case Message::GetAdditionalCaretsVisible:
-		return view.additionalCaretsVisible;
+		return GetAdditionalCaretsVisible() ? 1 : 0;
 
 	case Message::GetSelections:
 		return GetSelections();
@@ -7809,12 +7706,11 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return vs.ElementColourForced(Element::SelectionAdditionalBack).GetAlpha();
 
 	case Message::SetAdditionalCaretFore:
-		vs.elementColours[Element::CaretAdditional] = ColourRGBA::FromIpRGB(SPtrFromUPtr(wParam));
-		InvalidateStyleRedraw();
+		SetAdditionalCaretFore(static_cast<int>(SPtrFromUPtr(wParam)));
 		break;
 
 	case Message::GetAdditionalCaretFore:
-		return vs.ElementColourForced(Element::CaretAdditional).OpaqueRGB();
+		return GetAdditionalCaretFore();
 
 	case Message::RotateSelection:
 		return ExecuteCommand(EditorCommand::RotateSelection);
