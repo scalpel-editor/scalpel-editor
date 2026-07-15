@@ -27,6 +27,7 @@ add_library(scintilla_core STATIC
   src/EditorDocument.cxx
   src/EditorHistory.cxx
   src/EditorLines.cxx
+  src/EditorSearch.cxx
   src/EditorSelection.cxx
   src/EditorWrapping.cxx
   src/EditView.cxx

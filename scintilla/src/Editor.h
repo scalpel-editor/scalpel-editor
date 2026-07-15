@@ -711,11 +711,17 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 
 	void Indent(bool forwards, bool lineIndent);
 
-	Sci::Position FindText(Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
-	Sci::Position FindTextFull(Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
+	// Search and replace helpers: EditorSearch.cxx.
+	// Application target/search methods are public below.
 	void SearchAnchor() noexcept;
 	Sci::Position SearchText(EditorCommand command, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
 	Sci::Position SearchInTarget(const char *text, Sci::Position length);
+	void SetTargetStartVirtualSpace(Sci::Position space);
+	Sci::Position GetTargetStartVirtualSpace() const noexcept;
+	void SetTargetEndVirtualSpace(Sci::Position space);
+	Sci::Position GetTargetEndVirtualSpace() const noexcept;
+	void ReplaceSel(std::string_view text);
+	void ReplaceRectangular(std::string_view text);
 	void GoToLine(Sci::Line lineNo);
 
 	virtual void CopyToClipboard(const SelectionText &selectedText) = 0;
@@ -912,6 +918,18 @@ public:
 	void SetEOLMode(Scintilla::EndOfLine eolMode);
 	Scintilla::EndOfLine GetEOLMode() const noexcept;
 	void ConvertEOLs(Scintilla::EndOfLine eolMode);
+
+	// Target search and replace; definitions in EditorSearch.cxx.
+	void SetTargetStart(Sci::Position pos);
+	Sci::Position GetTargetStart() const noexcept;
+	void SetTargetEnd(Sci::Position pos);
+	Sci::Position GetTargetEnd() const noexcept;
+	void SetTargetRange(Sci::Position start, Sci::Position end);
+	void TargetWholeDocument();
+	std::string GetTargetText() const;
+	Sci::Position SearchInTarget(std::string_view text);
+	void SetSearchFlags(Scintilla::FindOption flags);
+	Scintilla::FindOption GetSearchFlags() const noexcept;
 
 	// Basic selection and navigation; definitions in EditorSelection.cxx.
 	Sci::Position GetCurrentPos() noexcept;

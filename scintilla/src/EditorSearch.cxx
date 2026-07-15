@@ -1,0 +1,265 @@
+// Scintilla source code edit control
+/** @file EditorSearch.cxx
+ ** Target search, replace, and selection-relative find for the editor.
+ **/
+// Copyright 1998-2011 by Neil Hodgson <neilh@scintilla.org>
+// The License.txt file describes the conditions under which this software may be distributed.
+
+#include <cstddef>
+#include <cstdlib>
+#include <cstdint>
+#include <cassert>
+#include <cstring>
+#include <cstdio>
+#include <cmath>
+
+#include <stdexcept>
+#include <utility>
+#include <string>
+#include <string_view>
+#include <vector>
+#include <map>
+#include <set>
+#include <forward_list>
+#include <optional>
+#include <algorithm>
+#include <iterator>
+#include <memory>
+#include <chrono>
+#include <atomic>
+#include <mutex>
+#include <thread>
+#include <future>
+
+#include "ScintillaTypes.h"
+#include "ScintillaMessages.h"
+#include "ScintillaStructures.h"
+#include "ILoader.h"
+#include "ILexer.h"
+
+#include "Debugging.h"
+#include "Geometry.h"
+#include "Platform.h"
+
+#include "CharacterType.h"
+#include "CharacterCategoryMap.h"
+#include "Position.h"
+#include "UniqueString.h"
+#include "SplitVector.h"
+#include "Partitioning.h"
+#include "RunStyles.h"
+#include "ContractionState.h"
+#include "CellBuffer.h"
+#include "PerLine.h"
+#include "KeyMap.h"
+#include "Indicator.h"
+#include "LineMarker.h"
+#include "Style.h"
+#include "ViewStyle.h"
+#include "CharClassify.h"
+#include "Decoration.h"
+#include "CaseFolder.h"
+#include "CaseConvert.h"
+#include "Document.h"
+#include "UniConversion.h"
+#include "Selection.h"
+#include "PositionCache.h"
+#include "EditModel.h"
+#include "MarginView.h"
+#include "EditView.h"
+#include "Editor.h"
+#include "ElapsedPeriod.h"
+
+using namespace Scintilla;
+using namespace Scintilla;
+using namespace Scintilla::Internal;
+
+
+// --- Target range and search (application + private) ---
+
+void Editor::SetTargetStart(Sci::Position pos) {
+	targetRange.start.SetPosition(pos);
+}
+
+Sci::Position Editor::GetTargetStart() const noexcept {
+	return targetRange.start.Position();
+}
+
+void Editor::SetTargetStartVirtualSpace(Sci::Position space) {
+	targetRange.start.SetVirtualSpace(space);
+}
+
+Sci::Position Editor::GetTargetStartVirtualSpace() const noexcept {
+	return targetRange.start.VirtualSpace();
+}
+
+void Editor::SetTargetEnd(Sci::Position pos) {
+	targetRange.end.SetPosition(pos);
+}
+
+Sci::Position Editor::GetTargetEnd() const noexcept {
+	return targetRange.end.Position();
+}
+
+void Editor::SetTargetEndVirtualSpace(Sci::Position space) {
+	targetRange.end.SetVirtualSpace(space);
+}
+
+Sci::Position Editor::GetTargetEndVirtualSpace() const noexcept {
+	return targetRange.end.VirtualSpace();
+}
+
+void Editor::SetTargetRange(Sci::Position start, Sci::Position end) {
+	targetRange.start.SetPosition(start);
+	targetRange.end.SetPosition(end);
+}
+
+void Editor::TargetWholeDocument() {
+	targetRange.start.SetPosition(0);
+	targetRange.end.SetPosition(pdoc->Length());
+}
+
+std::string Editor::GetTargetText() const {
+	return RangeText(targetRange.start.Position(), targetRange.end.Position());
+}
+
+void Editor::SetSearchFlags(FindOption flags) {
+	searchFlags = flags;
+}
+
+FindOption Editor::GetSearchFlags() const noexcept {
+	return searchFlags;
+}
+
+// Replace the main selection with text. One undo action. Moves the caret after
+// the insert and ensures it is visible.
+void Editor::ReplaceSel(std::string_view text) {
+	UndoGroup ug(pdoc);
+	ClearSelection();
+	const Sci::Position lengthInserted = pdoc->InsertString(sel.MainCaret(), text);
+	SetEmptySelection(sel.MainCaret() + lengthInserted);
+	SetLastXChosen();
+	EnsureCaretVisible();
+}
+
+// Paste shape replacement of the selection as a rectangular paste of text.
+void Editor::ReplaceRectangular(std::string_view text) {
+	UndoGroup ug(pdoc);
+	if (!sel.Empty()) {
+		ClearSelection();
+	}
+	InsertPasteShape(text, PasteShape::rectangular);
+}
+
+Sci::Position Editor::SearchInTarget(std::string_view text) {
+	const std::string copy(text);
+	return SearchInTarget(copy.c_str(), static_cast<Sci::Position>(copy.size()));
+}
+
+void Editor::SearchAnchor() noexcept {
+	searchAnchor = SelectionStart().Position();
+}
+
+Sci::Position Editor::SearchText(
+    EditorCommand command,		///< Accepts both @c EditorCommand::SearchNext and @c EditorCommand::SearchPrev.
+    uptr_t wParam,				///< Search modes : @c FindOption::MatchCase, @c FindOption::WholeWord,
+    ///< @c FindOption::WordStart, @c FindOption::RegExp or @c FindOption::Posix.
+    sptr_t lParam) {			///< The text to search for.
+
+	const char *txt = ConstCharPtrFromSPtr(lParam);
+	Sci::Position pos = Sci::invalidPosition;
+	Sci::Position lengthFound = strlen(txt);
+	if (!pdoc->HasCaseFolder())
+		pdoc->SetCaseFolder(std::make_unique<CaseFolderUnicode>());
+	try {
+		if (command == EditorCommand::SearchNext) {
+			pos = pdoc->FindText(searchAnchor, pdoc->Length(), txt,
+					static_cast<FindOption>(wParam),
+					&lengthFound);
+		} else {
+			pos = pdoc->FindText(searchAnchor, 0, txt,
+					static_cast<FindOption>(wParam),
+					&lengthFound);
+		}
+	} catch (RegexError &) {
+		errorStatus = Status::RegEx;
+		return Sci::invalidPosition;
+	}
+	if (pos != Sci::invalidPosition) {
+		SetSelection(pos, pos + lengthFound);
+	}
+
+	return pos;
+}
+
+Sci::Position Editor::SearchInTarget(const char *text, Sci::Position length) {
+	Sci::Position lengthFound = length;
+
+	if (!pdoc->HasCaseFolder())
+		pdoc->SetCaseFolder(std::make_unique<CaseFolderUnicode>());
+	try {
+		const Sci::Position pos = pdoc->FindText(targetRange.start.Position(), targetRange.end.Position(), text,
+				searchFlags,
+				&lengthFound);
+		if (pos != -1) {
+			targetRange.start.SetPosition(pos);
+			targetRange.end.SetPosition(pos + lengthFound);
+		}
+		return pos;
+	} catch (RegexError &) {
+		errorStatus = Status::RegEx;
+		return -1;
+	}
+}
+
+Sci::Position Editor::ReplaceTarget(ReplaceType replaceType, std::string_view text) {
+	pdoc->CheckPosition(targetRange.start.Position());
+
+	UndoGroup ug(pdoc);
+
+	std::string substituted;	// Copy in case of re-entrance
+
+	if (replaceType == ReplaceType::patterns) {
+		Sci::Position length = text.length();
+		const char *p = pdoc->SubstituteByPosition(text.data(), &length);
+		if (!p) {
+			return 0;
+		}
+		substituted.assign(p, length);
+		text = substituted;
+	}
+
+	if (replaceType == ReplaceType::minimal) {
+		// Check for prefix and suffix and reduce text and target to match.
+		// This is performed with Range which doesn't support virtual space.
+		Range range(targetRange.start.Position(), targetRange.end.Position());
+		pdoc->TrimReplacement(text, range);
+		// Re-apply virtual space to start if start position didn't change.
+		// Don't bother with end as its virtual space is not used
+		const SelectionPosition start(range.start == targetRange.start.Position() ?
+			targetRange.start : SelectionPosition(range.start));
+		targetRange = SelectionSegment(start, SelectionPosition(range.end));
+	}
+
+	// Make a copy of targetRange in case callbacks use target
+	SelectionSegment replaceRange = targetRange;
+
+	// Remove the text inside the range
+	if (replaceRange.Length() > 0)
+		pdoc->DeleteChars(replaceRange.start.Position(), replaceRange.Length());
+
+	// Realize virtual space of target start
+	const Sci::Position startAfterSpaceInsertion = RealizeVirtualSpace(replaceRange.start.Position(), replaceRange.start.VirtualSpace());
+	replaceRange.start.SetPosition(startAfterSpaceInsertion);
+	replaceRange.end = replaceRange.start;
+
+	// Insert the new text
+	const Sci::Position lengthInserted = pdoc->InsertString(replaceRange.start.Position(), text);
+	replaceRange.end.SetPosition(replaceRange.start.Position() + lengthInserted);
+
+	// Copy back to targetRange in case application is chaining modifications
+	targetRange = replaceRange;
+
+	return text.length();
+}
+

@@ -3387,63 +3387,11 @@ void Editor::Indent(bool forwards, bool lineIndent) {
  * Search of a text in the document, in the given range.
  * @return The position of the found text, -1 if not found.
  */
-Sci::Position Editor::FindText(
-    uptr_t wParam,		///< Search modes : @c FindOption::MatchCase, @c FindOption::WholeWord,
-    ///< @c FindOption::WordStart, @c FindOption::RegExp or @c FindOption::Posix.
-    sptr_t lParam) {	///< @c Sci_TextToFind structure: The text to search for in the given range.
-
-	TextToFind *ft = static_cast<TextToFind *>(PtrFromSPtr(lParam));
-	Sci::Position lengthFound = strlen(ft->lpstrText);
-	if (!pdoc->HasCaseFolder())
-		pdoc->SetCaseFolder(std::make_unique<CaseFolderUnicode>());
-	try {
-		const Sci::Position pos = pdoc->FindText(
-			static_cast<Sci::Position>(ft->chrg.cpMin),
-			static_cast<Sci::Position>(ft->chrg.cpMax),
-			ft->lpstrText,
-			static_cast<FindOption>(wParam),
-			&lengthFound);
-		if (pos != -1) {
-			ft->chrgText.cpMin = static_cast<Sci_PositionCR>(pos);
-			ft->chrgText.cpMax = static_cast<Sci_PositionCR>(pos + lengthFound);
-		}
-		return pos;
-	} catch (RegexError &) {
-		errorStatus = Status::RegEx;
-		return -1;
-	}
-}
 
 /**
  * Search of a text in the document, in the given range.
  * @return The position of the found text, -1 if not found.
  */
-Sci::Position Editor::FindTextFull(
-    uptr_t wParam,		///< Search modes : @c FindOption::MatchCase, @c FindOption::WholeWord,
-    ///< @c FindOption::WordStart, @c FindOption::RegExp or @c FindOption::Posix.
-    sptr_t lParam) {	///< @c Sci_TextToFindFull structure: The text to search for in the given range.
-
-	TextToFindFull *ft = static_cast<TextToFindFull *>(PtrFromSPtr(lParam));
-	Sci::Position lengthFound = strlen(ft->lpstrText);
-	if (!pdoc->HasCaseFolder())
-		pdoc->SetCaseFolder(std::make_unique<CaseFolderUnicode>());
-	try {
-		const Sci::Position pos = pdoc->FindText(
-			ft->chrg.cpMin,
-			ft->chrg.cpMax,
-			ft->lpstrText,
-			static_cast<FindOption>(wParam),
-			&lengthFound);
-		if (pos != -1) {
-			ft->chrgText.cpMin = pos;
-			ft->chrgText.cpMax = pos + lengthFound;
-		}
-		return pos;
-	} catch (RegexError &) {
-		errorStatus = Status::RegEx;
-		return -1;
-	}
-}
 
 /**
  * Relocatable search support : Searches relative to current selection
@@ -3456,46 +3404,12 @@ Sci::Position Editor::FindTextFull(
  * while still setting the selection to found text so the find/select
  * operation is self-contained.
  */
-void Editor::SearchAnchor() noexcept {
-	searchAnchor = SelectionStart().Position();
-}
 
 /**
  * Find text from current search anchor: Must call @c SearchAnchor first.
  * Used for next text and previous text requests.
  * @return The position of the found text, -1 if not found.
  */
-Sci::Position Editor::SearchText(
-    EditorCommand command,		///< Accepts both @c EditorCommand::SearchNext and @c EditorCommand::SearchPrev.
-    uptr_t wParam,				///< Search modes : @c FindOption::MatchCase, @c FindOption::WholeWord,
-    ///< @c FindOption::WordStart, @c FindOption::RegExp or @c FindOption::Posix.
-    sptr_t lParam) {			///< The text to search for.
-
-	const char *txt = ConstCharPtrFromSPtr(lParam);
-	Sci::Position pos = Sci::invalidPosition;
-	Sci::Position lengthFound = strlen(txt);
-	if (!pdoc->HasCaseFolder())
-		pdoc->SetCaseFolder(std::make_unique<CaseFolderUnicode>());
-	try {
-		if (command == EditorCommand::SearchNext) {
-			pos = pdoc->FindText(searchAnchor, pdoc->Length(), txt,
-					static_cast<FindOption>(wParam),
-					&lengthFound);
-		} else {
-			pos = pdoc->FindText(searchAnchor, 0, txt,
-					static_cast<FindOption>(wParam),
-					&lengthFound);
-		}
-	} catch (RegexError &) {
-		errorStatus = Status::RegEx;
-		return Sci::invalidPosition;
-	}
-	if (pos != Sci::invalidPosition) {
-		SetSelection(pos, pos + lengthFound);
-	}
-
-	return pos;
-}
 
 // UTF-8 Unicode case mapping (not locale-sensitive). Invalid UTF-8 bytes are left unchanged.
 std::string Editor::CaseMapString(const std::string &s, CaseMapping caseMapping) {
@@ -3512,25 +3426,6 @@ std::string Editor::CaseMapString(const std::string &s, CaseMapping caseMapping)
  * Search for text in the target range of the document.
  * @return The position of the found text, -1 if not found.
  */
-Sci::Position Editor::SearchInTarget(const char *text, Sci::Position length) {
-	Sci::Position lengthFound = length;
-
-	if (!pdoc->HasCaseFolder())
-		pdoc->SetCaseFolder(std::make_unique<CaseFolderUnicode>());
-	try {
-		const Sci::Position pos = pdoc->FindText(targetRange.start.Position(), targetRange.end.Position(), text,
-				searchFlags,
-				&lengthFound);
-		if (pos != -1) {
-			targetRange.start.SetPosition(pos);
-			targetRange.end.SetPosition(pos + lengthFound);
-		}
-		return pos;
-	} catch (RegexError &) {
-		errorStatus = Status::RegEx;
-		return -1;
-	}
-}
 
 namespace {
 
@@ -4957,56 +4852,6 @@ Sci::Position Editor::GetTag(char *tagValue, int tagNumber) {
 	return length;
 }
 
-Sci::Position Editor::ReplaceTarget(ReplaceType replaceType, std::string_view text) {
-	pdoc->CheckPosition(targetRange.start.Position());
-
-	UndoGroup ug(pdoc);
-
-	std::string substituted;	// Copy in case of re-entrance
-
-	if (replaceType == ReplaceType::patterns) {
-		Sci::Position length = text.length();
-		const char *p = pdoc->SubstituteByPosition(text.data(), &length);
-		if (!p) {
-			return 0;
-		}
-		substituted.assign(p, length);
-		text = substituted;
-	}
-
-	if (replaceType == ReplaceType::minimal) {
-		// Check for prefix and suffix and reduce text and target to match.
-		// This is performed with Range which doesn't support virtual space.
-		Range range(targetRange.start.Position(), targetRange.end.Position());
-		pdoc->TrimReplacement(text, range);
-		// Re-apply virtual space to start if start position didn't change.
-		// Don't bother with end as its virtual space is not used
-		const SelectionPosition start(range.start == targetRange.start.Position() ?
-			targetRange.start : SelectionPosition(range.start));
-		targetRange = SelectionSegment(start, SelectionPosition(range.end));
-	}
-
-	// Make a copy of targetRange in case callbacks use target
-	SelectionSegment replaceRange = targetRange;
-
-	// Remove the text inside the range
-	if (replaceRange.Length() > 0)
-		pdoc->DeleteChars(replaceRange.start.Position(), replaceRange.Length());
-
-	// Realize virtual space of target start
-	const Sci::Position startAfterSpaceInsertion = RealizeVirtualSpace(replaceRange.start.Position(), replaceRange.start.VirtualSpace());
-	replaceRange.start.SetPosition(startAfterSpaceInsertion);
-	replaceRange.end = replaceRange.start;
-
-	// Insert the new text
-	const Sci::Position lengthInserted = pdoc->InsertString(replaceRange.start.Position(), text);
-	replaceRange.end.SetPosition(replaceRange.start.Position() + lengthInserted);
-
-	// Copy back to targetRange in case application is chaining modifications
-	targetRange = replaceRange;
-
-	return text.length();
-}
 
 std::unique_ptr<Surface> Editor::CreateMeasurementSurface() const {
 	if (!wMain.GetID()) {
@@ -5242,14 +5087,9 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 	case Message::Paste:
 		return ExecuteCommand(EditorCommand::Paste);
 
-	case Message::ReplaceRectangular: {
-		UndoGroup ug(pdoc);
-		if (!sel.Empty()) {
-			ClearSelection(); // want to replace rectangular selection contents
-		}
-		InsertPasteShape(std::string_view(ConstCharPtrFromSPtr(lParam), PositionFromUPtr(wParam)), PasteShape::rectangular);
+	case Message::ReplaceRectangular:
+		ReplaceRectangular(std::string_view(ConstCharPtrFromSPtr(lParam), PositionFromUPtr(wParam)));
 		break;
-	}
 
 	case Message::Clear:
 	case Message::Undo:
@@ -5311,53 +5151,44 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 	case Message::ReplaceSel: {
 			if (lParam == 0)
 				return 0;
-			UndoGroup ug(pdoc);
-			ClearSelection();
-			const char *replacement = ConstCharPtrFromSPtr(lParam);
-			const Sci::Position lengthInserted = pdoc->InsertString(
-				sel.MainCaret(), replacement, strlen(replacement));
-			SetEmptySelection(sel.MainCaret() + lengthInserted);
-			SetLastXChosen();
-			EnsureCaretVisible();
+			ReplaceSel(std::string_view(ConstCharPtrFromSPtr(lParam)));
 		}
 		break;
 
 	case Message::SetTargetStart:
-		targetRange.start.SetPosition(PositionFromUPtr(wParam));
+		SetTargetStart(PositionFromUPtr(wParam));
 		break;
 
 	case Message::GetTargetStart:
-		return targetRange.start.Position();
+		return GetTargetStart();
 
 	case Message::SetTargetStartVirtualSpace:
-		targetRange.start.SetVirtualSpace(PositionFromUPtr(wParam));
+		SetTargetStartVirtualSpace(PositionFromUPtr(wParam));
 		break;
 
 	case Message::GetTargetStartVirtualSpace:
-		return targetRange.start.VirtualSpace();
+		return GetTargetStartVirtualSpace();
 
 	case Message::SetTargetEnd:
-		targetRange.end.SetPosition(PositionFromUPtr(wParam));
+		SetTargetEnd(PositionFromUPtr(wParam));
 		break;
 
 	case Message::GetTargetEnd:
-		return targetRange.end.Position();
+		return GetTargetEnd();
 
 	case Message::SetTargetEndVirtualSpace:
-		targetRange.end.SetVirtualSpace(PositionFromUPtr(wParam));
+		SetTargetEndVirtualSpace(PositionFromUPtr(wParam));
 		break;
 
 	case Message::GetTargetEndVirtualSpace:
-		return targetRange.end.VirtualSpace();
+		return GetTargetEndVirtualSpace();
 
 	case Message::SetTargetRange:
-		targetRange.start.SetPosition(PositionFromUPtr(wParam));
-		targetRange.end.SetPosition(lParam);
+		SetTargetRange(PositionFromUPtr(wParam), lParam);
 		break;
 
 	case Message::TargetWholeDocument:
-		targetRange.start.SetPosition(0);
-		targetRange.end.SetPosition(pdoc->Length());
+		TargetWholeDocument();
 		break;
 
 	case Message::TargetFromSelection:
@@ -5365,8 +5196,7 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::GetTargetText: {
-			const std::string text = RangeText(targetRange.start.Position(), targetRange.end.Position());
-			return BytesResult(lParam, text);
+			return BytesResult(lParam, GetTargetText());
 		}
 
 	case Message::ReplaceTarget:
@@ -5383,14 +5213,14 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 
 	case Message::SearchInTarget:
 		PLATFORM_ASSERT(lParam);
-		return SearchInTarget(ConstCharPtrFromSPtr(lParam), PositionFromUPtr(wParam));
+		return SearchInTarget(std::string_view(ConstCharPtrFromSPtr(lParam), PositionFromUPtr(wParam)));
 
 	case Message::SetSearchFlags:
-		searchFlags = static_cast<FindOption>(wParam);
+		SetSearchFlags(static_cast<FindOption>(wParam));
 		break;
 
 	case Message::GetSearchFlags:
-		return static_cast<sptr_t>(searchFlags);
+		return static_cast<sptr_t>(GetSearchFlags());
 
 	case Message::GetTag:
 		return GetTag(CharPtrFromSPtr(lParam), static_cast<int>(wParam));
@@ -5470,11 +5300,9 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 			return static_cast<int>(pt.y);
 		}
 
-	case Message::FindText:
-		return FindText(wParam, lParam);
+	// Message::FindText deleted: use SearchInTarget with a typed range.
 
-	case Message::FindTextFull:
-		return FindTextFull(wParam, lParam);
+	// Message::FindTextFull deleted: use SearchInTarget with a typed range.
 
 	case Message::GetTextRange:
 		if (TextRange *tr = static_cast<TextRange *>(PtrFromSPtr(lParam))) {
