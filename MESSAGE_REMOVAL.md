@@ -99,6 +99,10 @@ Private helpers `AutoCompleteStart`, `AutoCompleteCancel` (notifies), `AutoCompl
 
 Authoritative descriptions for retained operations sit beside definitions in `EditorAutocomplete.cxx` and `EditorCallTips.cxx`. The matching `ScintillaDoc.html` Autocompletion, User lists, and Call tips prose is removed. Temporary `WndProc` cases forward to the named methods until phase 5.
 
+## Macro recording decision
+
+Macro recording is retained as an editing feature, but its numeric record format is deleted. `StartRecord`, `StopRecord`, and `MacroRecord` become the typed recording operations described in the host and notification classifications below. `RecordedAction` owns any recorded text and holds either an `EditorCommand` or a typed text/editing operation, so no message number, packed integer, or borrowed `lParam` escapes the editor callback. Recording and replay call the same named operations used by the editor and command dispatcher. The migration must remove the catch-all hook at the start of `WndProc`; each recordable named operation records its action at the point where its typed arguments are available.
+
 ## Interface Inventory
 
 Generated from `scintilla/include/Scintilla.iface` on 2026-07-13. It contains all 821 `fun`, `get`, and `set` entries and all 32 `evt` entries, grouped for phase 4. It does not assign a removal classification without tracing the code. Constants, aliases, and enum declarations are type definitions rather than dispatch cases; phase 5 handles them when it replaces generated client headers.

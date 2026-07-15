@@ -35,4 +35,10 @@ if [ "$count" -ne 853 ]; then
 	exit 1
 fi
 
+decision_tables=$(grep -c '^| Entries | Owner | Classification |' "$guide")
+if [ "$decision_tables" -ne 21 ]; then
+	echo "expected 21 remaining-concern decision tables, found $decision_tables" >&2
+	exit 1
+fi
+
 echo "message inventory: 853 entries match Scintilla.iface"
