@@ -425,8 +425,66 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	int GetWrapStartIndent() const noexcept;
 	void SetWrapIndentMode(Scintilla::WrapIndentMode wrapIndentMode);
 	Scintilla::WrapIndentMode GetWrapIndentMode() const noexcept;
+
+	// Lines, indentation, and line queries: EditorLines.cxx.
+	// ConvertEOLs / SetEOLMode / GetEOLMode are public application methods.
 	void LinesJoin();
 	void LinesSplit(int pixelWidth);
+	void SetTabDrawMode(Scintilla::TabDrawMode tabDrawMode);
+	Scintilla::TabDrawMode GetTabDrawMode() const noexcept;
+	void SetTabWidth(int tabWidth);
+	int GetTabWidth() const noexcept;
+	void SetTabMinimumWidth(int pixels);
+	int GetTabMinimumWidth() const noexcept;
+	void ClearTabStops(Sci::Line line);
+	void AddTabStop(Sci::Line line, int x);
+	int GetNextTabStop(Sci::Line line, int x) const;
+	void SetSelEOLFilled(bool filled);
+	bool GetSelEOLFilled() const noexcept;
+	void SetWordChars(std::string_view characters);
+	int GetWordChars(unsigned char *buffer) const;
+	void SetIndent(int indentSize);
+	int GetIndent() const noexcept;
+	void SetUseTabs(bool useTabs);
+	bool GetUseTabs() const noexcept;
+	void SetLineIndentation(Sci::Line line, Sci::Position indentSize);
+	int GetLineIndentation(Sci::Line line) const;
+	Sci::Position GetLineIndentPosition(Sci::Line line) const noexcept;
+	Sci::Position GetColumn(Sci::Position pos) const noexcept;
+	Sci::Position CountCharacters(Sci::Position startPos, Sci::Position endPos) const noexcept;
+	Sci::Position CountCodeUnits(Sci::Position startPos, Sci::Position endPos) const noexcept;
+	void SetIndentationGuides(Scintilla::IndentView indentView);
+	Scintilla::IndentView GetIndentationGuides() const noexcept;
+	Sci::Position GetLineEndPosition(Sci::Line line) const noexcept;
+	Sci::Position GetLine(Sci::Line line, char *buffer) const;
+	Sci::Line GetLineCount() const noexcept;
+	void AllocateLines(Sci::Line lines);
+	Sci::Line LineFromPosition(Sci::Position pos) const noexcept;
+	Sci::Position PositionFromLine(Sci::Line line);
+	bool GetLineVisible(Sci::Line line) const noexcept;
+	void SetTabIndents(bool tabIndents);
+	bool GetTabIndents() const noexcept;
+	void SetBackSpaceUnIndents(bool bsUnIndents);
+	bool GetBackSpaceUnIndents() const noexcept;
+	Sci::Position LineLength(Sci::Line line) const noexcept;
+	void SetViewEOL(bool visible);
+	bool GetViewEOL() const noexcept;
+	void SetEdgeColumn(int column);
+	int GetEdgeColumn() const noexcept;
+	int GetMultiEdgeColumn(size_t which) const noexcept;
+	Sci::Position GetLineSelStartPosition(Sci::Line line) const noexcept;
+	Sci::Position GetLineSelEndPosition(Sci::Line line) const noexcept;
+	void SetWhitespaceChars(std::string_view characters);
+	int GetWhitespaceChars(unsigned char *buffer) const;
+	void SetPunctuationChars(std::string_view characters);
+	int GetPunctuationChars(unsigned char *buffer) const;
+	Sci::Position FindColumn(Sci::Line line, Sci::Position column) const noexcept;
+	void SetLineEndTypesAllowed(Scintilla::LineEndType lineEndBitSet);
+	Scintilla::LineEndType GetLineEndTypesAllowed() const noexcept;
+	Scintilla::LineEndType GetLineEndTypesActive() const noexcept;
+	Scintilla::LineCharacterIndexType GetLineCharacterIndex() const noexcept;
+	void AllocateLineCharacterIndex(Scintilla::LineCharacterIndexType lineCharacterIndex);
+	void ReleaseLineCharacterIndex(Scintilla::LineCharacterIndexType lineCharacterIndex);
 
 	void PaintSelMargin(Surface *surfaceWindow, const PRectangle &rc);
 	void RefreshPixMaps(Surface *surfaceWindow);
@@ -771,6 +829,11 @@ public:
 
 	// Clipboard menu enablement; definitions in EditorClipboard.cxx.
 	virtual bool CanPaste();
+
+	// Line-ending policy for new lines and conversion; definitions in EditorLines.cxx.
+	void SetEOLMode(Scintilla::EndOfLine eolMode);
+	Scintilla::EndOfLine GetEOLMode() const noexcept;
+	void ConvertEOLs(Scintilla::EndOfLine eolMode);
 
 	// Wrap mode is application-facing; its description lives beside the
 	// definition in EditorWrapping.cxx.

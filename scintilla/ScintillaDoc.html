@@ -2709,69 +2709,20 @@ struct Sci_TextToFindFull {
 
     <h2 id="LineEndings">Line endings</h2>
 
-    <p>Scintilla can handle the major line end conventions and, depending on settings and
-    the current lexer also support additional Unicode line ends.</p>
+    <p>Line-ending policy (<code>SetEOLMode</code> / <code>GetEOLMode</code> / <code>ConvertEOLs</code>),
+    view-EOL, line-end types allowed/active, and related line operations moved to
+    <code>scintilla/src/EditorLines.cxx</code>. Named operations and their behavior descriptions live
+    beside the definitions there. Temporary message forwarders remain until the generated message
+    layer is removed. <code>SCI_GETLINEENDTYPESSUPPORTED</code> stays with the lexer concern until
+    that move.</p>
 
-    <p>Scintilla can interpret any of the Macintosh (\r), Unix (\n) and Windows (\r\n)
-    line ends.
-    When the user presses the Enter key, one of these line
-    end strings is inserted into the buffer. The default is \r\n in Windows and \n in Unix, but
-    this can be changed with the <code>SCI_SETEOLMODE</code> message. You can also convert the
-    entire document to one of these line endings with <code>SCI_CONVERTEOLS</code>. Finally, you
-    can choose to display the line endings with <code>SCI_SETVIEWEOL</code>.</p>
-
-    <p>For the UTF-8 encoding, three additional Unicode line ends,
-    Next Line (<code>NEL=U+0085</code>), Line Separator (<code>LS=U+2028</code>), and Paragraph Separator (<code>PS=U+2029</code>)
-    may optionally be interpreted when Unicode line ends is turned on and the current lexer also supports
-    Unicode line ends.</p>
-
-    <a class="message" href="#SCI_SETEOLMODE">SCI_SETEOLMODE(int eolMode)</a><br />
-     <a class="message" href="#SCI_GETEOLMODE">SCI_GETEOLMODE &rarr; int</a><br />
-     <a class="message" href="#SCI_CONVERTEOLS">SCI_CONVERTEOLS(int eolMode)</a><br />
-     <a class="message" href="#SCI_SETVIEWEOL">SCI_SETVIEWEOL(bool visible)</a><br />
-     <a class="message" href="#SCI_GETVIEWEOL">SCI_GETVIEWEOL &rarr; bool</a><br />
-
-     <a class="message" href="#SCI_GETLINEENDTYPESSUPPORTED">SCI_GETLINEENDTYPESSUPPORTED &rarr; int</a><br />
-     <a class="message" href="#SCI_SETLINEENDTYPESALLOWED">SCI_SETLINEENDTYPESALLOWED(int lineEndBitSet)</a><br />
-     <a class="message" href="#SCI_GETLINEENDTYPESALLOWED">SCI_GETLINEENDTYPESALLOWED &rarr; int</a><br />
-     <a class="message" href="#SCI_GETLINEENDTYPESACTIVE">SCI_GETLINEENDTYPESACTIVE &rarr; int</a><br />
-
-    <p><b id="SCI_SETEOLMODE">SCI_SETEOLMODE(int eolMode)</b><br />
-     <b id="SCI_GETEOLMODE">SCI_GETEOLMODE &rarr; int</b><br />
-     <code>SCI_SETEOLMODE</code> sets the characters that are added into the document when the user
-    presses the Enter key. You can set <code class="parameter">eolMode</code> to one of <code>SC_EOL_CRLF</code> (0),
-    <code>SC_EOL_CR</code> (1), or <code>SC_EOL_LF</code> (2). The <code>SCI_GETEOLMODE</code>
-    message retrieves the current state.</p>
-
-    <p><b id="SCI_CONVERTEOLS">SCI_CONVERTEOLS(int eolMode)</b><br />
-     This message changes all the end of line characters in the document to match
-    <code class="parameter">eolMode</code>. Valid values are: <code>SC_EOL_CRLF</code> (0), <code>SC_EOL_CR</code>
-    (1), or <code>SC_EOL_LF</code> (2).</p>
-
-    <p><b id="SCI_SETVIEWEOL">SCI_SETVIEWEOL(bool visible)</b><br />
-     <b id="SCI_GETVIEWEOL">SCI_GETVIEWEOL &rarr; bool</b><br />
-     Normally, the end of line characters are hidden, but <code>SCI_SETVIEWEOL</code> allows you to
-    display (or hide) them by setting <code class="parameter">visible</code> <code>true</code> (or
-    <code>false</code>). The visible rendering of the end of line characters is similar to
-    <code>(CR)</code>, <code>(LF)</code>, or <code>(CR)(LF)</code>. <code>SCI_GETVIEWEOL</code>
-    returns the current state.</p>
+    <a class="message" href="#SCI_GETLINEENDTYPESSUPPORTED">SCI_GETLINEENDTYPESSUPPORTED &rarr; int</a><br />
 
     <p><b id="SCI_GETLINEENDTYPESSUPPORTED">SCI_GETLINEENDTYPESSUPPORTED &rarr; int</b><br />
      <code>SCI_GETLINEENDTYPESSUPPORTED</code> reports the different types of line ends supported
      by the current lexer. This is a bit set although there is currently only a single choice
      with either <code>SC_LINE_END_TYPE_DEFAULT</code> (0) or <code>SC_LINE_END_TYPE_UNICODE</code> (1).
      These values are also used by the other messages concerned with Unicode line ends.</p>
-
-    <p><b id="SCI_SETLINEENDTYPESALLOWED">SCI_SETLINEENDTYPESALLOWED(int lineEndBitSet)</b><br />
-     <b id="SCI_GETLINEENDTYPESALLOWED">SCI_GETLINEENDTYPESALLOWED &rarr; int</b><br />
-     By default, only the ASCII line ends are interpreted. Unicode line ends may be requested with
-     <code>SCI_SETLINEENDTYPESALLOWED(SC_LINE_END_TYPE_UNICODE)</code>
-     but this will be ineffective unless the lexer also allows you Unicode line ends.
-    <code>SCI_GETLINEENDTYPESALLOWED</code> returns the current state.</p>
-
-    <p><b id="SCI_GETLINEENDTYPESACTIVE">SCI_GETLINEENDTYPESACTIVE &rarr; int</b><br />
-     <code>SCI_GETLINEENDTYPESACTIVE</code> reports the set of line ends currently interpreted
-     by Scintilla. It is <code>SCI_GETLINEENDTYPESSUPPORTED &amp; SCI_GETLINEENDTYPESALLOWED</code>.</p>
 
     <h2 id="Words">Words</h2>
 
@@ -5220,113 +5171,22 @@ struct Sci_TextToFindFull {
 
     <h2 id="TabsAndIndentationGuides">Tabs and Indentation Guides</h2>
 
-    <p>Indentation (the white space at the start of a line) is often used by programmers to clarify
-    program structure and in some languages, for example Python, it may be part of the language
-    syntax. Tabs are normally used in editors to insert a tab character or to pad text with spaces
-    up to the next tab.</p>
-
-    <p>When Scintilla is laying out a section of text, text after a tab character will usually be
-    displayed at the next multiple of TABWIDTH columns from the left. However, it is also possible
-    to explicitly set tabstops in pixels for each line.</p>
-
-    <p>Scintilla can be set to treat tab and backspace in the white space at the start of a line in
-    a special way: inserting a tab indents the line to the next indent position rather than just
-    inserting a tab at the current character position and backspace unindents the line rather than
-    deleting a character. Scintilla can also display indentation guides (vertical lines) to help
-    you to generate code.</p>
+    <p>Tab width, indent size, use-tabs, tab/backspace indent behavior, per-line indentation,
+    tab stops, tab draw mode, and indentation guides moved to
+    <code>scintilla/src/EditorLines.cxx</code>. Named operations and their behavior descriptions live
+    beside the definitions there. Temporary message forwarders remain.
+    Highlight-guide column remains here until the styling concern move.</p>
     <code>
-     <a class="message" href="#SCI_SETTABWIDTH">SCI_SETTABWIDTH(int tabWidth)</a><br />
-     <a class="message" href="#SCI_GETTABWIDTH">SCI_GETTABWIDTH &rarr; int</a><br />
-     <a class="message" href="#SCI_SETTABMINIMUMWIDTH">SCI_SETTABMINIMUMWIDTH(int pixels)</a><br />
-     <a class="message" href="#SCI_GETTABMINIMUMWIDTH">SCI_GETTABMINIMUMWIDTH &rarr; int</a><br />
-     <a class="message" href="#SCI_CLEARTABSTOPS">SCI_CLEARTABSTOPS(line line)</a><br />
-     <a class="message" href="#SCI_ADDTABSTOP">SCI_ADDTABSTOP(line line, int x)</a><br />
-     <a class="message" href="#SCI_GETNEXTTABSTOP">SCI_GETNEXTTABSTOP(line line, int x) &rarr; int</a><br />
-     <a class="message" href="#SCI_SETUSETABS">SCI_SETUSETABS(bool useTabs)</a><br />
-     <a class="message" href="#SCI_GETUSETABS">SCI_GETUSETABS &rarr; bool</a><br />
-     <a class="message" href="#SCI_SETINDENT">SCI_SETINDENT(int indentSize)</a><br />
-     <a class="message" href="#SCI_GETINDENT">SCI_GETINDENT &rarr; int</a><br />
-     <a class="message" href="#SCI_SETTABINDENTS">SCI_SETTABINDENTS(bool tabIndents)</a><br />
-     <a class="message" href="#SCI_GETTABINDENTS">SCI_GETTABINDENTS &rarr; bool</a><br />
-     <a class="message" href="#SCI_SETBACKSPACEUNINDENTS">SCI_SETBACKSPACEUNINDENTS(bool
-    bsUnIndents)</a><br />
-     <a class="message" href="#SCI_GETBACKSPACEUNINDENTS">SCI_GETBACKSPACEUNINDENTS &rarr; bool</a><br />
-     <a class="message" href="#SCI_SETLINEINDENTATION">SCI_SETLINEINDENTATION(line line, int
-    indentation)</a><br />
-     <a class="message" href="#SCI_GETLINEINDENTATION">SCI_GETLINEINDENTATION(line line) &rarr; int</a><br />
-     <a class="message" href="#SCI_GETLINEINDENTPOSITION">SCI_GETLINEINDENTPOSITION(line line) &rarr; position</a><br />
-     <a class="message" href="#SCI_SETINDENTATIONGUIDES">SCI_SETINDENTATIONGUIDES(int indentView)</a><br />
-     <a class="message" href="#SCI_GETINDENTATIONGUIDES">SCI_GETINDENTATIONGUIDES &rarr; int</a><br />
      <a class="message" href="#SCI_SETHIGHLIGHTGUIDE">SCI_SETHIGHLIGHTGUIDE(position column)</a><br />
      <a class="message" href="#SCI_GETHIGHLIGHTGUIDE">SCI_GETHIGHLIGHTGUIDE &rarr; position</a><br />
     </code>
 
-    <p><b id="SCI_SETTABMINIMUMWIDTH">SCI_SETTABMINIMUMWIDTH(int pixels)</b><br />
-     <b id="SCI_GETTABMINIMUMWIDTH">SCI_GETTABMINIMUMWIDTH &rarr; int</b><br />
-     <code>SCI_SETTABMINIMUMWIDTH</code> sets the minimum size of a tab in pixels to ensure that the tab
-     can be seen. The default value is 2. This is particularly useful with proportional fonts with fractional widths where
-     the character before the tab may end a fraction of a pixel before a tab stop, causing the tab to only be a fraction of
-     a pixel wide without this setting.
-     Where displaying a miniaturized version of the document, setting this to 0 may make the miniaturized
-     version lay out more like the normal size version.</p>
-
-    <p><b id="SCI_SETTABWIDTH">SCI_SETTABWIDTH(int tabWidth)</b><br />
-     <b id="SCI_GETTABWIDTH">SCI_GETTABWIDTH &rarr; int</b><br />
-     <code>SCI_SETTABWIDTH</code> sets the size of a tab as a multiple of the size of a space
-    character in <code>STYLE_DEFAULT</code>. The default tab width is 8 characters. There are no
-    limits on tab sizes, but values less than 1 or large values may have undesirable effects.</p>
-
-    <p><b id="SCI_CLEARTABSTOPS">SCI_CLEARTABSTOPS(line line)</b><br />
-     <b id="SCI_ADDTABSTOP">SCI_ADDTABSTOP(line line, int x)</b><br />
-     <b id="SCI_GETNEXTTABSTOP">SCI_GETNEXTTABSTOP(line line, int x) &rarr; int</b><br />
-     <code>SCI_CLEARTABSTOPS</code> clears explicit tabstops on a line. <code>SCI_ADDTABSTOP</code>
-    adds an explicit tabstop at the specified distance from the left (in pixels), and
-    <code>SCI_GETNEXTTABSTOP</code> gets the next explicit tabstop position set after the given x position,
-    or zero if there aren't any.
-    Changing tab stops produces a <a class="message" href="#SC_MOD_CHANGETABSTOPS">SC_MOD_CHANGETABSTOPS</a> notification.
-    </p>
-
-    <p><b id="SCI_SETUSETABS">SCI_SETUSETABS(bool useTabs)</b><br />
-     <b id="SCI_GETUSETABS">SCI_GETUSETABS &rarr; bool</b><br />
-     <code>SCI_SETUSETABS</code> determines whether indentation should be created out of a mixture
-    of tabs and spaces or be based purely on spaces. Set <code class="parameter">useTabs</code> to <code>false</code>
-    (0) to create all tabs and indents out of spaces. The default is <code>true</code>. You can use
-    <a class="message" href="#SCI_GETCOLUMN"><code>SCI_GETCOLUMN</code></a> to get the column of a
-    position taking the width of a tab into account.</p>
-    <p><b id="SCI_SETINDENT">SCI_SETINDENT(int indentSize)</b><br />
-     <b id="SCI_GETINDENT">SCI_GETINDENT &rarr; int</b><br />
-     <code>SCI_SETINDENT</code> sets the size of indentation in terms of the width of a space in <a
-    class="message" href="#StyleDefinition"><code>STYLE_DEFAULT</code></a>. If you set a width of
-    0, the indent size is the same as the tab size. There are no limits on indent sizes, but values
-    less than 0 or large values may have undesirable effects.
-    </p>
-
-    <p><b id="SCI_SETTABINDENTS">SCI_SETTABINDENTS(bool tabIndents)</b><br />
-     <b id="SCI_GETTABINDENTS">SCI_GETTABINDENTS &rarr; bool</b><br />
-     <b id="SCI_SETBACKSPACEUNINDENTS">SCI_SETBACKSPACEUNINDENTS(bool bsUnIndents)</b><br />
-     <b id="SCI_GETBACKSPACEUNINDENTS">SCI_GETBACKSPACEUNINDENTS &rarr; bool</b><br />
-    </p>
-
-    <p>Inside indentation white space, the tab and backspace keys can be made to indent and
-    unindent rather than insert a tab character or delete a character with the
-    <code>SCI_SETTABINDENTS</code> and <code>SCI_SETBACKSPACEUNINDENTS</code> functions.</p>
-
-    <p><b id="SCI_SETLINEINDENTATION">SCI_SETLINEINDENTATION(line line, int indentation)</b><br />
-     <b id="SCI_GETLINEINDENTATION">SCI_GETLINEINDENTATION(line line) &rarr; int</b><br />
-     The amount of indentation on a line can be discovered and set with
-    <code>SCI_GETLINEINDENTATION</code> and <code>SCI_SETLINEINDENTATION</code>. The indentation is
-    measured in character columns, which correspond to the width of space characters.</p>
-
-    <p><b id="SCI_GETLINEINDENTPOSITION">SCI_GETLINEINDENTPOSITION(line line) &rarr; position</b><br />
-     This returns the position at the end of indentation of a line.</p>
-
-    <p><b id="SCI_SETINDENTATIONGUIDES">SCI_SETINDENTATIONGUIDES(int indentView)</b><br />
-     <b id="SCI_GETINDENTATIONGUIDES">SCI_GETINDENTATIONGUIDES &rarr; int</b><br />
-     Indentation guides are dotted vertical lines that appear within indentation white space every
+    <p>Indentation guides are dotted vertical lines that appear within indentation white space every
     indent size columns. They make it easy to see which constructs line up especially when they
     extend over multiple pages. Style <a class="message"
     href="#StyleDefinition"><code>STYLE_INDENTGUIDE</code></a> (37) is used to specify the
-    foreground and background colour of the indentation guides.</p>
+    foreground and background colour of the indentation guides. Guide visibility itself is set
+    through the named operations in <code>EditorLines.cxx</code>.</p>
 
     <p>There are 4 indentation guide views.
     SC_IV_NONE turns the feature off but the other 3 states determine how far the guides appear on
@@ -7422,17 +7282,9 @@ sptr_t CallScintilla(unsigned int iMessage, uptr_t wParam, sptr_t lParam){
      If an application just wants maximum concurrency then call with a large number
      <code>SCI_SETLAYOUTTHREADS(1000)</code> and that will be reduced to a reasonable value.</p>
 
-    <p><b id="SCI_LINESSPLIT">SCI_LINESSPLIT(int pixelWidth)</b><br />
-     Split a range of lines indicated by the target into lines that are at most pixelWidth wide.
-     Splitting occurs on word boundaries wherever possible in a similar manner to line wrapping.
-     When <code class="parameter">pixelWidth</code> is 0 then the width of the window is used.
-     </p>
-
-    <p><b id="SCI_LINESJOIN">SCI_LINESJOIN</b><br />
-     Join a range of lines indicated by the target into one line by
-     removing line end characters.
-     Where this would lead to no space between words, an extra space is inserted.
-     </p>
+    <p><code>LinesJoin</code> and <code>LinesSplit</code> live in
+    <code>scintilla/src/EditorLines.cxx</code> with their behavior descriptions beside the
+    definitions. Temporary message and command forwarders remain.</p>
 
     <h2 id="Zooming">Zooming</h2>
 

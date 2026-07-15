@@ -1503,53 +1503,6 @@ void Editor::NotifyCaretMove() {
 void Editor::UpdateSystemCaret() {
 }
 
-void Editor::LinesJoin() {
-	if (!RangeContainsProtected(targetRange.start.Position(), targetRange.end.Position())) {
-		UndoGroup ug(pdoc);
-		const Sci::Line line = pdoc->SciLineFromPosition(targetRange.start.Position());
-		for (Sci::Position pos = pdoc->LineEnd(line); pos < targetRange.end.Position(); pos = pdoc->LineEnd(line)) {
-			const char chPrev = pdoc->CharAt(pos - 1);
-			const Sci::Position widthChar = pdoc->LenChar(pos);
-			targetRange.end.Add(-widthChar);
-			pdoc->DeleteChars(pos, widthChar);
-			if (chPrev != ' ') {
-				// Ensure at least one space separating previous lines
-				const Sci::Position lengthInserted = pdoc->InsertString(pos, " ", 1);
-				targetRange.end.Add(lengthInserted);
-			}
-		}
-	}
-}
-
-void Editor::LinesSplit(int pixelWidth) {
-	if (!RangeContainsProtected(targetRange.start.Position(), targetRange.end.Position())) {
-		if (pixelWidth == 0) {
-			const PRectangle rcText = GetTextRectangle();
-			pixelWidth = static_cast<int>(rcText.Width());
-		}
-		const Sci::Line lineStart = pdoc->SciLineFromPosition(targetRange.start.Position());
-		Sci::Line lineEnd = pdoc->SciLineFromPosition(targetRange.end.Position());
-		const std::string_view eol = pdoc->EOLString();
-		UndoGroup ug(pdoc);
-		for (Sci::Line line = lineStart; line <= lineEnd; line++) {
-			AutoSurface surface(this);
-			std::shared_ptr<LineLayout> ll = view.RetrieveLineLayout(line, *this);
-			if (surface && ll) {
-				const Sci::Position posLineStart = pdoc->LineStart(line);
-				view.LayoutLine(*this, surface, vs, ll.get(), pixelWidth);
-				Sci::Position lengthInsertedTotal = 0;
-				for (int subLine = 1; subLine < ll->lines; subLine++) {
-					const Sci::Position lengthInserted = pdoc->InsertString(
-						posLineStart + lengthInsertedTotal + ll->LineStart(subLine), eol);
-					targetRange.end.Add(lengthInserted);
-					lengthInsertedTotal += lengthInserted;
-				}
-			}
-			lineEnd = pdoc->SciLineFromPosition(targetRange.end.Position());
-		}
-	}
-}
-
 void Editor::PaintSelMargin(Surface *surfaceWindow, const PRectangle &rc) {
 	if (vs.fixedColumnWidth == 0)
 		return;
@@ -5641,28 +5594,15 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::GetLine: {	// Risk of overwriting the end of the buffer
-			const Sci::Position lineStart =
-				pdoc->LineStart(LineFromUPtr(wParam));
-			const Sci::Position lineEnd =
-				pdoc->LineStart(LineFromUPtr(wParam + 1));
-			// not NUL terminated
-			const Sci::Position len = lineEnd - lineStart;
-			if (lParam == 0) {
-				return len;
-			}
-			char *ptr = CharPtrFromSPtr(lParam);
-			pdoc->GetCharRange(ptr, lineStart, len);
-			return len;
+			return GetLine(LineFromUPtr(wParam),
+				lParam ? CharPtrFromSPtr(lParam) : nullptr);
 		}
 
 	case Message::GetLineCount:
-		if (pdoc->LinesTotal() == 0)
-			return 1;
-		else
-			return pdoc->LinesTotal();
+		return GetLineCount();
 
 	case Message::AllocateLines:
-		pdoc->AllocateLines(wParam);
+		AllocateLines(LineFromUPtr(wParam));
 		break;
 
 	case Message::GetModify:
@@ -5698,27 +5638,14 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 	}
 
 	case Message::LineFromPosition:
-		if (PositionFromUPtr(wParam) < 0)
-			return 0;
-		return pdoc->LineFromPosition(PositionFromUPtr(wParam));
+		return LineFromPosition(PositionFromUPtr(wParam));
 
 	case Message::PositionFromLine:
-		if (LineFromUPtr(wParam) < 0)
-			wParam = pdoc->LineFromPosition(SelectionStart().Position());
-		if (wParam == 0)
-			return 0; 	// Even if there is no text, there is a first line that starts at 0
-		if (LineFromUPtr(wParam) > pdoc->LinesTotal())
-			return -1;
-		//if (wParam > pdoc->LineFromPosition(pdoc->Length()))	// Useful test, anyway...
-		//	return -1;
-		return pdoc->LineStart(LineFromUPtr(wParam));
+		return PositionFromLine(LineFromUPtr(wParam));
 
 		// Replacement of the old Scintilla interpretation of EM_LINELENGTH
 	case Message::LineLength:
-		if ((LineFromUPtr(wParam) < 0) ||
-		        (LineFromUPtr(wParam) > pdoc->LineFromPosition(pdoc->Length())))
-			return 0;
-		return pdoc->LineStart(LineFromUPtr(wParam) + 1) - pdoc->LineStart(LineFromUPtr(wParam));
+		return LineLength(LineFromUPtr(wParam));
 
 	case Message::ReplaceSel: {
 			if (lParam == 0)
@@ -6042,33 +5969,35 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::GetWordChars:
-		return pdoc->GetCharsOfClass(CharacterClass::word, UCharPtrFromSPtr(lParam));
+		return GetWordChars(UCharPtrFromSPtr(lParam));
 
 	case Message::SetWordChars: {
-			pdoc->SetDefaultCharClasses(false);
-			if (lParam == 0)
+			// Null characters pointer still resets classes to empty word set.
+			if (lParam == 0) {
+				SetWordChars({});
 				return 0;
-			pdoc->SetCharClasses(ConstUCharPtrFromSPtr(lParam), CharacterClass::word);
+			}
+			SetWordChars(ConstCharPtrFromSPtr(lParam));
 		}
 		break;
 
 	case Message::GetWhitespaceChars:
-		return pdoc->GetCharsOfClass(CharacterClass::space, UCharPtrFromSPtr(lParam));
+		return GetWhitespaceChars(UCharPtrFromSPtr(lParam));
 
 	case Message::SetWhitespaceChars: {
 			if (lParam == 0)
 				return 0;
-			pdoc->SetCharClasses(ConstUCharPtrFromSPtr(lParam), CharacterClass::space);
+			SetWhitespaceChars(ConstCharPtrFromSPtr(lParam));
 		}
 		break;
 
 	case Message::GetPunctuationChars:
-		return pdoc->GetCharsOfClass(CharacterClass::punctuation, UCharPtrFromSPtr(lParam));
+		return GetPunctuationChars(UCharPtrFromSPtr(lParam));
 
 	case Message::SetPunctuationChars: {
 			if (lParam == 0)
 				return 0;
-			pdoc->SetCharClasses(ConstUCharPtrFromSPtr(lParam), CharacterClass::punctuation);
+			SetPunctuationChars(ConstCharPtrFromSPtr(lParam));
 		}
 		break;
 
@@ -6211,11 +6140,10 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::GetTabDrawMode:
-		return static_cast<sptr_t>(vs.tabDrawMode);
+		return static_cast<sptr_t>(GetTabDrawMode());
 
 	case Message::SetTabDrawMode:
-		SetAppearance(vs.tabDrawMode, static_cast<TabDrawMode>(wParam));
-		Redraw();
+		SetTabDrawMode(static_cast<TabDrawMode>(wParam));
 		break;
 
 	case Message::GetWhitespaceSize:
@@ -6265,26 +6193,21 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return pdoc->GetEndStyled();
 
 	case Message::GetEOLMode:
-		return static_cast<sptr_t>(pdoc->eolMode);
+		return static_cast<sptr_t>(GetEOLMode());
 
 	case Message::SetEOLMode:
-		pdoc->eolMode = static_cast<EndOfLine>(wParam);
+		SetEOLMode(static_cast<EndOfLine>(wParam));
 		break;
 
 	case Message::SetLineEndTypesAllowed:
-		if (pdoc->SetLineEndTypesAllowed(static_cast<LineEndType>(wParam))) {
-			pcs->Clear();
-			pcs->InsertLines(0, pdoc->LinesTotal() - 1);
-			SetAnnotationHeights(0, pdoc->LinesTotal());
-			InvalidateStyleRedraw();
-		}
+		SetLineEndTypesAllowed(static_cast<LineEndType>(wParam));
 		break;
 
 	case Message::GetLineEndTypesAllowed:
-		return static_cast<sptr_t>(pdoc->GetLineEndTypesAllowed());
+		return static_cast<sptr_t>(GetLineEndTypesAllowed());
 
 	case Message::GetLineEndTypesActive:
-		return static_cast<sptr_t>(pdoc->GetLineEndTypesActive());
+		return static_cast<sptr_t>(GetLineEndTypesActive());
 
 	case Message::StartStyling:
 		pdoc->StartStyling(PositionFromUPtr(wParam));
@@ -6346,83 +6269,67 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return static_cast<int>(vs.extraFontFlag) & static_cast<int>(FontQuality::QualityMask);
 
 	case Message::SetTabWidth:
-		if (wParam > 0) {
-			pdoc->tabInChars = static_cast<int>(wParam);
-			if (pdoc->indentInChars == 0)
-				pdoc->actualIndentInChars = pdoc->tabInChars;
-		}
-		InvalidateStyleRedraw();
+		SetTabWidth(static_cast<int>(wParam));
 		break;
 
 	case Message::GetTabWidth:
-		return pdoc->tabInChars;
+		return GetTabWidth();
 
 	case Message::SetTabMinimumWidth:
-		SetAppearance(view.tabWidthMinimumPixels, static_cast<int>(wParam));
+		SetTabMinimumWidth(static_cast<int>(wParam));
 		break;
 
 	case Message::GetTabMinimumWidth:
-		return view.tabWidthMinimumPixels;
+		return GetTabMinimumWidth();
 
 	case Message::ClearTabStops:
-		if (view.ClearTabstops(LineFromUPtr(wParam))) {
-			const DocModification mh(ModificationFlags::ChangeTabStops, 0, 0, 0, nullptr, LineFromUPtr(wParam));
-			NotifyModified(pdoc, mh, nullptr);
-		}
+		ClearTabStops(LineFromUPtr(wParam));
 		break;
 
 	case Message::AddTabStop:
-		if (view.AddTabstop(LineFromUPtr(wParam), static_cast<int>(lParam))) {
-			const DocModification mh(ModificationFlags::ChangeTabStops, 0, 0, 0, nullptr, LineFromUPtr(wParam));
-			NotifyModified(pdoc, mh, nullptr);
-		}
+		AddTabStop(LineFromUPtr(wParam), static_cast<int>(lParam));
 		break;
 
 	case Message::GetNextTabStop:
-		return view.GetNextTabstop(LineFromUPtr(wParam), static_cast<int>(lParam));
+		return GetNextTabStop(LineFromUPtr(wParam), static_cast<int>(lParam));
 
 	case Message::SetIndent:
-		pdoc->indentInChars = static_cast<int>(wParam);
-		if (pdoc->indentInChars != 0)
-			pdoc->actualIndentInChars = pdoc->indentInChars;
-		else
-			pdoc->actualIndentInChars = pdoc->tabInChars;
-		InvalidateStyleRedraw();
+		SetIndent(static_cast<int>(wParam));
 		break;
 
 	case Message::GetIndent:
-		return pdoc->indentInChars;
+		return GetIndent();
 
 	case Message::SetUseTabs:
-		pdoc->useTabs = wParam != 0;
+		SetUseTabs(wParam != 0);
 		break;
 
 	case Message::GetUseTabs:
-		return pdoc->useTabs;
+		return GetUseTabs() ? 1 : 0;
 
 	case Message::SetLineIndentation:
-		pdoc->SetLineIndentation(LineFromUPtr(wParam), lParam);
+		SetLineIndentation(LineFromUPtr(wParam), lParam);
 		break;
 
 	case Message::GetLineIndentation:
-		return pdoc->GetLineIndentation(LineFromUPtr(wParam));
+		return GetLineIndentation(LineFromUPtr(wParam));
 
 	case Message::GetLineIndentPosition:
-		return pdoc->GetLineIndentPosition(LineFromUPtr(wParam));
+		return GetLineIndentPosition(LineFromUPtr(wParam));
 
 	case Message::SetTabIndents:
-		pdoc->tabIndents = wParam != 0;
+		SetTabIndents(wParam != 0);
 		break;
 
 	case Message::GetTabIndents:
-		return pdoc->tabIndents;
+		return GetTabIndents() ? 1 : 0;
 
 	case Message::SetBackSpaceUnIndents:
-		pdoc->backspaceUnindents = wParam != 0;
+		SetBackSpaceUnIndents(wParam != 0);
 		break;
 
 	case Message::GetBackSpaceUnIndents:
-		return pdoc->backspaceUnindents;
+		return GetBackSpaceUnIndents() ? 1 : 0;
 
 	case Message::SetMouseDwellTime:
 		dwellDelay = static_cast<int>(wParam);
@@ -6529,6 +6436,7 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return ExecuteCommand(EditorCommand::LinesJoin);
 
 	case Message::LinesSplit:
+		// Pixel width is optional; zero means use the text area width.
 		LinesSplit(static_cast<int>(wParam));
 		break;
 
@@ -6567,10 +6475,10 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::GetColumn:
-		return pdoc->GetColumn(PositionFromUPtr(wParam));
+		return GetColumn(PositionFromUPtr(wParam));
 
 	case Message::FindColumn:
-		return pdoc->FindColumn(LineFromUPtr(wParam), lParam);
+		return FindColumn(LineFromUPtr(wParam), lParam);
 
 	case Message::SetHScrollBar :
 		if (horizontalScrollBarVisible != (wParam != 0)) {
@@ -6597,12 +6505,11 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return verticalScrollBarVisible;
 
 	case Message::SetIndentationGuides:
-		vs.viewIndentationGuides = static_cast<IndentView>(wParam);
-		Redraw();
+		SetIndentationGuides(static_cast<IndentView>(wParam));
 		break;
 
 	case Message::GetIndentationGuides:
-		return static_cast<sptr_t>(vs.viewIndentationGuides);
+		return static_cast<sptr_t>(GetIndentationGuides());
 
 	case Message::SetHighlightGuide:
 		if ((highlightGuideColumn != static_cast<int>(wParam)) || (wParam > 0)) {
@@ -6615,7 +6522,7 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return highlightGuideColumn;
 
 	case Message::GetLineEndPosition:
-		return pdoc->LineEnd(LineFromUPtr(wParam));
+		return GetLineEndPosition(LineFromUPtr(wParam));
 
 	case Message::SetIMEInteraction:
 		imeInteraction = static_cast<IMEInteraction>(wParam);
@@ -6632,14 +6539,14 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return static_cast<sptr_t>(bidirectional);
 
 	case Message::GetLineCharacterIndex:
-		return static_cast<sptr_t>(pdoc->LineCharacterIndex());
+		return static_cast<sptr_t>(GetLineCharacterIndex());
 
 	case Message::AllocateLineCharacterIndex:
-		pdoc->AllocateLineCharacterIndex(static_cast<LineCharacterIndexType>(wParam));
+		AllocateLineCharacterIndex(static_cast<LineCharacterIndexType>(wParam));
 		break;
 
 	case Message::ReleaseLineCharacterIndex:
-		pdoc->ReleaseLineCharacterIndex(static_cast<LineCharacterIndexType>(wParam));
+		ReleaseLineCharacterIndex(static_cast<LineCharacterIndexType>(wParam));
 		break;
 
 	case Message::LineFromIndexPosition:
@@ -7092,7 +6999,7 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::GetLineVisible:
-		return pcs->GetVisible(LineFromUPtr(wParam));
+		return GetLineVisible(LineFromUPtr(wParam)) ? 1 : 0;
 
 	case Message::GetAllLinesVisible:
 		return pcs->HiddenLines() ? 0 : 1;
@@ -7232,11 +7139,10 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return vs.ElementColourForced(Element::SelectionBack).GetAlpha();
 
 	case Message::GetSelEOLFilled:
-		return vs.selection.eolFilled;
+		return GetSelEOLFilled() ? 1 : 0;
 
 	case Message::SetSelEOLFilled:
-		vs.selection.eolFilled = wParam != 0;
-		InvalidateStyleRedraw();
+		SetSelEOLFilled(wParam != 0);
 		break;
 
 	case Message::SetWhitespaceFore:
@@ -7569,11 +7475,10 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return pdoc->BraceMatch(PositionFromUPtr(wParam), 0, lParam, true);
 
 	case Message::GetViewEOL:
-		return vs.viewEOL;
+		return GetViewEOL() ? 1 : 0;
 
 	case Message::SetViewEOL:
-		vs.viewEOL = wParam != 0;
-		InvalidateStyleRedraw();
+		SetViewEOL(wParam != 0);
 		break;
 
 	case Message::SetZoom:
@@ -7586,11 +7491,10 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return vs.zoomLevel;
 
 	case Message::GetEdgeColumn:
-		return vs.theEdge.column;
+		return GetEdgeColumn();
 
 	case Message::SetEdgeColumn:
-		vs.theEdge.column = static_cast<int>(wParam);
-		InvalidateStyleRedraw();
+		SetEdgeColumn(static_cast<int>(wParam));
 		break;
 
 	case Message::GetEdgeMode:
@@ -7619,14 +7523,9 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		InvalidateStyleRedraw();
 		break;
 
-	case Message::GetMultiEdgeColumn: {
-			const size_t which = wParam;
-			// size_t is unsigned so this also handles negative inputs.
-			if (which >= vs.theMultiEdge.size()) {
-				return -1;
-			}
-			return vs.theMultiEdge[which].column;
-		}
+	case Message::GetMultiEdgeColumn:
+		return GetMultiEdgeColumn(wParam);
+
 
 	case Message::GetAccessibility:
 		return static_cast<sptr_t>(Accessibility::Disabled);
@@ -7654,8 +7553,7 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return commandEvents;
 
 	case Message::ConvertEOLs:
-		pdoc->ConvertLineEnds(static_cast<EndOfLine>(wParam));
-		SetSelection(sel.MainCaret(), sel.MainAnchor());	// Ensure selection inside document
+		ConvertEOLs(static_cast<EndOfLine>(wParam));
 		return 0;
 
 	case Message::SelectionIsRectangle:
@@ -7686,18 +7584,10 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 	case Message::GetMoveExtendsSelection:
 		return sel.MoveExtends();
 	case Message::GetLineSelStartPosition:
-	case Message::GetLineSelEndPosition: {
-			const SelectionSegment segmentLine(
-				pdoc->LineStart(LineFromUPtr(wParam)),
-				pdoc->LineEnd(LineFromUPtr(wParam)));
-			for (size_t r=0; r<sel.Count(); r++) {
-				const SelectionSegment portion = sel.Range(r).Intersect(segmentLine);
-				if (portion.start.IsValid()) {
-					return (iMessage == Message::GetLineSelStartPosition) ? portion.start.Position() : portion.end.Position();
-				}
-			}
-			return Sci::invalidPosition;
-		}
+		return GetLineSelStartPosition(LineFromUPtr(wParam));
+
+	case Message::GetLineSelEndPosition:
+		return GetLineSelEndPosition(LineFromUPtr(wParam));
 
 	case Message::SetOvertype:
 		if (inOverstrike != (wParam != 0)) {
@@ -8291,10 +8181,10 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return static_cast<sptr_t>(technology);
 
 	case Message::CountCharacters:
-		return pdoc->CountCharacters(PositionFromUPtr(wParam), lParam);
+		return CountCharacters(PositionFromUPtr(wParam), lParam);
 
 	case Message::CountCodeUnits:
-		return pdoc->CountUTF16(PositionFromUPtr(wParam), lParam);
+		return CountCodeUnits(PositionFromUPtr(wParam), lParam);
 
 	default:
 		return DefWndProc(iMessage, wParam, lParam);
