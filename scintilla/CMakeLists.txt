@@ -24,6 +24,7 @@ add_library(scintilla_core STATIC
   src/EditorCaret.cxx
   src/EditorClipboard.cxx
   src/EditorCommands.cxx
+  src/EditorDecorations.cxx
   src/EditorDocument.cxx
   src/EditorFolding.cxx
   src/EditorHistory.cxx

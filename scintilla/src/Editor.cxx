@@ -223,10 +223,6 @@ void Editor::Finalise() {
 	CancelModes();
 }
 
-void Editor::SetRepresentations() {
-	reprs->SetDefaultRepresentations();
-}
-
 void Editor::DropGraphics() noexcept {
 	marginView.DropGraphics();
 	view.DropGraphics();
@@ -4362,25 +4358,6 @@ void Editor::CheckForChangeOutsidePaint(Range r) {
 	}
 }
 
-void Editor::SetBraceHighlight(Sci::Position pos0, Sci::Position pos1, int matchStyle) {
-	if ((pos0 != braces[0]) || (pos1 != braces[1]) || (matchStyle != bracesMatchStyle)) {
-		if ((braces[0] != pos0) || (matchStyle != bracesMatchStyle)) {
-			CheckForChangeOutsidePaint(Range(braces[0]));
-			CheckForChangeOutsidePaint(Range(pos0));
-			braces[0] = pos0;
-		}
-		if ((braces[1] != pos1) || (matchStyle != bracesMatchStyle)) {
-			CheckForChangeOutsidePaint(Range(braces[1]));
-			CheckForChangeOutsidePaint(Range(pos1));
-			braces[1] = pos1;
-		}
-		bracesMatchStyle = matchStyle;
-		if (paintState == PaintState::notPainting) {
-			Redraw();
-		}
-	}
-}
-
 void Editor::SetAnnotationHeights(Sci::Line start, Sci::Line end) {
 	if (vs.annotationVisible != AnnotationVisible::Hidden) {
 		RefreshStyleData();
@@ -4447,31 +4424,6 @@ void Editor::SetDocPointer(Document *document) {
 	pdoc->AddWatcher(this, nullptr);
 	SetScrollBars();
 	Redraw();
-}
-
-void Editor::SetAnnotationVisible(AnnotationVisible visible) {
-	if (vs.annotationVisible != visible) {
-		const bool changedFromOrToHidden = ((vs.annotationVisible != AnnotationVisible::Hidden) != (visible != AnnotationVisible::Hidden));
-		vs.annotationVisible = visible;
-		if (changedFromOrToHidden) {
-			const int dir = (vs.annotationVisible!= AnnotationVisible::Hidden) ? 1 : -1;
-			for (Sci::Line line=0; line<pdoc->LinesTotal(); line++) {
-				const int annotationLines = pdoc->AnnotationLines(line);
-				if (annotationLines > 0) {
-					pcs->SetHeight(line, pcs->GetHeight(line) + annotationLines * dir);
-				}
-			}
-			SetScrollBars();
-		}
-		Redraw();
-	}
-}
-
-void Editor::SetEOLAnnotationVisible(EOLAnnotationVisible visible) {
-	if (vs.eolAnnotationVisible != visible) {
-		vs.eolAnnotationVisible = visible;
-		Redraw();
-	}
 }
 
 Sci::Position Editor::GetTag(char *tagValue, int tagNumber) {
@@ -5990,139 +5942,98 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::IndicSetStyle:
-		if (wParam <= IndicatorMax) {
-			vs.indicators[wParam].sacNormal.style = static_cast<IndicatorStyle>(lParam);
-			vs.indicators[wParam].sacHover.style = static_cast<IndicatorStyle>(lParam);
-			InvalidateStyleRedraw();
-		}
+		IndicSetStyle(wParam, static_cast<IndicatorStyle>(lParam));
 		break;
 
 	case Message::IndicGetStyle:
-		return (wParam <= IndicatorMax) ?
-			static_cast<sptr_t>(vs.indicators[wParam].sacNormal.style) : 0;
+		return static_cast<sptr_t>(IndicGetStyle(wParam));
 
 	case Message::IndicSetFore:
-		if (wParam <= IndicatorMax) {
-			vs.indicators[wParam].sacNormal.fore = ColourRGBA::FromIpRGB(lParam);
-			vs.indicators[wParam].sacHover.fore = ColourRGBA::FromIpRGB(lParam);
-			InvalidateStyleRedraw();
-		}
+		IndicSetFore(wParam, static_cast<int>(lParam));
 		break;
 
 	case Message::IndicGetFore:
-		return (wParam <= IndicatorMax) ?
-			vs.indicators[wParam].sacNormal.fore.OpaqueRGB() : 0;
+		return IndicGetFore(wParam);
 
 	case Message::IndicSetHoverStyle:
-		if (wParam <= IndicatorMax) {
-			vs.indicators[wParam].sacHover.style = static_cast<IndicatorStyle>(lParam);
-			InvalidateStyleRedraw();
-		}
+		IndicSetHoverStyle(wParam, static_cast<IndicatorStyle>(lParam));
 		break;
 
 	case Message::IndicGetHoverStyle:
-		return (wParam <= IndicatorMax) ?
-			static_cast<sptr_t>(vs.indicators[wParam].sacHover.style) : 0;
+		return static_cast<sptr_t>(IndicGetHoverStyle(wParam));
 
 	case Message::IndicSetHoverFore:
-		if (wParam <= IndicatorMax) {
-			vs.indicators[wParam].sacHover.fore = ColourRGBA::FromIpRGB(lParam);
-			InvalidateStyleRedraw();
-		}
+		IndicSetHoverFore(wParam, static_cast<int>(lParam));
 		break;
 
 	case Message::IndicGetHoverFore:
-		return (wParam <= IndicatorMax) ?
-			vs.indicators[wParam].sacHover.fore.OpaqueRGB() : 0;
+		return IndicGetHoverFore(wParam);
 
 	case Message::IndicSetFlags:
-		if (wParam <= IndicatorMax) {
-			vs.indicators[wParam].SetFlags(static_cast<IndicFlag>(lParam));
-			InvalidateStyleRedraw();
-		}
+		IndicSetFlags(wParam, static_cast<IndicFlag>(lParam));
 		break;
 
 	case Message::IndicGetFlags:
-		return (wParam <= IndicatorMax) ?
-			static_cast<sptr_t>(vs.indicators[wParam].Flags()) : 0;
+		return static_cast<sptr_t>(IndicGetFlags(wParam));
 
 	case Message::IndicSetUnder:
-		if (wParam <= IndicatorMax) {
-			vs.indicators[wParam].under = lParam != 0;
-			InvalidateStyleRedraw();
-		}
+		IndicSetUnder(wParam, lParam != 0);
 		break;
 
 	case Message::IndicGetUnder:
-		return (wParam <= IndicatorMax) ?
-			vs.indicators[wParam].under : 0;
+		return IndicGetUnder(wParam) ? 1 : 0;
 
 	case Message::IndicSetAlpha:
-		if (wParam <= IndicatorMax && lParam >=0 && lParam <= 255) {
-			vs.indicators[wParam].fillAlpha = static_cast<int>(lParam);
-			InvalidateStyleRedraw();
-		}
+		IndicSetAlpha(wParam, static_cast<int>(lParam));
 		break;
 
 	case Message::IndicGetAlpha:
-		return (wParam <= IndicatorMax)
-			? vs.indicators[wParam].fillAlpha : 0;
+		return IndicGetAlpha(wParam);
 
 	case Message::IndicSetOutlineAlpha:
-		if (wParam <= IndicatorMax && lParam >=0 && lParam <= 255) {
-			vs.indicators[wParam].outlineAlpha = static_cast<int>(lParam);
-			InvalidateStyleRedraw();
-		}
+		IndicSetOutlineAlpha(wParam, static_cast<int>(lParam));
 		break;
 
 	case Message::IndicGetOutlineAlpha:
-		return (wParam <= IndicatorMax) ? vs.indicators[wParam].outlineAlpha : 0;
+		return IndicGetOutlineAlpha(wParam);
 
 	case Message::IndicSetStrokeWidth:
-		if (wParam <= IndicatorMax && lParam >= 0 && lParam <= 1000) {
-			vs.indicators[wParam].strokeWidth = static_cast<XYPOSITION>(lParam) / 100.0;
-			InvalidateStyleRedraw();
-		}
+		IndicSetStrokeWidth(wParam, static_cast<int>(lParam));
 		break;
 
 	case Message::IndicGetStrokeWidth:
-		if (wParam <= IndicatorMax) {
-			return std::lround(vs.indicators[wParam].strokeWidth * 100);
-		}
-		break;
+		return IndicGetStrokeWidth(wParam);
 
 	case Message::SetIndicatorCurrent:
-		pdoc->DecorationSetCurrentIndicator(static_cast<int>(wParam));
+		SetIndicatorCurrent(static_cast<int>(wParam));
 		break;
 	case Message::GetIndicatorCurrent:
-		return pdoc->decorations->GetCurrentIndicator();
+		return GetIndicatorCurrent();
 	case Message::SetIndicatorValue:
-		pdoc->decorations->SetCurrentValue(static_cast<int>(wParam));
+		SetIndicatorValue(static_cast<int>(wParam));
 		break;
 	case Message::GetIndicatorValue:
-		return pdoc->decorations->GetCurrentValue();
+		return GetIndicatorValue();
 
 	case Message::IndicatorFillRange:
-		pdoc->DecorationFillRange(PositionFromUPtr(wParam),
-			pdoc->decorations->GetCurrentValue(), lParam);
+		IndicatorFillRange(PositionFromUPtr(wParam), lParam);
 		break;
 
 	case Message::IndicatorClearRange:
-		pdoc->DecorationFillRange(PositionFromUPtr(wParam), 0,
-			lParam);
+		IndicatorClearRange(PositionFromUPtr(wParam), lParam);
 		break;
 
 	case Message::IndicatorAllOnFor:
-		return pdoc->decorations->AllOnFor(PositionFromUPtr(wParam));
+		return IndicatorAllOnFor(PositionFromUPtr(wParam));
 
 	case Message::IndicatorValueAt:
-		return pdoc->decorations->ValueAt(static_cast<int>(wParam), lParam);
+		return IndicatorValueAt(static_cast<int>(wParam), lParam);
 
 	case Message::IndicatorStart:
-		return pdoc->decorations->Start(static_cast<int>(wParam), lParam);
+		return IndicatorStart(static_cast<int>(wParam), lParam);
 
 	case Message::IndicatorEnd:
-		return pdoc->decorations->End(static_cast<int>(wParam), lParam);
+		return IndicatorEnd(static_cast<int>(wParam), lParam);
 
 	case Message::LineDown:
 	case Message::LineDownExtend:
@@ -6222,34 +6133,26 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return ExecuteCommand(CommandFromMessage(iMessage));
 
 	case Message::BraceHighlight:
-		SetBraceHighlight(PositionFromUPtr(wParam), lParam, StyleBraceLight);
+		BraceHighlight(PositionFromUPtr(wParam), lParam);
 		break;
 
 	case Message::BraceHighlightIndicator:
-		if (lParam >= 0 && static_cast<size_t>(lParam) <= IndicatorMax) {
-			vs.braceHighlightIndicatorSet = wParam != 0;
-			vs.braceHighlightIndicator = static_cast<int>(lParam);
-		}
+		BraceHighlightIndicator(wParam != 0, static_cast<size_t>(lParam));
 		break;
 
 	case Message::BraceBadLight:
-		SetBraceHighlight(PositionFromUPtr(wParam), -1, StyleBraceBad);
+		BraceBadLight(PositionFromUPtr(wParam));
 		break;
 
 	case Message::BraceBadLightIndicator:
-		if (lParam >= 0 && static_cast<size_t>(lParam) <= IndicatorMax) {
-			vs.braceBadLightIndicatorSet = wParam != 0;
-			vs.braceBadLightIndicator = static_cast<int>(lParam);
-		}
+		BraceBadLightIndicator(wParam != 0, static_cast<size_t>(lParam));
 		break;
 
 	case Message::BraceMatch:
-		// wParam is position of char to find brace for,
-		// lParam is maximum amount of text to restyle to find it
-		return pdoc->BraceMatch(PositionFromUPtr(wParam), lParam, 0, false);
+		return BraceMatch(PositionFromUPtr(wParam), lParam);
 
 	case Message::BraceMatchNext:
-		return pdoc->BraceMatch(PositionFromUPtr(wParam), 0, lParam, true);
+		return BraceMatchNext(PositionFromUPtr(wParam), lParam);
 
 	case Message::GetViewEOL:
 		return GetViewEOL() ? 1 : 0;
@@ -6398,58 +6301,42 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return static_cast<sptr_t>(cursorMode);
 
 	case Message::SetControlCharSymbol:
-		vs.controlCharSymbol = static_cast<int>(wParam);
-		InvalidateStyleRedraw();
+		SetControlCharSymbol(static_cast<int>(wParam));
 		break;
 
 	case Message::GetControlCharSymbol:
-		return vs.controlCharSymbol;
+		return GetControlCharSymbol();
 
 	case Message::SetRepresentation:
-		reprs->SetRepresentation(ConstCharPtrFromUPtr(wParam), ConstCharPtrFromSPtr(lParam));
+		SetRepresentation(ConstCharPtrFromUPtr(wParam), ConstCharPtrFromSPtr(lParam));
 		break;
 
 	case Message::GetRepresentation: {
-			const Representation *repr = reprs->RepresentationFromCharacter(
-				ConstCharPtrFromUPtr(wParam));
-			if (repr) {
-				return StringResult(lParam, repr->stringRep.c_str());
-			}
-			return 0;
+			char *ptr = CharPtrFromSPtr(lParam);
+			return GetRepresentation(ConstCharPtrFromUPtr(wParam), ptr);
 		}
 
 	case Message::ClearRepresentation:
-		reprs->ClearRepresentation(ConstCharPtrFromUPtr(wParam));
+		ClearRepresentation(ConstCharPtrFromUPtr(wParam));
 		break;
 
 	case Message::ClearAllRepresentations:
-		SetRepresentations();
+		ClearAllRepresentations();
 		break;
 
 	case Message::SetRepresentationAppearance:
-		reprs->SetRepresentationAppearance(ConstCharPtrFromUPtr(wParam), static_cast<RepresentationAppearance>(lParam));
+		SetRepresentationAppearance(ConstCharPtrFromUPtr(wParam), static_cast<RepresentationAppearance>(lParam));
 		break;
 
-	case Message::GetRepresentationAppearance: {
-			const Representation *repr = reprs->RepresentationFromCharacter(
-				ConstCharPtrFromUPtr(wParam));
-			if (repr) {
-				return static_cast<sptr_t>(repr->appearance);
-			}
-			return 0;
-		}
+	case Message::GetRepresentationAppearance:
+		return static_cast<sptr_t>(GetRepresentationAppearance(ConstCharPtrFromUPtr(wParam)));
+
 	case Message::SetRepresentationColour:
-		reprs->SetRepresentationColour(ConstCharPtrFromUPtr(wParam), ColourRGBA(static_cast<int>(lParam)));
+		SetRepresentationColour(ConstCharPtrFromUPtr(wParam), static_cast<int>(lParam));
 		break;
 
-	case Message::GetRepresentationColour: {
-			const Representation *repr = reprs->RepresentationFromCharacter(
-				ConstCharPtrFromUPtr(wParam));
-			if (repr) {
-				return repr->colour.AsInteger();
-			}
-			return 0;
-		}
+	case Message::GetRepresentationColour:
+		return GetRepresentationColour(ConstCharPtrFromUPtr(wParam));
 
 	case Message::StartRecord:
 		recordingMacro = true;
@@ -6472,38 +6359,32 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::SetHotspotActiveFore:
-		if (vs.SetElementColourOptional(Element::HotSpotActive, wParam, lParam)) {
-			InvalidateStyleRedraw();
-		}
+		SetHotspotActiveFore(wParam != 0, static_cast<int>(lParam));
 		break;
 
 	case Message::GetHotspotActiveFore:
-		return vs.ElementColour(Element::HotSpotActive).value_or(ColourRGBA()).OpaqueRGB();
+		return GetHotspotActiveFore();
 
 	case Message::SetHotspotActiveBack:
-		if (vs.SetElementColourOptional(Element::HotSpotActiveBack, wParam, lParam)) {
-			InvalidateStyleRedraw();
-		}
+		SetHotspotActiveBack(wParam != 0, static_cast<int>(lParam));
 		break;
 
 	case Message::GetHotspotActiveBack:
-		return vs.ElementColour(Element::HotSpotActiveBack).value_or(ColourRGBA()).OpaqueRGB();
+		return GetHotspotActiveBack();
 
 	case Message::SetHotspotActiveUnderline:
-		vs.hotspotUnderline = wParam != 0;
-		InvalidateStyleRedraw();
+		SetHotspotActiveUnderline(wParam != 0);
 		break;
 
 	case Message::GetHotspotActiveUnderline:
-		return vs.hotspotUnderline ? 1 : 0;
+		return GetHotspotActiveUnderline() ? 1 : 0;
 
 	case Message::SetHotspotSingleLine:
-		hotspotSingleLine = wParam != 0;
-		InvalidateStyleRedraw();
+		SetHotspotSingleLine(wParam != 0);
 		break;
 
 	case Message::GetHotspotSingleLine:
-		return hotspotSingleLine ? 1 : 0;
+		return GetHotspotSingleLine() ? 1 : 0;
 
 	case Message::SetPasteConvertEndings:
 		SetPasteConvertEndings(wParam != 0);
@@ -6598,37 +6479,32 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::AnnotationSetText:
-		pdoc->AnnotationSetText(LineFromUPtr(wParam), ConstCharPtrFromSPtr(lParam));
+		AnnotationSetText(LineFromUPtr(wParam), ConstCharPtrFromSPtr(lParam));
 		break;
 
 	case Message::AnnotationGetText: {
-			const StyledText st = pdoc->AnnotationStyledText(LineFromUPtr(wParam));
-			return BytesResult(lParam, st.AsView());
+			return BytesResult(lParam, AnnotationGetText(LineFromUPtr(wParam)));
 		}
 
-	case Message::AnnotationGetStyle: {
-			const StyledText st = pdoc->AnnotationStyledText(LineFromUPtr(wParam));
-			return st.style;
-		}
+	case Message::AnnotationGetStyle:
+		return AnnotationGetStyle(LineFromUPtr(wParam));
 
 	case Message::AnnotationSetStyle:
-		pdoc->AnnotationSetStyle(LineFromUPtr(wParam), static_cast<int>(lParam));
+		AnnotationSetStyle(LineFromUPtr(wParam), static_cast<int>(lParam));
 		break;
 
 	case Message::AnnotationSetStyles:
-		pdoc->AnnotationSetStyles(LineFromUPtr(wParam), ConstUCharPtrFromSPtr(lParam));
+		AnnotationSetStyles(LineFromUPtr(wParam), ConstUCharPtrFromSPtr(lParam));
 		break;
 
-	case Message::AnnotationGetStyles: {
-			const StyledText st = pdoc->AnnotationStyledText(LineFromUPtr(wParam));
-			return BytesResult(lParam, st.styles, st.length);
-		}
+	case Message::AnnotationGetStyles:
+		return AnnotationGetStyles(LineFromUPtr(wParam), CharPtrFromSPtr(lParam));
 
 	case Message::AnnotationGetLines:
-		return pdoc->AnnotationLines(LineFromUPtr(wParam));
+		return AnnotationGetLines(LineFromUPtr(wParam));
 
 	case Message::AnnotationClearAll:
-		pdoc->AnnotationClearAll();
+		AnnotationClearAll();
 		break;
 
 	case Message::AnnotationSetVisible:
@@ -6636,36 +6512,32 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::AnnotationGetVisible:
-		return static_cast<sptr_t>(vs.annotationVisible);
+		return static_cast<sptr_t>(AnnotationGetVisible());
 
 	case Message::AnnotationSetStyleOffset:
-		vs.annotationStyleOffset = static_cast<int>(wParam);
-		InvalidateStyleRedraw();
+		AnnotationSetStyleOffset(static_cast<int>(wParam));
 		break;
 
 	case Message::AnnotationGetStyleOffset:
-		return vs.annotationStyleOffset;
+		return AnnotationGetStyleOffset();
 
 	case Message::EOLAnnotationSetText:
-		pdoc->EOLAnnotationSetText(LineFromUPtr(wParam), ConstCharPtrFromSPtr(lParam));
+		EOLAnnotationSetText(LineFromUPtr(wParam), ConstCharPtrFromSPtr(lParam));
 		break;
 
 	case Message::EOLAnnotationGetText: {
-			const StyledText st = pdoc->EOLAnnotationStyledText(LineFromUPtr(wParam));
-			return BytesResult(lParam, st.AsView());
+			return BytesResult(lParam, EOLAnnotationGetText(LineFromUPtr(wParam)));
 		}
 
-	case Message::EOLAnnotationGetStyle: {
-			const StyledText st = pdoc->EOLAnnotationStyledText(LineFromUPtr(wParam));
-			return st.style;
-		}
+	case Message::EOLAnnotationGetStyle:
+		return EOLAnnotationGetStyle(LineFromUPtr(wParam));
 
 	case Message::EOLAnnotationSetStyle:
-		pdoc->EOLAnnotationSetStyle(LineFromUPtr(wParam), static_cast<int>(lParam));
+		EOLAnnotationSetStyle(LineFromUPtr(wParam), static_cast<int>(lParam));
 		break;
 
 	case Message::EOLAnnotationClearAll:
-		pdoc->EOLAnnotationClearAll();
+		EOLAnnotationClearAll();
 		break;
 
 	case Message::EOLAnnotationSetVisible:
@@ -6673,15 +6545,14 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::EOLAnnotationGetVisible:
-		return static_cast<sptr_t>(vs.eolAnnotationVisible);
+		return static_cast<sptr_t>(EOLAnnotationGetVisible());
 
 	case Message::EOLAnnotationSetStyleOffset:
-		vs.eolAnnotationStyleOffset = static_cast<int>(wParam);
-		InvalidateStyleRedraw();
+		EOLAnnotationSetStyleOffset(static_cast<int>(wParam));
 		break;
 
 	case Message::EOLAnnotationGetStyleOffset:
-		return vs.eolAnnotationStyleOffset;
+		return EOLAnnotationGetStyleOffset();
 
 	case Message::ReleaseAllExtendedStyles:
 		ReleaseAllExtendedStyles();
