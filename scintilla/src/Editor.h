@@ -874,19 +874,20 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void MarkerDeleteHandle(int markerHandle);
 	int MarkerHandleFromLine(Sci::Line line, int which) const noexcept;
 	int MarkerNumberFromLine(Sci::Line line, int which) const noexcept;
-	void MarkerDefine(int markerNumber, Scintilla::MarkerSymbol markerSymbol);
-	Scintilla::MarkerSymbol MarkerSymbolDefined(int markerNumber) const noexcept;
-	void MarkerSetFore(int markerNumber, int rgb);
-	void MarkerSetBack(int markerNumber, int rgb);
-	void MarkerSetBackSelected(int markerNumber, int rgb);
-	void MarkerSetForeTranslucent(int markerNumber, int colourAlpha);
-	void MarkerSetBackTranslucent(int markerNumber, int colourAlpha);
-	void MarkerSetBackSelectedTranslucent(int markerNumber, int colourAlpha);
-	void MarkerSetStrokeWidth(int markerNumber, int hundredths);
+	// markerNumber is size_t so message wParam is checked before any 32-bit narrowing.
+	void MarkerDefine(size_t markerNumber, Scintilla::MarkerSymbol markerSymbol);
+	Scintilla::MarkerSymbol MarkerSymbolDefined(size_t markerNumber) const noexcept;
+	void MarkerSetFore(size_t markerNumber, int rgb);
+	void MarkerSetBack(size_t markerNumber, int rgb);
+	void MarkerSetBackSelected(size_t markerNumber, int rgb);
+	void MarkerSetForeTranslucent(size_t markerNumber, int colourAlpha);
+	void MarkerSetBackTranslucent(size_t markerNumber, int colourAlpha);
+	void MarkerSetBackSelectedTranslucent(size_t markerNumber, int colourAlpha);
+	void MarkerSetStrokeWidth(size_t markerNumber, int hundredths);
 	void MarkerEnableHighlight(bool enabled);
-	void MarkerSetAlpha(int markerNumber, Scintilla::Alpha alpha);
-	void MarkerSetLayer(int markerNumber, Scintilla::Layer layer);
-	Scintilla::Layer MarkerGetLayer(int markerNumber) const noexcept;
+	void MarkerSetAlpha(size_t markerNumber, Scintilla::Alpha alpha);
+	void MarkerSetLayer(size_t markerNumber, Scintilla::Layer layer);
+	Scintilla::Layer MarkerGetLayer(size_t markerNumber) const noexcept;
 	int MarkerAdd(Sci::Line line, int markerNumber);
 	void MarkerAddSet(Sci::Line line, int markerSet);
 	void MarkerDelete(Sci::Line line, int markerNumber);
@@ -894,8 +895,8 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	int MarkerGet(Sci::Line line) const;
 	Sci::Line MarkerNext(Sci::Line lineStart, int markerMask) const noexcept;
 	Sci::Line MarkerPrevious(Sci::Line lineStart, int markerMask) const;
-	void MarkerDefinePixmap(int markerNumber, const char *pixmap);
-	void MarkerDefineRGBAImage(int markerNumber, const unsigned char *pixels);
+	void MarkerDefinePixmap(size_t markerNumber, const char *pixmap);
+	void MarkerDefineRGBAImage(size_t markerNumber, const unsigned char *pixels);
 
 	virtual void CopyToClipboard(const SelectionText &selectedText) = 0;
 	std::string RangeText(Sci::Position start, Sci::Position end) const;

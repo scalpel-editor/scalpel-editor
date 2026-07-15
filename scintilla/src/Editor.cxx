@@ -5460,46 +5460,47 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 	case Message::IndexPositionFromLine:
 		return pdoc->IndexLineStart(LineFromUPtr(wParam), static_cast<LineCharacterIndexType>(lParam));
 
-		// Marker definition and setting — bodies in EditorMarkers.cxx
+		// Marker definition and setting — bodies in EditorMarkers.cxx.
+		// Pass wParam as size_t (no int cast) so values above MarkerMax, including those above UINT32_MAX, stay rejected.
 	case Message::MarkerDefine:
-		MarkerDefine(static_cast<int>(wParam), static_cast<MarkerSymbol>(lParam));
+		MarkerDefine(wParam, static_cast<MarkerSymbol>(lParam));
 		break;
 
 	case Message::MarkerSymbolDefined:
-		return static_cast<sptr_t>(MarkerSymbolDefined(static_cast<int>(wParam)));
+		return static_cast<sptr_t>(MarkerSymbolDefined(wParam));
 
 	case Message::MarkerSetFore:
-		MarkerSetFore(static_cast<int>(wParam), static_cast<int>(lParam));
+		MarkerSetFore(wParam, static_cast<int>(lParam));
 		break;
 	case Message::MarkerSetBack:
-		MarkerSetBack(static_cast<int>(wParam), static_cast<int>(lParam));
+		MarkerSetBack(wParam, static_cast<int>(lParam));
 		break;
 	case Message::MarkerSetBackSelected:
-		MarkerSetBackSelected(static_cast<int>(wParam), static_cast<int>(lParam));
+		MarkerSetBackSelected(wParam, static_cast<int>(lParam));
 		break;
 	case Message::MarkerSetForeTranslucent:
-		MarkerSetForeTranslucent(static_cast<int>(wParam), static_cast<int>(lParam));
+		MarkerSetForeTranslucent(wParam, static_cast<int>(lParam));
 		break;
 	case Message::MarkerSetBackTranslucent:
-		MarkerSetBackTranslucent(static_cast<int>(wParam), static_cast<int>(lParam));
+		MarkerSetBackTranslucent(wParam, static_cast<int>(lParam));
 		break;
 	case Message::MarkerSetBackSelectedTranslucent:
-		MarkerSetBackSelectedTranslucent(static_cast<int>(wParam), static_cast<int>(lParam));
+		MarkerSetBackSelectedTranslucent(wParam, static_cast<int>(lParam));
 		break;
 	case Message::MarkerSetStrokeWidth:
-		MarkerSetStrokeWidth(static_cast<int>(wParam), static_cast<int>(lParam));
+		MarkerSetStrokeWidth(wParam, static_cast<int>(lParam));
 		break;
 	case Message::MarkerEnableHighlight:
 		MarkerEnableHighlight(wParam == 1);
 		break;
 	case Message::MarkerSetAlpha:
-		MarkerSetAlpha(static_cast<int>(wParam), static_cast<Alpha>(lParam));
+		MarkerSetAlpha(wParam, static_cast<Alpha>(lParam));
 		break;
 	case Message::MarkerSetLayer:
-		MarkerSetLayer(static_cast<int>(wParam), static_cast<Layer>(lParam));
+		MarkerSetLayer(wParam, static_cast<Layer>(lParam));
 		break;
 	case Message::MarkerGetLayer:
-		return static_cast<sptr_t>(MarkerGetLayer(static_cast<int>(wParam)));
+		return static_cast<sptr_t>(MarkerGetLayer(wParam));
 	case Message::MarkerAdd:
 		return MarkerAdd(LineFromUPtr(wParam), static_cast<int>(lParam));
 	case Message::MarkerAddSet:
@@ -5524,7 +5525,7 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return MarkerPrevious(LineFromUPtr(wParam), static_cast<int>(lParam));
 
 	case Message::MarkerDefinePixmap:
-		MarkerDefinePixmap(static_cast<int>(wParam), ConstCharPtrFromSPtr(lParam));
+		MarkerDefinePixmap(wParam, ConstCharPtrFromSPtr(lParam));
 		break;
 
 	case Message::RGBAImageSetWidth:
@@ -5540,7 +5541,7 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::MarkerDefineRGBAImage:
-		MarkerDefineRGBAImage(static_cast<int>(wParam), ConstUCharPtrFromSPtr(lParam));
+		MarkerDefineRGBAImage(wParam, ConstUCharPtrFromSPtr(lParam));
 		break;
 
 	case Message::SetMarginTypeN:

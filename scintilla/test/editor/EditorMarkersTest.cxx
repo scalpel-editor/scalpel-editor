@@ -133,6 +133,32 @@ TEST_CASE("Marker define symbol colour stroke layer and out-of-range") {
 	CHECK(editor.WndProc(Message::MarkerSymbolDefined, MarkerMax + 1, 0) == 0);
 	CHECK(editor.Snapshot().invalidatedRectangles > 0);
 	CHECK(editor.WndProc(Message::MarkerGetLayer, MarkerMax + 1, 0) == 0);
+
+	// Values above UINT32_MAX must not wrap into marker 0 when cast through int.
+	// 0x1'0000'0000 is 2^32; on 64-bit uptr_t this is a distinct large index.
+	if constexpr (sizeof(uptr_t) > 4) {
+		constexpr uptr_t huge = static_cast<uptr_t>(UINT32_MAX) + 1u;
+		REQUIRE(huge > static_cast<uptr_t>(MarkerMax));
+		// Marker 0 is Arrow from above; a wrapped int cast of huge would be 0.
+		editor.WndProc(Message::MarkerDefine, 0, static_cast<sptr_t>(MarkerSymbol::Arrow));
+		editor.WndProc(Message::MarkerSetLayer, 0, static_cast<sptr_t>(Layer::Base));
+		editor.WndProc(Message::MarkerSetFore, 0, 0x0000FF);
+
+		editor.PaintAll();
+		editor.ClearObservations();
+		editor.WndProc(Message::MarkerDefine, huge, static_cast<sptr_t>(MarkerSymbol::Plus));
+		editor.WndProc(Message::MarkerSetLayer, huge, static_cast<sptr_t>(Layer::OverText));
+		editor.WndProc(Message::MarkerSetFore, huge, 0x00FF00);
+		editor.WndProc(Message::MarkerDefinePixmap, huge, reinterpret_cast<sptr_t>(kTinyXpm));
+
+		CHECK(static_cast<MarkerSymbol>(editor.WndProc(Message::MarkerSymbolDefined, 0, 0))
+			== MarkerSymbol::Arrow);
+		CHECK(static_cast<Layer>(editor.WndProc(Message::MarkerGetLayer, 0, 0)) == Layer::Base);
+		CHECK(editor.WndProc(Message::MarkerSymbolDefined, huge, 0) == 0);
+		CHECK(editor.WndProc(Message::MarkerGetLayer, huge, 0) == 0);
+		// Historical out-of-range define still refreshes style data.
+		CHECK(editor.Snapshot().invalidatedRectangles > 0);
+	}
 }
 
 TEST_CASE("Marker add get delete search handles and notification") {

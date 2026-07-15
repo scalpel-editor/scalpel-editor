@@ -83,9 +83,9 @@ using namespace Scintilla::Internal;
 
 namespace {
 
-// Matches the historical uptr_t message check: out-of-range numbers are ignored.
-bool ValidMarkerNumber(int markerNumber) noexcept {
-	return static_cast<unsigned>(markerNumber) <= static_cast<unsigned>(MarkerMax);
+// Matches the historical uptr_t message check (wParam <= MarkerMax): size_t keeps values above 32 bits from wrapping into a valid index.
+bool ValidMarkerNumber(size_t markerNumber) noexcept {
+	return markerNumber <= static_cast<size_t>(MarkerMax);
 }
 
 }
@@ -111,7 +111,7 @@ int Editor::MarkerNumberFromLine(Sci::Line line, int which) const noexcept {
 }
 
 // Associate markerNumber (0..31) with a built-in symbol or SC_MARK_CHARACTER + code point. Out-of-range numbers skip the assignment but still refresh style data (historical message-path behaviour).
-void Editor::MarkerDefine(int markerNumber, MarkerSymbol markerSymbol) {
+void Editor::MarkerDefine(size_t markerNumber, MarkerSymbol markerSymbol) {
 	if (ValidMarkerNumber(markerNumber)) {
 		vs.markers[markerNumber].markType = markerSymbol;
 		vs.CalcLargestMarkerHeight();
@@ -121,14 +121,14 @@ void Editor::MarkerDefine(int markerNumber, MarkerSymbol markerSymbol) {
 }
 
 // Symbol currently defined for markerNumber, or 0 when the number is out of range.
-MarkerSymbol Editor::MarkerSymbolDefined(int markerNumber) const noexcept {
+MarkerSymbol Editor::MarkerSymbolDefined(size_t markerNumber) const noexcept {
 	if (ValidMarkerNumber(markerNumber))
 		return vs.markers[markerNumber].markType;
 	return static_cast<MarkerSymbol>(0);
 }
 
 // Opaque foreground colour of the marker symbol (RGB).
-void Editor::MarkerSetFore(int markerNumber, int rgb) {
+void Editor::MarkerSetFore(size_t markerNumber, int rgb) {
 	if (ValidMarkerNumber(markerNumber))
 		vs.markers[markerNumber].fore = ColourRGBA::FromIpRGB(rgb);
 	InvalidateStyleData();
@@ -136,7 +136,7 @@ void Editor::MarkerSetFore(int markerNumber, int rgb) {
 }
 
 // Opaque background colour of the marker symbol (RGB).
-void Editor::MarkerSetBack(int markerNumber, int rgb) {
+void Editor::MarkerSetBack(size_t markerNumber, int rgb) {
 	if (ValidMarkerNumber(markerNumber))
 		vs.markers[markerNumber].back = ColourRGBA::FromIpRGB(rgb);
 	InvalidateStyleData();
@@ -144,7 +144,7 @@ void Editor::MarkerSetBack(int markerNumber, int rgb) {
 }
 
 // Background used when the marker's folding block is selected (default red). Requires MarkerEnableHighlight.
-void Editor::MarkerSetBackSelected(int markerNumber, int rgb) {
+void Editor::MarkerSetBackSelected(size_t markerNumber, int rgb) {
 	if (ValidMarkerNumber(markerNumber))
 		vs.markers[markerNumber].backSelected = ColourRGBA::FromIpRGB(rgb);
 	InvalidateStyleData();
@@ -152,7 +152,7 @@ void Editor::MarkerSetBackSelected(int markerNumber, int rgb) {
 }
 
 // Foreground with alpha (colouralpha packed as int).
-void Editor::MarkerSetForeTranslucent(int markerNumber, int colourAlpha) {
+void Editor::MarkerSetForeTranslucent(size_t markerNumber, int colourAlpha) {
 	if (ValidMarkerNumber(markerNumber))
 		vs.markers[markerNumber].fore = ColourRGBA(colourAlpha);
 	InvalidateStyleData();
@@ -160,7 +160,7 @@ void Editor::MarkerSetForeTranslucent(int markerNumber, int colourAlpha) {
 }
 
 // Background with alpha.
-void Editor::MarkerSetBackTranslucent(int markerNumber, int colourAlpha) {
+void Editor::MarkerSetBackTranslucent(size_t markerNumber, int colourAlpha) {
 	if (ValidMarkerNumber(markerNumber))
 		vs.markers[markerNumber].back = ColourRGBA(colourAlpha);
 	InvalidateStyleData();
@@ -168,7 +168,7 @@ void Editor::MarkerSetBackTranslucent(int markerNumber, int colourAlpha) {
 }
 
 // Selected-block background with alpha.
-void Editor::MarkerSetBackSelectedTranslucent(int markerNumber, int colourAlpha) {
+void Editor::MarkerSetBackSelectedTranslucent(size_t markerNumber, int colourAlpha) {
 	if (ValidMarkerNumber(markerNumber))
 		vs.markers[markerNumber].backSelected = ColourRGBA(colourAlpha);
 	InvalidateStyleData();
@@ -176,7 +176,7 @@ void Editor::MarkerSetBackSelectedTranslucent(int markerNumber, int colourAlpha)
 }
 
 // Stroke width for outline-drawn symbols, in hundredths of a pixel (default 100 = one pixel).
-void Editor::MarkerSetStrokeWidth(int markerNumber, int hundredths) {
+void Editor::MarkerSetStrokeWidth(size_t markerNumber, int hundredths) {
 	if (ValidMarkerNumber(markerNumber))
 		vs.markers[markerNumber].strokeWidth = static_cast<XYPOSITION>(hundredths) / 100.0f;
 	InvalidateStyleData();
@@ -190,7 +190,7 @@ void Editor::MarkerEnableHighlight(bool enabled) {
 }
 
 // Content-area translucency for Background / Underline marks. Alpha::NoAlpha forces opaque base-layer drawing; any other alpha sets OverText layer.
-void Editor::MarkerSetAlpha(int markerNumber, Alpha alpha) {
+void Editor::MarkerSetAlpha(size_t markerNumber, Alpha alpha) {
 	if (ValidMarkerNumber(markerNumber)) {
 		if (alpha == Alpha::NoAlpha) {
 			SetAppearance(vs.markers[markerNumber].alpha, Alpha::Opaque);
@@ -203,14 +203,14 @@ void Editor::MarkerSetAlpha(int markerNumber, Alpha alpha) {
 }
 
 // Layer for content-area markers (Base, UnderText, OverText). Margin drawing uses translucent colours instead.
-void Editor::MarkerSetLayer(int markerNumber, Layer layer) {
+void Editor::MarkerSetLayer(size_t markerNumber, Layer layer) {
 	if (ValidMarkerNumber(markerNumber)) {
 		SetAppearance(vs.markers[markerNumber].layer, layer);
 	}
 }
 
 // Content-area layer for markerNumber, or Base when out of range.
-Layer Editor::MarkerGetLayer(int markerNumber) const noexcept {
+Layer Editor::MarkerGetLayer(size_t markerNumber) const noexcept {
 	if (ValidMarkerNumber(markerNumber))
 		return vs.markers[markerNumber].layer;
 	return static_cast<Layer>(0);
@@ -257,7 +257,7 @@ Sci::Line Editor::MarkerPrevious(Sci::Line lineStart, int markerMask) const {
 }
 
 // Define markerNumber from an XPM pixmap string (text form starting with "/* XPM */", or the internal lines form). Sets symbol Pixmap.
-void Editor::MarkerDefinePixmap(int markerNumber, const char *pixmap) {
+void Editor::MarkerDefinePixmap(size_t markerNumber, const char *pixmap) {
 	if (ValidMarkerNumber(markerNumber)) {
 		vs.markers[markerNumber].SetXPM(pixmap);
 		vs.CalcLargestMarkerHeight();
@@ -267,7 +267,7 @@ void Editor::MarkerDefinePixmap(int markerNumber, const char *pixmap) {
 }
 
 // Define markerNumber from RGBA pixels. Width, height, and scale come from the last RGBAImageSetWidth / Height / Scale calls. Sets symbol RgbaImage.
-void Editor::MarkerDefineRGBAImage(int markerNumber, const unsigned char *pixels) {
+void Editor::MarkerDefineRGBAImage(size_t markerNumber, const unsigned char *pixels) {
 	if (ValidMarkerNumber(markerNumber)) {
 		vs.markers[markerNumber].SetRGBAImage(sizeRGBAImage, scaleRGBAImage / 100.0f, pixels);
 		vs.CalcLargestMarkerHeight();
