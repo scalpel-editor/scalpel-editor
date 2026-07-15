@@ -266,9 +266,11 @@ Note: `StyleSetInvisibleRepresentation` / `StyleGetInvisibleRepresentation` move
 
 ### Markers (26)
 
+Moved (2026-07-15): retained operations live in `EditorMarkers.cxx` with temporary `WndProc` forwarders; focused coverage in `EditorMarkersTest.cxx`. All 26 entries are private editor operations. RGBA image dimension setters remain in `EditorStyling.cxx` and are shared with autocomplete. Margin paint helpers stay in `Editor.cxx`.
+
 | Entries | Owner | Classification | Target and named entry point | Focused test | Documentation | Deletion reason |
 | --- | --- | --- | --- | --- | --- | --- |
-| All 26 entries below | `Editor`, `ViewStyle`, and `Document` marker state | Private editor operation | `EditorMarkers.cxx`; named operations keep their interface names and use typed lines, handles, marker numbers, images, layers, and colours | Add editor tests for definitions, handles, add/delete/search, images, layers, invalidation, and modification notifications | Move API prose | Not deleted: markers remain an editing and styling feature |
+| All 26 entries below | `Editor`, `ViewStyle`, and `Document` marker state | Private editor operation | `EditorMarkers.cxx`; named operations keep their interface names and use typed lines, handles, marker numbers, images, layers, and colours | `EditorMarkersTest.cxx`: define/colour/layer/out-of-range, add/get/delete/search/handles/ChangeMarker, highlight/pixmap/RGBA, direct-versus-message parity | API prose beside definitions in `EditorMarkers.cxx`; HTML section reduced to a pointer | Not deleted: markers remain an editing and styling feature |
 
 `fun MarkerLineFromHandle=2017`, `fun MarkerDeleteHandle=2018`, `fun MarkerHandleFromLine=2732`, `fun MarkerNumberFromLine=2733`, `fun MarkerDefine=2040`, `set MarkerSetFore=2041`, `set MarkerSetBack=2042`, `set MarkerSetBackSelected=2292`, `set MarkerSetForeTranslucent=2294`, `set MarkerSetBackTranslucent=2295`, `set MarkerSetBackSelectedTranslucent=2296`, `set MarkerSetStrokeWidth=2297`, `fun MarkerEnableHighlight=2293`, `fun MarkerAdd=2043`, `fun MarkerDelete=2044`, `fun MarkerDeleteAll=2045`, `fun MarkerGet=2046`, `fun MarkerNext=2047`, `fun MarkerPrevious=2048`, `fun MarkerDefinePixmap=2049`, `fun MarkerAddSet=2466`, `set MarkerSetAlpha=2476`, `get MarkerGetLayer=2734`, `set MarkerSetLayer=2735`, `fun MarkerSymbolDefined=2529`, `fun MarkerDefineRGBAImage=2626`
 

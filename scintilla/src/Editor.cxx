@@ -5081,17 +5081,17 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return CanRedo() ? 1 : 0;
 
 	case Message::MarkerLineFromHandle:
-		return pdoc->LineFromHandle(static_cast<int>(wParam));
+		return MarkerLineFromHandle(static_cast<int>(wParam));
 
 	case Message::MarkerDeleteHandle:
-		pdoc->DeleteMarkFromHandle(static_cast<int>(wParam));
+		MarkerDeleteHandle(static_cast<int>(wParam));
 		break;
 
 	case Message::MarkerHandleFromLine:
-		return pdoc->MarkerHandleFromLine(LineFromUPtr(wParam), static_cast<int>(lParam));
+		return MarkerHandleFromLine(LineFromUPtr(wParam), static_cast<int>(lParam));
 
 	case Message::MarkerNumberFromLine:
-		return pdoc->MarkerNumberFromLine(LineFromUPtr(wParam), static_cast<int>(lParam));
+		return MarkerNumberFromLine(LineFromUPtr(wParam), static_cast<int>(lParam));
 
 	case Message::GetViewWS:
 		return static_cast<sptr_t>(GetViewWS());
@@ -5460,127 +5460,71 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 	case Message::IndexPositionFromLine:
 		return pdoc->IndexLineStart(LineFromUPtr(wParam), static_cast<LineCharacterIndexType>(lParam));
 
-		// Marker definition and setting
+		// Marker definition and setting — bodies in EditorMarkers.cxx
 	case Message::MarkerDefine:
-		if (wParam <= MarkerMax) {
-			vs.markers[wParam].markType = static_cast<MarkerSymbol>(lParam);
-			vs.CalcLargestMarkerHeight();
-		}
-		InvalidateStyleData();
-		RedrawSelMargin();
+		MarkerDefine(static_cast<int>(wParam), static_cast<MarkerSymbol>(lParam));
 		break;
 
 	case Message::MarkerSymbolDefined:
-		if (wParam <= MarkerMax)
-			return static_cast<sptr_t>(vs.markers[wParam].markType);
-		else
-			return 0;
+		return static_cast<sptr_t>(MarkerSymbolDefined(static_cast<int>(wParam)));
 
 	case Message::MarkerSetFore:
-		if (wParam <= MarkerMax)
-			vs.markers[wParam].fore = ColourRGBA::FromIpRGB(lParam);
-		InvalidateStyleData();
-		RedrawSelMargin();
+		MarkerSetFore(static_cast<int>(wParam), static_cast<int>(lParam));
 		break;
 	case Message::MarkerSetBack:
-		if (wParam <= MarkerMax)
-			vs.markers[wParam].back = ColourRGBA::FromIpRGB(lParam);
-		InvalidateStyleData();
-		RedrawSelMargin();
+		MarkerSetBack(static_cast<int>(wParam), static_cast<int>(lParam));
 		break;
 	case Message::MarkerSetBackSelected:
-		if (wParam <= MarkerMax)
-			vs.markers[wParam].backSelected = ColourRGBA::FromIpRGB(lParam);
-		InvalidateStyleData();
-		RedrawSelMargin();
+		MarkerSetBackSelected(static_cast<int>(wParam), static_cast<int>(lParam));
 		break;
 	case Message::MarkerSetForeTranslucent:
-		if (wParam <= MarkerMax)
-			vs.markers[wParam].fore = ColourRGBA(static_cast<int>(lParam));
-		InvalidateStyleData();
-		RedrawSelMargin();
+		MarkerSetForeTranslucent(static_cast<int>(wParam), static_cast<int>(lParam));
 		break;
 	case Message::MarkerSetBackTranslucent:
-		if (wParam <= MarkerMax)
-			vs.markers[wParam].back = ColourRGBA(static_cast<int>(lParam));
-		InvalidateStyleData();
-		RedrawSelMargin();
+		MarkerSetBackTranslucent(static_cast<int>(wParam), static_cast<int>(lParam));
 		break;
 	case Message::MarkerSetBackSelectedTranslucent:
-		if (wParam <= MarkerMax)
-			vs.markers[wParam].backSelected = ColourRGBA(static_cast<int>(lParam));
-		InvalidateStyleData();
-		RedrawSelMargin();
+		MarkerSetBackSelectedTranslucent(static_cast<int>(wParam), static_cast<int>(lParam));
 		break;
 	case Message::MarkerSetStrokeWidth:
-		if (wParam <= MarkerMax)
-			vs.markers[wParam].strokeWidth = static_cast<XYPOSITION>(lParam) / 100.0f;
-		InvalidateStyleData();
-		RedrawSelMargin();
+		MarkerSetStrokeWidth(static_cast<int>(wParam), static_cast<int>(lParam));
 		break;
 	case Message::MarkerEnableHighlight:
-		marginView.highlightDelimiter.isEnabled = wParam == 1;
-		RedrawSelMargin();
+		MarkerEnableHighlight(wParam == 1);
 		break;
 	case Message::MarkerSetAlpha:
-		if (wParam <= MarkerMax) {
-			if (static_cast<Alpha>(lParam) == Alpha::NoAlpha) {
-				SetAppearance(vs.markers[wParam].alpha, Alpha::Opaque);
-				SetAppearance(vs.markers[wParam].layer, Layer::Base);
-			} else {
-				SetAppearance(vs.markers[wParam].alpha, static_cast<Alpha>(lParam));
-				SetAppearance(vs.markers[wParam].layer, Layer::OverText);
-			}
-		}
+		MarkerSetAlpha(static_cast<int>(wParam), static_cast<Alpha>(lParam));
 		break;
 	case Message::MarkerSetLayer:
-		if (wParam <= MarkerMax) {
-			SetAppearance(vs.markers[wParam].layer, static_cast<Layer>(lParam));
-		}
+		MarkerSetLayer(static_cast<int>(wParam), static_cast<Layer>(lParam));
 		break;
 	case Message::MarkerGetLayer:
-		if (wParam <= MarkerMax) {
-			return static_cast<sptr_t>(vs.markers[wParam].layer);
-		}
-		return 0;
-	case Message::MarkerAdd: {
-			const int markerID = pdoc->AddMark(LineFromUPtr(wParam), static_cast<int>(lParam));
-			return markerID;
-		}
+		return static_cast<sptr_t>(MarkerGetLayer(static_cast<int>(wParam)));
+	case Message::MarkerAdd:
+		return MarkerAdd(LineFromUPtr(wParam), static_cast<int>(lParam));
 	case Message::MarkerAddSet:
-		if (lParam != 0)
-			pdoc->AddMarkSet(LineFromUPtr(wParam), static_cast<int>(lParam));
+		MarkerAddSet(LineFromUPtr(wParam), static_cast<int>(lParam));
 		break;
 
 	case Message::MarkerDelete:
-		pdoc->DeleteMark(LineFromUPtr(wParam), static_cast<int>(lParam));
+		MarkerDelete(LineFromUPtr(wParam), static_cast<int>(lParam));
 		break;
 
 	case Message::MarkerDeleteAll:
-		pdoc->DeleteAllMarks(static_cast<int>(wParam));
+		MarkerDeleteAll(static_cast<int>(wParam));
 		break;
 
 	case Message::MarkerGet:
-		return GetMark(LineFromUPtr(wParam));
+		return MarkerGet(LineFromUPtr(wParam));
 
 	case Message::MarkerNext:
-		return pdoc->MarkerNext(LineFromUPtr(wParam), static_cast<int>(lParam));
+		return MarkerNext(LineFromUPtr(wParam), static_cast<int>(lParam));
 
-	case Message::MarkerPrevious: {
-			for (Sci::Line iLine = LineFromUPtr(wParam); iLine >= 0; iLine--) {
-				if ((GetMark(iLine) & lParam) != 0)
-					return iLine;
-			}
-		}
-		return -1;
+	case Message::MarkerPrevious:
+		return MarkerPrevious(LineFromUPtr(wParam), static_cast<int>(lParam));
 
 	case Message::MarkerDefinePixmap:
-		if (wParam <= MarkerMax) {
-			vs.markers[wParam].SetXPM(ConstCharPtrFromSPtr(lParam));
-			vs.CalcLargestMarkerHeight();
-		}
-		InvalidateStyleData();
-		RedrawSelMargin();
+		MarkerDefinePixmap(static_cast<int>(wParam), ConstCharPtrFromSPtr(lParam));
 		break;
 
 	case Message::RGBAImageSetWidth:
@@ -5596,12 +5540,7 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::MarkerDefineRGBAImage:
-		if (wParam <= MarkerMax) {
-			vs.markers[wParam].SetRGBAImage(sizeRGBAImage, scaleRGBAImage / 100.0f, ConstUCharPtrFromSPtr(lParam));
-			vs.CalcLargestMarkerHeight();
-		}
-		InvalidateStyleData();
-		RedrawSelMargin();
+		MarkerDefineRGBAImage(static_cast<int>(wParam), ConstUCharPtrFromSPtr(lParam));
 		break;
 
 	case Message::SetMarginTypeN:

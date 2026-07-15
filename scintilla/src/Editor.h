@@ -869,6 +869,34 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void SetMarginOptions(Scintilla::MarginOption options);
 	Scintilla::MarginOption GetMarginOptions() const noexcept;
 
+	// Markers: definitions in EditorMarkers.cxx.
+	Sci::Line MarkerLineFromHandle(int markerHandle) const noexcept;
+	void MarkerDeleteHandle(int markerHandle);
+	int MarkerHandleFromLine(Sci::Line line, int which) const noexcept;
+	int MarkerNumberFromLine(Sci::Line line, int which) const noexcept;
+	void MarkerDefine(int markerNumber, Scintilla::MarkerSymbol markerSymbol);
+	Scintilla::MarkerSymbol MarkerSymbolDefined(int markerNumber) const noexcept;
+	void MarkerSetFore(int markerNumber, int rgb);
+	void MarkerSetBack(int markerNumber, int rgb);
+	void MarkerSetBackSelected(int markerNumber, int rgb);
+	void MarkerSetForeTranslucent(int markerNumber, int colourAlpha);
+	void MarkerSetBackTranslucent(int markerNumber, int colourAlpha);
+	void MarkerSetBackSelectedTranslucent(int markerNumber, int colourAlpha);
+	void MarkerSetStrokeWidth(int markerNumber, int hundredths);
+	void MarkerEnableHighlight(bool enabled);
+	void MarkerSetAlpha(int markerNumber, Scintilla::Alpha alpha);
+	void MarkerSetLayer(int markerNumber, Scintilla::Layer layer);
+	Scintilla::Layer MarkerGetLayer(int markerNumber) const noexcept;
+	int MarkerAdd(Sci::Line line, int markerNumber);
+	void MarkerAddSet(Sci::Line line, int markerSet);
+	void MarkerDelete(Sci::Line line, int markerNumber);
+	void MarkerDeleteAll(int markerNumber);
+	int MarkerGet(Sci::Line line) const;
+	Sci::Line MarkerNext(Sci::Line lineStart, int markerMask) const noexcept;
+	Sci::Line MarkerPrevious(Sci::Line lineStart, int markerMask) const;
+	void MarkerDefinePixmap(int markerNumber, const char *pixmap);
+	void MarkerDefineRGBAImage(int markerNumber, const unsigned char *pixels);
+
 	virtual void CopyToClipboard(const SelectionText &selectedText) = 0;
 	std::string RangeText(Sci::Position start, Sci::Position end) const;
 	bool CopyLineRange(SelectionText *ss, bool allowProtected=true);
