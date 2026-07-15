@@ -103,6 +103,12 @@ Authoritative descriptions for retained operations sit beside definitions in `Ed
 
 Generated from `scintilla/include/Scintilla.iface` on 2026-07-13. It contains all 821 `fun`, `get`, and `set` entries and all 32 `evt` entries, grouped for phase 4. It does not assign a removal classification without tracing the code. Constants, aliases, and enum declarations are type definitions rather than dispatch cases; phase 5 handles them when it replaces generated client headers.
 
+Run `tools/check-message-inventory.sh` after changing this inventory or `Scintilla.iface`. The check requires every callable entry and notification to appear exactly once.
+
+The classification record for each concern appears immediately before its exhaustive entry list. A decision row may cover several entries only when they have the same owner, classification, target file, focused-test plan, documentation action, and deletion reason. “Named operations keep their interface names” means the numeric wrapper is replaced by typed functions with those names; the migration may combine a setter and getter into one small value object when that makes the resulting code clearer.
+
+Every retained concern uses a focused `Editor...Test.cxx` suite unless the row names a narrower existing unit suite. “Add editor tests” means the current suite does not observe enough visible behavior and tests must land before or with the concern move. “Move API prose” means read the matching `ScintillaDoc.html` section, keep its useful behavior description beside the named definition, and remove the old API prose. “Delete API prose” means remove text that only describes the deleted entry.
+
 ### Document and text (30)
 
 `fun AddText=2001`, `fun AddStyledText=2002`, `fun InsertText=2003`, `fun ClearAll=2004`, `fun DeleteRange=2645`, `fun ClearDocumentStyle=2005`, `get GetLength=2006`, `get GetCharAt=2007`, `fun GetStyledText=2015`, `fun GetStyledTextFull=2778`, `get GetReadOnly=2140`, `get GetModify=2159`, `fun GetTextRange=2162`, `fun GetTextRangeFull=2039`, `set SetReadOnly=2171`, `fun Clear=2180`, `fun SetText=2181`, `fun GetText=2182`, `get GetTextLength=2183`, `fun AppendText=2282`, `get GetDocPointer=2357`, `set SetDocPointer=2358`, `fun CreateDocument=2375`, `fun AddRefDocument=2376`, `fun ReleaseDocument=2377`, `get GetDocumentOptions=2379`, `fun Allocate=2446`, `get GetRangePointer=2643`, `get GetGapPosition=2644`, `fun CreateLoader=2632`
