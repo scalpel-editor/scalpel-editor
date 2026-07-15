@@ -1255,6 +1255,27 @@ public:
 	void ClearCmdKey(Scintilla::Keys key, Scintilla::KeyMod modifiers);
 	void ClearAllCmdKeys();
 
+
+	// UTF-8 character/word boundaries and related queries; EditorTextBoundaries.cxx.
+	Sci::Position PositionBefore(Sci::Position pos) const;
+	Sci::Position PositionAfter(Sci::Position pos) const;
+	Sci::Position PositionRelative(Sci::Position pos, Sci::Position relativeCharacters) const;
+	Sci::Position PositionRelativeCodeUnits(Sci::Position pos, Sci::Position relativeUTF16Units) const;
+	void SetCharsDefault();
+	void SetCharacterCategoryOptimization(int countCharacters);
+	int GetCharacterCategoryOptimization() const noexcept;
+	const char *GetCharacterPointer() const;
+	Sci::Position WordStartPosition(Sci::Position pos, bool onlyWordCharacters) const;
+	Sci::Position WordEndPosition(Sci::Position pos, bool onlyWordCharacters) const;
+	bool IsRangeWord(Sci::Position start, Sci::Position end) const;
+	Sci::Position GetCurLine(char *buffer, Sci::Position bufferLength) const;
+	Sci::Line LineFromIndexPosition(Sci::Position pos, Scintilla::LineCharacterIndexType lineCharacterIndex) const;
+	Sci::Position IndexPositionFromLine(Sci::Line line, Scintilla::LineCharacterIndexType lineCharacterIndex) const;
+
+	// Virtual-space policy; definitions in EditorSelection.cxx.
+	void SetVirtualSpaceOptions(Scintilla::VirtualSpace options);
+	Scintilla::VirtualSpace GetVirtualSpaceOptions() const noexcept;
+
 	// Public so scintilla_send_message can use it.
 	virtual Scintilla::sptr_t WndProc(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
 	// Public so scintilla_set_id can use it.

@@ -4415,24 +4415,7 @@ void Editor::SetDocPointer(Document *document) {
 	Redraw();
 }
 
-Sci::Position Editor::GetTag(char *tagValue, int tagNumber) {
-	const char *text = nullptr;
-	Sci::Position length = 0;
-	if ((tagNumber >= 1) && (tagNumber <= 9)) {
-		char name[3] = "\\?";
-		name[1] = static_cast<char>(tagNumber + '0');
-		length = 2;
-		text = pdoc->SubstituteByPosition(name, &length);
-	}
-	if (tagValue) {
-		if (text)
-			memcpy(tagValue, text, length + 1);
-		else
-			*tagValue = '\0';
-	}
-	return length;
-}
-
+// GetTag: definition in EditorSearch.cxx.
 
 std::unique_ptr<Surface> Editor::CreateMeasurementSurface() const {
 	if (!wMain.GetID()) {
@@ -4684,20 +4667,16 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return GetTag(CharPtrFromSPtr(lParam), static_cast<int>(wParam));
 
 	case Message::PositionBefore:
-		return pdoc->MovePositionOutsideChar(PositionFromUPtr(wParam) - 1, -1, true);
+		return PositionBefore(PositionFromUPtr(wParam));
 
 	case Message::PositionAfter:
-		return pdoc->MovePositionOutsideChar(PositionFromUPtr(wParam) + 1, 1, true);
+		return PositionAfter(PositionFromUPtr(wParam));
 
 	case Message::PositionRelative:
-		return std::clamp<Sci::Position>(pdoc->GetRelativePosition(
-			PositionFromUPtr(wParam), lParam),
-			0, pdoc->Length());
+		return PositionRelative(PositionFromUPtr(wParam), lParam);
 
 	case Message::PositionRelativeCodeUnits:
-		return std::clamp<Sci::Position>(pdoc->GetRelativePositionUTF16(
-			PositionFromUPtr(wParam), lParam),
-			0, pdoc->Length());
+		return PositionRelativeCodeUnits(PositionFromUPtr(wParam), lParam);
 
 	case Message::LineScroll:
 		LineScroll(PositionFromUPtr(wParam), LineFromUPtr(lParam));
@@ -4923,15 +4902,15 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::SetCharsDefault:
-		pdoc->SetDefaultCharClasses(true);
+		SetCharsDefault();
 		break;
 
 	case Message::SetCharacterCategoryOptimization:
-		pdoc->SetCharacterCategoryOptimization(static_cast<int>(wParam));
+		SetCharacterCategoryOptimization(static_cast<int>(wParam));
 		break;
 
 	case Message::GetCharacterCategoryOptimization:
-		return pdoc->CharacterCategoryOptimization();
+		return GetCharacterCategoryOptimization();
 
 	case Message::GetLength:
 		return GetLength();
@@ -5075,19 +5054,8 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		GotoPos(PositionFromUPtr(wParam));
 		break;
 
-	case Message::GetCurLine: {
-			const Sci::Line lineCurrentPos = pdoc->SciLineFromPosition(sel.MainCaret());
-			const Sci::Position lineStart = pdoc->LineStart(lineCurrentPos);
-			const Sci::Position lineEnd = pdoc->LineStart(lineCurrentPos + 1);
-			if (lParam == 0) {
-				return lineEnd - lineStart;
-			}
-			char *ptr = CharPtrFromSPtr(lParam);
-			const Sci::Position len = std::min<uptr_t>(lineEnd - lineStart, wParam);
-			pdoc->GetCharRange(ptr, lineStart, len);
-			ptr[len] = '\0';
-			return sel.MainCaret() - lineStart;
-		}
+	case Message::GetCurLine:
+		return GetCurLine(CharPtrFromSPtr(lParam), PositionFromUPtr(wParam));
 
 	case Message::GetEndStyled:
 		return GetEndStyled();
@@ -5211,13 +5179,13 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return GetMouseDwellTime();
 
 	case Message::WordStartPosition:
-		return pdoc->ExtendWordSelect(PositionFromUPtr(wParam), -1, lParam != 0);
+		return WordStartPosition(PositionFromUPtr(wParam), lParam != 0);
 
 	case Message::WordEndPosition:
-		return pdoc->ExtendWordSelect(PositionFromUPtr(wParam), 1, lParam != 0);
+		return WordEndPosition(PositionFromUPtr(wParam), lParam != 0);
 
 	case Message::IsRangeWord:
-		return pdoc->IsWordAt(PositionFromUPtr(wParam), lParam);
+		return IsRangeWord(PositionFromUPtr(wParam), lParam) ? 1 : 0;
 
 	case Message::SetIdleStyling:
 		SetIdleStyling(static_cast<IdleStyling>(wParam));
@@ -5395,10 +5363,10 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::LineFromIndexPosition:
-		return pdoc->LineFromPositionIndex(PositionFromUPtr(wParam), static_cast<LineCharacterIndexType>(lParam));
+		return LineFromIndexPosition(PositionFromUPtr(wParam), static_cast<LineCharacterIndexType>(lParam));
 
 	case Message::IndexPositionFromLine:
-		return pdoc->IndexLineStart(LineFromUPtr(wParam), static_cast<LineCharacterIndexType>(lParam));
+		return IndexPositionFromLine(LineFromUPtr(wParam), static_cast<LineCharacterIndexType>(lParam));
 
 		// Marker definition and setting — bodies in EditorMarkers.cxx.
 		// Pass wParam as size_t (no int cast) so values above MarkerMax, including those above UINT32_MAX, stay rejected.
@@ -6372,7 +6340,7 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return GetPasteConvertEndings() ? 1 : 0;
 
 	case Message::GetCharacterPointer:
-		return SPtrFromPtr(pdoc->BufferPointer());
+		return SPtrFromPtr(const_cast<char *>(GetCharacterPointer()));
 
 	case Message::GetRangePointer:
 		return SPtrFromPtr(GetRangePointer(PositionFromUPtr(wParam), lParam));
@@ -6683,11 +6651,11 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return GetRectangularSelectionAnchorVirtualSpace();
 
 	case Message::SetVirtualSpaceOptions:
-		virtualSpaceOptions = static_cast<VirtualSpace>(wParam);
+		SetVirtualSpaceOptions(static_cast<VirtualSpace>(wParam));
 		break;
 
 	case Message::GetVirtualSpaceOptions:
-		return static_cast<sptr_t>(virtualSpaceOptions);
+		return static_cast<sptr_t>(GetVirtualSpaceOptions());
 
 	case Message::SetAdditionalSelFore:
 		SetAdditionalSelFore(static_cast<int>(SPtrFromUPtr(wParam)));

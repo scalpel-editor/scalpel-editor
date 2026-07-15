@@ -36,6 +36,7 @@ add_library(scintilla_core STATIC
   src/EditorSearch.cxx
   src/EditorSelection.cxx
   src/EditorStyling.cxx
+  src/EditorTextBoundaries.cxx
   src/EditorWrapping.cxx
   src/EditView.cxx
   src/Geometry.cxx

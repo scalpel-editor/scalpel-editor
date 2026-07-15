@@ -701,3 +701,14 @@ void Editor::DropSelection(size_t part) {
 	Redraw();
 }
 
+// Virtual-space policy for caret movement and rectangular selection (none,
+// rectangular only, user-accessible, and/or no wrap at line start).
+void Editor::SetVirtualSpaceOptions(VirtualSpace options) {
+	virtualSpaceOptions = options;
+}
+
+// Current virtual-space policy.
+VirtualSpace Editor::GetVirtualSpaceOptions() const noexcept {
+	return virtualSpaceOptions;
+}
+

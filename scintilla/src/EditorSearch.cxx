@@ -286,3 +286,24 @@ Sci::Position Editor::ReplaceTarget(ReplaceType replaceType, std::string_view te
 	return text.length();
 }
 
+// Copy the text of a numbered search tag (1..9 from the last regular-expression
+// search) into tagValue when non-null. Returns the byte length of the tag text
+// (0 when the tag is empty or out of range).
+Sci::Position Editor::GetTag(char *tagValue, int tagNumber) {
+	const char *text = nullptr;
+	Sci::Position length = 0;
+	if ((tagNumber >= 1) && (tagNumber <= 9)) {
+		char name[3] = "\\?";
+		name[1] = static_cast<char>(tagNumber + '0');
+		length = 2;
+		text = pdoc->SubstituteByPosition(name, &length);
+	}
+	if (tagValue) {
+		if (text)
+			memcpy(tagValue, text, length + 1);
+		else
+			*tagValue = '\0';
+	}
+	return length;
+}
+

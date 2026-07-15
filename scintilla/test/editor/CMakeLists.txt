@@ -18,6 +18,7 @@ add_executable(editorTest
   EditorSearchTest.cxx
   EditorSelectionTest.cxx
   EditorStylingTest.cxx
+  EditorTextBoundariesTest.cxx
   EditorWrappingTest.cxx
   PopupHostTest.cxx
   TestEditor.cxx
