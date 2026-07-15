@@ -87,6 +87,41 @@ public:
 	void ClearObservations();
 	TestEditorSnapshot Snapshot() const;
 
+	// Thin public forwards of protected Editor decoration operations so free-function
+	// tests can compare the named path with temporary message forwarders.
+	void IndicSetStyle(size_t indicator, Scintilla::IndicatorStyle style);
+	Scintilla::IndicatorStyle IndicGetStyle(size_t indicator) const noexcept;
+	void IndicSetFore(size_t indicator, int rgb);
+	int IndicGetFore(size_t indicator) const noexcept;
+	void SetIndicatorCurrent(int indicator);
+	int GetIndicatorCurrent() const noexcept;
+	void SetIndicatorValue(int value);
+	int GetIndicatorValue() const noexcept;
+	void IndicatorFillRange(Sci::Position start, Sci::Position lengthFill);
+	void IndicatorClearRange(Sci::Position start, Sci::Position lengthClear);
+	int IndicatorValueAt(int indicator, Sci::Position pos) const;
+	Sci::Position IndicatorStart(int indicator, Sci::Position pos) const;
+	Sci::Position IndicatorEnd(int indicator, Sci::Position pos) const;
+	void BraceHighlight(Sci::Position pos0, Sci::Position pos1);
+	Sci::Position BraceMatch(Sci::Position pos, Sci::Position maxReStyle) const noexcept;
+	void SetControlCharSymbol(int symbol);
+	int GetControlCharSymbol() const noexcept;
+	void SetRepresentation(std::string_view charBytes, std::string_view value);
+	int GetRepresentation(std::string_view charBytes, char *buffer) const;
+	void ClearRepresentation(std::string_view charBytes);
+	void SetHotspotActiveFore(bool useSetting, int rgb);
+	int GetHotspotActiveFore() const;
+	void AnnotationSetText(Sci::Line line, const char *text);
+	std::string AnnotationGetText(Sci::Line line) const;
+	void AnnotationSetStyle(Sci::Line line, int style);
+	int AnnotationGetStyle(Sci::Line line) const noexcept;
+	void AnnotationClearAll();
+	void SetAnnotationVisible(Scintilla::AnnotationVisible visible);
+	Scintilla::AnnotationVisible AnnotationGetVisible() const noexcept;
+	void EOLAnnotationSetText(Sci::Line line, const char *text);
+	std::string EOLAnnotationGetText(Sci::Line line) const;
+	void EOLAnnotationClearAll();
+
 	TestEditorObservations observations;
 
 private:

@@ -79,6 +79,113 @@ std::string MessageStringGet(TestEditor &editor, Message msg, uptr_t wParam) {
 	return buf;
 }
 
+// Observable decoration state for named-path versus message-path parity.
+struct DecorationsSnapshot {
+	IndicatorStyle indicatorStyle = IndicatorStyle::Plain;
+	int indicatorFore = 0;
+	int currentIndicator = 0;
+	int currentValue = 0;
+	int valueAt1 = 0;
+	int valueAt2 = 0;
+	Sci::Position rangeStart = 0;
+	Sci::Position rangeEnd = 0;
+	Sci::Position braceMatch = 0;
+	int controlCharSymbol = 0;
+	std::string representation;
+	int hotspotFore = 0;
+	std::string annotationText;
+	int annotationStyle = 0;
+	AnnotationVisible annotationVisible = AnnotationVisible::Hidden;
+	std::string eolAnnotationText;
+	size_t invalidatedRectangles = 0;
+
+	bool operator==(const DecorationsSnapshot &other) const noexcept {
+		return indicatorStyle == other.indicatorStyle
+			&& indicatorFore == other.indicatorFore
+			&& currentIndicator == other.currentIndicator
+			&& currentValue == other.currentValue
+			&& valueAt1 == other.valueAt1
+			&& valueAt2 == other.valueAt2
+			&& rangeStart == other.rangeStart
+			&& rangeEnd == other.rangeEnd
+			&& braceMatch == other.braceMatch
+			&& controlCharSymbol == other.controlCharSymbol
+			&& representation == other.representation
+			&& hotspotFore == other.hotspotFore
+			&& annotationText == other.annotationText
+			&& annotationStyle == other.annotationStyle
+			&& annotationVisible == other.annotationVisible
+			&& eolAnnotationText == other.eolAnnotationText
+			&& invalidatedRectangles == other.invalidatedRectangles;
+	}
+};
+
+// Apply a fixed sequence through named TestEditor wrappers or temporary message forwarders.
+DecorationsSnapshot CaptureDecorations(bool throughMessage) {
+	TestHost host;
+	TestEditor editor(host);
+	editor.SetText("(ab)");
+	editor.PaintAll();
+	editor.ClearObservations();
+
+	const char *ohm = "\xe2\x84\xa6";
+	const char *label = "OHM";
+
+	if (throughMessage) {
+		editor.WndProc(Message::IndicSetStyle, 8, static_cast<sptr_t>(IndicatorStyle::Squiggle));
+		editor.WndProc(Message::IndicSetFore, 8, 0x0000FF);
+		editor.WndProc(Message::SetIndicatorCurrent, 8, 0);
+		editor.WndProc(Message::SetIndicatorValue, 3, 0);
+		editor.WndProc(Message::IndicatorFillRange, 1, 2);
+		editor.WndProc(Message::BraceHighlight, 0, 3);
+		editor.WndProc(Message::SetControlCharSymbol, 42, 0);
+		editor.WndProc(Message::SetRepresentation, reinterpret_cast<uptr_t>(ohm),
+			reinterpret_cast<sptr_t>(label));
+		editor.WndProc(Message::SetHotspotActiveFore, 1, 0x00FF00);
+		editor.WndProc(Message::AnnotationSetText, 0, reinterpret_cast<sptr_t>("note"));
+		editor.WndProc(Message::AnnotationSetStyle, 0, 7);
+		editor.WndProc(Message::AnnotationSetVisible,
+			static_cast<uptr_t>(AnnotationVisible::Standard), 0);
+		editor.WndProc(Message::EOLAnnotationSetText, 0, reinterpret_cast<sptr_t>("eol"));
+	} else {
+		editor.IndicSetStyle(8, IndicatorStyle::Squiggle);
+		editor.IndicSetFore(8, 0x0000FF);
+		editor.SetIndicatorCurrent(8);
+		editor.SetIndicatorValue(3);
+		editor.IndicatorFillRange(1, 2);
+		editor.BraceHighlight(0, 3);
+		editor.SetControlCharSymbol(42);
+		editor.SetRepresentation(ohm, label);
+		editor.SetHotspotActiveFore(true, 0x00FF00);
+		editor.AnnotationSetText(0, "note");
+		editor.AnnotationSetStyle(0, 7);
+		editor.SetAnnotationVisible(AnnotationVisible::Standard);
+		editor.EOLAnnotationSetText(0, "eol");
+	}
+
+	DecorationsSnapshot s;
+	s.indicatorStyle = editor.IndicGetStyle(8);
+	s.indicatorFore = editor.IndicGetFore(8);
+	s.currentIndicator = editor.GetIndicatorCurrent();
+	s.currentValue = editor.GetIndicatorValue();
+	s.valueAt1 = editor.IndicatorValueAt(8, 1);
+	s.valueAt2 = editor.IndicatorValueAt(8, 2);
+	s.rangeStart = editor.IndicatorStart(8, 1);
+	s.rangeEnd = editor.IndicatorEnd(8, 1);
+	s.braceMatch = editor.BraceMatch(0, 0);
+	s.controlCharSymbol = editor.GetControlCharSymbol();
+	char reprBuf[16]{};
+	const int reprLen = editor.GetRepresentation(ohm, reprBuf);
+	s.representation.assign(reprBuf, static_cast<size_t>(reprLen > 0 ? reprLen : 0));
+	s.hotspotFore = editor.GetHotspotActiveFore();
+	s.annotationText = editor.AnnotationGetText(0);
+	s.annotationStyle = editor.AnnotationGetStyle(0);
+	s.annotationVisible = editor.AnnotationGetVisible();
+	s.eolAnnotationText = editor.EOLAnnotationGetText(0);
+	s.invalidatedRectangles = editor.Snapshot().invalidatedRectangles;
+	return s;
+}
+
 }  // namespace
 
 TEST_CASE("Indicator style colour hover flags under alpha stroke and out-of-range") {
@@ -369,4 +476,10 @@ TEST_CASE("EOL annotation text style visible offset clear") {
 		editor.WndProc(Message::EOLAnnotationGetVisible, 0, 0)) == EOLAnnotationVisible::Boxed);
 	editor.WndProc(Message::EOLAnnotationClearAll, 0, 0);
 	CHECK(editor.WndProc(Message::EOLAnnotationGetText, 1, 0) == 0);
+}
+
+TEST_CASE("Decoration message path matches named methods") {
+	// Representative set of forwarders: indicator style/value/range, brace match,
+	// control char, representation, hotspot, annotation, and EOL annotation.
+	CHECK(CaptureDecorations(false) == CaptureDecorations(true));
 }

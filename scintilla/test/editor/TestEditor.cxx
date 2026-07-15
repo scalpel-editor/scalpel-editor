@@ -185,6 +185,134 @@ void TestEditor::ClearObservations() {
 	host.log.fontsAllocated = fontsAllocated;
 }
 
+void TestEditor::IndicSetStyle(size_t indicator, Scintilla::IndicatorStyle style) {
+	Editor::IndicSetStyle(indicator, style);
+}
+
+Scintilla::IndicatorStyle TestEditor::IndicGetStyle(size_t indicator) const noexcept {
+	return Editor::IndicGetStyle(indicator);
+}
+
+void TestEditor::IndicSetFore(size_t indicator, int rgb) {
+	Editor::IndicSetFore(indicator, rgb);
+}
+
+int TestEditor::IndicGetFore(size_t indicator) const noexcept {
+	return Editor::IndicGetFore(indicator);
+}
+
+void TestEditor::SetIndicatorCurrent(int indicator) {
+	Editor::SetIndicatorCurrent(indicator);
+}
+
+int TestEditor::GetIndicatorCurrent() const noexcept {
+	return Editor::GetIndicatorCurrent();
+}
+
+void TestEditor::SetIndicatorValue(int value) {
+	Editor::SetIndicatorValue(value);
+}
+
+int TestEditor::GetIndicatorValue() const noexcept {
+	return Editor::GetIndicatorValue();
+}
+
+void TestEditor::IndicatorFillRange(Sci::Position start, Sci::Position lengthFill) {
+	Editor::IndicatorFillRange(start, lengthFill);
+}
+
+void TestEditor::IndicatorClearRange(Sci::Position start, Sci::Position lengthClear) {
+	Editor::IndicatorClearRange(start, lengthClear);
+}
+
+int TestEditor::IndicatorValueAt(int indicator, Sci::Position pos) const {
+	return Editor::IndicatorValueAt(indicator, pos);
+}
+
+Sci::Position TestEditor::IndicatorStart(int indicator, Sci::Position pos) const {
+	return Editor::IndicatorStart(indicator, pos);
+}
+
+Sci::Position TestEditor::IndicatorEnd(int indicator, Sci::Position pos) const {
+	return Editor::IndicatorEnd(indicator, pos);
+}
+
+void TestEditor::BraceHighlight(Sci::Position pos0, Sci::Position pos1) {
+	Editor::BraceHighlight(pos0, pos1);
+}
+
+Sci::Position TestEditor::BraceMatch(Sci::Position pos, Sci::Position maxReStyle) const noexcept {
+	return Editor::BraceMatch(pos, maxReStyle);
+}
+
+void TestEditor::SetControlCharSymbol(int symbol) {
+	Editor::SetControlCharSymbol(symbol);
+}
+
+int TestEditor::GetControlCharSymbol() const noexcept {
+	return Editor::GetControlCharSymbol();
+}
+
+void TestEditor::SetRepresentation(std::string_view charBytes, std::string_view value) {
+	Editor::SetRepresentation(charBytes, value);
+}
+
+int TestEditor::GetRepresentation(std::string_view charBytes, char *buffer) const {
+	return Editor::GetRepresentation(charBytes, buffer);
+}
+
+void TestEditor::ClearRepresentation(std::string_view charBytes) {
+	Editor::ClearRepresentation(charBytes);
+}
+
+void TestEditor::SetHotspotActiveFore(bool useSetting, int rgb) {
+	Editor::SetHotspotActiveFore(useSetting, rgb);
+}
+
+int TestEditor::GetHotspotActiveFore() const {
+	return Editor::GetHotspotActiveFore();
+}
+
+void TestEditor::AnnotationSetText(Sci::Line line, const char *text) {
+	Editor::AnnotationSetText(line, text);
+}
+
+std::string TestEditor::AnnotationGetText(Sci::Line line) const {
+	return Editor::AnnotationGetText(line);
+}
+
+void TestEditor::AnnotationSetStyle(Sci::Line line, int style) {
+	Editor::AnnotationSetStyle(line, style);
+}
+
+int TestEditor::AnnotationGetStyle(Sci::Line line) const noexcept {
+	return Editor::AnnotationGetStyle(line);
+}
+
+void TestEditor::AnnotationClearAll() {
+	Editor::AnnotationClearAll();
+}
+
+void TestEditor::SetAnnotationVisible(Scintilla::AnnotationVisible visible) {
+	Editor::SetAnnotationVisible(visible);
+}
+
+Scintilla::AnnotationVisible TestEditor::AnnotationGetVisible() const noexcept {
+	return Editor::AnnotationGetVisible();
+}
+
+void TestEditor::EOLAnnotationSetText(Sci::Line line, const char *text) {
+	Editor::EOLAnnotationSetText(line, text);
+}
+
+std::string TestEditor::EOLAnnotationGetText(Sci::Line line) const {
+	return Editor::EOLAnnotationGetText(line);
+}
+
+void TestEditor::EOLAnnotationClearAll() {
+	Editor::EOLAnnotationClearAll();
+}
+
 TestEditorSnapshot TestEditor::Snapshot() const {
 	TestEditorSnapshot snapshot;
 	snapshot.wrapMode = GetWrapMode();
