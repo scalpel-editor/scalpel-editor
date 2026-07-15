@@ -1,0 +1,8 @@
+grepai index status
+Files indexed: 173
+Total chunks: 2174
+Index size: 13.7 MB
+Last updated: 2026-07-14 20:41:14
+Provider: ollama (nomic-embed-text)
+Watcher: running (foreground, PID 5842)
+Watcher log: /home/one/.local/state/grepai/logs/grepai-worktree-06e370c84c21.log

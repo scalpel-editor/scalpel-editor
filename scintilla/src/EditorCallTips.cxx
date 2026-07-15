@@ -64,12 +64,20 @@
 using namespace Scintilla;
 using namespace Scintilla::Internal;
 
-// Places the tip window near pt using definition text. Cancels any active
-// autocomplete list first. Uses STYLE_CALLTIP when CallTipUseStyle has been
-// set; otherwise STYLE_DEFAULT for the font. Adjusts above or below the line
-// so the tip stays inside the client area when it fits.
-void ScintillaBase::CallTipShow(Point pt, const char *defn) {
+// Shows a call tip aligned to document position pos. definition may contain
+// multiple lines separated by '\n'. Characters '\001' and '\002' draw small
+// up and down arrows for overload cycling. The caret position is remembered so
+// backspace past that point cancels the tip. Showing a call tip cancels any
+// active autocomplete list.
+void ScintillaBase::CallTipShow(Sci::Position pos, const char *definition) {
 	ac.Cancel();
+	CallTipShow(LocationFromPosition(pos), definition);
+}
+
+// Places the tip window near pt using definition text. Uses STYLE_CALLTIP when
+// CallTipUseStyle has been set; otherwise STYLE_DEFAULT for the font. Adjusts
+// above or below the line so the tip stays inside the client area when it fits.
+void ScintillaBase::CallTipShow(Point pt, const char *defn) {
 	// If container knows about StyleCallTip then use it in place of the
 	// StyleDefault for the face name, size and character set. Also use it
 	// for the foreground and background colour.
@@ -113,14 +121,6 @@ void ScintillaBase::CallTipClick() {
 	scn.nmhdr.code = Notification::CallTipClick;
 	scn.position = ct.clickPlace;
 	NotifyParent(scn);
-}
-
-// Shows a call tip aligned to document position pos. definition may contain
-// multiple lines separated by '\n'. Characters '\001' and '\002' draw small
-// up and down arrows for overload cycling. The caret position is remembered so
-// backspace past that point cancels the tip.
-void ScintillaBase::CallTipShow(Sci::Position pos, const char *definition) {
-	CallTipShow(LocationFromPosition(pos), definition);
 }
 
 void ScintillaBase::CallTipCancel() {

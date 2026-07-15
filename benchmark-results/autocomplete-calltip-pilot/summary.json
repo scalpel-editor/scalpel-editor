@@ -1,0 +1,212 @@
+[
+  {
+    "mode": "hybrid",
+    "scope": "repository",
+    "set": "held-out",
+    "n": 12,
+    "concern_top3": 2,
+    "concern_top3_pct": 16.7,
+    "concern_found": 9,
+    "definition_top3": 0,
+    "definition_found": 0,
+    "exact": {
+      "n": 0,
+      "definition_top3": 0,
+      "concern_top3": 0
+    },
+    "natural_language": {
+      "n": 12,
+      "concern_top3": 2,
+      "concern_top3_pct": 16.7
+    },
+    "misses": [
+      "wrap-count-held-out",
+      "read-only-held-out",
+      "call-tip-show-held-out"
+    ]
+  },
+  {
+    "mode": "hybrid",
+    "scope": "repository",
+    "set": "normal",
+    "n": 48,
+    "concern_top3": 24,
+    "concern_top3_pct": 50,
+    "concern_found": 43,
+    "definition_top3": 8,
+    "definition_found": 12,
+    "exact": {
+      "n": 12,
+      "definition_top3": 4,
+      "concern_top3": 5
+    },
+    "natural_language": {
+      "n": 36,
+      "concern_top3": 19,
+      "concern_top3_pct": 52.8
+    },
+    "misses": [
+      "wrap-set-mode-exact",
+      "wrap-count-exact",
+      "wrap-count-intent",
+      "undo-intent",
+      "technology-intent"
+    ]
+  },
+  {
+    "mode": "hybrid",
+    "scope": "source",
+    "set": "held-out",
+    "n": 12,
+    "concern_top3": 9,
+    "concern_top3_pct": 75,
+    "concern_found": 12,
+    "definition_top3": 1,
+    "definition_found": 1,
+    "exact": {
+      "n": 0,
+      "definition_top3": 0,
+      "concern_top3": 0
+    },
+    "natural_language": {
+      "n": 12,
+      "concern_top3": 9,
+      "concern_top3_pct": 75
+    },
+    "misses": []
+  },
+  {
+    "mode": "hybrid",
+    "scope": "source",
+    "set": "normal",
+    "n": 48,
+    "concern_top3": 35,
+    "concern_top3_pct": 72.9,
+    "concern_found": 48,
+    "definition_top3": 14,
+    "definition_found": 15,
+    "exact": {
+      "n": 12,
+      "definition_top3": 7,
+      "concern_top3": 11
+    },
+    "natural_language": {
+      "n": 36,
+      "concern_top3": 24,
+      "concern_top3_pct": 66.7
+    },
+    "misses": []
+  },
+  {
+    "mode": "vector",
+    "scope": "repository",
+    "set": "held-out",
+    "n": 12,
+    "concern_top3": 5,
+    "concern_top3_pct": 41.7,
+    "concern_found": 10,
+    "definition_top3": 0,
+    "definition_found": 0,
+    "exact": {
+      "n": 0,
+      "definition_top3": 0,
+      "concern_top3": 0
+    },
+    "natural_language": {
+      "n": 12,
+      "concern_top3": 5,
+      "concern_top3_pct": 41.7
+    },
+    "misses": [
+      "format-range-held-out",
+      "technology-held-out"
+    ]
+  },
+  {
+    "mode": "vector",
+    "scope": "repository",
+    "set": "normal",
+    "n": 48,
+    "concern_top3": 23,
+    "concern_top3_pct": 47.9,
+    "concern_found": 35,
+    "definition_top3": 5,
+    "definition_found": 5,
+    "exact": {
+      "n": 12,
+      "definition_top3": 2,
+      "concern_top3": 3
+    },
+    "natural_language": {
+      "n": 36,
+      "concern_top3": 20,
+      "concern_top3_pct": 55.6
+    },
+    "misses": [
+      "wrap-count-exact",
+      "wrap-count-spaced",
+      "read-only-exact",
+      "mod-event-mask-exact",
+      "undo-exact",
+      "undo-spaced",
+      "undo-intent",
+      "undo-effect",
+      "format-range-intent",
+      "format-range-effect",
+      "technology-exact",
+      "technology-spaced",
+      "technology-intent"
+    ]
+  },
+  {
+    "mode": "vector",
+    "scope": "source",
+    "set": "held-out",
+    "n": 12,
+    "concern_top3": 7,
+    "concern_top3_pct": 58.3,
+    "concern_found": 11,
+    "definition_top3": 0,
+    "definition_found": 0,
+    "exact": {
+      "n": 0,
+      "definition_top3": 0,
+      "concern_top3": 0
+    },
+    "natural_language": {
+      "n": 12,
+      "concern_top3": 7,
+      "concern_top3_pct": 58.3
+    },
+    "misses": [
+      "format-range-held-out"
+    ]
+  },
+  {
+    "mode": "vector",
+    "scope": "source",
+    "set": "normal",
+    "n": 48,
+    "concern_top3": 28,
+    "concern_top3_pct": 58.3,
+    "concern_found": 44,
+    "definition_top3": 5,
+    "definition_found": 5,
+    "exact": {
+      "n": 12,
+      "definition_top3": 2,
+      "concern_top3": 4
+    },
+    "natural_language": {
+      "n": 36,
+      "concern_top3": 24,
+      "concern_top3_pct": 66.7
+    },
+    "misses": [
+      "read-only-exact",
+      "mod-event-mask-exact",
+      "technology-exact",
+      "technology-spaced"
+    ]
+  }
+]

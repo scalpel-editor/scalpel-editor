@@ -63,6 +63,234 @@
 
 using namespace Scintilla;
 using namespace Scintilla::Internal;
+// Displays a completion list. lengthEntered is how many characters of the
+// word are already typed; itemList is words separated by the current
+// separator (space by default). Showing a list cancels any active call tip.
+// With choose-single on and one list item, that item is inserted without
+// showing the list and AutoCCompleted is sent.
+void ScintillaBase::AutoCShow(Sci::Position lengthEntered, const char *itemList) {
+	listType = 0;
+	AutoCompleteStart(lengthEntered, itemList);
+}
+
+// Hides the list without AutoCCancelled. That notification is sent by
+// AutoCompleteCancel (CancelModes, stop characters, and similar paths).
+void ScintillaBase::AutoCCancel() {
+	ac.Cancel();
+}
+
+bool ScintillaBase::AutoCActive() const noexcept {
+	return ac.Active();
+}
+
+// Document position of the caret when the list was shown.
+Sci::Position ScintillaBase::AutoCPosStart() const noexcept {
+	return ac.posStart;
+}
+
+// Completes with the current selection, same as Tab while the list is active.
+void ScintillaBase::AutoCComplete() {
+	AutoCompleteCompleted(0, CompletionMethods::Command);
+}
+
+// Characters that cancel the list when typed. Empty by default.
+void ScintillaBase::AutoCStops(const char *characterSet) {
+	ac.SetStopChars(characterSet);
+}
+
+void ScintillaBase::AutoCSetSeparator(char separatorCharacter) {
+	ac.SetSeparator(separatorCharacter);
+}
+
+char ScintillaBase::AutoCGetSeparator() const noexcept {
+	return ac.GetSeparator();
+}
+
+// Selects the first list item whose text begins with select. Closes the list
+// when auto-hide is on and nothing matches.
+void ScintillaBase::AutoCSelect(const char *select) {
+	ac.Select(select);
+}
+
+int ScintillaBase::AutoCGetCurrent() const {
+	if (!ac.Active())
+		return -1;
+	return ac.GetSelection();
+}
+
+// Copies the selected item text into buffer (including the trailing NUL) and
+// returns the string length without the NUL. Returns 0 when nothing is selected.
+int ScintillaBase::AutoCGetCurrentText(char *buffer) const {
+	if (ac.Active()) {
+		const int item = ac.GetSelection();
+		if (item != -1) {
+			const std::string selected = ac.GetValue(item);
+			if (buffer)
+				memcpy(buffer, selected.c_str(), selected.length()+1);
+			return static_cast<int>(selected.length());
+		}
+	}
+	if (buffer)
+		*buffer = '\0';
+	return 0;
+}
+
+// When true (default), the list cancels if the caret returns to the position
+// where the list opened. When false, cancel only after the caret moves before
+// the word being completed.
+void ScintillaBase::AutoCSetCancelAtStart(bool cancel) {
+	ac.cancelAtStartPos = cancel;
+}
+
+bool ScintillaBase::AutoCGetCancelAtStart() const noexcept {
+	return ac.cancelAtStartPos;
+}
+
+// Characters that complete the current item and are then inserted. Empty by default.
+void ScintillaBase::AutoCSetFillUps(const char *characterSet) {
+	ac.SetFillUpChars(characterSet);
+}
+
+// When true, a one-item list is inserted immediately without showing the popup.
+void ScintillaBase::AutoCSetChooseSingle(bool chooseSingle) {
+	ac.chooseSingle = chooseSingle;
+}
+
+bool ScintillaBase::AutoCGetChooseSingle() const noexcept {
+	return ac.chooseSingle;
+}
+
+void ScintillaBase::AutoCSetIgnoreCase(bool ignoreCase) {
+	ac.ignoreCase = ignoreCase;
+}
+
+bool ScintillaBase::AutoCGetIgnoreCase() const noexcept {
+	return ac.ignoreCase;
+}
+
+void ScintillaBase::AutoCSetCaseInsensitiveBehaviour(CaseInsensitiveBehaviour behaviour) {
+	ac.ignoreCaseBehaviour = behaviour;
+}
+
+CaseInsensitiveBehaviour ScintillaBase::AutoCGetCaseInsensitiveBehaviour() const noexcept {
+	return ac.ignoreCaseBehaviour;
+}
+
+// Once inserts only into the main selection; Each inserts into every selection.
+void ScintillaBase::AutoCSetMulti(MultiAutoComplete multi) {
+	multiAutoCMode = multi;
+}
+
+MultiAutoComplete ScintillaBase::AutoCGetMulti() const noexcept {
+	return multiAutoCMode;
+}
+
+// PreSorted expects an alphabetically sorted list; PerformSort sorts on show;
+// Custom keeps application order and builds a sorted index for matching.
+void ScintillaBase::AutoCSetOrder(Ordering order) {
+	ac.autoSort = order;
+}
+
+Ordering ScintillaBase::AutoCGetOrder() const noexcept {
+	return ac.autoSort;
+}
+
+// Same list machinery as AutoCShow, but listType_ must be greater than zero so
+// completion reports UserListSelection instead of AutoCSelection and does not
+// insert text. Choose-single has no effect on user lists.
+void ScintillaBase::UserListShow(int listType_, const char *itemList) {
+	listType = listType_;
+	AutoCompleteStart(0, itemList);
+}
+
+// When true (default), the list closes when typing leaves no matching item.
+void ScintillaBase::AutoCSetAutoHide(bool autoHide) {
+	ac.autoHide = autoHide;
+}
+
+bool ScintillaBase::AutoCGetAutoHide() const noexcept {
+	return ac.autoHide;
+}
+
+void ScintillaBase::AutoCSetOptions(AutoCompleteOption options) {
+	ac.options = options;
+}
+
+AutoCompleteOption ScintillaBase::AutoCGetOptions() const noexcept {
+	return ac.options;
+}
+
+// When true, completing deletes word characters after the caret first.
+void ScintillaBase::AutoCSetDropRestOfWord(bool dropRestOfWord) {
+	ac.dropRestOfWord = dropRestOfWord;
+}
+
+bool ScintillaBase::AutoCGetDropRestOfWord() const noexcept {
+	return ac.dropRestOfWord;
+}
+
+// Maximum visible rows; more items show a vertical scrollbar. Default is 5.
+void ScintillaBase::AutoCSetMaxHeight(int rowCount) {
+	ac.lb->SetVisibleRows(rowCount);
+}
+
+int ScintillaBase::AutoCGetMaxHeight() const {
+	return ac.lb->GetVisibleRows();
+}
+
+// Maximum list width in average character widths of the list style. Zero
+// (default) sizes to the longest item.
+void ScintillaBase::AutoCSetMaxWidth(int characterCount) {
+	maxListWidth = characterCount;
+}
+
+int ScintillaBase::AutoCGetMaxWidth() const noexcept {
+	return maxListWidth;
+}
+
+// Style used for the list font. Defaults to STYLE_DEFAULT.
+void ScintillaBase::AutoCSetStyle(int style) {
+	vs.autocStyle = style;
+	InvalidateStyleRedraw();
+}
+
+int ScintillaBase::AutoCGetStyle() const noexcept {
+	return vs.autocStyle;
+}
+
+// Scale factor for list images in percent (100 is native size).
+void ScintillaBase::AutoCSetImageScale(int scalePercent) {
+	ac.imageScale = static_cast<float>(scalePercent) / 100.0f;
+}
+
+int ScintillaBase::AutoCGetImageScale() const noexcept {
+	return static_cast<int>(ac.imageScale * 100);
+}
+
+// Registers an XPM image under type for list entries that use that type id.
+void ScintillaBase::RegisterImage(int type, const char *xpmData) {
+	ac.lb->RegisterImage(type, xpmData);
+}
+
+// Registers an RGBA pixel buffer under type. Width and height come from the
+// last RGBAImageSetWidth / RGBAImageSetHeight values on the editor.
+void ScintillaBase::RegisterRGBAImage(int type, const unsigned char *pixels) {
+	ac.lb->RegisterRGBAImage(type, static_cast<int>(sizeRGBAImage.x), static_cast<int>(sizeRGBAImage.y),
+		pixels);
+}
+
+void ScintillaBase::ClearRegisteredImages() {
+	ac.lb->ClearRegisteredImages();
+}
+
+// Separates the display text from a type integer in list items (default '?').
+void ScintillaBase::AutoCSetTypeSeparator(char separatorCharacter) {
+	ac.SetTypesep(separatorCharacter);
+}
+
+char ScintillaBase::AutoCGetTypeSeparator() const noexcept {
+	return ac.GetTypesep();
+}
 
 void ScintillaBase::AutoCompleteInsert(Sci::Position startPos, Sci::Position removeLen, std::string_view text) {
 	UndoGroup ug(pdoc);
@@ -317,233 +545,4 @@ void ScintillaBase::AutoCompleteCompleted(char ch, CompletionMethods completionM
 	SetLastXChosen();
 
 	AutoCompleteNotifyCompleted(ch, completionMethod, firstPos, selected.c_str());
-}
-
-// Displays a completion list. lengthEntered is how many characters of the
-// word are already typed; itemList is words separated by the current
-// separator (space by default). Showing a list cancels any active call tip.
-// With choose-single on and one list item, that item is inserted without
-// showing the list and AutoCCompleted is sent.
-void ScintillaBase::AutoCShow(Sci::Position lengthEntered, const char *itemList) {
-	listType = 0;
-	AutoCompleteStart(lengthEntered, itemList);
-}
-
-// Hides the list without AutoCCancelled. That notification is sent by
-// AutoCompleteCancel (CancelModes, stop characters, and similar paths).
-void ScintillaBase::AutoCCancel() {
-	ac.Cancel();
-}
-
-bool ScintillaBase::AutoCActive() const noexcept {
-	return ac.Active();
-}
-
-// Document position of the caret when the list was shown.
-Sci::Position ScintillaBase::AutoCPosStart() const noexcept {
-	return ac.posStart;
-}
-
-// Completes with the current selection, same as Tab while the list is active.
-void ScintillaBase::AutoCComplete() {
-	AutoCompleteCompleted(0, CompletionMethods::Command);
-}
-
-// Characters that cancel the list when typed. Empty by default.
-void ScintillaBase::AutoCStops(const char *characterSet) {
-	ac.SetStopChars(characterSet);
-}
-
-void ScintillaBase::AutoCSetSeparator(char separatorCharacter) {
-	ac.SetSeparator(separatorCharacter);
-}
-
-char ScintillaBase::AutoCGetSeparator() const noexcept {
-	return ac.GetSeparator();
-}
-
-// Selects the first list item whose text begins with select. Closes the list
-// when auto-hide is on and nothing matches.
-void ScintillaBase::AutoCSelect(const char *select) {
-	ac.Select(select);
-}
-
-int ScintillaBase::AutoCGetCurrent() const {
-	if (!ac.Active())
-		return -1;
-	return ac.GetSelection();
-}
-
-// Copies the selected item text into buffer (including the trailing NUL) and
-// returns the string length without the NUL. Returns 0 when nothing is selected.
-int ScintillaBase::AutoCGetCurrentText(char *buffer) const {
-	if (ac.Active()) {
-		const int item = ac.GetSelection();
-		if (item != -1) {
-			const std::string selected = ac.GetValue(item);
-			if (buffer)
-				memcpy(buffer, selected.c_str(), selected.length()+1);
-			return static_cast<int>(selected.length());
-		}
-	}
-	if (buffer)
-		*buffer = '\0';
-	return 0;
-}
-
-// When true (default), the list cancels if the caret returns to the position
-// where the list opened. When false, cancel only after the caret moves before
-// the word being completed.
-void ScintillaBase::AutoCSetCancelAtStart(bool cancel) {
-	ac.cancelAtStartPos = cancel;
-}
-
-bool ScintillaBase::AutoCGetCancelAtStart() const noexcept {
-	return ac.cancelAtStartPos;
-}
-
-// Characters that complete the current item and are then inserted. Empty by default.
-void ScintillaBase::AutoCSetFillUps(const char *characterSet) {
-	ac.SetFillUpChars(characterSet);
-}
-
-// When true, a one-item list is inserted immediately without showing the popup.
-void ScintillaBase::AutoCSetChooseSingle(bool chooseSingle) {
-	ac.chooseSingle = chooseSingle;
-}
-
-bool ScintillaBase::AutoCGetChooseSingle() const noexcept {
-	return ac.chooseSingle;
-}
-
-void ScintillaBase::AutoCSetIgnoreCase(bool ignoreCase) {
-	ac.ignoreCase = ignoreCase;
-}
-
-bool ScintillaBase::AutoCGetIgnoreCase() const noexcept {
-	return ac.ignoreCase;
-}
-
-void ScintillaBase::AutoCSetCaseInsensitiveBehaviour(CaseInsensitiveBehaviour behaviour) {
-	ac.ignoreCaseBehaviour = behaviour;
-}
-
-CaseInsensitiveBehaviour ScintillaBase::AutoCGetCaseInsensitiveBehaviour() const noexcept {
-	return ac.ignoreCaseBehaviour;
-}
-
-// Once inserts only into the main selection; Each inserts into every selection.
-void ScintillaBase::AutoCSetMulti(MultiAutoComplete multi) {
-	multiAutoCMode = multi;
-}
-
-MultiAutoComplete ScintillaBase::AutoCGetMulti() const noexcept {
-	return multiAutoCMode;
-}
-
-// PreSorted expects an alphabetically sorted list; PerformSort sorts on show;
-// Custom keeps application order and builds a sorted index for matching.
-void ScintillaBase::AutoCSetOrder(Ordering order) {
-	ac.autoSort = order;
-}
-
-Ordering ScintillaBase::AutoCGetOrder() const noexcept {
-	return ac.autoSort;
-}
-
-// Same list machinery as AutoCShow, but listType_ must be greater than zero so
-// completion reports UserListSelection instead of AutoCSelection and does not
-// insert text. Choose-single has no effect on user lists.
-void ScintillaBase::UserListShow(int listType_, const char *itemList) {
-	listType = listType_;
-	AutoCompleteStart(0, itemList);
-}
-
-// When true (default), the list closes when typing leaves no matching item.
-void ScintillaBase::AutoCSetAutoHide(bool autoHide) {
-	ac.autoHide = autoHide;
-}
-
-bool ScintillaBase::AutoCGetAutoHide() const noexcept {
-	return ac.autoHide;
-}
-
-void ScintillaBase::AutoCSetOptions(AutoCompleteOption options) {
-	ac.options = options;
-}
-
-AutoCompleteOption ScintillaBase::AutoCGetOptions() const noexcept {
-	return ac.options;
-}
-
-// When true, completing deletes word characters after the caret first.
-void ScintillaBase::AutoCSetDropRestOfWord(bool dropRestOfWord) {
-	ac.dropRestOfWord = dropRestOfWord;
-}
-
-bool ScintillaBase::AutoCGetDropRestOfWord() const noexcept {
-	return ac.dropRestOfWord;
-}
-
-// Maximum visible rows; more items show a vertical scrollbar. Default is 5.
-void ScintillaBase::AutoCSetMaxHeight(int rowCount) {
-	ac.lb->SetVisibleRows(rowCount);
-}
-
-int ScintillaBase::AutoCGetMaxHeight() const {
-	return ac.lb->GetVisibleRows();
-}
-
-// Maximum list width in average character widths of the list style. Zero
-// (default) sizes to the longest item.
-void ScintillaBase::AutoCSetMaxWidth(int characterCount) {
-	maxListWidth = characterCount;
-}
-
-int ScintillaBase::AutoCGetMaxWidth() const noexcept {
-	return maxListWidth;
-}
-
-// Style used for the list font. Defaults to STYLE_DEFAULT.
-void ScintillaBase::AutoCSetStyle(int style) {
-	vs.autocStyle = style;
-	InvalidateStyleRedraw();
-}
-
-int ScintillaBase::AutoCGetStyle() const noexcept {
-	return vs.autocStyle;
-}
-
-// Scale factor for list images in percent (100 is native size).
-void ScintillaBase::AutoCSetImageScale(int scalePercent) {
-	ac.imageScale = static_cast<float>(scalePercent) / 100.0f;
-}
-
-int ScintillaBase::AutoCGetImageScale() const noexcept {
-	return static_cast<int>(ac.imageScale * 100);
-}
-
-// Registers an XPM image under type for list entries that use that type id.
-void ScintillaBase::RegisterImage(int type, const char *xpmData) {
-	ac.lb->RegisterImage(type, xpmData);
-}
-
-// Registers an RGBA pixel buffer under type. Width and height come from the
-// last RGBAImageSetWidth / RGBAImageSetHeight values on the editor.
-void ScintillaBase::RegisterRGBAImage(int type, const unsigned char *pixels) {
-	ac.lb->RegisterRGBAImage(type, static_cast<int>(sizeRGBAImage.x), static_cast<int>(sizeRGBAImage.y),
-		pixels);
-}
-
-void ScintillaBase::ClearRegisteredImages() {
-	ac.lb->ClearRegisteredImages();
-}
-
-// Separates the display text from a type integer in list items (default '?').
-void ScintillaBase::AutoCSetTypeSeparator(char separatorCharacter) {
-	ac.SetTypesep(separatorCharacter);
-}
-
-char ScintillaBase::AutoCGetTypeSeparator() const noexcept {
-	return ac.GetTypesep();
 }
