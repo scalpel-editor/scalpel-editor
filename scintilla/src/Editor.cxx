@@ -1445,34 +1445,7 @@ void Editor::Paint(Surface *surfaceWindow, PRectangle rcArea) {
 	NotifyPainted();
 }
 
-// This is mostly copied from the Paint method but with some things omitted
-// such as the margin markers, line numbers, selection and caret
-// Should be merged back into a combined Draw method.
-Sci::Position Editor::FormatRange(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam) {
-	if (!lParam)
-		return 0;
-	const bool draw = wParam != 0;
-	void *ptr = PtrFromSPtr(lParam);
-	if (iMessage == Message::FormatRange) {
-		RangeToFormat *pfr = static_cast<RangeToFormat *>(ptr);
-		const CharacterRangeFull chrg{ pfr->chrg.cpMin, pfr->chrg.cpMax };
-		AutoSurface surface(pfr->hdc, this, Technology::Default);
-		AutoSurface surfaceMeasure(pfr->hdcTarget, this, Technology::Default);
-		if (!surface || !surfaceMeasure) {
-			return 0;
-		}
-		return view.FormatRange(draw, chrg, pfr->rc, surface, surfaceMeasure, *this, vs);
-	} else {
-		// FormatRangeFull
-		RangeToFormatFull *pfr = static_cast<RangeToFormatFull *>(ptr);
-		AutoSurface surface(pfr->hdc, this, Technology::Default);
-		AutoSurface surfaceMeasure(pfr->hdcTarget, this, Technology::Default);
-		if (!surface || !surfaceMeasure) {
-			return 0;
-		}
-		return view.FormatRange(draw, pfr->chrg, pfr->rc, surface, surfaceMeasure, *this, vs);
-	}
-}
+// Print magnification, colour mode, wrap, and FormatRange: EditorPrinting.cxx.
 
 
 void Editor::SetVerticalScrollPos() {
@@ -4734,9 +4707,21 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 	case Message::GetSelectionHidden:
 		return GetSelectionHidden() ? 1 : 0;
 
-	case Message::FormatRange:
-	case Message::FormatRangeFull:
-		return FormatRange(iMessage, wParam, lParam);
+	case Message::FormatRange: {
+			// Temporary: accept the narrow RangeToFormat client structure and widen positions.
+			if (!lParam)
+				return 0;
+			const RangeToFormat *pfr = static_cast<RangeToFormat *>(PtrFromSPtr(lParam));
+			RangeToFormatFull full{};
+			full.hdc = pfr->hdc;
+			full.hdcTarget = pfr->hdcTarget;
+			full.rc = pfr->rc;
+			full.rcPage = pfr->rcPage;
+			full.chrg.cpMin = pfr->chrg.cpMin;
+			full.chrg.cpMax = pfr->chrg.cpMax;
+			return FormatRange(wParam != 0, full);
+		}
+	// Message::FormatRangeFull deleted: use FormatRange with RangeToFormatFull / native positions.
 
 	case Message::GetMarginLeft:
 		return GetMarginLeft();
@@ -4955,25 +4940,25 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::SetPrintMagnification:
-		view.printParameters.magnification = static_cast<int>(wParam);
+		SetPrintMagnification(static_cast<int>(wParam));
 		break;
 
 	case Message::GetPrintMagnification:
-		return view.printParameters.magnification;
+		return GetPrintMagnification();
 
 	case Message::SetPrintColourMode:
-		view.printParameters.colourMode = static_cast<PrintOption>(wParam);
+		SetPrintColourMode(static_cast<PrintOption>(wParam));
 		break;
 
 	case Message::GetPrintColourMode:
-		return static_cast<sptr_t>(view.printParameters.colourMode);
+		return static_cast<sptr_t>(GetPrintColourMode());
 
 	case Message::SetPrintWrapMode:
-		view.printParameters.wrapState = (static_cast<Wrap>(wParam) == Wrap::Word) ? Wrap::Word : Wrap::None;
+		SetPrintWrapMode(static_cast<Wrap>(wParam));
 		break;
 
 	case Message::GetPrintWrapMode:
-		return static_cast<sptr_t>(view.printParameters.wrapState);
+		return static_cast<sptr_t>(GetPrintWrapMode());
 
 	case Message::GetStyleAt:
 		return GetStyleAt(PositionFromUPtr(wParam));

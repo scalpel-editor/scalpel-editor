@@ -567,7 +567,6 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void PaintSelMargin(Surface *surfaceWindow, const PRectangle &rc);
 	void RefreshPixMaps(Surface *surfaceWindow);
 	void Paint(Surface *surfaceWindow, PRectangle rcArea);
-	Sci::Position FormatRange(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
 
 	virtual void SetVerticalScrollPos();
 	virtual void SetHorizontalScrollPos() = 0;
@@ -1230,7 +1229,6 @@ public:
 	void SetZoom(int zoomInPoints);
 	int GetZoom() const noexcept;
 
-
 	// Focus and other input surface; definitions in EditorInput.cxx.
 	void SetFocus(bool focusState);
 	bool HasFocus() const noexcept;
@@ -1255,7 +1253,6 @@ public:
 	void ClearCmdKey(Scintilla::Keys key, Scintilla::KeyMod modifiers);
 	void ClearAllCmdKeys();
 
-
 	// UTF-8 character/word boundaries and related queries; EditorTextBoundaries.cxx.
 	Sci::Position PositionBefore(Sci::Position pos) const;
 	Sci::Position PositionAfter(Sci::Position pos) const;
@@ -1276,12 +1273,20 @@ public:
 	void SetVirtualSpaceOptions(Scintilla::VirtualSpace options);
 	Scintilla::VirtualSpace GetVirtualSpaceOptions() const noexcept;
 
-
 	// Line state for multi-line lexers; definitions in EditorLexing.cxx.
 	int SetLineState(Sci::Line line, int state);
 	int GetLineState(Sci::Line line) const;
 	int GetMaxLineState() const noexcept;
 	void ChangeLexerState(Sci::Position start, Sci::Position end);
+
+	// Printing; definitions in EditorPrinting.cxx.
+	void SetPrintMagnification(int magnification);
+	int GetPrintMagnification() const noexcept;
+	void SetPrintColourMode(Scintilla::PrintOption mode);
+	Scintilla::PrintOption GetPrintColourMode() const noexcept;
+	void SetPrintWrapMode(Scintilla::Wrap wrapMode);
+	Scintilla::Wrap GetPrintWrapMode() const noexcept;
+	Sci::Position FormatRange(bool draw, const Scintilla::RangeToFormatFull &fr);
 
 	// Public so scintilla_send_message can use it.
 	virtual Scintilla::sptr_t WndProc(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);

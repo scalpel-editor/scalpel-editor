@@ -455,7 +455,8 @@
     <code>scintilla/src/EditorHistory.cxx</code>. Line text and allocate-lines:
     <code>scintilla/src/EditorLines.cxx</code>. Replace selection:
     <code>scintilla/src/EditorSearch.cxx</code>. Clear document style, style-at, and extended styles:
-    <code>scintilla/src/EditorStyling.cxx</code>. Drag-drop and change-insertion remain until those concerns move.</p>
+    <code>scintilla/src/EditorStyling.cxx</code>. Drag-drop enablement and change-insertion:
+    <code>scintilla/src/EditorInput.cxx</code>.</p>
 
 
     <p>Each byte in a Scintilla document is associated with a byte of styling
@@ -485,13 +486,9 @@
     <code>SCI_GETSTYLEDTEXTFULL</code> are deleted: the project uses one native position type and
     the typed <code>GetTextRange</code> / <code>GetStyledText</code> operations.</p>
 
-    <code>
-     <a class="message" href="#SCI_GETDRAGDROPENABLED">SCI_GETDRAGDROPENABLED &rarr; bool</a><br />
-     <a class="message" href="#SCI_SETDRAGDROPENABLED">SCI_SETDRAGDROPENABLED(bool dragDropEnabled)</a><br />
-     <a class="message" href="#SCI_CHANGEINSERTION">SCI_CHANGEINSERTION(position length, const char *text)</a><br />
-</code>
-
-    
+    <p>Drag-drop enablement and <code>ChangeInsertion</code> (InsertCheck replacement text) moved to
+    <code>scintilla/src/EditorInput.cxx</code>. Named operations and their behavior descriptions live
+    beside the definitions there. Temporary message forwarders remain.</p>
 
     <p>See also: <code><a class="message" href="#SCI_EMPTYUNDOBUFFER">SCI_EMPTYUNDOBUFFER</a>,
     <code>Editor::GetModify</code> in <code>EditorDocument.cxx</code></code></p>
@@ -502,16 +499,6 @@
     <a class="seealso" href="#SCI_GETSELTEXT">SCI_GETSELTEXT</a></code></p>
 
     
-
-    <p><b id="SCI_GETDRAGDROPENABLED">SCI_GETDRAGDROPENABLED &rarr; bool</b><br />
-     <b id="SCI_SETDRAGDROPENABLED">SCI_SETDRAGDROPENABLED(bool dragDropEnabled)</b><br />
-     These messages get and set the flag controlling whether drag-and-drop is enabled or not.</p>
-
-    
-
-    <p><b id="SCI_CHANGEINSERTION">SCI_CHANGEINSERTION(position length, const char *text)</b><br />
-     This may only be called from a <a class="message" href="#SC_MOD_INSERTCHECK">SC_MOD_INSERTCHECK</a>
-     notification handler and will change the text being inserted to that provided.</p>
 
     <p><b id="SCI_CLEARDOCUMENTSTYLE">SCI_CLEARDOCUMENTSTYLE</b><br />
      When wanting to completely restyle the document, for example after choosing a lexer, the
@@ -638,13 +625,14 @@ struct Sci_TextRangeFull {
 
     
 
-    <p><b id="SCI_POSITIONBEFORE">SCI_POSITIONBEFORE(position pos) &rarr; position</b><br />
-     <b id="SCI_POSITIONAFTER">SCI_POSITIONAFTER(position pos) &rarr; position</b><br />
-     These messages return the UTF-8 character boundary before and after another position
-     in the document. The minimum
-     position returned is 0 and the maximum is the last position in the document.
-     If called with a position within a multi-byte UTF-8 character, they return the position
-     of the start/end of that character.</p>
+    <p>Character and word boundaries (<code>PositionBefore</code> / <code>PositionAfter</code> /
+    <code>PositionRelative</code> / <code>PositionRelativeCodeUnits</code>, word extents,
+    <code>SetCharsDefault</code>, character-category optimization, <code>GetCharacterPointer</code>,
+    <code>GetCurLine</code>, line character-index mapping) moved to
+    <code>scintilla/src/EditorTextBoundaries.cxx</code>. Virtual-space options moved to
+    <code>scintilla/src/EditorSelection.cxx</code>. Search tags (<code>GetTag</code>) moved to
+    <code>scintilla/src/EditorSearch.cxx</code>. Named operations and their behavior descriptions live
+    beside the definitions there. Temporary message forwarders remain.</p>
 
     <p><b id="SCI_TEXTWIDTH">SCI_TEXTWIDTH(int style, const char *text) &rarr; int</b><br />
      This returns the pixel width of a string drawn in the given <code class="parameter">style</code> which can
@@ -794,17 +782,9 @@ struct Sci_TextRangeFull {
 
     <h2 id="Overtype">Overtype</h2>
 
-    <code><a class="message" href="#SCI_SETOVERTYPE">SCI_SETOVERTYPE(bool overType)</a><br />
-     <a class="message" href="#SCI_GETOVERTYPE">SCI_GETOVERTYPE &rarr; bool</a><br />
-    </code>
-
-    <p><b id="SCI_SETOVERTYPE">SCI_SETOVERTYPE(bool overType)</b><br />
-     <b id="SCI_GETOVERTYPE">SCI_GETOVERTYPE &rarr; bool</b><br />
-     When overtype is enabled, each typed character replaces the character to the right of the text
-    caret. When overtype is disabled, characters are inserted at the caret.
-    <code>SCI_GETOVERTYPE</code> returns <code>true</code> (1) if overtyping is active, otherwise
-    <code>false</code> (0) will be returned. Use <code>SCI_SETOVERTYPE</code> to set the overtype
-    mode.</p>
+    <p>Moved to <code>scintilla/src/EditorCommands.cxx</code> with the other command and key-map
+    surface. Named <code>SetOvertype</code> / <code>GetOvertype</code> and
+    <code>EditToggleOvertype</code> live beside the definitions there. Temporary message forwarders remain.</p>
 
     <h2 id="Searching">Searching</h2>
 
@@ -883,62 +863,16 @@ struct Sci_TextRangeFull {
 
     
     <h2 id="Cursor">Cursor</h2>
-    <a class="message" href="#SCI_SETCURSOR">SCI_SETCURSOR(int cursorType)</a><br />
-     <a class="message" href="#SCI_GETCURSOR">SCI_GETCURSOR &rarr; int</a><br />
 
-    <p><b id="SCI_SETCURSOR">SCI_SETCURSOR(int cursorType)</b><br />
-     <b id="SCI_GETCURSOR">SCI_GETCURSOR &rarr; int</b><br />
-     The cursor is normally chosen in a context sensitive way, so it will be different over the
-    margin than when over the text. When performing a slow action, you may wish to change to a wait
-    cursor. You set the cursor type with <code>SCI_SETCURSOR</code>. The <code class="parameter">cursorType</code>
-    argument can be:</p>
-
-    <table class="standard" summary="Mouse cursors">
-      <tbody valign="top">
-        <tr>
-          <th align="left"><code>SC_CURSORNORMAL</code></th>
-
-          <td>-1</td>
-
-          <td>The normal cursor is displayed.</td>
-        </tr>
-
-        <tr>
-          <th align="left"><code>SC_CURSORWAIT</code></th>
-
-          <td>&nbsp;4</td>
-
-          <td>The wait cursor is displayed when the mouse is over or owned by the Scintilla
-          window.</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <p>Cursor values 1 through 7 have defined cursors, but only <code>SC_CURSORWAIT</code> is
-    usefully controllable. Other values of <code class="parameter">cursorType</code> cause a pointer to be displayed.
-    The <code>SCI_GETCURSOR</code> message returns the last cursor type you set, or
-    <code>SC_CURSORNORMAL</code> (-1) if you have not set a cursor type.</p>
+    <p>Cursor mode moved to <code>scintilla/src/EditorInput.cxx</code>. Named
+    <code>SetCursor</code> / <code>GetCursor</code> and their behavior descriptions live beside the
+    definitions there. Temporary message forwarders remain.</p>
 
     <h2 id="MouseCapture">Mouse capture</h2>
-    <a class="message" href="#SCI_SETMOUSEDOWNCAPTURES">SCI_SETMOUSEDOWNCAPTURES(bool captures)</a><br />
-     <a class="message" href="#SCI_GETMOUSEDOWNCAPTURES">SCI_GETMOUSEDOWNCAPTURES &rarr; bool</a><br />
-     <a class="message" href="#SCI_SETMOUSEWHEELCAPTURES">SCI_SETMOUSEWHEELCAPTURES(bool captures)</a><br />
-     <a class="message" href="#SCI_GETMOUSEWHEELCAPTURES">SCI_GETMOUSEWHEELCAPTURES &rarr; bool</a><br />
 
-    <p><b id="SCI_SETMOUSEDOWNCAPTURES">SCI_SETMOUSEDOWNCAPTURES(bool captures)</b><br />
-     <b id="SCI_GETMOUSEDOWNCAPTURES">SCI_GETMOUSEDOWNCAPTURES &rarr; bool</b><br />
-     When the mouse is pressed inside Scintilla, it is captured so future mouse movement events are
-    sent to Scintilla. This behaviour may be turned off with
-    <code>SCI_SETMOUSEDOWNCAPTURES(0)</code>.</p>
-
-    <p><b id="SCI_SETMOUSEWHEELCAPTURES">SCI_SETMOUSEWHEELCAPTURES(bool captures)</b><br />
-     <b id="SCI_GETMOUSEWHEELCAPTURES">SCI_GETMOUSEWHEELCAPTURES &rarr; bool</b><br />
-     On Windows, Scintilla captures all <code>WM_MOUSEWHEEL</code> messages if it has the
-     focus, even if the mouse pointer is nowhere near the Scintilla editor window. This
-     behaviour can be changed with <code>SCI_SETMOUSEWHEELCAPTURES(0)</code> so that
-     Scintilla passes the <code>WM_MOUSEWHEEL</code> messages to its parent window.
-     Scintilla will still react to the mouse wheel if the mouse pointer is over
-     the editor window.</p>
+    <p>Mouse-down and mouse-wheel capture moved to <code>scintilla/src/EditorInput.cxx</code> with the
+    other input surface. Named operations and their behavior descriptions live beside the definitions
+    there. Temporary message forwarders remain.</p>
 
     <h2 id="LineEndings">Line endings</h2>
 
@@ -1192,16 +1126,15 @@ struct Sci_TextRangeFull {
     and scale technique are deleted: this project has one fixed renderer path.
     Named operations and their behavior descriptions live beside the definitions.
     Temporary message forwarders remain for retained operations.</p>
+    <p>IME interaction and focus moved to <code>scintilla/src/EditorInput.cxx</code>. Named
+    <code>SetIMEInteraction</code> / <code>GetIMEInteraction</code>, <code>SetFocus</code> /
+    <code>HasFocus</code>, and their behavior descriptions live beside the definitions there.
+    Temporary message forwarders remain. <code>GrabFocus</code> is deleted: the Wayland shell calls
+    <code>SetFocus</code> when the compositor changes focus. Feature query
+    (<code>SupportsFeature</code>) remains until the host concern move.</p>
     <code>
-     <a class="message" href="#SCI_SETIMEINTERACTION">SCI_SETIMEINTERACTION(int imeInteraction)</a><br />
-     <a class="message" href="#SCI_GETIMEINTERACTION">SCI_GETIMEINTERACTION &rarr; int</a><br />
-     <a class="message" href="#SCI_GRABFOCUS">SCI_GRABFOCUS</a><br />
-     <a class="message" href="#SCI_SETFOCUS">SCI_SETFOCUS(bool focus)</a><br />
-     <a class="message" href="#SCI_GETFOCUS">SCI_GETFOCUS &rarr; bool</a><br />
      <a class="message" href="#SCI_SUPPORTSFEATURE">SCI_SUPPORTSFEATURE(int feature) &rarr; bool</a><br />
     </code>
-
-    <p>IME interaction, focus, and feature-query messages remain here until the input and host concerns move.</p>
 
     
     <h2 id="BraceHighlighting">Brace highlighting</h2>
@@ -1586,120 +1519,19 @@ struct Sci_TextRangeFull {
 
     <h2 id="KeyBindings">Key bindings</h2>
 
-    <p>There is a default binding of keys to commands that is defined in the Scintilla source in
-    the file <code>KeyMap.cxx</code> by the constant <code>KeyMap::MapDefault[]</code>. This table
-    maps key definitions to the bindable editing actions represented by <code>EditorCommand</code>.
-    You can change the mapping to suit your own requirements.</p>
-    <code><a class="message" href="#SCI_ASSIGNCMDKEY">SCI_ASSIGNCMDKEY(int keyDefinition, int
-    sciCommand)</a><br />
-     <a class="message" href="#SCI_CLEARCMDKEY">SCI_CLEARCMDKEY(int keyDefinition)</a><br />
-     <a class="message" href="#SCI_CLEARALLCMDKEYS">SCI_CLEARALLCMDKEYS</a><br />
-     <a class="message" href="#SCI_NULL">SCI_NULL</a><br />
-    </code>
-
-    <p><b id="keyDefinition">keyDefinition</b><br />
-     A key definition contains the key code in the low 16-bits and the key modifiers in the high
-    16-bits. To combine <code>keyCode</code> and <code>keyMod</code> set:<br />
-    <br />
-     <code>keyDefinition = keyCode + (keyMod &lt;&lt; 16)</code></p>
-
-    <p>The key code is a visible or control character or a key from the <code>SCK_*</code>
-    enumeration, which contains:<br />
-     <code>SCK_ADD</code>, <code>SCK_BACK</code>, <code>SCK_DELETE</code>, <code>SCK_DIVIDE</code>,
-    <code>SCK_DOWN</code>, <code>SCK_END</code>, <code>SCK_ESCAPE</code>, <code>SCK_HOME</code>,
-    <code>SCK_INSERT</code>, <code>SCK_LEFT</code>, <code>SCK_MENU</code>, <code>SCK_NEXT</code> (Page Down),
-    <code>SCK_PRIOR</code> (Page Up), <code>SCK_RETURN</code>, <code>SCK_RIGHT</code>,
-    <code>SCK_RWIN</code>,
-    <code>SCK_SUBTRACT</code>, <code>SCK_TAB</code>, <code>SCK_UP</code>, and
-    <code>SCK_WIN</code>.</p>
-
-    <p>The modifiers are a combination of zero or more of <code>SCMOD_ALT</code>,
-    <code>SCMOD_CTRL</code>, <code>SCMOD_SHIFT</code>,
-    <code>SCMOD_META</code>, and <code>SCMOD_SUPER</code>.
-    On macOS, the Command key is mapped to <code>SCMOD_CTRL</code> and the Control key to
-    <code>SCMOD_META</code>.
-    <code>SCMOD_SUPER</code> is only available on GTK which is commonly the Windows key.
-    If you are building a table, you might
-    want to use <code>SCMOD_NORM</code>, which has the value 0, to mean no modifiers.</p>
-
-    <p>On Win32, the numeric keypad with Alt pressed can be used to enter characters by number.
-    This can produce unexpected results in non-numlock mode when function keys are assigned so
-    potentially problematic keys are ignored. For example, setting
-    <code>SCMOD_ALT</code>,<code>SCK_UP</code> will only be active for the Up key on the
-    main cursor keys, not the numeric keypad.</p>
-
-    <p><b id="SCI_ASSIGNCMDKEY">SCI_ASSIGNCMDKEY(int <a class="jump"
-    href="#keyDefinition">keyDefinition</a>, int sciCommand)</b><br />
-     This assigns the given key definition to the <code>EditorCommand</code> action identified by
-    the temporary <code class="parameter">sciCommand</code> message number. Other message numbers
-    are ignored and do not replace the existing binding.</p>
-
-    <p><b id="SCI_CLEARCMDKEY">SCI_CLEARCMDKEY(int <a class="jump"
-    href="#keyDefinition">keyDefinition</a>)</b><br />
-     This makes the given key definition do nothing by assigning the action <code>SCI_NULL</code>
-    to it.</p>
-
-    <p><b id="SCI_CLEARALLCMDKEYS">SCI_CLEARALLCMDKEYS</b><br />
-     This command removes all keyboard command mapping by setting an empty mapping table.</p>
-
-    <p><b id="SCI_NULL">SCI_NULL</b><br />
-     The <code>SCI_NULL</code> does nothing and is the value assigned to keys that perform no
-    action. SCI_NULL ensures that keys do not propagate to the parent window as that may
-    cause focus to move. If you want the standard platform behaviour use the constant 0 instead.</p>
+    <p>Default bindings live in <code>KeyMap.cxx</code> as <code>KeyMap::MapDefault[]</code>, mapping
+    key chords to <code>EditorCommand</code>. Named reconfiguration
+    (<code>AssignCmdKey</code> / <code>ClearCmdKey</code> / <code>ClearAllCmdKeys</code>) lives in
+    <code>scintilla/src/EditorCommands.cxx</code> beside the definitions. Temporary message forwarders
+    still accept recognized message numbers for assignment until the generated layer is removed.
+    <code>SCI_NULL</code> as a callable message is deleted; unbound keys use
+    <code>EditorCommand::None</code>.</p>
 
     <h2 id="PopupEditMenu">Popup edit menu</h2>
 
-    <code><a class="message" href="#SCI_USEPOPUP">SCI_USEPOPUP(int popUpMode)</a><br />
-    </code>
-
-    <p><b id="SCI_USEPOPUP">SCI_USEPOPUP(int popUpMode)</b><br />
-     Clicking the wrong button on the mouse pops up a short default editing menu. This may be
-    turned off with <code>SCI_USEPOPUP(SC_POPUP_NEVER)</code>. If you turn it off, context menu commands (in
-    Windows, <code>WM_CONTEXTMENU</code>) will not be handled by Scintilla, so the parent of the
-    Scintilla window will have the opportunity to handle the message.</p>
-
-        <table class="standard" summary="Display context menu mode">
-          <tbody>
-            <tr>
-              <th align="left">Symbol</th>
-
-              <th>Value</th>
-
-              <th align="left">Meaning</th>
-
-            </tr>
-          </tbody>
-
-          <tbody valign="top">
-            <tr>
-              <td align="left"><code>SC_POPUP_NEVER</code></td>
-
-              <td align="center">0</td>
-
-              <td>Never show default editing menu.</td>
-
-            </tr>
-
-            <tr>
-              <td align="left"><code>SC_POPUP_ALL</code></td>
-
-              <td align="center">1</td>
-
-              <td>Show default editing menu if clicking on scintilla.</td>
-
-            </tr>
-
-            <tr>
-              <td align="left"><code>SC_POPUP_TEXT</code></td>
-
-              <td align="center">2</td>
-
-              <td>Show default editing menu only if clicking on text area.</td>
-
-            </tr>
-
-          </tbody>
-        </table>
+    <p>Context-menu policy (<code>UsePopUp</code> / <code>GetUsePopUp</code>) moved to
+    <code>scintilla/src/EditorInput.cxx</code>. Named operations and their behavior descriptions live
+    beside the definitions there. Temporary message forwarders remain.</p>
 
     <h2 id="MacroRecording">Macro recording</h2>
 
@@ -1718,181 +1550,10 @@ struct Sci_TextRangeFull {
 
     <h2 id="Printing">Printing</h2>
 
-    <p><code>SCI_FORMATRANGE</code> can be used to draw the text onto a display surface
-    which can include a printer display surface. Printed output shows text styling as on the
-    screen, but it hides all margins except a line number margin.
-    Markers do not appear in a margin but will change line background colour.
-    The selection and caret are hidden.</p>
-
-    <p>Different platforms use different display surface ID types to print on. On Windows, these are
-    <code>HDC</code>s., on GTK 3.x <code>cairo_t *</code>,
-    and on Cocoa <code>CGContextRef</code> is used.</p>
-
-    <code><a class="message" href="#SCI_FORMATRANGE">SCI_FORMATRANGE(bool draw, Sci_RangeToFormat *fr) &rarr; position</a><br />
-     <a class="message" href="#SCI_FORMATRANGEFULL">SCI_FORMATRANGEFULL(bool draw, Sci_RangeToFormatFull *fr) &rarr; position</a><br />
-     <a class="message" href="#SCI_SETPRINTMAGNIFICATION">SCI_SETPRINTMAGNIFICATION(int
-    magnification)</a><br />
-     <a class="message" href="#SCI_GETPRINTMAGNIFICATION">SCI_GETPRINTMAGNIFICATION &rarr; int</a><br />
-     <a class="message" href="#SCI_SETPRINTCOLOURMODE">SCI_SETPRINTCOLOURMODE(int mode)</a><br />
-     <a class="message" href="#SCI_GETPRINTCOLOURMODE">SCI_GETPRINTCOLOURMODE &rarr; int</a><br />
-     <a class="message" href="#SCI_SETPRINTWRAPMODE">SCI_SETPRINTWRAPMODE(int wrapMode)</a><br />
-     <a class="message" href="#SCI_GETPRINTWRAPMODE">SCI_GETPRINTWRAPMODE &rarr; int</a><br />
-    </code>
-
-    <p><b id="SCI_FORMATRANGE">SCI_FORMATRANGE(bool draw, Sci_RangeToFormat *fr) &rarr; position</b><br />
-     <b id="SCI_FORMATRANGEFULL">SCI_FORMATRANGEFULL(bool draw, Sci_RangeToFormatFull *fr) &rarr; position</b><br />
-     This call renders a range of text into a device context. If you use
-    this for printing, you will probably want to arrange a page header and footer; Scintilla does
-    not do this for you. See <code>SciTEWin::Print()</code> in <code>SciTEWinDlg.cxx</code> for an
-    example. Each use of this message renders a range of text into a rectangular area and returns
-    the position in the document of the next character to print.</p>
-
-    <p><code class="parameter">draw</code> controls if any output is done. Set this to false if you are paginating
-    (for example, if you use this with MFC you will need to paginate in
-    <code>OnBeginPrinting()</code> before you output each page.
-    On 64-bit Win32, <code>SCI_FORMATRANGE</code> is limited to the first 2G of text and <code>SCI_FORMATRANGEFULL</code> removes this limitation.</p>
-<pre>
-struct Sci_Rectangle { int left; int top; int right; int bottom; };
-
-struct Sci_RangeToFormat {
-    Sci_SurfaceID hdc;        // The Surface ID we print to
-    Sci_SurfaceID hdcTarget;  // The Surface ID we use for measuring (may be same as hdc)
-    Sci_Rectangle rc;         // Rectangle in which to print
-    Sci_Rectangle rcPage;     // Physically printable page size
-    Sci_CharacterRange chrg;  // Range of characters to print
-};
-
-struct Sci_RangeToFormatFull {
-    Sci_SurfaceID hdc;        // The Surface ID we print to
-    Sci_SurfaceID hdcTarget;  // The Surface ID we use for measuring (may be same as hdc)
-    Sci_Rectangle rc;         // Rectangle in which to print
-    Sci_Rectangle rcPage;     // Physically printable page size
-    Sci_CharacterRangeFull chrg;  // Range of characters to print
-};
-</pre>
-
-    <p>On Windows, <code>hdc</code> and <code>hdcTarget</code> should both be set to the device context handle
-    of the output device (usually a printer). If you print to a metafile these will not be the same
-    as Windows metafiles (unlike extended metafiles) do not implement the full API for returning
-    information. In this case, set <code>hdcTarget</code> to the screen DC.<br />
-     <code>rcPage</code> is the rectangle <code>{0, 0, maxX, maxY}</code> where <code>maxX+1</code>
-    and <code>maxY+1</code> are the number of physically printable pixels in x and y.<br />
-     <code>rc</code> is the rectangle to render the text in (which will, of course, fit within the
-    rectangle defined by rcPage).<br />
-     <code>chrg.cpMin</code> and <code>chrg.cpMax</code> define the start position and maximum
-    position of characters to output. All of each line within this character range is drawn.</p>
-
-    <p>On Cocoa, the surface IDs for printing (<code>draw=1</code>) should be the graphics port of the current context
-    (<code>(CGContextRef) [[NSGraphicsContext currentContext] graphicsPort]</code>) when the view's drawRect method is called.
-    The Surface IDs are not really used for measurement (<code>draw=0</code>) but can be set
-    to a bitmap context (created with <code>CGBitmapContextCreate</code>) to avoid runtime warnings.</p>
-
-    <p>On GTK, the surface IDs to use can be found from the printing context with
-    <code>gtk_print_context_get_cairo_context(context)</code>.</p>
-
-     <p><code>chrg.cpMin</code> and <code>chrg.cpMax</code> define the start position and maximum
-    position of characters to output. All of each line within this character range is drawn.</p>
-
-    <p>When printing, the most tedious part is always working out what the margins should be to
-    allow for the non-printable area of the paper and printing a header and footer. If you look at
-    the printing code in SciTE, you will find that most of it is taken up with this. The loop that
-    causes Scintilla to render text is quite simple if you strip out all the margin, non-printable
-    area, header and footer code.</p>
-
-    <p><b id="SCI_SETPRINTMAGNIFICATION">SCI_SETPRINTMAGNIFICATION(int magnification)</b><br />
-     <b id="SCI_GETPRINTMAGNIFICATION">SCI_GETPRINTMAGNIFICATION &rarr; int</b><br />
-     <code>SCI_GETPRINTMAGNIFICATION</code> lets you to print at a different size than the screen
-    font. <code class="parameter">magnification</code> is the number of points to add to the size of each screen
-    font. A value of -3 or -4 gives reasonably small print. You can get this value with
-    <code>SCI_GETPRINTMAGNIFICATION</code>.</p>
-
-    <p><b id="SCI_SETPRINTCOLOURMODE">SCI_SETPRINTCOLOURMODE(int mode)</b><br />
-     <b id="SCI_GETPRINTCOLOURMODE">SCI_GETPRINTCOLOURMODE &rarr; int</b><br />
-     These two messages set and get the method used to render coloured text on a printer that is
-    probably using white paper. It is especially important to consider the treatment of colour if
-    you use a dark or black screen background. Printing white on black uses up toner and ink very
-    many times faster than the other way around. You can set the mode to one of:</p>
-
-    <table class="standard" summary="Colour printing modes">
-      <tbody>
-        <tr>
-          <th align="left">Symbol</th>
-
-          <th>Value</th>
-
-          <th align="left">Purpose</th>
-        </tr>
-      </tbody>
-
-      <tbody valign="top">
-        <tr>
-          <td align="left"><code>SC_PRINT_NORMAL</code></td>
-
-          <td align="center">0</td>
-
-          <td>Print using the current screen colours with the exception of line number margins which print on a white background.
-		  This is the default.</td>
-        </tr>
-
-        <tr>
-          <td align="left"><code>SC_PRINT_INVERTLIGHT</code></td>
-
-          <td align="center">1</td>
-
-          <td>If you use a dark screen background this saves ink by inverting the light value of
-          all colours and printing on a white background.</td>
-        </tr>
-
-        <tr>
-          <td align="left"><code>SC_PRINT_BLACKONWHITE</code></td>
-
-          <td align="center">2</td>
-
-          <td>Print all text as black on a white background.</td>
-        </tr>
-
-        <tr>
-          <td align="left"><code>SC_PRINT_COLOURONWHITE</code></td>
-
-          <td align="center">3</td>
-
-          <td>Everything prints in its own colour on a white background.</td>
-        </tr>
-
-        <tr>
-          <td align="left"><code>SC_PRINT_COLOURONWHITEDEFAULTBG</code></td>
-
-          <td align="center">4</td>
-
-          <td>Everything prints in its own foreground colour but all styles up to and including STYLE_LINENUMBER will print
-		  on a white background.</td>
-        </tr>
-
-        <tr>
-          <td align="left"><code>SC_PRINT_SCREENCOLOURS</code></td>
-
-          <td align="center">5</td>
-
-          <td>Print using the current screen colours for both foreground and background.
-		  This is the only mode that does not set the background colour of the line number margin to white.</td>
-        </tr>
-
-      </tbody>
-    </table>
-
-    <p><b id="SCI_SETPRINTWRAPMODE">SCI_SETPRINTWRAPMODE(int wrapMode)</b><br />
-     <b id="SCI_GETPRINTWRAPMODE">SCI_GETPRINTWRAPMODE &rarr; int</b><br />
-     These two functions get and set the printer wrap mode. <code class="parameter">wrapMode</code> can be
-     set to <code>SC_WRAP_NONE</code> (0) or <code>SC_WRAP_WORD</code> (1).
-     The default is
-     <code>SC_WRAP_WORD</code>, which wraps printed output so that all characters fit
-     into the print rectangle. If you set <code>SC_WRAP_NONE</code>, each line of text
-     generates one line of output and the line is truncated if it is too long to fit
-     into the print area.<br />
-     <code>SC_WRAP_WORD</code> tries to wrap only between words as indicated by
-     white space or style changes although if a word is longer than a line, it will be wrapped before
-     the line end. <br />
-     <code>SC_WRAP_CHAR</code> is not supported for printing.</p>
+    <p>Print magnification, colour mode, wrap mode, and <code>FormatRange</code> moved to
+    <code>scintilla/src/EditorPrinting.cxx</code>. Named operations and their behavior descriptions live
+    beside the definitions there. Temporary message forwarders remain for retained operations.
+    <code>FormatRangeFull</code> is deleted: use the typed <code>FormatRange</code> with native positions.</p>
 
     <h2 id="DirectAccess">Direct access</h2>
     <p>Range pointer and gap position moved to <code>scintilla/src/EditorDocument.cxx</code>.
@@ -2042,57 +1703,8 @@ sptr_t CallScintilla(unsigned int iMessage, uptr_t wParam, sptr_t lParam){
     
     <h2 id="Accessibility">Accessibility</h2>
 
-    <p>Scintilla supports some platform accessibility features.
-    This support differs between platforms.
-    On GTK and Cocoa the platform accessibility APIs are implemented sufficiently to
-    make screen readers work.
-    On Win32, the system caret is manipulated to help screen readers.
-    </p>
-
-    <code><a class="message" href="#SCI_SETACCESSIBILITY">SCI_SETACCESSIBILITY(int accessibility)</a><br />
-     <a class="message" href="#SCI_GETACCESSIBILITY">SCI_GETACCESSIBILITY &rarr; int</a><br />
-    </code>
-
-    <p><b id="SCI_SETACCESSIBILITY">SCI_SETACCESSIBILITY(int accessibility)</b><br />
-     <b id="SCI_GETACCESSIBILITY">SCI_GETACCESSIBILITY &rarr; int</b><br />
-     These messages may enable or disable accessibility and report its current status.</p>
-
-    <p>On most platforms, accessibility is either implemented or not implemented and this can be
-    discovered with <code>SCI_GETACCESSIBILITY</code> with
-    <code>SCI_SETACCESSIBILITY</code> performing no action.
-    On GTK, there are storage and performance costs to accessibility, so it can be disabled
-    by calling <code>SCI_SETACCESSIBILITY</code>.
-    </p>
-
-    <table class="standard" summary="Accessibility status">
-      <tbody>
-        <tr>
-          <th align="left">Symbol</th>
-
-          <th>Value</th>
-
-          <th align="left">Accessibility status</th>
-        </tr>
-      </tbody>
-
-      <tbody valign="top">
-        <tr>
-          <td align="left"><code>SC_ACCESSIBILITY_DISABLED</code></td>
-
-          <td align="center">0</td>
-
-          <td>Accessibility is disabled.</td>
-        </tr>
-
-        <tr>
-          <td align="left"><code>SC_ACCESSIBILITY_ENABLED</code></td>
-
-          <td align="center">1</td>
-
-          <td>Accessibility is enabled.</td>
-        </tr>
-      </tbody>
-    </table>
+    <p>Deleted: there is no accessibility bridge in this roadmap. The setter had no core effect and
+    the getter always reported disabled.</p>
 
     <h2 id="Lexer">Lexer</h2>
 
@@ -3392,11 +3004,9 @@ for line = lineStart to lineEnd do SCI_ENSUREVISIBLE(line) next
     </table>
     <br />
 
-    <p><b id="SCI_SETMOUSEDWELLTIME">SCI_SETMOUSEDWELLTIME(int periodMilliseconds)</b><br />
-     <b id="SCI_GETMOUSEDWELLTIME">SCI_GETMOUSEDWELLTIME &rarr; int</b><br />
-     These two messages set and get the time the mouse must sit still, in milliseconds, to generate
-    a <code><a class="message" href="#SCN_DWELLSTART">SCN_DWELLSTART</a></code> notification. If
-    set to <code>SC_TIME_FOREVER</code>, the default, no dwell events are generated.</p>
+    <p>Mouse dwell time moved to <code>scintilla/src/EditorInput.cxx</code>
+    (<code>SetMouseDwellTime</code> / <code>GetMouseDwellTime</code>). Temporary message forwarders remain.
+    Dwell notifications still use <code>SCN_DWELLSTART</code> / <code>SCN_DWELLEND</code>.</p>
 
     <p><b id="SCN_ZOOM">SCN_ZOOM</b><br />
      This notification is generated when the user zooms the display using the keyboard or the
