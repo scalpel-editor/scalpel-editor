@@ -478,8 +478,30 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void Clear();
 	virtual void SelectAll();
 	void RestoreSelection(Sci::Position newPos, UndoRedo history);
+	// Undo and history: definitions and descriptions in EditorHistory.cxx.
 	virtual void Undo();
 	virtual void Redo();
+	void EmptyUndoBuffer();
+	void SetUndoCollection(bool collectUndo);
+	bool GetUndoCollection() const noexcept;
+	int GetUndoSequence() const noexcept;
+	int GetUndoActions() const noexcept;
+	void SetUndoSavePoint(int action);
+	int GetUndoSavePoint() const noexcept;
+	void SetUndoDetach(int action);
+	int GetUndoDetach() const noexcept;
+	void SetUndoTentative(int action);
+	int GetUndoTentative() const noexcept;
+	void SetUndoCurrent(int action);
+	int GetUndoCurrent() const noexcept;
+	int GetUndoActionType(int action) const noexcept;
+	Sci::Position GetUndoActionPosition(int action) const noexcept;
+	std::string_view GetUndoActionText(int action) const noexcept;
+	void PushUndoActionType(int type, Sci::Position position);
+	void ChangeLastUndoActionText(std::string_view text);
+	void AddUndoAction(Sci::Position token, bool mayCoalesce);
+	void SetChangeHistory(Scintilla::ChangeHistoryOption option);
+	Scintilla::ChangeHistoryOption GetChangeHistory() const noexcept;
 	void DelCharBack(bool allowLineStartDeletion);
 	virtual void ClaimSelection() = 0;
 
@@ -731,6 +753,13 @@ public:
 	bool GetModify() const noexcept;
 	void SetReadOnly(bool readOnly);
 	bool GetReadOnly() const noexcept;
+
+	// Undo availability, save point, and undo groups: definitions in EditorHistory.cxx.
+	bool CanUndo() const noexcept;
+	bool CanRedo() const noexcept;
+	void SetSavePoint();
+	void BeginUndoAction();
+	void EndUndoAction();
 
 	// Wrap mode is application-facing; its description lives beside the
 	// definition in EditorWrapping.cxx.

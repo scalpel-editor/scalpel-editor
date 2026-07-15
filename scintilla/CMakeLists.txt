@@ -23,6 +23,7 @@ add_library(scintilla_core STATIC
   src/EditorCallTips.cxx
   src/EditorCommands.cxx
   src/EditorDocument.cxx
+  src/EditorHistory.cxx
   src/EditorWrapping.cxx
   src/EditView.cxx
   src/Geometry.cxx

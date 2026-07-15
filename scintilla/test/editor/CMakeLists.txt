@@ -5,6 +5,7 @@ add_executable(editorTest
   EditorCallTipsTest.cxx
   EditorCommandTest.cxx
   EditorDocumentTest.cxx
+  EditorHistoryTest.cxx
   EditorWrappingTest.cxx
   PopupHostTest.cxx
   TestEditor.cxx

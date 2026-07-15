@@ -2153,19 +2153,6 @@ void Editor::RestoreSelection(Sci::Position newPos, UndoRedo history) {
 	EnsureCaretVisible();
 }
 
-void Editor::Undo() {
-	if (pdoc->CanUndo()) {
-		InvalidateCaret();
-		pdoc->Undo();
-	}
-}
-
-void Editor::Redo() {
-	if (pdoc->CanRedo()) {
-		pdoc->Redo();
-	}
-}
-
 void Editor::DelCharBack(bool allowLineStartDeletion) {
 	RefreshStyleData();
 	if (!sel.IsRectangular())
@@ -5710,10 +5697,10 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return ExecuteCommand(CommandFromMessage(iMessage));
 
 	case Message::CanUndo:
-		return (pdoc->CanUndo() && !pdoc->IsReadOnly()) ? 1 : 0;
+		return CanUndo() ? 1 : 0;
 
 	case Message::EmptyUndoBuffer:
-		pdoc->DeleteUndoHistory();
+		EmptyUndoBuffer();
 		return 0;
 
 	case Message::GetFirstVisibleLine:
@@ -6052,71 +6039,69 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return 0;
 
 	case Message::SetUndoCollection:
-		pdoc->SetUndoCollection(wParam != 0);
+		SetUndoCollection(wParam != 0);
 		return 0;
 
 	case Message::GetUndoCollection:
-		return pdoc->IsCollectingUndo();
+		return GetUndoCollection() ? 1 : 0;
 
 	case Message::BeginUndoAction:
-		pdoc->BeginUndoAction();
+		BeginUndoAction();
 		return 0;
 
 	case Message::EndUndoAction:
-		pdoc->EndUndoAction();
+		EndUndoAction();
 		return 0;
 
 	case Message::GetUndoSequence:
-		return pdoc->UndoSequenceDepth();
+		return GetUndoSequence();
 
 	case Message::GetUndoActions:
-		return pdoc->UndoActions();
+		return GetUndoActions();
 
 	case Message::SetUndoSavePoint:
-		pdoc->SetUndoSavePoint(static_cast<int>(wParam));
+		SetUndoSavePoint(static_cast<int>(wParam));
 		break;
 
 	case Message::GetUndoSavePoint:
-		return pdoc->UndoSavePoint();
+		return GetUndoSavePoint();
 
 	case Message::SetUndoDetach:
-		pdoc->SetUndoDetach(static_cast<int>(wParam));
+		SetUndoDetach(static_cast<int>(wParam));
 		break;
 
 	case Message::GetUndoDetach:
-		return pdoc->UndoDetach();
+		return GetUndoDetach();
 
 	case Message::SetUndoTentative:
-		pdoc->SetUndoTentative(static_cast<int>(wParam));
+		SetUndoTentative(static_cast<int>(wParam));
 		break;
 
 	case Message::GetUndoTentative:
-		return pdoc->UndoTentative();
+		return GetUndoTentative();
 
 	case Message::SetUndoCurrent:
-		pdoc->SetUndoCurrent(static_cast<int>(wParam));
+		SetUndoCurrent(static_cast<int>(wParam));
 		break;
 
 	case Message::GetUndoCurrent:
-		return pdoc->UndoCurrent();
+		return GetUndoCurrent();
 
 	case Message::GetUndoActionType:
-		return pdoc->UndoActionType(static_cast<int>(wParam));
+		return GetUndoActionType(static_cast<int>(wParam));
 
 	case Message::GetUndoActionPosition:
-		return pdoc->UndoActionPosition(static_cast<int>(wParam));
+		return GetUndoActionPosition(static_cast<int>(wParam));
 
-	case Message::GetUndoActionText: {
-		const std::string_view text = pdoc->UndoActionText(static_cast<int>(wParam));
-		return BytesResult(lParam, text);
-	}
+	case Message::GetUndoActionText:
+		return BytesResult(lParam, GetUndoActionText(static_cast<int>(wParam)));
 
 	case Message::PushUndoActionType:
-		pdoc->PushUndoActionType(static_cast<int>(wParam), lParam);
+		PushUndoActionType(static_cast<int>(wParam), lParam);
 		break;
 
 	case Message::ChangeLastUndoActionText:
-		pdoc->ChangeLastUndoActionText(wParam, CharPtrFromSPtr(lParam));
+		ChangeLastUndoActionText(std::string_view(CharPtrFromSPtr(lParam), wParam));
 		break;
 
 	case Message::GetCaretPeriod:
@@ -6262,7 +6247,7 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return ExecuteCommand(EditorCommand::SelectAll);
 
 	case Message::SetSavePoint:
-		pdoc->SetSavePoint();
+		SetSavePoint();
 		break;
 
 	case Message::GetStyledText:
@@ -6272,7 +6257,7 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return 0;
 
 	case Message::CanRedo:
-		return (pdoc->CanRedo() && !pdoc->IsReadOnly()) ? 1 : 0;
+		return CanRedo() ? 1 : 0;
 
 	case Message::MarkerLineFromHandle:
 		return pdoc->LineFromHandle(static_cast<int>(wParam));
@@ -7959,12 +7944,11 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return GetGapPosition();
 
 	case Message::SetChangeHistory:
-		changeHistoryOption = static_cast<ChangeHistoryOption>(wParam);
-		pdoc->ChangeHistorySet(wParam & 1);
+		SetChangeHistory(static_cast<ChangeHistoryOption>(wParam));
 		break;
 
 	case Message::GetChangeHistory:
-		return static_cast<sptr_t>(changeHistoryOption);
+		return static_cast<sptr_t>(GetChangeHistory());
 
 	case Message::SetUndoSelectionHistory:
 		ChangeUndoSelectionHistory(static_cast<UndoSelectionHistoryOption>(wParam));
@@ -8141,7 +8125,7 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return SupportsFeature(static_cast<Supports>(wParam));
 
 	case Message::AddUndoAction:
-		pdoc->AddUndoAction(PositionFromUPtr(wParam),
+		AddUndoAction(PositionFromUPtr(wParam),
 			FlagSet(static_cast<UndoFlags>(lParam), UndoFlags::MayCoalesce));
 		break;
 
