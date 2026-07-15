@@ -450,10 +450,7 @@ int Editor::ExecuteCommand(EditorCommand command) {
 		PageMove(1, Selection::SelTypes::rectangle);
 		break;
 	case EditorCommand::EditToggleOvertype:
-		inOverstrike = !inOverstrike;
-		ContainerNeedsUpdate(Update::Selection);
-		ShowCaretAtCurrentPosition();
-		SetIdle(true);
+		SetOvertype(!inOverstrike);
 		break;
 	case EditorCommand::Cancel:            	// Cancel any modes - handled in subclass
 		// Also unselect text
@@ -652,4 +649,35 @@ int Editor::ExecuteCommand(EditorCommand command) {
 		break;
 	}
 		return 0;
+}
+
+// When overtype is on, each typed character replaces the character to the right of the caret;
+// when off, characters are inserted. Toggling updates selection notifications and caret draw.
+void Editor::SetOvertype(bool overtype) {
+	if (inOverstrike != overtype) {
+		inOverstrike = overtype;
+		ContainerNeedsUpdate(Update::Selection);
+		ShowCaretAtCurrentPosition();
+		SetIdle(true);
+	}
+}
+
+// True when overtype (overstrike) mode is active.
+bool Editor::GetOvertype() const noexcept {
+	return inOverstrike;
+}
+
+// Bind a key chord to a command. EditorCommand::None clears the binding for that chord.
+void Editor::AssignCmdKey(Keys key, KeyMod modifiers, EditorCommand command) {
+	kmap.AssignCmdKey(key, modifiers, command);
+}
+
+// Remove the binding for a key chord (same as assigning EditorCommand::None).
+void Editor::ClearCmdKey(Keys key, KeyMod modifiers) {
+	kmap.AssignCmdKey(key, modifiers, EditorCommand::None);
+}
+
+// Remove every key binding.
+void Editor::ClearAllCmdKeys() {
+	kmap.Clear();
 }

@@ -4263,18 +4263,7 @@ void Editor::ChangeMouseCapture(bool on) {
 	}
 }
 
-void Editor::SetFocusState(bool focusState) {
-	const bool changing = hasFocus != focusState;
-	hasFocus = focusState;
-	if (changing) {
-		Redraw();
-	}
-	NotifyFocus(hasFocus);
-	if (!hasFocus) {
-		CancelModes();
-	}
-	ShowCaretAtCurrentPosition();
-}
+// SetFocus / HasFocus and other input surface methods: definitions in EditorInput.cxx.
 
 void Editor::UpdateBaseElements() {
 	// Overridden by subclasses
@@ -4807,7 +4796,7 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 
 	case Message::ChangeInsertion:
 		PLATFORM_ASSERT(lParam);
-		pdoc->ChangeInsertion(ConstCharPtrFromSPtr(lParam), PositionFromUPtr(wParam));
+		ChangeInsertion(std::string_view(ConstCharPtrFromSPtr(lParam), PositionFromUPtr(wParam)));
 		return 0;
 
 	case Message::AppendText:
@@ -5135,10 +5124,10 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 	// SetBufferedDraw / GetBufferedDraw deleted: one fixed renderer buffering path.
 
 	case Message::GetDragDropEnabled:
-		return dragDropEnabled;
+		return GetDragDropEnabled() ? 1 : 0;
 
 	case Message::SetDragDropEnabled:
-		dragDropEnabled = wParam != 0;
+		SetDragDropEnabled(wParam != 0);
 		break;
 
 	// GetTwoPhaseDraw / SetTwoPhaseDraw deleted: use SetPhasesDraw / GetPhasesDraw.
@@ -5215,12 +5204,11 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return GetBackSpaceUnIndents() ? 1 : 0;
 
 	case Message::SetMouseDwellTime:
-		dwellDelay = static_cast<int>(wParam);
-		ticksToDwell = dwellDelay;
+		SetMouseDwellTime(static_cast<int>(wParam));
 		break;
 
 	case Message::GetMouseDwellTime:
-		return dwellDelay;
+		return GetMouseDwellTime();
 
 	case Message::WordStartPosition:
 		return pdoc->ExtendWordSelect(PositionFromUPtr(wParam), -1, lParam != 0);
@@ -5382,11 +5370,11 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return GetLineEndPosition(LineFromUPtr(wParam));
 
 	case Message::SetIMEInteraction:
-		imeInteraction = static_cast<IMEInteraction>(wParam);
+		SetIMEInteraction(static_cast<IMEInteraction>(wParam));
 		break;
 
 	case Message::GetIMEInteraction:
-		return static_cast<sptr_t>(imeInteraction);
+		return static_cast<sptr_t>(GetIMEInteraction());
 
 	case Message::SetBidirectional:
 		SetBidirectional(static_cast<Bidirectional>(wParam));
@@ -5928,17 +5916,16 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 	case Message::AssignCmdKey:
 		if (const EditorCommand command = CommandFromMessage(static_cast<Message>(lParam));
 			command != EditorCommand::None) {
-			kmap.AssignCmdKey(KeysFromWParam(wParam), KeyModFromWParam(wParam), command);
+			AssignCmdKey(KeysFromWParam(wParam), KeyModFromWParam(wParam), command);
 		}
 		break;
 
 	case Message::ClearCmdKey:
-		kmap.AssignCmdKey(KeysFromWParam(wParam),
-			KeyModFromWParam(wParam), EditorCommand::None);
+		ClearCmdKey(KeysFromWParam(wParam), KeyModFromWParam(wParam));
 		break;
 
 	case Message::ClearAllCmdKeys:
-		kmap.Clear();
+		ClearAllCmdKeys();
 		break;
 
 	case Message::IndicSetStyle:
@@ -6201,12 +6188,9 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return GetMultiEdgeColumn(wParam);
 
 
-	case Message::GetAccessibility:
-		return static_cast<sptr_t>(Accessibility::Disabled);
-
-	case Message::SetAccessibility:
-		// May be implemented by platform code.
-		break;
+	// GetAccessibility / SetAccessibility deleted: no accessibility bridge in this roadmap.
+	// GrabFocus deleted: the Wayland shell calls SetFocus when the compositor changes focus.
+	// SetKeysUnicode / GetKeysUnicode deleted: all input is UTF-8 after phase 3.
 
 	// GetDocPointer, SetDocPointer, CreateDocument, AddRefDocument,
 	// ReleaseDocument, GetDocumentOptions, and CreateLoader are deleted:
@@ -6253,23 +6237,18 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return GetLineSelEndPosition(LineFromUPtr(wParam));
 
 	case Message::SetOvertype:
-		if (inOverstrike != (wParam != 0)) {
-			inOverstrike = wParam != 0;
-			ContainerNeedsUpdate(Update::Selection);
-			ShowCaretAtCurrentPosition();
-			SetIdle(true);
-		}
+		SetOvertype(wParam != 0);
 		break;
 
 	case Message::GetOvertype:
-		return inOverstrike ? 1 : 0;
+		return GetOvertype() ? 1 : 0;
 
 	case Message::SetFocus:
-		SetFocusState(wParam != 0);
+		SetFocus(wParam != 0);
 		break;
 
 	case Message::GetFocus:
-		return hasFocus;
+		return HasFocus() ? 1 : 0;
 
 	case Message::SetStatus:
 		errorStatus = static_cast<Status>(wParam);
@@ -6279,26 +6258,25 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return static_cast<sptr_t>(errorStatus);
 
 	case Message::SetMouseDownCaptures:
-		mouseDownCaptures = wParam != 0;
+		SetMouseDownCaptures(wParam != 0);
 		break;
 
 	case Message::GetMouseDownCaptures:
-		return mouseDownCaptures;
+		return GetMouseDownCaptures() ? 1 : 0;
 
 	case Message::SetMouseWheelCaptures:
-		mouseWheelCaptures = wParam != 0;
+		SetMouseWheelCaptures(wParam != 0);
 		break;
 
 	case Message::GetMouseWheelCaptures:
-		return mouseWheelCaptures;
+		return GetMouseWheelCaptures() ? 1 : 0;
 
 	case Message::SetCursor:
-		cursorMode = static_cast<CursorShape>(wParam);
-		DisplayCursor(Window::Cursor::text);
+		SetCursor(static_cast<CursorShape>(wParam));
 		break;
 
 	case Message::GetCursor:
-		return static_cast<sptr_t>(cursorMode);
+		return static_cast<sptr_t>(GetCursor());
 
 	case Message::SetControlCharSymbol:
 		SetControlCharSymbol(static_cast<int>(wParam));

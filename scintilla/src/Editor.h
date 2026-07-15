@@ -1012,7 +1012,6 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void ChangeMouseCapture(bool on);
 	virtual void SetMouseCapture(bool on) = 0;
 	virtual bool HaveMouseCapture() = 0;
-	void SetFocusState(bool focusState);
 	virtual void UpdateBaseElements();
 
 	Sci::Position PositionAfterArea(PRectangle rcArea) const;
@@ -1230,6 +1229,31 @@ public:
 	// Zoom level in points; definitions in EditorStyling.cxx.
 	void SetZoom(int zoomInPoints);
 	int GetZoom() const noexcept;
+
+
+	// Focus and other input surface; definitions in EditorInput.cxx.
+	void SetFocus(bool focusState);
+	bool HasFocus() const noexcept;
+	void SetIMEInteraction(Scintilla::IMEInteraction imeInteraction_);
+	Scintilla::IMEInteraction GetIMEInteraction() const noexcept;
+	void SetMouseDwellTime(int milliseconds);
+	int GetMouseDwellTime() const noexcept;
+	void SetMouseDownCaptures(bool captures);
+	bool GetMouseDownCaptures() const noexcept;
+	void SetMouseWheelCaptures(bool captures);
+	bool GetMouseWheelCaptures() const noexcept;
+	void SetCursor(Scintilla::CursorShape cursor);
+	Scintilla::CursorShape GetCursor() const noexcept;
+	void SetDragDropEnabled(bool enabled);
+	bool GetDragDropEnabled() const noexcept;
+	void ChangeInsertion(std::string_view text);
+
+	// Overtype and key-map configuration; definitions in EditorCommands.cxx.
+	void SetOvertype(bool overtype);
+	bool GetOvertype() const noexcept;
+	void AssignCmdKey(Scintilla::Keys key, Scintilla::KeyMod modifiers, EditorCommand command);
+	void ClearCmdKey(Scintilla::Keys key, Scintilla::KeyMod modifiers);
+	void ClearAllCmdKeys();
 
 	// Public so scintilla_send_message can use it.
 	virtual Scintilla::sptr_t WndProc(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);

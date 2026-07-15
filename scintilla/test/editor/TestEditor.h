@@ -60,6 +60,8 @@ struct TestEditorObservations {
 	std::vector<Scintilla::Message> defaultWindowCalls;
 	std::vector<PRectangle> callTipWindows;
 	std::vector<std::string> popupItems;
+	// When set, NotifyParent replaces InsertCheck text via ChangeInsertion.
+	std::optional<std::string> changeInsertionOnInsertCheck;
 };
 
 class TestEditor final : public ScintillaBase {

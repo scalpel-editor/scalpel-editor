@@ -160,6 +160,10 @@ public:
 	void CallTipUseStyle(int tabSize);
 	void CallTipSetPosition(bool above);
 
+	// Context-menu policy; definition in EditorInput.cxx with the other input surface.
+	void UsePopUp(Scintilla::PopUp popUpMode);
+	Scintilla::PopUp GetUsePopUp() const noexcept;
+
 	// Public so scintilla_send_message can use it
 	Scintilla::sptr_t WndProc(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam) override;
 };

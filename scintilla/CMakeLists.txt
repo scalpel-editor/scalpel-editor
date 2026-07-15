@@ -28,6 +28,7 @@ add_library(scintilla_core STATIC
   src/EditorDocument.cxx
   src/EditorFolding.cxx
   src/EditorHistory.cxx
+  src/EditorInput.cxx
   src/EditorLines.cxx
   src/EditorMargins.cxx
   src/EditorMarkers.cxx

@@ -723,7 +723,7 @@ sptr_t ScintillaBase::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::UsePopUp:
-		displayPopupMenu = static_cast<PopUp>(wParam);
+		UsePopUp(static_cast<PopUp>(wParam));
 		break;
 
 	case Message::GetLexer:

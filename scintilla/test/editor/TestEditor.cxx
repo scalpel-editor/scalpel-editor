@@ -375,6 +375,11 @@ void TestEditor::NotifyChange() {
 }
 
 void TestEditor::NotifyParent(Scintilla::NotificationData scn) {
+	if (scn.nmhdr.code == Scintilla::Notification::Modified &&
+		FlagSet(scn.modificationType, Scintilla::ModificationFlags::InsertCheck) &&
+		observations.changeInsertionOnInsertCheck.has_value()) {
+		ChangeInsertion(*observations.changeInsertionOnInsertCheck);
+	}
 	TestNotification notification;
 	notification.code = scn.nmhdr.code;
 	notification.position = scn.position;
