@@ -1,0 +1,112 @@
+// scalpel-editor test code
+/** @file EditorScrollingTest.cxx
+ ** Focused behavior tests for view scrolling and scrollbar options.
+ **/
+
+#include <array>
+#include <algorithm>
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <forward_list>
+#include <map>
+#include <memory>
+#include <optional>
+#include <set>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+#include "ScintillaTypes.h"
+#include "ScintillaMessages.h"
+#include "ScintillaStructures.h"
+#include "ILoader.h"
+#include "ILexer.h"
+
+#include "Debugging.h"
+#include "Geometry.h"
+#include "Platform.h"
+#include "CharacterType.h"
+#include "CharacterCategoryMap.h"
+#include "Position.h"
+#include "UniqueString.h"
+#include "SplitVector.h"
+#include "Partitioning.h"
+#include "RunStyles.h"
+#include "ContractionState.h"
+#include "CellBuffer.h"
+#include "PerLine.h"
+#include "KeyMap.h"
+#include "Indicator.h"
+#include "LineMarker.h"
+#include "Style.h"
+#include "ViewStyle.h"
+#include "CharClassify.h"
+#include "Decoration.h"
+#include "CaseFolder.h"
+#include "Document.h"
+#include "UniConversion.h"
+#include "Selection.h"
+#include "PositionCache.h"
+#include "EditModel.h"
+#include "MarginView.h"
+#include "EditView.h"
+#include "Editor.h"
+#include "AutoComplete.h"
+#include "CallTip.h"
+#include "ScintillaBase.h"
+
+#include "TestPlatform.h"
+#include "TestEditor.h"
+
+#include "catch.hpp"
+
+using namespace Scintilla;
+using namespace Scintilla::Internal;
+
+TEST_CASE("X offset and first-visible-line message path round-trip") {
+	TestHost host;
+	TestEditor editor(host);
+	// Default first visible line is 0; ScrollTo clamps when the document fits on screen.
+	CHECK(editor.GetFirstVisibleLine() == 0);
+	CHECK(editor.WndProc(Message::GetFirstVisibleLine, 0, 0) == 0);
+
+	editor.SetXOffset(12);
+	CHECK(editor.GetXOffset() == 12);
+	CHECK(editor.WndProc(Message::GetXOffset, 0, 0) == 12);
+	editor.WndProc(Message::SetXOffset, 0, 0);
+	CHECK(editor.GetXOffset() == 0);
+}
+
+TEST_CASE("Scroll width and end-at-last-line options") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.WndProc(Message::SetScrollWidth, 400, 0);
+	CHECK(editor.WndProc(Message::GetScrollWidth, 0, 0) == 400);
+	editor.WndProc(Message::SetScrollWidthTracking, 1, 0);
+	CHECK(editor.WndProc(Message::GetScrollWidthTracking, 0, 0) != 0);
+	editor.WndProc(Message::SetEndAtLastLine, 0, 0);
+	CHECK(editor.WndProc(Message::GetEndAtLastLine, 0, 0) == 0);
+}
+
+TEST_CASE("Scroll bar visibility options round-trip") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.WndProc(Message::SetHScrollBar, 0, 0);
+	CHECK(editor.WndProc(Message::GetHScrollBar, 0, 0) == 0);
+	editor.WndProc(Message::SetVScrollBar, 0, 0);
+	CHECK(editor.WndProc(Message::GetVScrollBar, 0, 0) == 0);
+	editor.WndProc(Message::SetHScrollBar, 1, 0);
+	editor.WndProc(Message::SetVScrollBar, 1, 0);
+	CHECK(editor.WndProc(Message::GetHScrollBar, 0, 0) != 0);
+	CHECK(editor.WndProc(Message::GetVScrollBar, 0, 0) != 0);
+}
+
+TEST_CASE("TextHeight reports a positive line height") {
+	TestHost host;
+	TestEditor editor(host);
+	const sptr_t h = editor.WndProc(Message::TextHeight, 0, 0);
+	CHECK(h > 0);
+}

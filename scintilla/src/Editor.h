@@ -723,6 +723,21 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void ReplaceSel(std::string_view text);
 	void ReplaceRectangular(std::string_view text);
 	void GoToLine(Sci::Line lineNo);
+	// Scrolling options and hit testing: EditorScrolling.cxx.
+	void SetHScrollBar(bool visible);
+	bool GetHScrollBar() const noexcept;
+	void SetVScrollBar(bool visible);
+	bool GetVScrollBar() const noexcept;
+	void SetScrollWidth(int width);
+	int GetScrollWidth() const noexcept;
+	void SetScrollWidthTracking(bool tracking);
+	bool GetScrollWidthTracking() const noexcept;
+	void SetEndAtLastLine(bool endAtLast);
+	bool GetEndAtLastLine() const noexcept;
+	int TextHeightPixels();
+	void SetVisiblePolicy(Scintilla::uptr_t policy, Scintilla::sptr_t slop);
+	int PointXFromPosition(Sci::Position pos);
+	int PointYFromPosition(Sci::Position pos);
 
 	virtual void CopyToClipboard(const SelectionText &selectedText) = 0;
 	std::string RangeText(Sci::Position start, Sci::Position end) const;
@@ -918,6 +933,14 @@ public:
 	void SetEOLMode(Scintilla::EndOfLine eolMode);
 	Scintilla::EndOfLine GetEOLMode() const noexcept;
 	void ConvertEOLs(Scintilla::EndOfLine eolMode);
+
+	// View scrolling; definitions in EditorScrolling.cxx.
+	Sci::Line GetFirstVisibleLine() const noexcept;
+	void SetFirstVisibleLine(Sci::Line line);
+	void SetXOffset(int offset);
+	int GetXOffset() const noexcept;
+	void LineScroll(Sci::Position columns, Sci::Line lines);
+	void ScrollVertical(Sci::Line docLine, Sci::Line displayLine);
 
 	// Target search and replace; definitions in EditorSearch.cxx.
 	void SetTargetStart(Sci::Position pos);

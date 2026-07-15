@@ -5103,10 +5103,10 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return 0;
 
 	case Message::GetFirstVisibleLine:
-		return topLine;
+		return GetFirstVisibleLine();
 
 	case Message::SetFirstVisibleLine:
-		ScrollTo(LineFromUPtr(wParam));
+		SetFirstVisibleLine(LineFromUPtr(wParam));
 		break;
 
 	case Message::GetLine: {	// Risk of overwriting the end of the buffer
@@ -5242,28 +5242,19 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 			0, pdoc->Length());
 
 	case Message::LineScroll:
-		ScrollTo(topLine + lParam);
-		HorizontalScrollTo(xOffset + static_cast<int>(static_cast<int>(wParam) * vs.spaceWidth));
+		LineScroll(PositionFromUPtr(wParam), LineFromUPtr(lParam));
 		return 1;
 
 	case Message::ScrollVertical:
-		if (Wrapping()) {
-			scrollToAfterWrap = { LineFromUPtr(wParam), lParam };
-		} else {
-			scrollToAfterWrap.reset();
-		}
-		ScrollTo(pcs->DisplayFromDocSub(LineFromUPtr(wParam), lParam));
+		ScrollVertical(LineFromUPtr(wParam), LineFromUPtr(lParam));
 		break;
 
 	case Message::SetXOffset:
-		xOffset = static_cast<int>(wParam);
-		ContainerNeedsUpdate(Update::HScroll);
-		SetHorizontalScrollPos();
-		Redraw();
+		SetXOffset(static_cast<int>(wParam));
 		break;
 
 	case Message::GetXOffset:
-		return xOffset;
+		return GetXOffset();
 
 	case Message::ChooseCaretX:
 		ChooseCaretX();
@@ -5284,21 +5275,10 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return this->CanPaste() ? 1 : 0;
 
 	case Message::PointXFromPosition:
-		if (lParam < 0) {
-			return 0;
-		} else {
-			const Point pt = LocationFromPosition(lParam);
-			// Convert to view-relative
-			return static_cast<int>(pt.x) - vs.textStart + vs.fixedColumnWidth;
-		}
+		return PointXFromPosition(lParam);
 
 	case Message::PointYFromPosition:
-		if (lParam < 0) {
-			return 0;
-		} else {
-			const Point pt = LocationFromPosition(lParam);
-			return static_cast<int>(pt.y);
-		}
+		return PointYFromPosition(lParam);
 
 	// Message::FindText deleted: use SearchInTarget with a typed range.
 
@@ -5887,23 +5867,18 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return view.GetLayoutThreads();
 
 	case Message::SetScrollWidth:
-		PLATFORM_ASSERT(wParam > 0);
-		if ((wParam > 0) && (wParam != static_cast<unsigned int>(scrollWidth))) {
-			view.lineWidthMaxSeen = 0;
-			scrollWidth = static_cast<int>(wParam);
-			SetScrollBars();
-		}
+		SetScrollWidth(static_cast<int>(wParam));
 		break;
 
 	case Message::GetScrollWidth:
-		return scrollWidth;
+		return GetScrollWidth();
 
 	case Message::SetScrollWidthTracking:
-		trackLineWidth = wParam != 0;
+		SetScrollWidthTracking(wParam != 0);
 		break;
 
 	case Message::GetScrollWidthTracking:
-		return trackLineWidth;
+		return GetScrollWidthTracking() ? 1 : 0;
 
 	case Message::LinesJoin:
 		return ExecuteCommand(EditorCommand::LinesJoin);
@@ -5919,19 +5894,15 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return TextWidth(wParam, ConstCharPtrFromSPtr(lParam));
 
 	case Message::TextHeight:
-		RefreshStyleData();
-		return vs.lineHeight;
+		return TextHeightPixels();
 
 	case Message::SetEndAtLastLine:
 		PLATFORM_ASSERT((wParam == 0) || (wParam == 1));
-		if (endAtLastLine != (wParam != 0)) {
-			endAtLastLine = wParam != 0;
-			SetScrollBars();
-		}
+		SetEndAtLastLine(wParam != 0);
 		break;
 
 	case Message::GetEndAtLastLine:
-		return endAtLastLine;
+		return GetEndAtLastLine() ? 1 : 0;
 
 	case Message::SetCaretSticky:
 		PLATFORM_ASSERT(static_cast<CaretSticky>(wParam) <= CaretSticky::WhiteSpace);
@@ -5951,29 +5922,19 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 	case Message::FindColumn:
 		return FindColumn(LineFromUPtr(wParam), lParam);
 
-	case Message::SetHScrollBar :
-		if (horizontalScrollBarVisible != (wParam != 0)) {
-			horizontalScrollBarVisible = wParam != 0;
-			SetScrollBars();
-			ReconfigureScrollBars();
-		}
+	case Message::SetHScrollBar:
+		SetHScrollBar(wParam != 0);
 		break;
 
 	case Message::GetHScrollBar:
-		return horizontalScrollBarVisible;
+		return GetHScrollBar() ? 1 : 0;
 
 	case Message::SetVScrollBar:
-		if (verticalScrollBarVisible != (wParam != 0)) {
-			verticalScrollBarVisible = wParam != 0;
-			SetScrollBars();
-			ReconfigureScrollBars();
-			if (verticalScrollBarVisible)
-				SetVerticalScrollPos();
-		}
+		SetVScrollBar(wParam != 0);
 		break;
 
 	case Message::GetVScrollBar:
-		return verticalScrollBarVisible;
+		return GetVScrollBar() ? 1 : 0;
 
 	case Message::SetIndentationGuides:
 		SetIndentationGuides(static_cast<IndentView>(wParam));
@@ -6540,7 +6501,7 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::SetVisiblePolicy:
-		visiblePolicy = VisiblePolicySlop(wParam, lParam);
+		SetVisiblePolicy(wParam, lParam);
 		break;
 
 	case Message::LinesOnScreen:
