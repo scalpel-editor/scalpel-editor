@@ -1,6 +1,8 @@
 // Scintilla source code edit control
 /** @file ScintillaBase.cxx
- ** An enhanced subclass of Editor with calltips, autocomplete and context menu.
+ ** ScintillaBase shell: context menu, IME helpers, lexer glue, and temporary
+ ** message forwarding. Autocomplete lives in EditorAutocomplete.cxx; call tips
+ ** live in EditorCallTips.cxx.
  **/
 // Copyright 1998-2003 by Neil Hodgson <neilh@scintilla.org>
 // The License.txt file describes the conditions under which this software may be distributed.
@@ -237,327 +239,6 @@ void ScintillaBase::DrawImeIndicator(int indicator, Sci::Position len) {
 		const Sci::Position positionInsert = sel.Range(r).Start().Position();
 		pdoc->DecorationFillRange(positionInsert - len, 1, len);
 	}
-}
-
-void ScintillaBase::AutoCompleteInsert(Sci::Position startPos, Sci::Position removeLen, std::string_view text) {
-	UndoGroup ug(pdoc);
-	if (multiAutoCMode == MultiAutoComplete::Once) {
-		pdoc->DeleteChars(startPos, removeLen);
-		const Sci::Position lengthInserted = pdoc->InsertString(startPos, text);
-		SetEmptySelection(startPos + lengthInserted);
-	} else {
-		// MultiAutoComplete::Each
-		for (size_t r=0; r<sel.Count(); r++) {
-			if (!RangeContainsProtected(sel.Range(r))) {
-				Sci::Position positionInsert = sel.Range(r).Start().Position();
-				positionInsert = RealizeVirtualSpace(positionInsert, sel.Range(r).caret.VirtualSpace());
-				if (positionInsert - removeLen >= 0) {
-					positionInsert -= removeLen;
-					pdoc->DeleteChars(positionInsert, removeLen);
-				}
-				const Sci::Position lengthInserted = pdoc->InsertString(positionInsert, text);
-				if (lengthInserted > 0) {
-					sel.Range(r) = SelectionRange(positionInsert + lengthInserted);
-				}
-				sel.Range(r).ClearVirtualSpace();
-			}
-		}
-	}
-}
-
-void ScintillaBase::AutoCompleteStart(Sci::Position lenEntered, const char *list) {
-	//Platform::DebugPrintf("AutoComplete %s\n", list);
-	ct.CallTipCancel();
-
-	if (ac.chooseSingle && (listType == 0)) {
-		if (list && !strchr(list, ac.GetSeparator())) {
-			// list contains just one item so choose it
-			const std::string_view item(list);
-			const std::string_view choice = item.substr(0, item.find_first_of(ac.GetTypesep()));
-			if (ac.ignoreCase) {
-				// May need to convert the case before invocation, so remove lenEntered characters
-				AutoCompleteInsert(sel.MainCaret() - lenEntered, lenEntered, choice);
-			} else {
-				AutoCompleteInsert(sel.MainCaret(), 0, choice.substr(lenEntered));
-			}
-			const Sci::Position firstPos = sel.MainCaret() - lenEntered;
-			// Construct a string with a NUL at end as that is expected by applications
-			const std::string selected(choice);
-			AutoCompleteNotifyCompleted('\0', CompletionMethods::SingleChoice, firstPos, selected.c_str());
-
-			ac.Cancel();
-			return;
-		}
-	}
-
-	const ListOptions options{
-		vs.ElementColour(Element::List),
-		vs.ElementColour(Element::ListBack),
-		vs.ElementColour(Element::ListSelected),
-		vs.ElementColour(Element::ListSelectedBack),
-		ac.options,
-		ac.imageScale,
-	};
-
-	int lineHeight;
-	if (vs.autocStyle != StyleDefault) {
-		AutoSurface surfaceMeasure(this);
-		lineHeight = static_cast<int>(std::lround(surfaceMeasure->Height(vs.styles[vs.autocStyle].font.get())));
-	} else {
-		lineHeight = vs.lineHeight;
-	}
-
-	ac.Start(wMain, idAutoComplete, sel.MainCaret(), PointMainCaret(),
-				lenEntered, lineHeight, technology, options);
-
-	const PRectangle rcClient = GetClientRectangle();
-	Point pt = LocationFromPosition(sel.MainCaret() - lenEntered);
-	PRectangle rcPopupBounds = wMain.GetMonitorRect(pt);
-	if (rcPopupBounds.Height() == 0)
-		rcPopupBounds = rcClient;
-
-	int heightLB = ac.heightLBDefault;
-	int widthLB = ac.widthLBDefault;
-	if (pt.x >= rcClient.right - widthLB) {
-		HorizontalScrollTo(static_cast<int>(xOffset + pt.x - rcClient.right + widthLB));
-		Redraw();
-		pt = PointMainCaret();
-	}
-	if (wMargin.Created()) {
-		pt = pt + GetVisibleOriginInMain();
-	}
-	PRectangle rcac;
-	rcac.left = pt.x - ac.lb->CaretFromEdge();
-	if (pt.y >= rcPopupBounds.bottom - heightLB &&  // Won't fit below.
-	        pt.y >= (rcPopupBounds.bottom + rcPopupBounds.top) / 2) { // and there is more room above.
-		rcac.top = pt.y - heightLB;
-		if (rcac.top < rcPopupBounds.top) {
-			heightLB -= static_cast<int>(rcPopupBounds.top - rcac.top);
-			rcac.top = rcPopupBounds.top;
-		}
-	} else {
-		rcac.top = pt.y + vs.lineHeight;
-	}
-	rcac.right = rcac.left + widthLB;
-	rcac.bottom = static_cast<XYPOSITION>(std::min(static_cast<int>(rcac.top) + heightLB, static_cast<int>(rcPopupBounds.bottom)));
-	ac.lb->SetPositionRelative(rcac, &wMain);
-	ac.lb->SetFont(vs.styles[vs.autocStyle].font.get());
-	const int aveCharWidth = static_cast<int>(vs.styles[vs.autocStyle].aveCharWidth);
-	ac.lb->SetAverageCharWidth(aveCharWidth);
-	ac.lb->SetDelegate(this);
-
-	ac.SetList(list ? list : "");
-
-	// Fiddle the position of the list so it is right next to the target and wide enough for all its strings
-	PRectangle rcList = ac.lb->GetDesiredRect();
-	const int heightAlloced = static_cast<int>(rcList.bottom - rcList.top);
-	widthLB = std::max(widthLB, static_cast<int>(rcList.right - rcList.left));
-	if (maxListWidth != 0)
-		widthLB = std::min(widthLB, aveCharWidth*maxListWidth);
-	// Make an allowance for large strings in list
-	rcList.left = pt.x - ac.lb->CaretFromEdge();
-	rcList.right = rcList.left + widthLB;
-	if (((pt.y + vs.lineHeight) >= (rcPopupBounds.bottom - heightAlloced)) &&  // Won't fit below.
-	        ((pt.y + vs.lineHeight / 2) >= (rcPopupBounds.bottom + rcPopupBounds.top) / 2)) { // and there is more room above.
-		rcList.top = pt.y - heightAlloced;
-	} else {
-		rcList.top = pt.y + vs.lineHeight;
-	}
-	rcList.bottom = rcList.top + heightAlloced;
-	ac.lb->SetPositionRelative(rcList, &wMain);
-	ac.Show(true);
-	if (lenEntered != 0) {
-		AutoCompleteMoveToCurrentWord();
-	}
-}
-
-void ScintillaBase::AutoCompleteCancel() {
-	if (ac.Active()) {
-		NotificationData scn = {};
-		scn.nmhdr.code = Notification::AutoCCancelled;
-		scn.wParam = 0;
-		scn.listType = 0;
-		NotifyParent(scn);
-	}
-	ac.Cancel();
-}
-
-void ScintillaBase::AutoCompleteMove(int delta) {
-	ac.Move(delta);
-}
-
-void ScintillaBase::AutoCompleteMoveToCurrentWord() {
-	if (FlagSet(ac.options, AutoCompleteOption::SelectFirstItem))
-		return;
-	std::string wordCurrent = RangeText(ac.posStart - ac.startLen, sel.MainCaret());
-	ac.Select(wordCurrent.c_str());
-}
-
-void ScintillaBase::AutoCompleteSelection() {
-	const int item = ac.GetSelection();
-	std::string selected;
-	if (item != -1) {
-		selected = ac.GetValue(item);
-	}
-
-	NotificationData scn = {};
-	scn.nmhdr.code = Notification::AutoCSelectionChange;
-	scn.message = static_cast<Message>(0);
-	scn.wParam = listType;
-	scn.listType = listType;
-	const Sci::Position firstPos = ac.posStart - ac.startLen;
-	scn.position = firstPos;
-	scn.lParam = firstPos;
-	scn.text = selected.c_str();
-	NotifyParent(scn);
-}
-
-void ScintillaBase::AutoCompleteCharacterAdded(char ch) {
-	if (ac.IsFillUpChar(ch)) {
-		AutoCompleteCompleted(ch, CompletionMethods::FillUp);
-	} else if (ac.IsStopChar(ch)) {
-		AutoCompleteCancel();
-	} else {
-		AutoCompleteMoveToCurrentWord();
-	}
-}
-
-void ScintillaBase::AutoCompleteCharacterDeleted() {
-	if (sel.MainCaret() < ac.posStart - ac.startLen) {
-		AutoCompleteCancel();
-	} else if (ac.cancelAtStartPos && (sel.MainCaret() <= ac.posStart)) {
-		AutoCompleteCancel();
-	} else {
-		AutoCompleteMoveToCurrentWord();
-	}
-	NotificationData scn = {};
-	scn.nmhdr.code = Notification::AutoCCharDeleted;
-	scn.wParam = 0;
-	scn.listType = 0;
-	NotifyParent(scn);
-}
-
-void ScintillaBase::AutoCompleteNotifyCompleted(char ch, CompletionMethods completionMethod, Sci::Position firstPos, const char *text) {
-	NotificationData scn = {};
-	scn.nmhdr.code = Notification::AutoCCompleted;
-	scn.message = static_cast<Message>(0);
-	scn.ch = ch;
-	scn.listCompletionMethod = completionMethod;
-	scn.wParam = listType;
-	scn.listType = listType;
-	scn.position = firstPos;
-	scn.lParam = firstPos;
-	scn.text = text;
-	NotifyParent(scn);
-}
-
-void ScintillaBase::AutoCompleteCompleted(char ch, CompletionMethods completionMethod) {
-	const int item = ac.GetSelection();
-	if (item == -1) {
-		AutoCompleteCancel();
-		return;
-	}
-	const std::string selected = ac.GetValue(item);
-
-	ac.Show(false);
-
-	NotificationData scn = {};
-	scn.nmhdr.code = listType > 0 ? Notification::UserListSelection : Notification::AutoCSelection;
-	scn.message = static_cast<Message>(0);
-	scn.ch = ch;
-	scn.listCompletionMethod = completionMethod;
-	scn.wParam = listType;
-	scn.listType = listType;
-	const Sci::Position firstPos = ac.posStart - ac.startLen;
-	scn.position = firstPos;
-	scn.lParam = firstPos;
-	scn.text = selected.c_str();
-	NotifyParent(scn);
-
-	if (!ac.Active())
-		return;
-	ac.Cancel();
-
-	if (listType > 0)
-		return;
-
-	Sci::Position endPos = sel.MainCaret();
-	if (ac.dropRestOfWord)
-		endPos = pdoc->ExtendWordSelect(endPos, 1, true);
-	if (endPos < firstPos)
-		return;
-	AutoCompleteInsert(firstPos, endPos - firstPos, selected);
-	SetLastXChosen();
-
-	AutoCompleteNotifyCompleted(ch, completionMethod, firstPos, selected.c_str());
-}
-
-int ScintillaBase::AutoCompleteGetCurrent() const {
-	if (!ac.Active())
-		return -1;
-	return ac.GetSelection();
-}
-
-int ScintillaBase::AutoCompleteGetCurrentText(char *buffer) const {
-	if (ac.Active()) {
-		const int item = ac.GetSelection();
-		if (item != -1) {
-			const std::string selected = ac.GetValue(item);
-			if (buffer)
-				memcpy(buffer, selected.c_str(), selected.length()+1);
-			return static_cast<int>(selected.length());
-		}
-	}
-	if (buffer)
-		*buffer = '\0';
-	return 0;
-}
-
-void ScintillaBase::CallTipShow(Point pt, const char *defn) {
-	ac.Cancel();
-	// If container knows about StyleCallTip then use it in place of the
-	// StyleDefault for the face name, size and character set. Also use it
-	// for the foreground and background colour.
-	const int ctStyle = ct.UseStyleCallTip() ? StyleCallTip : StyleDefault;
-	const Style &style = vs.styles[ctStyle];
-	if (ct.UseStyleCallTip()) {
-		ct.SetForeBack(style.fore, style.back);
-	}
-	if (wMargin.Created()) {
-		pt = pt + GetVisibleOriginInMain();
-	}
-	AutoSurface surfaceMeasure(this);
-	PRectangle rc = ct.CallTipStart(sel.MainCaret(), pt,
-		vs.lineHeight,
-		defn,
-		surfaceMeasure,
-		style.font);
-	// If the call-tip window would be out of the client
-	// space
-	const PRectangle rcClient = GetClientRectangle();
-	const int offset = vs.lineHeight + static_cast<int>(rc.Height());
-	// adjust so it displays above the text.
-	if (rc.bottom > rcClient.bottom && rc.Height() < rcClient.Height()) {
-		rc.top -= offset;
-		rc.bottom -= offset;
-	}
-	// adjust so it displays below the text.
-	if (rc.top < rcClient.top && rc.Height() < rcClient.Height()) {
-		rc.top += offset;
-		rc.bottom += offset;
-	}
-	// Now display the window.
-	CreateCallTipWindow(rc);
-	ct.wCallTip.SetPositionRelative(rc, &wMain);
-	ct.wCallTip.Show();
-	ct.wCallTip.InvalidateAll();
-}
-
-void ScintillaBase::CallTipClick() {
-	NotificationData scn = {};
-	scn.nmhdr.code = Notification::CallTipClick;
-	scn.position = ct.clickPlace;
-	NotifyParent(scn);
 }
 
 bool ScintillaBase::ShouldDisplayPopup(Point ptInWindowCoordinates) const {
@@ -838,215 +519,206 @@ void ScintillaBase::NotifyStyleToNeeded(Sci::Position endStyleNeeded) {
 
 sptr_t ScintillaBase::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 	switch (iMessage) {
+	// Autocomplete and call tip cases temporarily forward to named methods
+	// in EditorAutocomplete.cxx / EditorCallTips.cxx until the message layer
+	// is removed in phase 5.
 	case Message::AutoCShow:
-		listType = 0;
-		AutoCompleteStart(PositionFromUPtr(wParam), ConstCharPtrFromSPtr(lParam));
+		AutoCShow(PositionFromUPtr(wParam), ConstCharPtrFromSPtr(lParam));
 		break;
 
 	case Message::AutoCCancel:
-		ac.Cancel();
+		AutoCCancel();
 		break;
 
 	case Message::AutoCActive:
-		return ac.Active();
+		return AutoCActive();
 
 	case Message::AutoCPosStart:
-		return ac.posStart;
+		return AutoCPosStart();
 
 	case Message::AutoCComplete:
-		AutoCompleteCompleted(0, CompletionMethods::Command);
+		AutoCComplete();
 		break;
 
 	case Message::AutoCSetSeparator:
-		ac.SetSeparator(static_cast<char>(wParam));
+		AutoCSetSeparator(static_cast<char>(wParam));
 		break;
 
 	case Message::AutoCGetSeparator:
-		return ac.GetSeparator();
+		return AutoCGetSeparator();
 
 	case Message::AutoCStops:
-		ac.SetStopChars(ConstCharPtrFromSPtr(lParam));
+		AutoCStops(ConstCharPtrFromSPtr(lParam));
 		break;
 
 	case Message::AutoCSelect:
-		ac.Select(ConstCharPtrFromSPtr(lParam));
+		AutoCSelect(ConstCharPtrFromSPtr(lParam));
 		break;
 
 	case Message::AutoCGetCurrent:
-		return AutoCompleteGetCurrent();
+		return AutoCGetCurrent();
 
 	case Message::AutoCGetCurrentText:
-		return AutoCompleteGetCurrentText(CharPtrFromSPtr(lParam));
+		return AutoCGetCurrentText(CharPtrFromSPtr(lParam));
 
 	case Message::AutoCSetCancelAtStart:
-		ac.cancelAtStartPos = wParam != 0;
+		AutoCSetCancelAtStart(wParam != 0);
 		break;
 
 	case Message::AutoCGetCancelAtStart:
-		return ac.cancelAtStartPos;
+		return AutoCGetCancelAtStart();
 
 	case Message::AutoCSetFillUps:
-		ac.SetFillUpChars(ConstCharPtrFromSPtr(lParam));
+		AutoCSetFillUps(ConstCharPtrFromSPtr(lParam));
 		break;
 
 	case Message::AutoCSetChooseSingle:
-		ac.chooseSingle = wParam != 0;
+		AutoCSetChooseSingle(wParam != 0);
 		break;
 
 	case Message::AutoCGetChooseSingle:
-		return ac.chooseSingle;
+		return AutoCGetChooseSingle();
 
 	case Message::AutoCSetIgnoreCase:
-		ac.ignoreCase = wParam != 0;
+		AutoCSetIgnoreCase(wParam != 0);
 		break;
 
 	case Message::AutoCGetIgnoreCase:
-		return ac.ignoreCase;
+		return AutoCGetIgnoreCase();
 
 	case Message::AutoCSetCaseInsensitiveBehaviour:
-		ac.ignoreCaseBehaviour = static_cast<CaseInsensitiveBehaviour>(wParam);
+		AutoCSetCaseInsensitiveBehaviour(static_cast<CaseInsensitiveBehaviour>(wParam));
 		break;
 
 	case Message::AutoCGetCaseInsensitiveBehaviour:
-		return static_cast<sptr_t>(ac.ignoreCaseBehaviour);
+		return static_cast<sptr_t>(AutoCGetCaseInsensitiveBehaviour());
 
 	case Message::AutoCSetMulti:
-		multiAutoCMode = static_cast<MultiAutoComplete>(wParam);
+		AutoCSetMulti(static_cast<MultiAutoComplete>(wParam));
 		break;
 
 	case Message::AutoCGetMulti:
-		return static_cast<sptr_t>(multiAutoCMode);
+		return static_cast<sptr_t>(AutoCGetMulti());
 
 	case Message::AutoCSetOrder:
-		ac.autoSort = static_cast<Ordering>(wParam);
+		AutoCSetOrder(static_cast<Ordering>(wParam));
 		break;
 
 	case Message::AutoCGetOrder:
-		return static_cast<sptr_t>(ac.autoSort);
+		return static_cast<sptr_t>(AutoCGetOrder());
 
 	case Message::UserListShow:
-		listType = static_cast<int>(wParam);
-		AutoCompleteStart(0, ConstCharPtrFromSPtr(lParam));
+		UserListShow(static_cast<int>(wParam), ConstCharPtrFromSPtr(lParam));
 		break;
 
 	case Message::AutoCSetAutoHide:
-		ac.autoHide = wParam != 0;
+		AutoCSetAutoHide(wParam != 0);
 		break;
 
 	case Message::AutoCGetAutoHide:
-		return ac.autoHide;
+		return AutoCGetAutoHide();
 
 	case Message::AutoCSetOptions:
-		ac.options = static_cast<AutoCompleteOption>(wParam);
+		AutoCSetOptions(static_cast<AutoCompleteOption>(wParam));
 		break;
 
 	case Message::AutoCGetOptions:
-		return static_cast<sptr_t>(ac.options);
+		return static_cast<sptr_t>(AutoCGetOptions());
 
 	case Message::AutoCSetDropRestOfWord:
-		ac.dropRestOfWord = wParam != 0;
+		AutoCSetDropRestOfWord(wParam != 0);
 		break;
 
 	case Message::AutoCGetDropRestOfWord:
-		return ac.dropRestOfWord;
+		return AutoCGetDropRestOfWord();
 
 	case Message::AutoCSetMaxHeight:
-		ac.lb->SetVisibleRows(static_cast<int>(wParam));
+		AutoCSetMaxHeight(static_cast<int>(wParam));
 		break;
 
 	case Message::AutoCGetMaxHeight:
-		return ac.lb->GetVisibleRows();
+		return AutoCGetMaxHeight();
 
 	case Message::AutoCSetMaxWidth:
-		maxListWidth = static_cast<int>(wParam);
+		AutoCSetMaxWidth(static_cast<int>(wParam));
 		break;
 
 	case Message::AutoCGetMaxWidth:
-		return maxListWidth;
+		return AutoCGetMaxWidth();
 
 	case Message::AutoCSetStyle:
-		vs.autocStyle = static_cast<int>(wParam);
-		InvalidateStyleRedraw();
+		AutoCSetStyle(static_cast<int>(wParam));
 		break;
 
 	case Message::AutoCGetStyle:
-		return vs.autocStyle;
+		return AutoCGetStyle();
 
 	case Message::AutoCSetImageScale:
-		ac.imageScale = static_cast<float>(wParam) / 100.0f;
+		AutoCSetImageScale(static_cast<int>(wParam));
 		break;
 
 	case Message::AutoCGetImageScale:
-		return static_cast<int>(ac.imageScale * 100);
+		return AutoCGetImageScale();
 
 	case Message::RegisterImage:
-		ac.lb->RegisterImage(static_cast<int>(wParam), ConstCharPtrFromSPtr(lParam));
+		RegisterImage(static_cast<int>(wParam), ConstCharPtrFromSPtr(lParam));
 		break;
 
 	case Message::RegisterRGBAImage:
-		ac.lb->RegisterRGBAImage(static_cast<int>(wParam), static_cast<int>(sizeRGBAImage.x), static_cast<int>(sizeRGBAImage.y),
-			ConstUCharPtrFromSPtr(lParam));
+		RegisterRGBAImage(static_cast<int>(wParam), ConstUCharPtrFromSPtr(lParam));
 		break;
 
 	case Message::ClearRegisteredImages:
-		ac.lb->ClearRegisteredImages();
+		ClearRegisteredImages();
 		break;
 
 	case Message::AutoCSetTypeSeparator:
-		ac.SetTypesep(static_cast<char>(wParam));
+		AutoCSetTypeSeparator(static_cast<char>(wParam));
 		break;
 
 	case Message::AutoCGetTypeSeparator:
-		return ac.GetTypesep();
+		return AutoCGetTypeSeparator();
 
 	case Message::CallTipShow:
-		CallTipShow(LocationFromPosition(wParam),
-			ConstCharPtrFromSPtr(lParam));
+		CallTipShow(PositionFromUPtr(wParam), ConstCharPtrFromSPtr(lParam));
 		break;
 
 	case Message::CallTipCancel:
-		ct.CallTipCancel();
+		CallTipCancel();
 		break;
 
 	case Message::CallTipActive:
-		return ct.inCallTipMode;
+		return CallTipActive();
 
 	case Message::CallTipPosStart:
-		return ct.posStartCallTip;
+		return CallTipPosStart();
 
 	case Message::CallTipSetPosStart:
-		ct.posStartCallTip = wParam;
+		CallTipSetPosStart(PositionFromUPtr(wParam));
 		break;
 
 	case Message::CallTipSetHlt:
-		ct.SetHighlight(wParam, lParam);
+		CallTipSetHlt(PositionFromUPtr(wParam), lParam);
 		break;
 
 	case Message::CallTipSetBack:
-		ct.colourBG = ColourRGBA::FromIpRGB(SPtrFromUPtr(wParam));
-		vs.styles[StyleCallTip].back = ct.colourBG;
-		InvalidateStyleRedraw();
+		CallTipSetBack(ColourRGBA::FromIpRGB(SPtrFromUPtr(wParam)));
 		break;
 
 	case Message::CallTipSetFore:
-		ct.colourUnSel = ColourRGBA::FromIpRGB(SPtrFromUPtr(wParam));
-		vs.styles[StyleCallTip].fore = ct.colourUnSel;
-		InvalidateStyleRedraw();
+		CallTipSetFore(ColourRGBA::FromIpRGB(SPtrFromUPtr(wParam)));
 		break;
 
 	case Message::CallTipSetForeHlt:
-		ct.colourSel = ColourRGBA::FromIpRGB(SPtrFromUPtr(wParam));
-		InvalidateStyleRedraw();
+		CallTipSetForeHlt(ColourRGBA::FromIpRGB(SPtrFromUPtr(wParam)));
 		break;
 
 	case Message::CallTipUseStyle:
-		ct.SetTabSize(static_cast<int>(wParam));
-		InvalidateStyleRedraw();
+		CallTipUseStyle(static_cast<int>(wParam));
 		break;
 
 	case Message::CallTipSetPosition:
-		ct.SetPosition(wParam != 0);
-		InvalidateStyleRedraw();
+		CallTipSetPosition(wParam != 0);
 		break;
 
 	case Message::UsePopUp:

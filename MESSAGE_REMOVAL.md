@@ -50,6 +50,55 @@ Wrap-aware home and line-end actions remain keyboard commands for the dedicated 
 
 During the wrapping move, condense the retained descriptions in the `ScintillaDoc.html` line-wrapping section into comments beside the named operations in `EditorWrapping.cxx`, then remove that obsolete HTML prose. Keep the generated declarations only as temporary forwarding material until the later generated-layer deletion.
 
+## Autocomplete and call tip classification
+
+All 44 autocomplete entries (including user lists and registered images) and all 11 call tip entries are retained. They live on `ScintillaBase` because they own popup state. Lower-level helpers remain in `AutoComplete.cxx` and `CallTip.cxx`; orchestration and named API methods live in `EditorAutocomplete.cxx` and `EditorCallTips.cxx`.
+
+`EditorAutocompleteTest.cxx` and `EditorCallTipsTest.cxx` pin show/cancel/complete, option round-trips, choose-single, user-list selection without insert, stop characters, mutual exclusion with call tips, and direct versus temporary message forwarding. `PopupHostTest.cxx` remains the host-observability smoke suite from step 6.
+
+| Interface entry | Classification | Named operation and retained behavior |
+| --- | --- | --- |
+| `AutoCShow` | Application-facing method | `ScintillaBase::AutoCShow` shows the list (or inserts a single item when choose-single is on). Cancels any active call tip. |
+| `AutoCCancel` | Application-facing method | `ScintillaBase::AutoCCancel` hides the list without `AutoCCancelled`. That notification comes from `AutoCompleteCancel` (CancelModes, stop characters). |
+| `AutoCActive` | Application-facing method | `ScintillaBase::AutoCActive` reports whether a list is open. |
+| `AutoCPosStart` | Application-facing method | `ScintillaBase::AutoCPosStart` reports the caret position when the list opened. |
+| `AutoCComplete` | Application-facing method | `ScintillaBase::AutoCComplete` completes with the current selection (same as Tab). |
+| `AutoCStops` | Private editor operation | `ScintillaBase::AutoCStops` sets characters that cancel the list when typed. |
+| `AutoCSetSeparator` / `AutoCGetSeparator` | Private editor operation | Separator between list words (default space). |
+| `AutoCSelect` | Private editor operation | Selects the first list item that begins with the given prefix. |
+| `AutoCGetCurrent` / `AutoCGetCurrentText` | Private editor operation | Current selection index and text. |
+| `AutoCSetCancelAtStart` / `AutoCGetCancelAtStart` | Private editor operation | Whether returning the caret to the open position cancels the list. |
+| `AutoCSetFillUps` | Private editor operation | Characters that complete the item and are then inserted. |
+| `AutoCSetChooseSingle` / `AutoCGetChooseSingle` | Private editor operation | Auto-insert when the list has one item. |
+| `AutoCSetIgnoreCase` / `AutoCGetIgnoreCase` | Private editor operation | Case sensitivity for matching. |
+| `AutoCSetCaseInsensitiveBehaviour` / `AutoCGetCaseInsensitiveBehaviour` | Private editor operation | Prefer exact case or ignore case when matching under ignore-case mode. |
+| `AutoCSetMulti` / `AutoCGetMulti` | Private editor operation | Insert into the main selection only or every selection. |
+| `AutoCSetOrder` / `AutoCGetOrder` | Private editor operation | Pre-sorted, sort-on-show, or custom priority order. |
+| `UserListShow` | Application-facing method | `ScintillaBase::UserListShow` shows a list with `listType > 0`; completion notifies `UserListSelection` and does not insert text. |
+| `AutoCSetAutoHide` / `AutoCGetAutoHide` | Private editor operation | Close the list when typing leaves no match. |
+| `AutoCSetOptions` / `AutoCGetOptions` | Private editor operation | Autocomplete option flags (fixed size, select first item). |
+| `AutoCSetDropRestOfWord` / `AutoCGetDropRestOfWord` | Private editor operation | Erase word characters after the caret on complete. |
+| `RegisterImage` / `RegisterRGBAImage` / `ClearRegisteredImages` | Private editor operation | List-item images by type id. |
+| `AutoCSetTypeSeparator` / `AutoCGetTypeSeparator` | Private editor operation | Separates display text from a type integer in list entries (default `?`). |
+| `AutoCSetMaxWidth` / `AutoCGetMaxWidth` | Private editor operation | Max list width in average character widths; 0 fits the longest item. |
+| `AutoCSetMaxHeight` / `AutoCGetMaxHeight` | Private editor operation | Max visible rows (default 5). |
+| `AutoCSetStyle` / `AutoCGetStyle` | Private editor operation | Style used for the list font. |
+| `AutoCSetImageScale` / `AutoCGetImageScale` | Private editor operation | Image scale percent. |
+| `CallTipShow` | Application-facing method | `ScintillaBase::CallTipShow(position, definition)` shows the tip; cancels any active autocomplete list. |
+| `CallTipCancel` | Application-facing method | `ScintillaBase::CallTipCancel` hides the tip. |
+| `CallTipActive` | Application-facing method | Reports whether a tip is open. |
+| `CallTipPosStart` / `CallTipSetPosStart` | Private editor operation | Remembered document position used to auto-cancel on backspace. |
+| `CallTipSetHlt` | Private editor operation | Highlight range inside the tip text (current parameter). |
+| `CallTipSetBack` / `CallTipSetFore` / `CallTipSetForeHlt` | Private editor operation | Tip colours and matching `STYLE_CALLTIP` fields. |
+| `CallTipUseStyle` | Private editor operation | Use `STYLE_CALLTIP` and set tab width in pixels. |
+| `CallTipSetPosition` | Private editor operation | Place the tip above or below the line. |
+
+Notifications `AutoCSelection`, `AutoCCancelled`, `AutoCCharDeleted`, `AutoCCompleted`, `AutoCSelectionChange`, `UserListSelection`, and `CallTipClick` stay retained notification types. Context menu, IME helpers, and the lexer path stay in `ScintillaBase.cxx` outside this pilot.
+
+Private helpers `AutoCompleteStart`, `AutoCompleteCancel` (notifies), `AutoCompleteInsert`, move/selection/completed paths, `CallTipShow(Point)`, and `CallTipClick` stay protected. Keyboard routing while a list or tip is active remains in `KeyCommand` and calls into these helpers; a later dedicated command type will absorb that routing.
+
+Authoritative descriptions for retained operations sit beside definitions in `EditorAutocomplete.cxx` and `EditorCallTips.cxx`. The matching `ScintillaDoc.html` Autocompletion, User lists, and Call tips prose is removed. Temporary `WndProc` cases forward to the named methods until phase 5.
+
 ## Interface Inventory
 
 Generated from `scintilla/include/Scintilla.iface` on 2026-07-13. It contains all 821 `fun`, `get`, and `set` entries and all 32 `evt` entries, grouped for phase 4. It does not assign a removal classification without tracing the code. Constants, aliases, and enum declarations are type definitions rather than dispatch cases; phase 5 handles them when it replaces generated client headers.
