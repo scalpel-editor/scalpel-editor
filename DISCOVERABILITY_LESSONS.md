@@ -119,15 +119,15 @@ The first wrapping-pilot matrix failed with `unexpected EOF` because the watcher
 
 Possible designs include writing a complete temporary index and replacing the old file atomically, keeping immutable index generations while readers hold them, or using a read protocol that cannot observe a partial write. A normal search should not need an external snapshot step.
 
-### 7. Report watcher state without assuming PID visibility
+### 7. Report watcher state without assuming PID visibility — resolved
 
-`grepai status` reads a PID file and checks the process with signal 0. A command in a separate PID namespace cannot see the host watcher, so the check reports "not running" even while indexing continues. The result also looks like a stale PID, which can trigger an attempted cleanup.
+The earlier `grepai status` read a PID file and checked the process with signal 0. A command in a separate PID namespace could not see the host watcher, so the check reported "not running" even while indexing continued.
 
-A watcher heartbeat, held lock, local control socket, or an explicit "unknown from this process namespace" state would distinguish an invisible watcher from a stopped one. At minimum, failure to observe a PID should not be presented as definite proof that the watcher stopped when the runtime environment can hide processes.
+grepai `47bba43` resolves this with a watcher status snapshot. Sandboxed status now reports the host watcher instance, state, start time, pending work, project and index paths and match checks, last event and failure, and effective configuration. `grepai status --wait` polls this state and the persisted store, failing on timeout, a new indexing failure, or a stopped watcher with unmet conditions.
 
-### 8. Separate search settings from runtime metadata
+### 8. Separate search settings from runtime metadata — resolved
 
-The recorded config hash includes `watch.last_index_time`, so the hash changes even when chunking and ranking settings do not. grepai should expose a stable settings hash that excludes watcher timestamps and other runtime fields while retaining the full config for diagnosis.
+The recorded config hash used to include `watch.last_index_time`, so it changed even when chunking and ranking settings did not. grepai `47bba43` now reports a stable hash of index-shaping settings, the current, watcher, and saved-index identities, and explicit match results while retaining the full configuration for diagnosis. It also separates newest indexed source mtime from durable save time and generation; the source mtime may move backward when the newest file is removed, while generation advances only for a changed durable snapshot.
 
 ## Evaluation lessons
 
@@ -148,7 +148,7 @@ Search measurement does not replace behavior verification. Every concern move st
 - Keep the fixed corpus and held-out queries unchanged during the Phase 4 pilots.
 - Record broad regressions without padding source to preserve fixed windows.
 - Keep benchmark reads on a verified index snapshot while grepai can expose a partial watcher write.
-- Treat sandboxed watcher status as unreliable and confirm completed indexing from the watcher log.
+- Use `grepai status --wait --steady --indexed <path> --after <mtime>` to confirm that each changed source version is durable before a search or index snapshot; use the lifecycle log for diagnosis rather than as the synchronization mechanism.
 
 ## Questions for the second pilot
 

@@ -8,7 +8,7 @@ The accumulated repository-structure lessons and grepai improvement ideas are re
 
 The phase 2 `SetWrapMode` extraction gave the operation a direct name and focused behavior tests, but it left the small implementation inside the 9,000-line `Editor.cxx`. A grepai search for `set wrap mode` did not reliably return that implementation. Rewording the declaration comment moved its result between third and fourth place, and copying the comment above the definition did not improve the result.
 
-The local grepai configuration uses 512-token chunks with 50-token overlap and the `nomic-embed-text` model. The upstream grepai chunker approximates this as fixed windows of about 2,048 characters with about 200 characters of overlap, breaks at newlines rather than C++ function boundaries, and adds the file path to the text embedded for every chunk. The installed build is `dev-iface`, so local benchmark results remain the authority, but its observed chunk boundaries agree with the [upstream chunker](https://github.com/yoanbernabeu/grepai/blob/main/indexer/chunker.go).
+The local grepai configuration uses 512-token chunks with 50-token overlap and the `nomic-embed-text` model. The upstream grepai chunker approximates this as fixed windows of about 2,048 characters with about 200 characters of overlap, breaks at newlines rather than C++ function boundaries, and adds the file path to the text embedded for every chunk. The required local build includes `.cxx` and `.iface` indexing plus the status wait interface introduced by `47bba43`; use `grepai version` and recorded benchmark metadata for the exact installed identity. Local benchmark results remain the authority, but the observed chunk boundaries agree with the [upstream chunker](https://github.com/yoanbernabeu/grepai/blob/main/indexer/chunker.go).
 
 This means a short named method can be outweighed by unrelated neighboring code. It also means a descriptive file path and a file whose neighboring definitions cover one concern can improve every chunk without writing comments for a search engine.
 
@@ -32,7 +32,13 @@ grepai call and reference analysis also has current limits. Tests reported decla
 
 ## Search checks for each concern
 
-Before moving a concern, record its authoritative implementation spans and the queries used to find it. After the move, ensure the index includes the changed files (the watcher's incremental scan is enough), run the same queries, and compare ranks.
+Before moving a concern, record its authoritative implementation spans and the queries used to find it. After the move, wait for each changed file to reach the durable index, run the same queries, and compare ranks. Use the file's modification time as the lower bound:
+
+```sh
+grepai status --wait --steady --indexed scintilla/src/EditorWrapping.cxx --after "$(stat -c %Y scintilla/src/EditorWrapping.cxx)" --timeout 2m
+```
+
+The watcher incrementally reindexes only changed files. `--indexed` reloads the persisted store on each poll, so success proves that the file version at or after that modification time is available to a separate search process; `--steady` also proves that the watcher queue is idle. Indexed mtimes have one-second resolution: when the same file changes repeatedly, ensure the final edit has a different Unix-second mtime from the previously indexed version before waiting, or the older version can satisfy `--after`. Repeat the command for every changed file that the recorded search depends on. Use `grepai status --json` when a script needs the stable schema, durable generation, configuration hashes and match flags, pending counts, paths, or failure details.
 
 - Exact name: `SetWrapMode`
 - Spaced name: `set wrap mode`
@@ -74,14 +80,14 @@ Run the same corpus under these conditions:
 - Baseline tree and refactored pilot.
 - Vector-only search and hybrid search.
 - Whole-repository search and `--path scintilla/src`.
-- An index that includes the tree under test, with grepai version, embedding model, chunk size, overlap, boosts, ignore rules, and index hash recorded so a later run can tell whether tool or index changed.
+- An index that includes the tree under test, with grepai version, embedding model, chunk size, overlap, boosts, ignore rules, durable generation and save time, configuration hash and match checks, and index hash recorded so a later run can tell whether tool, settings, or index changed.
 - The normal query set and held-out paraphrases.
 
 Do not require a full wipe-and-re-embed of the index for recorded runs. grepai already reindexes only files whose contents or modtimes changed; that is enough for fair rank comparison. A full rebuild is optional diagnostics if ranks look absurd or the index is known corrupt — not part of the pilot schedule. The phase 4 step 2 baseline did a full wipe once; nothing in that run showed the wipe was necessary, and later measurements should not repeat it by default.
 
 Do not change more than one tool setting in a comparison. Refactor layout and tool configuration answer different questions and need separate results.
 
-Add a boundary-stability check after each pilot. Add or remove about 200 characters before a selected entry point, let the index pick up that file change, and confirm that the correct concern remains easy to find. This checks that a result does not depend on an accidental fixed-window boundary.
+Add a boundary-stability check after each pilot. Add or remove about 200 characters before a selected entry point, use `grepai status --wait --steady --indexed ... --after ...` to wait for that exact file version in the durable index, and confirm that the correct concern remains easy to find. Restore the file and perform the same wait again before continuing. This checks that a result does not depend on an accidental fixed-window boundary.
 
 Add cold navigation checks for the baseline and pilot. Ask a reader or agent to locate a feature, summarize its effects, identify its callers, and name its focused tests without first giving it the symbol name. Record the searches used, wrong files opened, and whether it reached the authoritative implementation.
 
