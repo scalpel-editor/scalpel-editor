@@ -7,6 +7,7 @@ add_executable(editorTest
   EditorClipboardTest.cxx
   EditorCommandTest.cxx
   EditorDocumentTest.cxx
+  EditorFoldingTest.cxx
   EditorHistoryTest.cxx
   EditorLinesTest.cxx
   EditorMarginsTest.cxx

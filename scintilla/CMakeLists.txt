@@ -25,6 +25,7 @@ add_library(scintilla_core STATIC
   src/EditorClipboard.cxx
   src/EditorCommands.cxx
   src/EditorDocument.cxx
+  src/EditorFolding.cxx
   src/EditorHistory.cxx
   src/EditorLines.cxx
   src/EditorMargins.cxx

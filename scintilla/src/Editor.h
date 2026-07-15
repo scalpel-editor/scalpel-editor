@@ -839,15 +839,38 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void SetAnnotationVisible(Scintilla::AnnotationVisible visible);
 	void SetEOLAnnotationVisible(Scintilla::EOLAnnotationVisible visible);
 
-	Sci::Line ExpandLine(Sci::Line line);
+	// Folding: definitions in EditorFolding.cxx.
+	Sci::Line VisibleFromDocLine(Sci::Line docLine) const noexcept;
+	Sci::Line DocLineFromVisible(Sci::Line displayLine) const noexcept;
+	int SetFoldLevel(Sci::Line line, Scintilla::FoldLevel level);
+	Scintilla::FoldLevel GetFoldLevel(Sci::Line line) const noexcept;
+	Sci::Line GetLastChild(Sci::Line line, std::optional<Scintilla::FoldLevel> level = {}) const;
+	Sci::Line GetFoldParent(Sci::Line line) const noexcept;
+	void ShowLines(Sci::Line lineStart, Sci::Line lineEnd);
+	void HideLines(Sci::Line lineStart, Sci::Line lineEnd);
+	bool GetAllLinesVisible() const noexcept;
 	void SetFoldExpanded(Sci::Line lineDoc, bool expanded);
+	bool GetFoldExpanded(Sci::Line lineDoc) const noexcept;
+	void SetAutomaticFold(Scintilla::AutomaticFold automatic);
+	Scintilla::AutomaticFold GetAutomaticFold() const noexcept;
+	void SetFoldFlags(Scintilla::FoldFlag flags);
+	void ToggleFold(Sci::Line line);
+	void ToggleFoldShowText(Sci::Line line, const char *text);
+	void FoldDisplayTextSetStyle(Scintilla::FoldDisplayTextStyle style);
+	Scintilla::FoldDisplayTextStyle FoldDisplayTextGetStyle() const noexcept;
+	void SetDefaultFoldDisplayText(const char *text);
 	void FoldLine(Sci::Line line, Scintilla::FoldAction action);
-	void FoldExpand(Sci::Line line, Scintilla::FoldAction action, Scintilla::FoldLevel level);
+	void FoldChildren(Sci::Line line, Scintilla::FoldAction action);
+	void FoldAll(Scintilla::FoldAction action);
+	void ExpandChildren(Sci::Line line, Scintilla::FoldLevel level);
 	Sci::Line ContractedFoldNext(Sci::Line lineStart) const noexcept;
+	void EnsureVisible(Sci::Line line);
+	void EnsureVisibleEnforcePolicy(Sci::Line line);
+	Sci::Line ExpandLine(Sci::Line line);
+	void FoldExpand(Sci::Line line, Scintilla::FoldAction action, Scintilla::FoldLevel level);
 	void EnsureLineVisible(Sci::Line lineDoc, bool enforcePolicy);
 	void FoldChanged(Sci::Line line, Scintilla::FoldLevel levelNow, Scintilla::FoldLevel levelPrev);
 	void NeedShown(Sci::Position pos, Sci::Position len);
-	void FoldAll(Scintilla::FoldAction action);
 
 	Sci::Position GetTag(char *tagValue, int tagNumber);
 	enum class ReplaceType {basic, patterns, minimal};

@@ -4560,280 +4560,6 @@ void Editor::SetEOLAnnotationVisible(EOLAnnotationVisible visible) {
 	}
 }
 
-/**
- * Recursively expand a fold, making lines visible except where they have an unexpanded parent.
- */
-Sci::Line Editor::ExpandLine(Sci::Line line) {
-	const Sci::Line lineMaxSubord = pdoc->GetLastChild(line);
-	line++;
-	Sci::Line lineStart = line;
-	while (line <= lineMaxSubord) {
-		const FoldLevel level = pdoc->GetFoldLevel(line);
-		if (LevelIsHeader(level)) {
-			pcs->SetVisible(lineStart, line, true);
-			if (pcs->GetExpanded(line)) {
-				line = ExpandLine(line);
-			} else {
-				line = pdoc->GetLastChild(line);
-			}
-			lineStart = line + 1;
-		}
-		line++;
-	}
-	if (lineStart <= lineMaxSubord) {
-		pcs->SetVisible(lineStart, lineMaxSubord, true);
-	}
-	return lineMaxSubord;
-}
-
-void Editor::SetFoldExpanded(Sci::Line lineDoc, bool expanded) {
-	if (pcs->SetExpanded(lineDoc, expanded)) {
-		RedrawSelMargin();
-	}
-}
-
-void Editor::FoldLine(Sci::Line line, FoldAction action) {
-	if (line >= 0) {
-		if (action == FoldAction::Toggle) {
-			if (!LevelIsHeader(pdoc->GetFoldLevel(line))) {
-				line = pdoc->GetFoldParent(line);
-				if (line < 0)
-					return;
-			}
-			action = (pcs->GetExpanded(line)) ? FoldAction::Contract : FoldAction::Expand;
-		}
-
-		if (action == FoldAction::Contract) {
-			const Sci::Line lineMaxSubord = pdoc->GetLastChild(line);
-			if (lineMaxSubord > line) {
-				pcs->SetExpanded(line, false);
-				pcs->SetVisible(line + 1, lineMaxSubord, false);
-
-				const Sci::Line lineCurrent =
-					pdoc->SciLineFromPosition(sel.MainCaret());
-				if (lineCurrent > line && lineCurrent <= lineMaxSubord) {
-					// This does not re-expand the fold
-					EnsureCaretVisible();
-				}
-			}
-
-		} else {
-			if (!(pcs->GetVisible(line))) {
-				EnsureLineVisible(line, false);
-				GoToLine(line);
-			}
-			pcs->SetExpanded(line, true);
-			ExpandLine(line);
-		}
-
-		SetScrollBars();
-		Redraw();
-	}
-}
-
-void Editor::FoldExpand(Sci::Line line, FoldAction action, FoldLevel level) {
-	bool expanding = action == FoldAction::Expand;
-	if (action == FoldAction::Toggle) {
-		expanding = !pcs->GetExpanded(line);
-	}
-	// Ensure child lines lexed and fold information extracted before
-	// flipping the state.
-	pdoc->GetLastChild(line, LevelNumberPart(level));
-	SetFoldExpanded(line, expanding);
-	if (expanding && (pcs->HiddenLines() == 0))
-		// Nothing to do
-		return;
-	const Sci::Line lineMaxSubord = pdoc->GetLastChild(line, LevelNumberPart(level));
-	line++;
-	pcs->SetVisible(line, lineMaxSubord, expanding);
-	while (line <= lineMaxSubord) {
-		const FoldLevel levelLine = pdoc->GetFoldLevel(line);
-		if (LevelIsHeader(levelLine)) {
-			SetFoldExpanded(line, expanding);
-		}
-		line++;
-	}
-	SetScrollBars();
-	Redraw();
-}
-
-Sci::Line Editor::ContractedFoldNext(Sci::Line lineStart) const noexcept {
-	for (Sci::Line line = lineStart; line<pdoc->LinesTotal();) {
-		if (!pcs->GetExpanded(line) && LevelIsHeader(pdoc->GetFoldLevel(line)))
-			return line;
-		line = pcs->ContractedNext(line+1);
-		if (line < 0)
-			return -1;
-	}
-
-	return -1;
-}
-
-/**
- * Recurse up from this line to find any folds that prevent this line from being visible
- * and unfold them all.
- */
-void Editor::EnsureLineVisible(Sci::Line lineDoc, bool enforcePolicy) {
-
-	// In case in need of wrapping to ensure DisplayFromDoc works.
-	if (lineDoc >= wrapPending.start) {
-		if (WrapLines(WrapScope::wsAll)) {
-			Redraw();
-		}
-	}
-
-	if (!pcs->GetVisible(lineDoc)) {
-		// Back up to find a non-blank line
-		Sci::Line lookLine = lineDoc;
-		FoldLevel lookLineLevel = pdoc->GetFoldLevel(lookLine);
-		while ((lookLine > 0) && LevelIsWhitespace(lookLineLevel)) {
-			lookLineLevel = pdoc->GetFoldLevel(--lookLine);
-		}
-		Sci::Line lineParent = pdoc->GetFoldParent(lookLine);
-		if (lineParent < 0) {
-			// Backed up to a top level line, so try to find parent of initial line
-			lineParent = pdoc->GetFoldParent(lineDoc);
-		}
-		if (lineParent >= 0) {
-			if (lineDoc != lineParent)
-				EnsureLineVisible(lineParent, enforcePolicy);
-			if (!pcs->GetExpanded(lineParent)) {
-				pcs->SetExpanded(lineParent, true);
-				ExpandLine(lineParent);
-			}
-		}
-		SetScrollBars();
-		Redraw();
-	}
-	if (enforcePolicy) {
-		const Sci::Line lineDisplay = pcs->DisplayFromDoc(lineDoc);
-		if (FlagSet(visiblePolicy.policy, VisiblePolicy::Slop)) {
-			if ((topLine > lineDisplay) || ((FlagSet(visiblePolicy.policy, VisiblePolicy::Strict)) && (topLine + visiblePolicy.slop > lineDisplay))) {
-				SetTopLine(std::clamp<Sci::Line>(lineDisplay - visiblePolicy.slop, 0, MaxScrollPos()));
-				SetVerticalScrollPos();
-				Redraw();
-			} else if ((lineDisplay > topLine + LinesOnScreen() - 1) ||
-			        ((FlagSet(visiblePolicy.policy, VisiblePolicy::Strict)) && (lineDisplay > topLine + LinesOnScreen() - 1 - visiblePolicy.slop))) {
-				SetTopLine(std::clamp<Sci::Line>(lineDisplay - LinesOnScreen() + 1 + visiblePolicy.slop, 0, MaxScrollPos()));
-				SetVerticalScrollPos();
-				Redraw();
-			}
-		} else {
-			if ((topLine > lineDisplay) || (lineDisplay > topLine + LinesOnScreen() - 1) || (FlagSet(visiblePolicy.policy, VisiblePolicy::Strict))) {
-				SetTopLine(std::clamp<Sci::Line>(lineDisplay - LinesOnScreen() / 2 + 1, 0, MaxScrollPos()));
-				SetVerticalScrollPos();
-				Redraw();
-			}
-		}
-	}
-}
-
-void Editor::FoldAll(FoldAction action) {
-	const Sci::Line maxLine = pdoc->LinesTotal();
-	const bool contractAll = FlagSet(action, FoldAction::ContractEveryLevel);
-	action = static_cast<FoldAction>(static_cast<int>(action) & ~static_cast<int>(FoldAction::ContractEveryLevel));
-	bool expanding = action == FoldAction::Expand;
-	if (!expanding) {
-		pdoc->EnsureStyledTo(pdoc->Length());
-	}
-	Sci::Line line = 0;
-	if (action == FoldAction::Toggle) {
-		// Discover current state
-		for (; line < maxLine; line++) {
-			if (LevelIsHeader(pdoc->GetFoldLevel(line))) {
-				expanding = !pcs->GetExpanded(line);
-				break;
-			}
-		}
-	}
-	if (expanding) {
-		pcs->SetVisible(0, maxLine-1, true);
-		pcs->ExpandAll();
-	} else {
-		for (; line < maxLine; line++) {
-			const FoldLevel level = pdoc->GetFoldLevel(line);
-			if (LevelIsHeader(level)) {
-				if (FoldLevel::Base == LevelNumberPart(level)) {
-					SetFoldExpanded(line, false);
-					const Sci::Line lineMaxSubord = pdoc->GetLastChild(line);
-					if (lineMaxSubord > line) {
-						pcs->SetVisible(line + 1, lineMaxSubord, false);
-						if (!contractAll) {
-							line = lineMaxSubord;
-						}
-					}
-				} else if (contractAll) {
-					SetFoldExpanded(line, false);
-				}
-			}
-		}
-	}
-	SetScrollBars();
-	Redraw();
-}
-
-void Editor::FoldChanged(Sci::Line line, FoldLevel levelNow, FoldLevel levelPrev) {
-	if (LevelIsHeader(levelNow)) {
-		if (!LevelIsHeader(levelPrev)) {
-			// Adding a fold point.
-			if (pcs->SetExpanded(line, true)) {
-				RedrawSelMargin();
-			}
-			FoldExpand(line, FoldAction::Expand, levelPrev);
-		}
-	} else if (LevelIsHeader(levelPrev)) {
-		const Sci::Line prevLine = line - 1;
-		const FoldLevel prevLineLevel = pdoc->GetFoldLevel(prevLine);
-
-		// Combining two blocks where the first block is collapsed (e.g. by deleting the line(s) which separate(s) the two blocks)
-		if ((LevelNumber(prevLineLevel) == LevelNumber(levelNow)) && !pcs->GetVisible(prevLine))
-			FoldLine(pdoc->GetFoldParent(prevLine), FoldAction::Expand);
-
-		if (!pcs->GetExpanded(line)) {
-			// Removing the fold from one that has been contracted so should expand
-			// otherwise lines are left invisible with no way to make them visible
-			if (pcs->SetExpanded(line, true)) {
-				RedrawSelMargin();
-			}
-			// Combining two blocks where the second one is collapsed (e.g. by adding characters in the line which separates the two blocks)
-			FoldExpand(line, FoldAction::Expand, levelPrev);
-		}
-	}
-	if (!LevelIsWhitespace(levelNow) &&
-	        (LevelNumber(levelPrev) > LevelNumber(levelNow))) {
-		if (pcs->HiddenLines()) {
-			// See if should still be hidden
-			const Sci::Line parentLine = pdoc->GetFoldParent(line);
-			if ((parentLine < 0) || (pcs->GetExpanded(parentLine) && pcs->GetVisible(parentLine))) {
-				pcs->SetVisible(line, line, true);
-				SetScrollBars();
-				Redraw();
-			}
-		}
-	}
-
-	// Combining two blocks where the first one is collapsed (e.g. by adding characters in the line which separates the two blocks)
-	if (!LevelIsWhitespace(levelNow) && (LevelNumber(levelPrev) < LevelNumber(levelNow))) {
-		if (pcs->HiddenLines()) {
-			const Sci::Line parentLine = pdoc->GetFoldParent(line);
-			if (!pcs->GetExpanded(parentLine) && pcs->GetVisible(line))
-				FoldLine(parentLine, FoldAction::Expand);
-		}
-	}
-}
-
-void Editor::NeedShown(Sci::Position pos, Sci::Position len) {
-	if (FlagSet(foldAutomatic, AutomaticFold::Show)) {
-		const Sci::Line lineStart = pdoc->SciLineFromPosition(pos);
-		const Sci::Line lineEnd = pdoc->SciLineFromPosition(pos+len);
-		for (Sci::Line line = lineStart; line <= lineEnd; line++) {
-			EnsureLineVisible(line, false);
-		}
-	} else {
-		NotifyNeedShown(pos, len);
-	}
-}
-
 Sci::Position Editor::GetTag(char *tagValue, int tagNumber) {
 	const char *text = nullptr;
 	Sci::Position length = 0;
@@ -6319,93 +6045,81 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		SetCaretLineBackAlpha(static_cast<int>(wParam));
 		break;
 
-		// Folding messages
+		// Folding messages (temporary forwarders; definitions in EditorFolding.cxx)
 
 	case Message::VisibleFromDocLine:
-		return pcs->DisplayFromDoc(LineFromUPtr(wParam));
+		return VisibleFromDocLine(LineFromUPtr(wParam));
 
 	case Message::DocLineFromVisible:
-		return pcs->DocFromDisplay(LineFromUPtr(wParam));
+		return DocLineFromVisible(LineFromUPtr(wParam));
 
 	case Message::WrapCount:
 		return WrapCount(LineFromUPtr(wParam));
 
-	case Message::SetFoldLevel: {
-			const int prev = pdoc->SetLevel(LineFromUPtr(wParam), static_cast<int>(lParam));
-			if (prev != static_cast<int>(lParam))
-				RedrawSelMargin();
-			return prev;
-		}
+	case Message::SetFoldLevel:
+		return SetFoldLevel(LineFromUPtr(wParam), static_cast<FoldLevel>(lParam));
 
 	case Message::GetFoldLevel:
-		return pdoc->GetLevel(LineFromUPtr(wParam));
+		return static_cast<sptr_t>(GetFoldLevel(LineFromUPtr(wParam)));
 
 	case Message::GetLastChild:
-		return pdoc->GetLastChild(LineFromUPtr(wParam), OptionalFoldLevel(lParam));
+		return GetLastChild(LineFromUPtr(wParam), OptionalFoldLevel(lParam));
 
 	case Message::GetFoldParent:
-		return pdoc->GetFoldParent(LineFromUPtr(wParam));
+		return GetFoldParent(LineFromUPtr(wParam));
 
 	case Message::ShowLines:
-		pcs->SetVisible(LineFromUPtr(wParam), lParam, true);
-		SetScrollBars();
-		Redraw();
+		ShowLines(LineFromUPtr(wParam), lParam);
 		break;
 
 	case Message::HideLines:
-		pcs->SetVisible(LineFromUPtr(wParam), lParam, false);
-		SetScrollBars();
-		Redraw();
+		HideLines(LineFromUPtr(wParam), lParam);
 		break;
 
 	case Message::GetLineVisible:
 		return GetLineVisible(LineFromUPtr(wParam)) ? 1 : 0;
 
 	case Message::GetAllLinesVisible:
-		return pcs->HiddenLines() ? 0 : 1;
+		return GetAllLinesVisible() ? 1 : 0;
 
 	case Message::SetFoldExpanded:
 		SetFoldExpanded(LineFromUPtr(wParam), lParam != 0);
 		break;
 
 	case Message::GetFoldExpanded:
-		return pcs->GetExpanded(LineFromUPtr(wParam));
+		return GetFoldExpanded(LineFromUPtr(wParam)) ? 1 : 0;
 
 	case Message::SetAutomaticFold:
-		foldAutomatic = static_cast<AutomaticFold>(wParam);
+		SetAutomaticFold(static_cast<AutomaticFold>(wParam));
 		break;
 
 	case Message::GetAutomaticFold:
-		return static_cast<sptr_t>(foldAutomatic);
+		return static_cast<sptr_t>(GetAutomaticFold());
 
 	case Message::SetFoldFlags:
-		foldFlags = static_cast<FoldFlag>(wParam);
-		Redraw();
+		SetFoldFlags(static_cast<FoldFlag>(wParam));
 		break;
 
 	case Message::ToggleFoldShowText:
-		pcs->SetFoldDisplayText(LineFromUPtr(wParam), ConstCharPtrFromSPtr(lParam));
-		FoldLine(LineFromUPtr(wParam), FoldAction::Toggle);
+		ToggleFoldShowText(LineFromUPtr(wParam), ConstCharPtrFromSPtr(lParam));
 		break;
 
 	case Message::FoldDisplayTextSetStyle:
-		foldDisplayTextStyle = static_cast<FoldDisplayTextStyle>(wParam);
-		Redraw();
+		FoldDisplayTextSetStyle(static_cast<FoldDisplayTextStyle>(wParam));
 		break;
 
 	case Message::FoldDisplayTextGetStyle:
-		return static_cast<sptr_t>(foldDisplayTextStyle);
+		return static_cast<sptr_t>(FoldDisplayTextGetStyle());
 
 	case Message::SetDefaultFoldDisplayText:
 		SetDefaultFoldDisplayText(ConstCharPtrFromSPtr(lParam));
-		Redraw();
 		break;
 
 	case Message::GetDefaultFoldDisplayText:
 		return StringResult(lParam, GetDefaultFoldDisplayText());
 
 	case Message::ToggleFold:
-		FoldLine(LineFromUPtr(wParam), FoldAction::Toggle);
+		ToggleFold(LineFromUPtr(wParam));
 		break;
 
 	case Message::FoldLine:
@@ -6413,7 +6127,7 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::FoldChildren:
-		FoldExpand(LineFromUPtr(wParam), static_cast<FoldAction>(lParam), pdoc->GetFoldLevel(LineFromUPtr(wParam)));
+		FoldChildren(LineFromUPtr(wParam), static_cast<FoldAction>(lParam));
 		break;
 
 	case Message::FoldAll:
@@ -6421,18 +6135,18 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::ExpandChildren:
-		FoldExpand(LineFromUPtr(wParam), FoldAction::Expand, static_cast<FoldLevel>(lParam));
+		ExpandChildren(LineFromUPtr(wParam), static_cast<FoldLevel>(lParam));
 		break;
 
 	case Message::ContractedFoldNext:
 		return ContractedFoldNext(LineFromUPtr(wParam));
 
 	case Message::EnsureVisible:
-		EnsureLineVisible(LineFromUPtr(wParam), false);
+		EnsureVisible(LineFromUPtr(wParam));
 		break;
 
 	case Message::EnsureVisibleEnforcePolicy:
-		EnsureLineVisible(LineFromUPtr(wParam), true);
+		EnsureVisibleEnforcePolicy(LineFromUPtr(wParam));
 		break;
 
 	case Message::ScrollRange:
