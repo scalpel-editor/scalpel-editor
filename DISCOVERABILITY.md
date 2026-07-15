@@ -2,6 +2,8 @@
 
 This guide defines how the Scintilla refactor should make features easier to find and understand with exact search, semantic code search, structural tools, and direct source reading. Search quality is part of the refactor result, but no single tool or query defines success.
 
+The accumulated repository-structure lessons and grepai improvement ideas are recorded in [DISCOVERABILITY_LESSONS.md](DISCOVERABILITY_LESSONS.md). This guide remains the source for refactor rules, benchmark procedure, and acceptance criteria.
+
 ## What the wrap-mode case showed
 
 The phase 2 `SetWrapMode` extraction gave the operation a direct name and focused behavior tests, but it left the small implementation inside the 9,000-line `Editor.cxx`. A grepai search for `set wrap mode` did not reliably return that implementation. Rewording the declaration comment moved its result between third and fourth place, and copying the comment above the definition did not improve the result.
