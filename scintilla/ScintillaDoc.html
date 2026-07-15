@@ -838,12 +838,16 @@ struct Sci_TextRangeFull {
 
     <h2 id="Selection">Selection</h2>
 
+    <p>Basic selection and multi-selection operations moved to
+    <code>scintilla/src/EditorSelection.cxx</code>. Named operations and their behavior descriptions
+    live beside the definitions there. Temporary message forwarders remain until the generated
+    message layer is removed. Caret appearance and policies remain until the caret concern move;
+    <code>SCI_GETCURLINE</code> remains until text-boundary or selection follow-up cleanup.</p>
+
     <p>Scintilla maintains a selection that stretches between two points, the anchor and the
     current position. If the anchor and the current position are the same, there is no selected
     text. Positions in the document range from 0 (before the first character), to the document size
-    (after the last character). If you use messages, there is nothing to stop you setting a
-    position that is in the middle of a CRLF pair, or in the middle of a 2 byte character. However,
-    keyboard commands will not move the caret into such positions.</p>
+    (after the last character).</p>
     <code>
      <a class="message" href="#SCI_SETSEL">SCI_SETSEL(position anchor, position caret)</a><br />
      <a class="message" href="#SCI_GOTOPOS">SCI_GOTOPOS(position caret)</a><br />

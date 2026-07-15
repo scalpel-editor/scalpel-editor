@@ -356,12 +356,54 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void InvalidateSelection(SelectionRange newMain, bool invalidateWholeSelection=false);
 	void InvalidateWholeSelection();
 	SelectionRange LineSelectionRange(SelectionPosition currentPos_, SelectionPosition anchor_) const noexcept;
+	// Selection model: definitions in EditorSelection.cxx.
 	void SetSelection(SelectionPosition currentPos_, SelectionPosition anchor_);
 	void SetSelection(Sci::Position currentPos_, Sci::Position anchor_);
 	void SetSelection(SelectionPosition currentPos_);
 	void SetEmptySelection(SelectionPosition currentPos_);
 	void SetEmptySelection(Sci::Position currentPos_);
 	void SetSelectionFromSerialized(const char *serialized);
+	void SetStreamSelection(Sci::Position caret, Sci::Position anchor);
+	void AddSelection(Sci::Position caret, Sci::Position anchor);
+	void SetMainSelection(size_t selection);
+	size_t GetMainSelection() const noexcept;
+	void HideSelection(bool hide);
+	bool GetSelectionHidden() const noexcept;
+	void TargetFromSelection();
+	bool SelectionIsRectangle() const noexcept;
+	Scintilla::SelectionMode GetSelectionMode() const noexcept;
+	void SetMoveExtendsSelection(bool moveExtends);
+	bool GetMoveExtendsSelection() const noexcept;
+	void SetMouseSelectionRectangularSwitch(bool enable);
+	bool GetMouseSelectionRectangularSwitch() const noexcept;
+	void SetMultipleSelection(bool enable);
+	bool GetMultipleSelection() const noexcept;
+	void SetAdditionalSelectionTyping(bool enable);
+	bool GetAdditionalSelectionTyping() const noexcept;
+	size_t GetSelections() const noexcept;
+	void ClearSelections();
+	void SetSelectionLayer(Scintilla::Layer layer);
+	Scintilla::Layer GetSelectionLayer() const noexcept;
+	void SetUndoSelectionHistory(Scintilla::UndoSelectionHistoryOption option);
+	Scintilla::UndoSelectionHistoryOption GetUndoSelectionHistory() const noexcept;
+	void SetSelectionSerialized(std::string_view serialized);
+	std::string GetSelectionSerialized() const;
+	void SetRectangularSelectionCaret(Sci::Position pos);
+	Sci::Position GetRectangularSelectionCaret() noexcept;
+	void SetRectangularSelectionAnchor(Sci::Position pos);
+	Sci::Position GetRectangularSelectionAnchor() noexcept;
+	void SetRectangularSelectionCaretVirtualSpace(Sci::Position space);
+	Sci::Position GetRectangularSelectionCaretVirtualSpace() noexcept;
+	void SetRectangularSelectionAnchorVirtualSpace(Sci::Position space);
+	Sci::Position GetRectangularSelectionAnchorVirtualSpace() noexcept;
+	Sci::Position GetSelectionNCaret(size_t selection) const noexcept;
+	Sci::Position GetSelectionNAnchor(size_t selection) const noexcept;
+	Sci::Position GetSelectionNCaretVirtualSpace(size_t selection) const noexcept;
+	Sci::Position GetSelectionNAnchorVirtualSpace(size_t selection) const noexcept;
+	Sci::Position GetSelectionNStart(size_t selection) const noexcept;
+	Sci::Position GetSelectionNStartVirtualSpace(size_t selection) const noexcept;
+	Sci::Position GetSelectionNEnd(size_t selection) const noexcept;
+	Sci::Position GetSelectionNEndVirtualSpace(size_t selection) const noexcept;
 	enum class AddNumber { one, each };
 	void MultipleSelectAdd(AddNumber addNumber);
 	bool RangeContainsProtected(Sci::Position start, Sci::Position end) const noexcept;
@@ -834,6 +876,21 @@ public:
 	void SetEOLMode(Scintilla::EndOfLine eolMode);
 	Scintilla::EndOfLine GetEOLMode() const noexcept;
 	void ConvertEOLs(Scintilla::EndOfLine eolMode);
+
+	// Basic selection and navigation; definitions in EditorSelection.cxx.
+	Sci::Position GetCurrentPos() noexcept;
+	Sci::Position GetAnchor() noexcept;
+	void SetCurrentPos(Sci::Position pos);
+	void SetAnchor(Sci::Position pos);
+	void SetSelectionStart(Sci::Position pos);
+	Sci::Position GetSelectionStart() const noexcept;
+	void SetSelectionEnd(Sci::Position pos);
+	Sci::Position GetSelectionEnd() const noexcept;
+	void SetSel(Sci::Position start, Sci::Position end);
+	std::string GetSelText();
+	bool GetSelectionEmpty() const noexcept;
+	void GotoLine(Sci::Line lineNo);
+	void GotoPos(Sci::Position pos);
 
 	// Wrap mode is application-facing; its description lives beside the
 	// definition in EditorWrapping.cxx.
