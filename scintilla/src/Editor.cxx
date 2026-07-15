@@ -2018,35 +2018,6 @@ void Editor::ClearDocumentStyle() {
 	pdoc->ClearLevels();
 }
 
-void Editor::CopyAllowLine() {
-	SelectionText selectedText;
-	CopySelectionRange(&selectedText, true);
-	CopyToClipboard(selectedText);
-}
-
-void Editor::CutAllowLine() {
-	if (sel.Empty()) {
-		pdoc->CheckReadOnly();
-		if (!pdoc->IsReadOnly()) {
-			SelectionText selectedText;
-			if (CopyLineRange(&selectedText, false)) {
-				CopyToClipboard(selectedText);
-				LineDelete();
-			}
-		}
-	} else {
-		Cut();
-	}
-}
-
-void Editor::Cut() {
-	pdoc->CheckReadOnly();
-	if (!pdoc->IsReadOnly() && !SelectionContainsProtected()) {
-		Copy();
-		ClearSelection();
-	}
-}
-
 void Editor::PasteRectangular(SelectionPosition pos, std::string_view text) {
 	if (pdoc->IsReadOnly() || SelectionContainsProtected()) {
 		return;
@@ -2112,10 +2083,6 @@ void Editor::PasteRectangular(SelectionPosition pos, std::string_view text) {
 
 void Editor::PasteRectangular(SelectionPosition pos, const char *ptr, Sci::Position len) {
 	PasteRectangular(pos, std::string_view(ptr, len));
-}
-
-bool Editor::CanPaste() {
-	return !pdoc->IsReadOnly() && !SelectionContainsProtected();
 }
 
 void Editor::SelectAll() {
@@ -3870,43 +3837,6 @@ bool Editor::CopyLineRange(SelectionText *ss, bool allowProtected) {
 		return true;
 	}
 	return false;
-}
-
-void Editor::CopySelectionRange(SelectionText *ss, bool allowLineCopy) {
-	if (sel.Empty()) {
-		if (allowLineCopy) {
-			CopyLineRange(ss);
-		}
-	} else {
-		std::string text;
-		std::vector<SelectionRange> rangesInOrder = sel.RangesCopy();
-		if (sel.selType == Selection::SelTypes::rectangle)
-			std::sort(rangesInOrder.begin(), rangesInOrder.end());
-		const std::string_view separator = (sel.selType == Selection::SelTypes::rectangle) ? pdoc->EOLString() : copySeparator;
-		for (size_t part = 0; part < rangesInOrder.size(); part++) {
-			text.append(RangeText(rangesInOrder[part].Start().Position(), rangesInOrder[part].End().Position()));
-			if ((sel.selType == Selection::SelTypes::rectangle) || (part < rangesInOrder.size() - 1)) {
-				// Append unless simple selection or last part of multiple selection
-				text.append(separator);
-			}
-		}
-		ss->Copy(text, sel.IsRectangular(), sel.selType == Selection::SelTypes::lines);
-	}
-}
-
-void Editor::CopyRangeToClipboard(Sci::Position start, Sci::Position end) {
-	start = pdoc->ClampPositionIntoDocument(start);
-	end = pdoc->ClampPositionIntoDocument(end);
-	SelectionText selectedText;
-	std::string text = RangeText(start, end);
-	selectedText.Copy(text, false, false);
-	CopyToClipboard(selectedText);
-}
-
-void Editor::CopyText(size_t length, const char *text) {
-	SelectionText selectedText;
-	selectedText.Copy(std::string(text, length), false, false);
-	CopyToClipboard(selectedText);
 }
 
 void Editor::SetDragPosition(SelectionPosition newPos) {
@@ -5664,7 +5594,7 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return StringResult(lParam, copySeparator.c_str());
 
 	case Message::SetCopySeparator:
-		copySeparator = ConstCharPtrFromSPtr(lParam);
+		SetCopySeparator(ConstCharPtrFromSPtr(lParam));
 		break;
 
 	case Message::VerticalCentreCaret:
@@ -5677,7 +5607,7 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::CopyText:
-		CopyText(wParam, ConstCharPtrFromSPtr(lParam));
+		CopyText(std::string_view(ConstCharPtrFromSPtr(lParam), wParam));
 		break;
 
 	case Message::Paste:
@@ -5934,7 +5864,7 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return GetReadOnly() ? 1 : 0;
 
 	case Message::CanPaste:
-		return CanPaste();
+		return this->CanPaste() ? 1 : 0;
 
 	case Message::PointXFromPosition:
 		if (lParam < 0) {
@@ -7928,11 +7858,11 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return hotspotSingleLine ? 1 : 0;
 
 	case Message::SetPasteConvertEndings:
-		convertPastes = wParam != 0;
+		SetPasteConvertEndings(wParam != 0);
 		break;
 
 	case Message::GetPasteConvertEndings:
-		return convertPastes ? 1 : 0;
+		return GetPasteConvertEndings() ? 1 : 0;
 
 	case Message::GetCharacterPointer:
 		return SPtrFromPtr(pdoc->BufferPointer());
@@ -8153,11 +8083,11 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return additionalSelectionTyping;
 
 	case Message::SetMultiPaste:
-		multiPasteMode = static_cast<MultiPaste>(wParam);
+		SetMultiPaste(static_cast<MultiPaste>(wParam));
 		break;
 
 	case Message::GetMultiPaste:
-		return static_cast<sptr_t>(multiPasteMode);
+		return static_cast<sptr_t>(GetMultiPaste());
 
 	case Message::SetAdditionalCaretsBlink:
 		view.additionalCaretsBlink = wParam != 0;

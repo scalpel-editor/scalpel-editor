@@ -467,14 +467,22 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	const char *GetRangePointer(Sci::Position start, Sci::Position rangeLength);
 	Sci::Position GetGapPosition() const noexcept;
 	void ClearDocumentStyle();
+	// Clipboard: definitions and descriptions in EditorClipboard.cxx.
+	// Clipboard cut/copy helpers and options: EditorClipboard.cxx.
+	// Copy and Paste remain pure virtual host hooks.
 	virtual void Cut();
 	void PasteRectangular(SelectionPosition pos, std::string_view text);
 	[[deprecated]] void PasteRectangular(SelectionPosition pos, const char *ptr, Sci::Position len);
 	virtual void Copy() = 0;
 	void CopyAllowLine();
 	void CutAllowLine();
-	virtual bool CanPaste();
 	virtual void Paste() = 0;
+	void SetMultiPaste(Scintilla::MultiPaste multiPaste);
+	Scintilla::MultiPaste GetMultiPaste() const noexcept;
+	void SetPasteConvertEndings(bool convert);
+	bool GetPasteConvertEndings() const noexcept;
+	void SetCopySeparator(std::string_view separator);
+	std::string GetCopySeparator() const;
 	void Clear();
 	virtual void SelectAll();
 	void RestoreSelection(Sci::Position newPos, UndoRedo history);
@@ -579,7 +587,7 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	bool CopyLineRange(SelectionText *ss, bool allowProtected=true);
 	void CopySelectionRange(SelectionText *ss, bool allowLineCopy=false);
 	void CopyRangeToClipboard(Sci::Position start, Sci::Position end);
-	void CopyText(size_t length, const char *text);
+	void CopyText(std::string_view text);
 	void SetDragPosition(SelectionPosition newPos);
 	virtual void DisplayCursor(Window::Cursor c);
 	virtual bool DragThreshold(Point ptStart, Point ptNow);
@@ -760,6 +768,9 @@ public:
 	void SetSavePoint();
 	void BeginUndoAction();
 	void EndUndoAction();
+
+	// Clipboard menu enablement; definitions in EditorClipboard.cxx.
+	virtual bool CanPaste();
 
 	// Wrap mode is application-facing; its description lives beside the
 	// definition in EditorWrapping.cxx.

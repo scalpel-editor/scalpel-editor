@@ -1766,65 +1766,13 @@ struct Sci_TextToFindFull {
 
     <h2 id="CutCopyAndPaste">Cut, copy and paste</h2>
 
-    <code><a class="message" href="#SCI_CUT">SCI_CUT</a><br />
-     <a class="message" href="#SCI_COPY">SCI_COPY</a><br />
-     <a class="message" href="#SCI_PASTE">SCI_PASTE</a><br />
-     <a class="message" href="#SCI_CLEAR">SCI_CLEAR</a><br />
-     <a class="message" href="#SCI_CANPASTE">SCI_CANPASTE &rarr; bool</a><br />
-     <a class="message" href="#SCI_COPYRANGE">SCI_COPYRANGE(position start, position end)</a><br />
-     <a class="message" href="#SCI_COPYTEXT">SCI_COPYTEXT(position length, const char *text)</a><br />
-     <a class="message" href="#SCI_COPYALLOWLINE">SCI_COPYALLOWLINE</a><br />
-     <a class="message" href="#SCI_CUTALLOWLINE">SCI_CUTALLOWLINE</a><br />
-     <a class="message" href="#SCI_SETPASTECONVERTENDINGS">SCI_SETPASTECONVERTENDINGS(bool convert)</a><br />
-     <a class="message" href="#SCI_GETPASTECONVERTENDINGS">SCI_GETPASTECONVERTENDINGS &rarr; bool</a><br />
-     <a class="message" href="#SCI_SETCOPYSEPARATOR">SCI_SETCOPYSEPARATOR(&lt;unused&gt;, const char *separator)</a><br />
-     <a class="message" href="#SCI_GETCOPYSEPARATOR">SCI_GETCOPYSEPARATOR(&lt;unused&gt;, char *separator) &rarr; int</a><br />
-     <a class="message" href="#SCI_REPLACERECTANGULAR">SCI_REPLACERECTANGULAR(position length, const char *text)</a><br />
+    <p>Moved to <code>scintilla/src/EditorClipboard.cxx</code>. Named cut/copy helpers,
+    <code>CanPaste</code>, multi-paste and ending-conversion options, and range-to-clipboard
+    operations live beside the definitions there. <code>Copy</code> and <code>Paste</code> remain
+    host hooks on the platform subclass. Temporary message forwarders remain.
+    <code>SCI_CLEAR</code> is the keyboard clear command in <code>EditorDocument.cxx</code>.</p>
+    <code><a class="message" href="#SCI_REPLACERECTANGULAR">SCI_REPLACERECTANGULAR(position length, const char *text)</a><br />
     </code>
-
-    <p><b id="SCI_CUT">SCI_CUT</b><br />
-     <b id="SCI_COPY">SCI_COPY</b><br />
-     <b id="SCI_PASTE">SCI_PASTE</b><br />
-     <b id="SCI_CLEAR">SCI_CLEAR</b><br />
-     <b id="SCI_CANPASTE">SCI_CANPASTE &rarr; bool</b><br />
-     <b id="SCI_COPYALLOWLINE">SCI_COPYALLOWLINE</b><br />
-     <b id="SCI_CUTALLOWLINE">SCI_CUTALLOWLINE</b><br />
-     These commands perform the standard tasks of cutting and copying data to the clipboard,
-    pasting from the clipboard into the document, and clearing the document.
-    <code>SCI_CANPASTE</code> returns non-zero if the document isn't read-only and if the selection
-    doesn't contain protected text. If you need a "can copy" or "can cut", use
-    <code>SCI_GETSELECTIONEMPTY()</code>, which will be zero if there are any non-empty
-    selection ranges implying that a copy or cut to the clipboard should work.</p>
-
-    <p>GTK does not really support <code>SCI_CANPASTE</code> and always returns <code>true</code>
-    unless the document is read-only.</p>
-
-    <p>On X, the clipboard is asynchronous and may require several messages between
-    the destination and source applications. Data from SCI_PASTE will not arrive in the
-    document immediately.</p>
-
-    <p><code>SCI_COPYALLOWLINE</code> works the same as SCI_COPY except that if the
-    selection is empty then the current line is copied. On Windows, an extra "MSDEVLineSelect" marker
-    is added to the clipboard which is then used in <code>SCI_PASTE</code> to paste
-    the whole line before the current line.</p>
-
-    <p><code>SCI_CUTALLOWLINE</code> works the same as SCI_CUT except that if the
-    selection is empty then the current line is cut. On Windows, an extra "MSDEVLineSelect" marker
-    is added to the clipboard which is then used in <code>SCI_PASTE</code> to paste
-    the whole line before the current line.</p>
-
-     <b id="SCI_COPYRANGE">SCI_COPYRANGE(position start, position end)</b><br />
-     <b id="SCI_COPYTEXT">SCI_COPYTEXT(position length, const char *text)</b><br />
-    <p><code>SCI_COPYRANGE</code> copies a range of text from the document to
-    the system clipboard and <code>SCI_COPYTEXT</code> copies a supplied piece of
-    text to the system clipboard.</p>
-
-    <p><b id="SCI_SETPASTECONVERTENDINGS">SCI_SETPASTECONVERTENDINGS(bool convert)</b><br />
-     <b id="SCI_GETPASTECONVERTENDINGS">SCI_GETPASTECONVERTENDINGS &rarr; bool</b><br />
-     If this property is set then when text is pasted any line ends are converted to match the document's
-     end of line mode as set with
-     <a class="seealso" href="#SCI_SETEOLMODE">SCI_SETEOLMODE</a>.
-     Defaults to true.</p>
 
     <p><b id="SCI_SETCOPYSEPARATOR">SCI_SETCOPYSEPARATOR(&lt;unused&gt;, const char *separator)</b><br />
      <b id="SCI_GETCOPYSEPARATOR">SCI_GETCOPYSEPARATOR(&lt;unused&gt;, char *separator) &rarr; int</b><br />
