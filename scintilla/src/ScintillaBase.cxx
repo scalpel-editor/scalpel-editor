@@ -768,11 +768,6 @@ sptr_t ScintillaBase::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return reinterpret_cast<sptr_t>(
 			DocumentLexState()->PrivateCall(static_cast<int>(wParam), PtrFromSPtr(lParam)));
 
-#ifdef INCLUDE_DEPRECATED_FEATURES
-	case SCI_GETSTYLEBITSNEEDED:
-		return 8;
-#endif
-
 	case Message::PropertyNames:
 		return StringResult(lParam, DocumentLexState()->PropertyNames());
 

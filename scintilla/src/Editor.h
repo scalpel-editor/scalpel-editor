@@ -673,7 +673,7 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void RGBAImageSetWidth(int width);
 	void RGBAImageSetHeight(int height);
 	void RGBAImageSetScale(int scalePercent);
-	void SetBidirectional(Scintilla::Bidirectional bidirectional_);
+	virtual void SetBidirectional(Scintilla::Bidirectional bidirectional_);
 	Scintilla::Bidirectional GetBidirectional() const noexcept;
 	void SetViewWS(Scintilla::WhiteSpace viewWS);
 	Scintilla::WhiteSpace GetViewWS() const noexcept;

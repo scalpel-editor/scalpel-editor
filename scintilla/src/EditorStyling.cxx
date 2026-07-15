@@ -549,10 +549,13 @@ void Editor::RGBAImageSetScale(int scalePercent) {
 	scaleRGBAImage = static_cast<float>(scalePercent);
 }
 
-// Bidirectional layout. Default is disabled; platform subclasses that support bidi may override SetBidirectional.
+// Bidirectional layout mode. Default is Disabled. Stores the mode and invalidates layout so measurement and paint can react. Platform subclasses that cannot lay out bidi text may override this virtual method to leave the mode disabled (or to accept only modes they implement). Full screen-line reordering is not on the current roadmap; the flag and shaped-run path stay so a later platform can turn it on.
 void Editor::SetBidirectional(Bidirectional bidirectional_) {
-	// Implemented on platform subclasses when they support bidirectional text.
-	(void)bidirectional_;
+	if (bidirectional == bidirectional_)
+		return;
+	bidirectional = bidirectional_;
+	// Layout and surface mode depend on the flag; rebuild caches and redraw.
+	InvalidateStyleRedraw();
 }
 
 Bidirectional Editor::GetBidirectional() const noexcept {

@@ -116,6 +116,40 @@ TEST_CASE("Start styling SetStyling GetStyleAt end-styled and failure") {
 	editor.WndProc(Message::SetStylingEx, 3, reinterpret_cast<sptr_t>(styles));
 	CHECK(editor.WndProc(Message::GetStyleAt, 3, 0) == 7);
 	CHECK(editor.WndProc(Message::GetStyleAt, 5, 0) == 7);
+
+	// Full style bytes: values above the old 5-bit style partition (0..31) still store and read back.
+	constexpr int styleAboveOldBits = 40;
+	editor.WndProc(Message::StartStyling, 0, 0);
+	editor.WndProc(Message::SetStyling, 2, styleAboveOldBits);
+	CHECK(editor.WndProc(Message::GetStyleAt, 0, 0) == styleAboveOldBits);
+	CHECK(editor.WndProc(Message::GetStyleIndexAt, 1, 0) == styleAboveOldBits);
+	editor.WndProc(Message::StyleSetFore, styleAboveOldBits, 0x00C0FF);
+	CHECK(editor.WndProc(Message::StyleGetFore, styleAboveOldBits, 0) == 0x00C0FF);
+}
+
+TEST_CASE("SetBidirectional stores mode and GetBidirectional reports it") {
+	TestHost host;
+	TestEditor editor(host);
+
+	// Default off. Do not paint while bidi is enabled: the test surface has no
+	// screen-line layout implementation, and full bidi layout is out of roadmap scope.
+	CHECK(static_cast<Bidirectional>(editor.WndProc(Message::GetBidirectional, 0, 0)) == Bidirectional::Disabled);
+
+	editor.ClearObservations();
+	editor.WndProc(Message::SetBidirectional, static_cast<uptr_t>(Bidirectional::L2R), 0);
+	CHECK(static_cast<Bidirectional>(editor.WndProc(Message::GetBidirectional, 0, 0)) == Bidirectional::L2R);
+	CHECK(editor.Snapshot().invalidatedRectangles > 0);
+
+	editor.WndProc(Message::SetBidirectional, static_cast<uptr_t>(Bidirectional::R2L), 0);
+	CHECK(static_cast<Bidirectional>(editor.WndProc(Message::GetBidirectional, 0, 0)) == Bidirectional::R2L);
+
+	// Unchanged mode skips invalidation.
+	editor.ClearObservations();
+	editor.WndProc(Message::SetBidirectional, static_cast<uptr_t>(Bidirectional::R2L), 0);
+	CHECK(editor.Snapshot().invalidatedRectangles == 0);
+
+	editor.WndProc(Message::SetBidirectional, static_cast<uptr_t>(Bidirectional::Disabled), 0);
+	CHECK(static_cast<Bidirectional>(editor.WndProc(Message::GetBidirectional, 0, 0)) == Bidirectional::Disabled);
 }
 
 TEST_CASE("ClearDocumentStyle resets styles without clearing text") {
