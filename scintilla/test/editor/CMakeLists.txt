@@ -2,6 +2,7 @@
 
 add_executable(editorTest
   EditorWrappingTest.cxx
+  PopupHostTest.cxx
   TestEditor.cxx
   TestEditorTest.cxx
   TestPlatform.cxx

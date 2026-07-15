@@ -170,7 +170,15 @@ void TestEditor::ClearObservations() {
 	observations.idleRequested = idleRequested;
 	host.mainWindow.invalidations.clear();
 	host.mainWindow.invalidateAllCount = 0;
+	// Keep live list-box and call-tip window state: those reflect current UI,
+	// not a one-shot host effect log. Only clear request/draw logs and counters.
+	const int listBoxesAllocated = host.log.listBoxesAllocated;
+	const int surfacesAllocated = host.log.surfacesAllocated;
+	const int fontsAllocated = host.log.fontsAllocated;
 	host.log = {};
+	host.log.listBoxesAllocated = listBoxesAllocated;
+	host.log.surfacesAllocated = surfacesAllocated;
+	host.log.fontsAllocated = fontsAllocated;
 }
 
 TestEditorSnapshot TestEditor::Snapshot() const {
@@ -264,6 +272,21 @@ bool TestEditor::HaveMouseCapture() {
 }
 
 void TestEditor::CreateCallTipWindow(PRectangle rc) {
+	// Assign a real in-memory window so CallTip Show / SetPosition /
+	// InvalidateAll / Destroy update inspectable host state. Without a
+	// WindowID, Created() stays false and cancel cannot destroy the tip.
+	host.callTipWindow.rect = rc;
+	host.callTipWindow.cursor = Window::Cursor::invalid;
+	host.callTipWindow.visible = false;
+	host.callTipWindow.mouseCaptured = false;
+	host.callTipWindow.invalidations.clear();
+	host.callTipWindow.invalidateAllCount = 0;
+	host.callTip.created = true;
+	host.callTip.visible = false;
+	host.callTip.rect = rc;
+	host.callTip.createCount++;
+	host.callTip.invalidateAllCount = 0;
+	ct.wCallTip = static_cast<WindowID>(&host.callTipWindow);
 	observations.callTipWindows.push_back(rc);
 }
 

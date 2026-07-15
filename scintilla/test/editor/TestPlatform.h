@@ -2,11 +2,12 @@
 /** @file TestPlatform.h
  ** Deterministic test implementation of the Platform.h contracts.
  **
- ** The platform here never draws pixels, opens windows, or talks to a
+ ** The platform here never draws pixels, opens real windows, or talks to a
  ** display server. Windows store their state in memory, surfaces record
- ** drawing commands as text, fonts report fixed metrics, and features the
- ** tests do not exercise (list boxes, menus, bidirectional layout) record
- ** the request instead of pretending it succeeded.
+ ** drawing commands as text, fonts report fixed metrics, and autocomplete
+ ** list boxes and call-tip windows are fully in-memory and inspectable.
+ ** Menus and bidirectional layout still record the request instead of
+ ** pretending they succeeded.
  **
  ** Like Scintilla's internal headers, this header expects Geometry.h and
  ** Platform.h (and their standard-library prerequisites) to be included
@@ -25,6 +26,40 @@ constexpr XYPOSITION testFontAscent = 8;
 constexpr XYPOSITION testFontDescent = 2;
 constexpr XYPOSITION testCharWidth = 10;
 
+// One entry in the in-memory autocomplete list box.
+struct TestListBoxItem {
+	std::string text;
+	int type = -1;
+};
+
+// Inspectable state of the autocomplete list box. Updated on every list-box
+// method so tests can assert without parsing log strings.
+struct TestListBoxState {
+	bool created = false;
+	bool visible = false;
+	PRectangle rect{};
+	Point location{};
+	int lineHeight = 0;
+	int averageCharWidth = static_cast<int>(testCharWidth);
+	int visibleRows = 5;
+	int selection = -1;
+	int caretFromEdge = 0;
+	int createCount = 0;
+	int imageRegisterCount = 0;
+	int rgbaImageRegisterCount = 0;
+	std::vector<TestListBoxItem> items;
+};
+
+// Inspectable state of the call-tip window owned by TestHost and assigned
+// from CreateCallTipWindow.
+struct TestCallTipState {
+	bool created = false;
+	bool visible = false;
+	PRectangle rect{};
+	int createCount = 0;
+	int invalidateAllCount = 0;
+};
+
 // Everything the platform layer observes. Owned by TestHost; the platform
 // free functions reach it through TestHost::CurrentLog().
 struct TestPlatformLog {
@@ -32,9 +67,9 @@ struct TestPlatformLog {
 	std::vector<std::string> drawCommands;
 	// Popup-window activity: menu creation and show requests.
 	std::vector<std::string> popupRequests;
-	// Calls into features the test platform does not implement (list box
-	// display, bidirectional layout). Recorded so a test that strays into
-	// them sees the request instead of silent fake success.
+	// Calls into features the test platform does not implement
+	// (bidirectional layout). Recorded so a test that strays into them sees
+	// the request instead of silent fake success.
 	std::vector<std::string> unsupportedRequests;
 	int surfacesAllocated = 0;
 	int fontsAllocated = 0;
@@ -51,6 +86,10 @@ struct TestWindow {
 	std::vector<PRectangle> invalidations;
 	int invalidateAllCount = 0;
 };
+
+// Forward declaration: the concrete list box lives in TestPlatform.cxx and
+// registers itself with the host for event injection.
+class TestListBox;
 
 // A test constructs one TestHost before its editor and keeps it alive
 // throughout. The platform free functions (Surface::Allocate,
@@ -69,9 +108,25 @@ public:
 
 	// The log of the live host, or null when no host is alive.
 	static TestPlatformLog *CurrentLog() noexcept;
+	// The live host, or null when no host is alive.
+	static TestHost *Current() noexcept;
+
+	// Inject list-box events as if the user changed selection or double-clicked.
+	// No-op when no list box is registered.
+	void NotifyListBoxSelectionChange();
+	void NotifyListBoxDoubleClick();
 
 	TestPlatformLog log;
 	TestWindow mainWindow;	// becomes the editor's wMain
+	TestWindow callTipWindow;	// becomes ct.wCallTip from CreateCallTipWindow
+	TestListBoxState listBox;
+	TestCallTipState callTip;
+
+	// Non-owning pointer to the allocated list box, set by ListBox::Allocate
+	// and cleared when the list box is destroyed. Used for event injection.
+	TestListBox *liveListBox = nullptr;
+	// WindowID of the list box after Create, for Destroy tracking.
+	WindowID listBoxWindowId = nullptr;
 };
 
 }
