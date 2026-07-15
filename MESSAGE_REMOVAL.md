@@ -9,6 +9,12 @@ Classify each interface entry only after tracing its callers, implementation, do
 - **Application-facing method:** An operation the standalone editor or its fixed chrome needs to call. Give it a narrow public method named for the operation. Public access is justified by an application use, not by its presence in `Scintilla.iface`.
 - **Private editor operation:** Behavior that must remain but is used only to implement editor features. Keep it private or protected and call it directly from the owning concern.
 - **Keyboard command:** A user action that can be bound to a key, such as moving the caret or deleting a word. Move it to the dedicated command type and command dispatcher rather than exposing it as an application method.
+
+## Command dispatch
+
+`EditorCommand` (`EditorCommands.h`) is the type for bindable zero-argument editing actions. `KeyMap` maps key chords to `EditorCommand`. `Editor::KeyDownWithModifiers` finds a binding and calls `ExecuteCommand`; unbound keys yield `EditorCommand::None` and fall through to `KeyDefault`. `Editor::ExecuteCommand` (in `EditorCommands.cxx`) is the dispatcher; `ScintillaBase::ExecuteCommand` intercepts a small set of commands while autocomplete or a call tip is active, then forwards to `Editor::ExecuteCommand`.
+
+Movement helpers that once took `Message` (`PositionMove`, `SelectionMove`, `HorizontalMove`, `DelWordOrLine`, and the extend/direction helpers) take `EditorCommand`. Temporary `WndProc` cases for commands forward with `CommandFromMessage`; `AssignCmdKey` still packs a message number in `lParam` and converts it the same way until phase 5 removes the generated message layer. `SetZoom` as a command resets the zoom level to 0 (the old zero-parameter key-binding behaviour); the application zoom setter with an explicit level remains a separate message/path until the styling concern move.
 - **Retained type or notification:** Data the editor, lexer, renderer, or host still exchanges. Keep a small project-owned definition without a callable message wrapper.
 - **Feature to delete:** Code that serves an absent platform or only implements the numeric message layer. An unused editing feature is not enough reason to delete it.
 
