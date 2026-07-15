@@ -280,243 +280,9 @@ void ScintillaBase::RightButtonDownWithModifiers(Point pt, unsigned int curTime,
 	Editor::RightButtonDownWithModifiers(pt, curTime, modifiers);
 }
 
-namespace Scintilla::Internal {
+// LexState, DocumentLexState, NotifyStyleToNeeded, and named lexer
+// operations: definitions in EditorLexing.cxx.
 
-class LexState : public LexInterface {
-public:
-	explicit LexState(Document *pdoc_) noexcept;
-
-	// LexInterface deleted the standard operators and defined the virtual destructor so don't need to here.
-
-	const char *DescribeWordListSets();
-	void SetWordList(int n, const char *wl);
-	[[nodiscard]] int GetIdentifier() const;
-	[[nodiscard]] const char *GetName() const;
-	void *PrivateCall(int operation, void *pointer);
-	const char *PropertyNames();
-	TypeProperty PropertyType(const char *name);
-	const char *DescribeProperty(const char *name);
-	void PropSet(const char *key, const char *val);
-	const char *PropGet(const char *key) const;
-	int PropGetInt(const char *key, int defaultValue=0) const;
-
-	LineEndType LineEndTypesSupported() override;
-	int AllocateSubStyles(int styleBase, int numberStyles);
-	int SubStylesStart(int styleBase);
-	int SubStylesLength(int styleBase);
-	int StyleFromSubStyle(int subStyle);
-	int PrimaryStyleFromStyle(int style);
-	void FreeSubStyles();
-	void SetIdentifiers(int style, const char *identifiers);
-	int DistanceToSecondaryStyles();
-	const char *GetSubStyleBases();
-	int NamedStyles();
-	const char *NameOfStyle(int style);
-	const char *TagsOfStyle(int style);
-	const char *DescriptionOfStyle(int style);
-};
-
-}
-
-LexState::LexState(Document *pdoc_) noexcept : LexInterface(pdoc_) {
-}
-
-LexState *ScintillaBase::DocumentLexState() {
-	if (!pdoc->GetLexInterface()) {
-		pdoc->SetLexInterface(std::make_unique<LexState>(pdoc));
-	}
-	return dynamic_cast<LexState *>(pdoc->GetLexInterface());
-}
-
-const char *LexState::DescribeWordListSets() {
-	if (instance) {
-		return instance->DescribeWordListSets();
-	}
-	return nullptr;
-}
-
-void LexState::SetWordList(int n, const char *wl) {
-	if (instance) {
-		const Sci_Position firstModification = instance->WordListSet(n, wl);
-		if (firstModification >= 0) {
-			pdoc->ModifiedAt(firstModification);
-		}
-	}
-}
-
-int LexState::GetIdentifier() const {
-	if (instance) {
-		return instance->GetIdentifier();
-	}
-	return 0;
-}
-
-const char *LexState::GetName() const {
-	if (instance) {
-		return instance->GetName();
-	}
-	return "";
-}
-
-void *LexState::PrivateCall(int operation, void *pointer) {
-	if (instance) {
-		return instance->PrivateCall(operation, pointer);
-	}
-	return nullptr;
-}
-
-const char *LexState::PropertyNames() {
-	if (instance) {
-		return instance->PropertyNames();
-	}
-	return nullptr;
-}
-
-TypeProperty LexState::PropertyType(const char *name) {
-	if (instance) {
-		return static_cast<TypeProperty>(instance->PropertyType(name));
-	}
-	return TypeProperty::Boolean;
-}
-
-const char *LexState::DescribeProperty(const char *name) {
-	if (instance) {
-		return instance->DescribeProperty(name);
-	}
-	return nullptr;
-}
-
-void LexState::PropSet(const char *key, const char *val) {
-	if (instance) {
-		const Sci_Position firstModification = instance->PropertySet(key, val);
-		if (firstModification >= 0) {
-			pdoc->ModifiedAt(firstModification);
-		}
-	}
-}
-
-const char *LexState::PropGet(const char *key) const {
-	if (instance) {
-		return instance->PropertyGet(key);
-	}
-	return nullptr;
-}
-
-int LexState::PropGetInt(const char *key, int defaultValue) const {
-	if (instance) {
-		const char *value = instance->PropertyGet(key);
-		if (value && *value) {
-			return atoi(value);
-		}
-	}
-	return defaultValue;
-}
-
-LineEndType LexState::LineEndTypesSupported() {
-	if (instance) {
-		return static_cast<LineEndType>(instance->LineEndTypesSupported());
-	}
-	return LineEndType::Default;
-}
-
-int LexState::AllocateSubStyles(int styleBase, int numberStyles) {
-	if (instance) {
-		return instance->AllocateSubStyles(styleBase, numberStyles);
-	}
-	return -1;
-}
-
-int LexState::SubStylesStart(int styleBase) {
-	if (instance) {
-		return instance->SubStylesStart(styleBase);
-	}
-	return -1;
-}
-
-int LexState::SubStylesLength(int styleBase) {
-	if (instance) {
-		return instance->SubStylesLength(styleBase);
-	}
-	return 0;
-}
-
-int LexState::StyleFromSubStyle(int subStyle) {
-	if (instance) {
-		return instance->StyleFromSubStyle(subStyle);
-	}
-	return 0;
-}
-
-int LexState::PrimaryStyleFromStyle(int style) {
-	if (instance) {
-		return instance->PrimaryStyleFromStyle(style);
-	}
-	return 0;
-}
-
-void LexState::FreeSubStyles() {
-	if (instance) {
-		instance->FreeSubStyles();
-	}
-}
-
-void LexState::SetIdentifiers(int style, const char *identifiers) {
-	if (instance) {
-		instance->SetIdentifiers(style, identifiers);
-		pdoc->ModifiedAt(0);
-	}
-}
-
-int LexState::DistanceToSecondaryStyles() {
-	if (instance) {
-		return instance->DistanceToSecondaryStyles();
-	}
-	return 0;
-}
-
-const char *LexState::GetSubStyleBases() {
-	if (instance) {
-		return instance->GetSubStyleBases();
-	}
-	return "";
-}
-
-int LexState::NamedStyles() {
-	if (instance) {
-		return instance->NamedStyles();
-	}
-	return -1;
-}
-
-const char *LexState::NameOfStyle(int style) {
-	if (instance) {
-		return instance->NameOfStyle(style);
-	}
-	return nullptr;
-}
-
-const char *LexState::TagsOfStyle(int style) {
-	if (instance) {
-		return instance->TagsOfStyle(style);
-	}
-	return nullptr;
-}
-
-const char *LexState::DescriptionOfStyle(int style) {
-	if (instance) {
-		return instance->DescriptionOfStyle(style);
-	}
-	return nullptr;
-}
-
-void ScintillaBase::NotifyStyleToNeeded(Sci::Position endStyleNeeded) {
-	if (!DocumentLexState()->UseContainerLexing()) {
-		const Sci::Position startStyling = pdoc->LineStartPosition(pdoc->GetEndStyled());
-		DocumentLexState()->Colourise(startStyling, endStyleNeeded);
-		return;
-	}
-	Editor::NotifyStyleToNeeded(endStyleNeeded);
-}
 
 sptr_t ScintillaBase::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 	switch (iMessage) {
@@ -727,107 +493,96 @@ sptr_t ScintillaBase::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::GetLexer:
-		return DocumentLexState()->GetIdentifier();
+		return GetLexer();
 
 	case Message::SetILexer:
-		DocumentLexState()->SetInstance(static_cast<ILexer5 *>(PtrFromSPtr(lParam)));
+		SetILexer(static_cast<ILexer5 *>(PtrFromSPtr(lParam)));
 		return 0;
 
 	case Message::Colourise:
-		if (DocumentLexState()->UseContainerLexing()) {
-			pdoc->ModifiedAt(PositionFromUPtr(wParam));
-			NotifyStyleToNeeded((lParam == -1) ? pdoc->Length() : lParam);
-		} else {
-			DocumentLexState()->Colourise(PositionFromUPtr(wParam), lParam);
-		}
-		Redraw();
+		Colourise(PositionFromUPtr(wParam), lParam);
 		break;
 
 	case Message::SetProperty:
-		DocumentLexState()->PropSet(ConstCharPtrFromUPtr(wParam),
-		          ConstCharPtrFromSPtr(lParam));
+		SetProperty(ConstCharPtrFromUPtr(wParam), ConstCharPtrFromSPtr(lParam));
 		break;
 
 	case Message::GetProperty:
-		return StringResult(lParam, DocumentLexState()->PropGet(ConstCharPtrFromUPtr(wParam)));
+		return StringResult(lParam, GetProperty(ConstCharPtrFromUPtr(wParam)));
 
 	case Message::GetPropertyExpanded:
-		return StringResult(lParam, DocumentLexState()->PropGet(ConstCharPtrFromUPtr(wParam)));
+		// Expanded form is not separately implemented; same as GetProperty.
+		return StringResult(lParam, GetProperty(ConstCharPtrFromUPtr(wParam)));
 
 	case Message::GetPropertyInt:
-		return DocumentLexState()->PropGetInt(ConstCharPtrFromUPtr(wParam), static_cast<int>(lParam));
+		return GetPropertyInt(ConstCharPtrFromUPtr(wParam), static_cast<int>(lParam));
 
 	case Message::SetKeyWords:
-		DocumentLexState()->SetWordList(static_cast<int>(wParam), ConstCharPtrFromSPtr(lParam));
+		SetKeyWords(static_cast<int>(wParam), ConstCharPtrFromSPtr(lParam));
 		break;
 
 	case Message::GetLexerLanguage:
-		return StringResult(lParam, DocumentLexState()->GetName());
+		return StringResult(lParam, GetLexerLanguage());
 
 	case Message::PrivateLexerCall:
 		return reinterpret_cast<sptr_t>(
-			DocumentLexState()->PrivateCall(static_cast<int>(wParam), PtrFromSPtr(lParam)));
+			PrivateLexerCall(static_cast<int>(wParam), PtrFromSPtr(lParam)));
 
 	case Message::PropertyNames:
-		return StringResult(lParam, DocumentLexState()->PropertyNames());
+		return StringResult(lParam, PropertyNames());
 
 	case Message::PropertyType:
-		return static_cast<sptr_t>(DocumentLexState()->PropertyType(ConstCharPtrFromUPtr(wParam)));
+		return static_cast<sptr_t>(PropertyType(ConstCharPtrFromUPtr(wParam)));
 
 	case Message::DescribeProperty:
-		return StringResult(lParam,
-				    DocumentLexState()->DescribeProperty(ConstCharPtrFromUPtr(wParam)));
+		return StringResult(lParam, DescribeProperty(ConstCharPtrFromUPtr(wParam)));
 
 	case Message::DescribeKeyWordSets:
-		return StringResult(lParam, DocumentLexState()->DescribeWordListSets());
+		return StringResult(lParam, DescribeKeyWordSets());
 
 	case Message::GetLineEndTypesSupported:
-		return static_cast<sptr_t>(DocumentLexState()->LineEndTypesSupported());
+		return static_cast<sptr_t>(GetLineEndTypesSupported());
 
 	case Message::AllocateSubStyles:
-		return DocumentLexState()->AllocateSubStyles(static_cast<int>(wParam), static_cast<int>(lParam));
+		return AllocateSubStyles(static_cast<int>(wParam), static_cast<int>(lParam));
 
 	case Message::GetSubStylesStart:
-		return DocumentLexState()->SubStylesStart(static_cast<int>(wParam));
+		return GetSubStylesStart(static_cast<int>(wParam));
 
 	case Message::GetSubStylesLength:
-		return DocumentLexState()->SubStylesLength(static_cast<int>(wParam));
+		return GetSubStylesLength(static_cast<int>(wParam));
 
 	case Message::GetStyleFromSubStyle:
-		return DocumentLexState()->StyleFromSubStyle(static_cast<int>(wParam));
+		return GetStyleFromSubStyle(static_cast<int>(wParam));
 
 	case Message::GetPrimaryStyleFromStyle:
-		return DocumentLexState()->PrimaryStyleFromStyle(static_cast<int>(wParam));
+		return GetPrimaryStyleFromStyle(static_cast<int>(wParam));
 
 	case Message::FreeSubStyles:
-		DocumentLexState()->FreeSubStyles();
+		FreeSubStyles();
 		break;
 
 	case Message::SetIdentifiers:
-		DocumentLexState()->SetIdentifiers(static_cast<int>(wParam),
-						   ConstCharPtrFromSPtr(lParam));
+		SetIdentifiers(static_cast<int>(wParam), ConstCharPtrFromSPtr(lParam));
 		break;
 
 	case Message::DistanceToSecondaryStyles:
-		return DocumentLexState()->DistanceToSecondaryStyles();
+		return DistanceToSecondaryStyles();
 
 	case Message::GetSubStyleBases:
-		return StringResult(lParam, DocumentLexState()->GetSubStyleBases());
+		return StringResult(lParam, GetSubStyleBases());
 
 	case Message::GetNamedStyles:
-		return DocumentLexState()->NamedStyles();
+		return GetNamedStyles();
 
 	case Message::NameOfStyle:
-		return StringResult(lParam, DocumentLexState()->
-				    NameOfStyle(static_cast<int>(wParam)));
+		return StringResult(lParam, NameOfStyle(static_cast<int>(wParam)));
 
 	case Message::TagsOfStyle:
-		return StringResult(lParam, DocumentLexState()->
-				    TagsOfStyle(static_cast<int>(wParam)));
+		return StringResult(lParam, TagsOfStyle(static_cast<int>(wParam)));
 
 	case Message::DescriptionOfStyle:
-		return StringResult(lParam, DocumentLexState()->
-				    DescriptionOfStyle(static_cast<int>(wParam)));
+		return StringResult(lParam, DescriptionOfStyle(static_cast<int>(wParam)));
 
 	default:
 		return Editor::WndProc(iMessage, wParam, lParam);

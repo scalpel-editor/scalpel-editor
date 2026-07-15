@@ -1276,6 +1276,13 @@ public:
 	void SetVirtualSpaceOptions(Scintilla::VirtualSpace options);
 	Scintilla::VirtualSpace GetVirtualSpaceOptions() const noexcept;
 
+
+	// Line state for multi-line lexers; definitions in EditorLexing.cxx.
+	int SetLineState(Sci::Line line, int state);
+	int GetLineState(Sci::Line line) const;
+	int GetMaxLineState() const noexcept;
+	void ChangeLexerState(Sci::Position start, Sci::Position end);
+
 	// Public so scintilla_send_message can use it.
 	virtual Scintilla::sptr_t WndProc(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
 	// Public so scintilla_set_id can use it.

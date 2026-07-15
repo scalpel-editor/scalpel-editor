@@ -49,7 +49,6 @@ protected:
 	Scintilla::MultiAutoComplete multiAutoCMode; /// Mode for autocompleting when multiple selections are present
 
 	LexState *DocumentLexState();
-	void Colourise(int start, int end);
 
 	ScintillaBase();
 	// Deleted so ScintillaBase objects can not be copied.
@@ -163,6 +162,35 @@ public:
 	// Context-menu policy; definition in EditorInput.cxx with the other input surface.
 	void UsePopUp(Scintilla::PopUp popUpMode);
 	Scintilla::PopUp GetUsePopUp() const noexcept;
+
+	// Lexer attachment and Lexilla-facing surface; definitions in EditorLexing.cxx.
+	void SetILexer(Scintilla::ILexer5 *lexer);
+	void Colourise(Sci::Position start, Sci::Position end);
+	void SetProperty(const char *key, const char *val);
+	const char *GetProperty(const char *key);
+	int GetPropertyInt(const char *key, int defaultValue = 0);
+	void SetKeyWords(int wordList, const char *keywords);
+	int GetLexer();
+	const char *GetLexerLanguage();
+	void *PrivateLexerCall(int operation, void *pointer);
+	const char *PropertyNames();
+	Scintilla::TypeProperty PropertyType(const char *name);
+	const char *DescribeProperty(const char *name);
+	const char *DescribeKeyWordSets();
+	Scintilla::LineEndType GetLineEndTypesSupported();
+	int AllocateSubStyles(int styleBase, int numberStyles);
+	int GetSubStylesStart(int styleBase);
+	int GetSubStylesLength(int styleBase);
+	int GetStyleFromSubStyle(int subStyle);
+	int GetPrimaryStyleFromStyle(int style);
+	void FreeSubStyles();
+	void SetIdentifiers(int style, const char *identifiers);
+	int DistanceToSecondaryStyles();
+	const char *GetSubStyleBases();
+	int GetNamedStyles();
+	const char *NameOfStyle(int style);
+	const char *TagsOfStyle(int style);
+	const char *DescriptionOfStyle(int style);
 
 	// Public so scintilla_send_message can use it
 	Scintilla::sptr_t WndProc(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam) override;

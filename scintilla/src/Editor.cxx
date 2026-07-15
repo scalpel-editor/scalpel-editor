@@ -5642,13 +5642,13 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 	// SetStyleBits / GetStyleBits deleted: full style bytes, no bit partition.
 
 	case Message::SetLineState:
-		return pdoc->SetLineState(LineFromUPtr(wParam), static_cast<int>(lParam));
+		return SetLineState(LineFromUPtr(wParam), static_cast<int>(lParam));
 
 	case Message::GetLineState:
-		return pdoc->GetLineState(LineFromUPtr(wParam));
+		return GetLineState(LineFromUPtr(wParam));
 
 	case Message::GetMaxLineState:
-		return pdoc->GetMaxLineState();
+		return GetMaxLineState();
 
 	case Message::GetCaretLineVisible:
 		return GetCaretLineVisible() ? 1 : 0;
@@ -6692,7 +6692,7 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return ExecuteCommand(EditorCommand::MultipleSelectAddEach);
 
 	case Message::ChangeLexerState:
-		pdoc->ChangeLexerState(PositionFromUPtr(wParam), lParam);
+		ChangeLexerState(PositionFromUPtr(wParam), lParam);
 		break;
 
 	case Message::SetIdentifier:

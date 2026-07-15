@@ -11,6 +11,7 @@ add_executable(editorTest
   EditorFoldingTest.cxx
   EditorHistoryTest.cxx
   EditorInputTest.cxx
+  EditorLexingTest.cxx
   EditorLinesTest.cxx
   EditorMarginsTest.cxx
   EditorMarkersTest.cxx
