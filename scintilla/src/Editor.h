@@ -568,7 +568,6 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void RefreshPixMaps(Surface *surfaceWindow);
 	void Paint(Surface *surfaceWindow, PRectangle rcArea);
 	Sci::Position FormatRange(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
-	long TextWidth(Scintilla::uptr_t style, const char *text);
 
 	virtual void SetVerticalScrollPos();
 	virtual void SetHorizontalScrollPos() = 0;
@@ -602,7 +601,105 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void Allocate(Sci::Position bytes);
 	const char *GetRangePointer(Sci::Position start, Sci::Position rangeLength);
 	Sci::Position GetGapPosition() const noexcept;
+
+	// Styling and drawing: definitions in EditorStyling.cxx.
 	void ClearDocumentStyle();
+	int GetStyleAt(Sci::Position pos) const noexcept;
+	int GetStyleIndexAt(Sci::Position pos) const noexcept;
+	Sci::Position GetEndStyled() const noexcept;
+	void StartStyling(Sci::Position start);
+	void SetStyling(Sci::Position length, int style);
+	void SetStylingEx(Sci::Position length, const char *styles);
+	void SetIdleStyling(Scintilla::IdleStyling idleStyling_);
+	Scintilla::IdleStyling GetIdleStyling() const noexcept;
+	void StyleClearAll();
+	void StyleResetDefault();
+	void StyleSetFore(int style, int rgb);
+	int StyleGetFore(int style);
+	void StyleSetBack(int style, int rgb);
+	int StyleGetBack(int style);
+	void StyleSetBold(int style, bool bold);
+	bool StyleGetBold(int style);
+	void StyleSetWeight(int style, Scintilla::FontWeight weight);
+	Scintilla::FontWeight StyleGetWeight(int style);
+	void StyleSetStretch(int style, Scintilla::FontStretch stretch);
+	Scintilla::FontStretch StyleGetStretch(int style);
+	void StyleSetItalic(int style, bool italic);
+	bool StyleGetItalic(int style);
+	void StyleSetEOLFilled(int style, bool eolFilled);
+	bool StyleGetEOLFilled(int style);
+	void StyleSetSize(int style, int sizePoints);
+	int StyleGetSize(int style);
+	void StyleSetSizeFractional(int style, int sizeHundredthPoints);
+	int StyleGetSizeFractional(int style);
+	void StyleSetFont(int style, const char *fontName);
+	int StyleGetFont(int style, char *buffer);
+	void StyleSetUnderline(int style, bool underline);
+	bool StyleGetUnderline(int style);
+	void StyleSetCase(int style, Scintilla::CaseVisible caseVisible);
+	Scintilla::CaseVisible StyleGetCase(int style);
+	void StyleSetCharacterSet(int style, Scintilla::CharacterSet characterSet);
+	Scintilla::CharacterSet StyleGetCharacterSet(int style);
+	void StyleSetVisible(int style, bool visible);
+	bool StyleGetVisible(int style);
+	void StyleSetChangeable(int style, bool changeable);
+	bool StyleGetChangeable(int style);
+	void StyleSetHotSpot(int style, bool hotspot);
+	bool StyleGetHotSpot(int style);
+	void StyleSetCheckMonospaced(int style, bool checkMonospaced);
+	bool StyleGetCheckMonospaced(int style);
+	void StyleSetInvisibleRepresentation(int style, const char *utf8);
+	int StyleGetInvisibleRepresentation(int style, char *buffer);
+	void SetElementColour(Scintilla::Element element, int colourAlpha);
+	int GetElementColour(Scintilla::Element element) const;
+	void ResetElementColour(Scintilla::Element element);
+	bool GetElementIsSet(Scintilla::Element element) const;
+	bool GetElementAllowsTranslucent(Scintilla::Element element) const;
+	int GetElementBaseColour(Scintilla::Element element) const;
+	void SetFontLocale(const char *localeName);
+	int GetFontLocale(char *buffer) const;
+	void SetLayoutCache(Scintilla::LineCache cacheMode);
+	Scintilla::LineCache GetLayoutCache() const noexcept;
+	void SetPositionCache(int size);
+	int GetPositionCache() const noexcept;
+	void SetLayoutThreads(unsigned int threads);
+	unsigned int GetLayoutThreads() const noexcept;
+	void SetPhasesDraw(int phases);
+	int GetPhasesDraw() const noexcept;
+	void SetExtraAscent(int extraAscent);
+	int GetExtraAscent() const noexcept;
+	void SetExtraDescent(int extraDescent);
+	int GetExtraDescent() const noexcept;
+	void RGBAImageSetWidth(int width);
+	void RGBAImageSetHeight(int height);
+	void RGBAImageSetScale(int scalePercent);
+	void SetBidirectional(Scintilla::Bidirectional bidirectional_);
+	Scintilla::Bidirectional GetBidirectional() const noexcept;
+	void SetViewWS(Scintilla::WhiteSpace viewWS);
+	Scintilla::WhiteSpace GetViewWS() const noexcept;
+	void SetWhitespaceFore(bool useSetting, int rgb);
+	void SetWhitespaceBack(bool useSetting, int rgb);
+	void SetWhitespaceSize(int size);
+	int GetWhitespaceSize() const noexcept;
+	void SetSelFore(bool useSetting, int rgb);
+	void SetSelBack(bool useSetting, int rgb);
+	void SetSelAlpha(int alpha);
+	int GetSelAlpha() const;
+	void SetAdditionalSelFore(int rgb);
+	void SetAdditionalSelBack(int rgb);
+	void SetAdditionalSelAlpha(int alpha);
+	int GetAdditionalSelAlpha() const;
+	void SetHighlightGuide(int column);
+	int GetHighlightGuide() const noexcept;
+	void SetEdgeMode(Scintilla::EdgeVisualStyle edgeMode);
+	Scintilla::EdgeVisualStyle GetEdgeMode() const noexcept;
+	void SetEdgeColour(int rgb);
+	int GetEdgeColour() const noexcept;
+	void MultiEdgeAddLine(int column, int rgb);
+	void MultiEdgeClearAll();
+	void ReleaseAllExtendedStyles();
+	int AllocateExtendedStyles(int numberStyles);
+	long TextWidth(Scintilla::uptr_t style, const char *text);
 	// Clipboard: definitions and descriptions in EditorClipboard.cxx.
 	// Clipboard cut/copy helpers and options: EditorClipboard.cxx.
 	// Copy and Paste remain pure virtual host hooks.
@@ -891,8 +988,6 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	Sci::Position GetTextRange(char *buffer, Sci::Position cpMin, Sci::Position cpMax) const;
 
 	virtual Scintilla::sptr_t DefWndProc(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam) = 0;
-	void StyleSetMessage(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
-	Scintilla::sptr_t StyleGetMessage(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
 	void SetSelectionNMessage(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
 	void SetSelectionMode(uptr_t wParam, bool setMoveExtends);
 
@@ -1028,6 +1123,10 @@ public:
 	// definition in EditorWrapping.cxx.
 	void SetWrapMode(Scintilla::Wrap wrapMode);
 	Scintilla::Wrap GetWrapMode() const noexcept;
+
+	// Zoom level in points; definitions in EditorStyling.cxx.
+	void SetZoom(int zoomInPoints);
+	int GetZoom() const noexcept;
 
 	// Public so scintilla_send_message can use it.
 	virtual Scintilla::sptr_t WndProc(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);

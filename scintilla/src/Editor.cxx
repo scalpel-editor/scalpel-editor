@@ -1478,14 +1478,6 @@ Sci::Position Editor::FormatRange(Scintilla::Message iMessage, Scintilla::uptr_t
 	}
 }
 
-long Editor::TextWidth(uptr_t style, const char *text) {
-	RefreshStyleData();
-	AutoSurface surface(this);
-	if (surface) {
-		return std::lround(surface->WidthText(vs.styles[style].font.get(), text));
-	}
-	return 1;
-}
 
 void Editor::SetVerticalScrollPos() {
 	if (!insideWrapScroll) {
@@ -1759,14 +1751,6 @@ void Editor::ClearSelection(bool retainMultipleSelections) {
 	SetHoverIndicatorPosition(sel.MainCaret());
 }
 
-void Editor::ClearDocumentStyle() {
-	pdoc->decorations->DeleteLexerDecorations();
-	pdoc->StartStyling(0);
-	pdoc->SetStyleFor(pdoc->Length(), 0);
-	pcs->ShowAll();
-	SetAnnotationHeights(0, pdoc->LinesTotal());
-	pdoc->ClearLevels();
-}
 
 void Editor::PasteRectangular(SelectionPosition pos, std::string_view text) {
 	if (pdoc->IsReadOnly() || SelectionContainsProtected()) {
@@ -4313,81 +4297,11 @@ Sci::Position Editor::PositionAfterArea(PRectangle rcArea) const {
 
 // Style to a position within the view. If this causes a change at end of last line then
 // affects later lines so style all the viewed text.
-void Editor::StyleToPositionInView(Sci::Position pos) {
-	Sci::Position endWindow = PositionAfterArea(GetClientDrawingRectangle());
-	if (pos > endWindow)
-		pos = endWindow;
-	const int styleAtEnd = pdoc->StyleIndexAt(pos-1);
-	pdoc->EnsureStyledTo(pos);
-	if ((endWindow > pos) && (styleAtEnd != pdoc->StyleIndexAt(pos-1))) {
-		// Style at end of line changed so is multi-line change like starting a comment
-		// so require rest of window to be styled.
-		DiscardOverdraw();	// Prepared bitmaps may be invalid
-		// DiscardOverdraw may have truncated client drawing area so recalculate endWindow
-		endWindow = PositionAfterArea(GetClientDrawingRectangle());
-		pdoc->EnsureStyledTo(endWindow);
-	}
-}
 
-Sci::Position Editor::PositionAfterMaxStyling(Sci::Position posMax, bool scrolling) const {
-	if (SynchronousStylingToVisible()) {
-		// Both states do not limit styling
-		return posMax;
-	}
 
-	// Try to keep time taken by styling reasonable so interaction remains smooth.
-	// When scrolling, allow less time to ensure responsive
-	const double secondsAllowed = scrolling ? 0.005 : 0.02;
-
-	const size_t actionsInAllowedTime = std::clamp<Sci::Line>(
-		pdoc->durationStyleOneByte.ActionsInAllowedTime(secondsAllowed),
-		0x200, 0x20000);
-	const Sci::Line lineLast = pdoc->LineFromPositionAfter(pdoc->SciLineFromPosition(pdoc->GetEndStyled()), actionsInAllowedTime);
-	const Sci::Line stylingMaxLine = std::min(lineLast, pdoc->LinesTotal());
-
-	return std::min(pdoc->LineStart(stylingMaxLine), posMax);
-}
-
-void Editor::StartIdleStyling(bool truncatedLastStyling) {
-	if (AnyOf(idleStyling, IdleStyling::All, IdleStyling::AfterVisible)) {
-		if (pdoc->GetEndStyled() < pdoc->Length()) {
-			// Style remainder of document in idle time
-			needIdleStyling = true;
-		}
-	} else if (truncatedLastStyling) {
-		needIdleStyling = true;
-	}
-
-	if (needIdleStyling) {
-		SetIdle(true);
-	}
-}
 
 // Style for an area but bound the amount of styling to remain responsive
-void Editor::StyleAreaBounded(PRectangle rcArea, bool scrolling) {
-	const Sci::Position posAfterArea = PositionAfterArea(rcArea);
-	const Sci::Position posAfterMax = PositionAfterMaxStyling(posAfterArea, scrolling);
-	if (posAfterMax < posAfterArea) {
-		// Idle styling may be performed before current visible area
-		// Style a bit now then style further in idle time
-		pdoc->StyleToAdjustingLineDuration(posAfterMax);
-	} else {
-		// Can style all wanted now.
-		StyleToPositionInView(posAfterArea);
-	}
-	StartIdleStyling(posAfterMax < posAfterArea);
-}
 
-void Editor::IdleStyle() {
-	const Sci::Position posAfterArea = PositionAfterArea(GetClientRectangle());
-	const Sci::Position endGoal = (idleStyling >= IdleStyling::AfterVisible) ?
-		pdoc->Length() : posAfterArea;
-	const Sci::Position posAfterMax = PositionAfterMaxStyling(endGoal, false);
-	pdoc->StyleToAdjustingLineDuration(posAfterMax);
-	if (pdoc->GetEndStyled() >= endGoal) {
-		needIdleStyling = false;
-	}
-}
 
 void Editor::IdleWork() {
 	// Style the line after the modification as this allows modifications that change just the
@@ -4599,126 +4513,7 @@ std::unique_ptr<Surface> Editor::CreateDrawingSurface(SurfaceID sid, std::option
 	return surf;
 }
 
-void Editor::StyleSetMessage(Message iMessage, uptr_t wParam, sptr_t lParam) {
-	vs.EnsureStyle(wParam);
-	switch (iMessage) {
-	case Message::StyleSetFore:
-		vs.styles[wParam].fore = ColourRGBA::FromIpRGB(lParam);
-		break;
-	case Message::StyleSetBack:
-		vs.styles[wParam].back = ColourRGBA::FromIpRGB(lParam);
-		break;
-	case Message::StyleSetBold:
-		vs.styles[wParam].weight = lParam != 0 ? FontWeight::Bold : FontWeight::Normal;
-		break;
-	case Message::StyleSetWeight:
-		vs.styles[wParam].weight = static_cast<FontWeight>(lParam);
-		break;
-	case Message::StyleSetStretch:
-		vs.styles[wParam].stretch = static_cast<FontStretch>(lParam);
-		break;
-	case Message::StyleSetItalic:
-		vs.styles[wParam].italic = lParam != 0;
-		break;
-	case Message::StyleSetEOLFilled:
-		vs.styles[wParam].eolFilled = lParam != 0;
-		break;
-	case Message::StyleSetSize:
-		vs.styles[wParam].size = static_cast<int>(lParam * FontSizeMultiplier);
-		break;
-	case Message::StyleSetSizeFractional:
-		vs.styles[wParam].size = static_cast<int>(lParam);
-		break;
-	case Message::StyleSetFont:
-		if (lParam != 0) {
-			vs.SetStyleFontName(static_cast<int>(wParam), ConstCharPtrFromSPtr(lParam));
-		}
-		break;
-	case Message::StyleSetUnderline:
-		vs.styles[wParam].underline = lParam != 0;
-		break;
-	case Message::StyleSetCase:
-		vs.styles[wParam].caseForce = static_cast<Style::CaseForce>(lParam);
-		break;
-	case Message::StyleSetCharacterSet:
-		vs.styles[wParam].characterSet = static_cast<CharacterSet>(lParam);
-		pdoc->SetCaseFolder(nullptr);
-		break;
-	case Message::StyleSetVisible:
-		vs.styles[wParam].visible = lParam != 0;
-		break;
-	case Message::StyleSetInvisibleRepresentation: {
-		const char *utf8 = ConstCharPtrFromSPtr(lParam);
-		char *rep = vs.styles[wParam].invisibleRepresentation;
-		const int classified = UTF8Classify(utf8);
-		if (!(classified & UTF8MaskInvalid)) {
-			// valid UTF-8
-			const int len = classified & UTF8MaskWidth;
-			for (int i=0; i<len && i<UTF8MaxBytes; i++)
-				*rep++ = *utf8++;
-		}
-		*rep = 0;
-		break;
-	}
-	case Message::StyleSetChangeable:
-		vs.styles[wParam].changeable = lParam != 0;
-		break;
-	case Message::StyleSetHotSpot:
-		vs.styles[wParam].hotspot = lParam != 0;
-		break;
-	case Message::StyleSetCheckMonospaced:
-		vs.styles[wParam].checkMonospaced = lParam != 0;
-		break;
-	default:
-		break;
-	}
-	InvalidateStyleRedraw();
-}
 
-sptr_t Editor::StyleGetMessage(Message iMessage, uptr_t wParam, sptr_t lParam) {
-	vs.EnsureStyle(wParam);
-	switch (iMessage) {
-	case Message::StyleGetFore:
-		return vs.styles[wParam].fore.OpaqueRGB();
-	case Message::StyleGetBack:
-		return vs.styles[wParam].back.OpaqueRGB();
-	case Message::StyleGetBold:
-		return vs.styles[wParam].weight > FontWeight::Normal;
-	case Message::StyleGetWeight:
-		return static_cast<sptr_t>(vs.styles[wParam].weight);
-	case Message::StyleGetStretch:
-		return static_cast<sptr_t>(vs.styles[wParam].stretch);
-	case Message::StyleGetItalic:
-		return vs.styles[wParam].italic ? 1 : 0;
-	case Message::StyleGetEOLFilled:
-		return vs.styles[wParam].eolFilled ? 1 : 0;
-	case Message::StyleGetSize:
-		return vs.styles[wParam].size / FontSizeMultiplier;
-	case Message::StyleGetSizeFractional:
-		return vs.styles[wParam].size;
-	case Message::StyleGetFont:
-		return StringResult(lParam, vs.styles[wParam].fontName);
-	case Message::StyleGetUnderline:
-		return vs.styles[wParam].underline ? 1 : 0;
-	case Message::StyleGetCase:
-		return static_cast<int>(vs.styles[wParam].caseForce);
-	case Message::StyleGetCharacterSet:
-		return static_cast<sptr_t>(vs.styles[wParam].characterSet);
-	case Message::StyleGetVisible:
-		return vs.styles[wParam].visible ? 1 : 0;
-	case Message::StyleGetChangeable:
-		return vs.styles[wParam].changeable ? 1 : 0;
-	case Message::StyleGetInvisibleRepresentation:
-		return StringResult(lParam, vs.styles[wParam].invisibleRepresentation);
-	case Message::StyleGetHotSpot:
-		return vs.styles[wParam].hotspot ? 1 : 0;
-	case Message::StyleGetCheckMonospaced:
-		return vs.styles[wParam].checkMonospaced ? 1 : 0;
-	default:
-		break;
-	}
-	return 0;
-}
 
 sptr_t Editor::StringResult(sptr_t lParam, const char *val) noexcept {
 	const size_t len = val ? strlen(val) : 0;
@@ -5261,16 +5056,10 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return static_cast<sptr_t>(view.printParameters.wrapState);
 
 	case Message::GetStyleAt:
-		if (PositionFromUPtr(wParam) >= pdoc->Length())
-			return 0;
-		else
-			return pdoc->StyleAt(PositionFromUPtr(wParam));
+		return GetStyleAt(PositionFromUPtr(wParam));
 
 	case Message::GetStyleIndexAt:
-		if (PositionFromUPtr(wParam) >= pdoc->Length())
-			return 0;
-		else
-			return pdoc->StyleIndexAt(PositionFromUPtr(wParam));
+		return GetStyleIndexAt(PositionFromUPtr(wParam));
 
 	case Message::Redo:
 		return ExecuteCommand(EditorCommand::Redo);
@@ -5305,11 +5094,10 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return pdoc->MarkerNumberFromLine(LineFromUPtr(wParam), static_cast<int>(lParam));
 
 	case Message::GetViewWS:
-		return static_cast<sptr_t>(vs.viewWhitespace);
+		return static_cast<sptr_t>(GetViewWS());
 
 	case Message::SetViewWS:
-		vs.viewWhitespace = static_cast<WhiteSpace>(wParam);
-		Redraw();
+		SetViewWS(static_cast<WhiteSpace>(wParam));
 		break;
 
 	case Message::GetTabDrawMode:
@@ -5320,11 +5108,10 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::GetWhitespaceSize:
-		return vs.whitespaceSize;
+		return GetWhitespaceSize();
 
 	case Message::SetWhitespaceSize:
-		vs.whitespaceSize = static_cast<int>(wParam);
-		Redraw();
+		SetWhitespaceSize(static_cast<int>(wParam));
 		break;
 
 	case Message::PositionFromPoint:
@@ -5362,7 +5149,7 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		}
 
 	case Message::GetEndStyled:
-		return pdoc->GetEndStyled();
+		return GetEndStyled();
 
 	case Message::GetEOLMode:
 		return static_cast<sptr_t>(GetEOLMode());
@@ -5382,28 +5169,18 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return static_cast<sptr_t>(GetLineEndTypesActive());
 
 	case Message::StartStyling:
-		pdoc->StartStyling(PositionFromUPtr(wParam));
+		StartStyling(PositionFromUPtr(wParam));
 		break;
 
 	case Message::SetStyling:
-		if (PositionFromUPtr(wParam) < 0)
-			errorStatus = Status::Failure;
-		else
-			pdoc->SetStyleFor(PositionFromUPtr(wParam), static_cast<char>(lParam));
+		SetStyling(PositionFromUPtr(wParam), static_cast<int>(lParam));
 		break;
 
-	case Message::SetStylingEx:             // Specify a complete styling buffer
-		if (lParam == 0)
-			return 0;
-		pdoc->SetStyles(PositionFromUPtr(wParam), ConstCharPtrFromSPtr(lParam));
+	case Message::SetStylingEx:
+		SetStylingEx(PositionFromUPtr(wParam), ConstCharPtrFromSPtr(lParam));
 		break;
 
-	case Message::SetBufferedDraw:
-		view.bufferedDraw = wParam != 0;
-		break;
-
-	case Message::GetBufferedDraw:
-		return view.bufferedDraw;
+	// SetBufferedDraw / GetBufferedDraw deleted: one fixed renderer buffering path.
 
 	case Message::GetDragDropEnabled:
 		return dragDropEnabled;
@@ -5412,33 +5189,15 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		dragDropEnabled = wParam != 0;
 		break;
 
-#ifdef INCLUDE_DEPRECATED_FEATURES
-	case SCI_GETTWOPHASEDRAW:
-		return view.phasesDraw == EditView::phasesTwo;
-
-	case SCI_SETTWOPHASEDRAW:
-		if (view.SetTwoPhaseDraw(wParam != 0))
-			InvalidateStyleRedraw();
-		break;
-#endif
+	// GetTwoPhaseDraw / SetTwoPhaseDraw deleted: use SetPhasesDraw / GetPhasesDraw.
+	// SetFontQuality / GetFontQuality deleted: one fixed font rasterization path.
 
 	case Message::GetPhasesDraw:
-		return static_cast<sptr_t>(view.phasesDraw);
+		return GetPhasesDraw();
 
 	case Message::SetPhasesDraw:
-		if (view.SetPhasesDraw(static_cast<int>(wParam)))
-			InvalidateStyleRedraw();
+		SetPhasesDraw(static_cast<int>(wParam));
 		break;
-
-	case Message::SetFontQuality:
-		vs.extraFontFlag = static_cast<FontQuality>(
-			(static_cast<int>(vs.extraFontFlag) & ~static_cast<int>(FontQuality::QualityMask)) |
-			(wParam & static_cast<int>(FontQuality::QualityMask)));
-		InvalidateStyleRedraw();
-		break;
-
-	case Message::GetFontQuality:
-		return static_cast<int>(vs.extraFontFlag) & static_cast<int>(FontQuality::QualityMask);
 
 	case Message::SetTabWidth:
 		SetTabWidth(static_cast<int>(wParam));
@@ -5521,11 +5280,11 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return pdoc->IsWordAt(PositionFromUPtr(wParam), lParam);
 
 	case Message::SetIdleStyling:
-		idleStyling = static_cast<IdleStyling>(wParam);
+		SetIdleStyling(static_cast<IdleStyling>(wParam));
 		break;
 
 	case Message::GetIdleStyling:
-		return static_cast<sptr_t>(idleStyling);
+		return static_cast<sptr_t>(GetIdleStyling());
 
 	case Message::SetWrapMode:
 		SetWrapMode(static_cast<Wrap>(wParam));
@@ -5563,27 +5322,25 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return static_cast<sptr_t>(GetWrapIndentMode());
 
 	case Message::SetLayoutCache:
-		if (static_cast<LineCache>(wParam) <= LineCache::Document) {
-			view.llc.SetLevel(static_cast<LineCache>(wParam));
-		}
+		SetLayoutCache(static_cast<LineCache>(wParam));
 		break;
 
 	case Message::GetLayoutCache:
-		return static_cast<sptr_t>(view.llc.GetLevel());
+		return static_cast<sptr_t>(GetLayoutCache());
 
 	case Message::SetPositionCache:
-		view.posCache->SetSize(wParam);
+		SetPositionCache(static_cast<int>(wParam));
 		break;
 
 	case Message::GetPositionCache:
-		return view.posCache->GetSize();
+		return GetPositionCache();
 
 	case Message::SetLayoutThreads:
-		view.SetLayoutThreads(static_cast<unsigned int>(wParam));
+		SetLayoutThreads(static_cast<unsigned int>(wParam));
 		break;
 
 	case Message::GetLayoutThreads:
-		return view.GetLayoutThreads();
+		return GetLayoutThreads();
 
 	case Message::SetScrollWidth:
 		SetScrollWidth(static_cast<int>(wParam));
@@ -5663,14 +5420,11 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return static_cast<sptr_t>(GetIndentationGuides());
 
 	case Message::SetHighlightGuide:
-		if ((highlightGuideColumn != static_cast<int>(wParam)) || (wParam > 0)) {
-			highlightGuideColumn = static_cast<int>(wParam);
-			Redraw();
-		}
+		SetHighlightGuide(static_cast<int>(wParam));
 		break;
 
 	case Message::GetHighlightGuide:
-		return highlightGuideColumn;
+		return GetHighlightGuide();
 
 	case Message::GetLineEndPosition:
 		return GetLineEndPosition(LineFromUPtr(wParam));
@@ -5683,11 +5437,11 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return static_cast<sptr_t>(imeInteraction);
 
 	case Message::SetBidirectional:
-		// Message::SetBidirectional is implemented on platform subclasses if they support bidirectional text.
+		SetBidirectional(static_cast<Bidirectional>(wParam));
 		break;
 
 	case Message::GetBidirectional:
-		return static_cast<sptr_t>(bidirectional);
+		return static_cast<sptr_t>(GetBidirectional());
 
 	case Message::GetLineCharacterIndex:
 		return static_cast<sptr_t>(GetLineCharacterIndex());
@@ -5830,15 +5584,15 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::RGBAImageSetWidth:
-		sizeRGBAImage.x = static_cast<XYPOSITION>(wParam);
+		RGBAImageSetWidth(static_cast<int>(wParam));
 		break;
 
 	case Message::RGBAImageSetHeight:
-		sizeRGBAImage.y = static_cast<XYPOSITION>(wParam);
+		RGBAImageSetHeight(static_cast<int>(wParam));
 		break;
 
 	case Message::RGBAImageSetScale:
-		scaleRGBAImage = static_cast<float>(wParam);
+		RGBAImageSetScale(static_cast<int>(wParam));
 		break;
 
 	case Message::MarkerDefineRGBAImage:
@@ -5899,99 +5653,145 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 	case Message::GetMargins:
 		return GetMargins();
 
+	// Styling messages (temporary forwarders; definitions in EditorStyling.cxx)
 	case Message::StyleClearAll:
-		vs.ClearStyles();
-		InvalidateStyleRedraw();
+		StyleClearAll();
 		break;
 
 	case Message::StyleSetFore:
+		StyleSetFore(static_cast<int>(wParam), static_cast<int>(lParam));
+		break;
 	case Message::StyleSetBack:
+		StyleSetBack(static_cast<int>(wParam), static_cast<int>(lParam));
+		break;
 	case Message::StyleSetBold:
+		StyleSetBold(static_cast<int>(wParam), lParam != 0);
+		break;
 	case Message::StyleSetWeight:
+		StyleSetWeight(static_cast<int>(wParam), static_cast<FontWeight>(lParam));
+		break;
 	case Message::StyleSetStretch:
+		StyleSetStretch(static_cast<int>(wParam), static_cast<FontStretch>(lParam));
+		break;
 	case Message::StyleSetItalic:
+		StyleSetItalic(static_cast<int>(wParam), lParam != 0);
+		break;
 	case Message::StyleSetEOLFilled:
+		StyleSetEOLFilled(static_cast<int>(wParam), lParam != 0);
+		break;
 	case Message::StyleSetSize:
+		StyleSetSize(static_cast<int>(wParam), static_cast<int>(lParam));
+		break;
 	case Message::StyleSetSizeFractional:
+		StyleSetSizeFractional(static_cast<int>(wParam), static_cast<int>(lParam));
+		break;
 	case Message::StyleSetFont:
+		StyleSetFont(static_cast<int>(wParam), ConstCharPtrFromSPtr(lParam));
+		break;
 	case Message::StyleSetUnderline:
+		StyleSetUnderline(static_cast<int>(wParam), lParam != 0);
+		break;
 	case Message::StyleSetCase:
+		StyleSetCase(static_cast<int>(wParam), static_cast<CaseVisible>(lParam));
+		break;
 	case Message::StyleSetCharacterSet:
+		StyleSetCharacterSet(static_cast<int>(wParam), static_cast<CharacterSet>(lParam));
+		break;
 	case Message::StyleSetVisible:
+		StyleSetVisible(static_cast<int>(wParam), lParam != 0);
+		break;
 	case Message::StyleSetChangeable:
+		StyleSetChangeable(static_cast<int>(wParam), lParam != 0);
+		break;
 	case Message::StyleSetHotSpot:
+		StyleSetHotSpot(static_cast<int>(wParam), lParam != 0);
+		break;
 	case Message::StyleSetCheckMonospaced:
+		StyleSetCheckMonospaced(static_cast<int>(wParam), lParam != 0);
+		break;
 	case Message::StyleSetInvisibleRepresentation:
-		StyleSetMessage(iMessage, wParam, lParam);
+		StyleSetInvisibleRepresentation(static_cast<int>(wParam), ConstCharPtrFromSPtr(lParam));
 		break;
 
 	case Message::StyleGetFore:
+		return StyleGetFore(static_cast<int>(wParam));
 	case Message::StyleGetBack:
+		return StyleGetBack(static_cast<int>(wParam));
 	case Message::StyleGetBold:
+		return StyleGetBold(static_cast<int>(wParam)) ? 1 : 0;
 	case Message::StyleGetWeight:
+		return static_cast<sptr_t>(StyleGetWeight(static_cast<int>(wParam)));
 	case Message::StyleGetStretch:
+		return static_cast<sptr_t>(StyleGetStretch(static_cast<int>(wParam)));
 	case Message::StyleGetItalic:
+		return StyleGetItalic(static_cast<int>(wParam)) ? 1 : 0;
 	case Message::StyleGetEOLFilled:
+		return StyleGetEOLFilled(static_cast<int>(wParam)) ? 1 : 0;
 	case Message::StyleGetSize:
+		return StyleGetSize(static_cast<int>(wParam));
 	case Message::StyleGetSizeFractional:
-	case Message::StyleGetFont:
+		return StyleGetSizeFractional(static_cast<int>(wParam));
+	case Message::StyleGetFont: {
+		char *buf = CharPtrFromSPtr(lParam);
+		return StyleGetFont(static_cast<int>(wParam), buf);
+	}
 	case Message::StyleGetUnderline:
+		return StyleGetUnderline(static_cast<int>(wParam)) ? 1 : 0;
 	case Message::StyleGetCase:
+		return static_cast<sptr_t>(StyleGetCase(static_cast<int>(wParam)));
 	case Message::StyleGetCharacterSet:
+		return static_cast<sptr_t>(StyleGetCharacterSet(static_cast<int>(wParam)));
 	case Message::StyleGetVisible:
+		return StyleGetVisible(static_cast<int>(wParam)) ? 1 : 0;
 	case Message::StyleGetChangeable:
+		return StyleGetChangeable(static_cast<int>(wParam)) ? 1 : 0;
 	case Message::StyleGetHotSpot:
+		return StyleGetHotSpot(static_cast<int>(wParam)) ? 1 : 0;
 	case Message::StyleGetCheckMonospaced:
-	case Message::StyleGetInvisibleRepresentation:
-		return StyleGetMessage(iMessage, wParam, lParam);
+		return StyleGetCheckMonospaced(static_cast<int>(wParam)) ? 1 : 0;
+	case Message::StyleGetInvisibleRepresentation: {
+		char *buf = CharPtrFromSPtr(lParam);
+		return StyleGetInvisibleRepresentation(static_cast<int>(wParam), buf);
+	}
 
 	case Message::StyleResetDefault:
-		vs.ResetDefaultStyle();
-		InvalidateStyleRedraw();
+		StyleResetDefault();
 		break;
 
 	case Message::SetElementColour:
-		if (vs.SetElementColour(static_cast<Element>(wParam), ColourRGBA(static_cast<int>(lParam)))) {
-			InvalidateStyleRedraw();
-		}
+		SetElementColour(static_cast<Element>(wParam), static_cast<int>(lParam));
 		break;
 
 	case Message::GetElementColour:
-		return vs.ElementColour(static_cast<Element>(wParam)).value_or(ColourRGBA()).AsInteger();
+		return GetElementColour(static_cast<Element>(wParam));
 
 	case Message::ResetElementColour:
-		if (vs.ResetElement(static_cast<Element>(wParam))) {
-			InvalidateStyleRedraw();
-		}
+		ResetElementColour(static_cast<Element>(wParam));
 		break;
 
 	case Message::GetElementIsSet:
-		return vs.ElementColour(static_cast<Element>(wParam)).has_value();
+		return GetElementIsSet(static_cast<Element>(wParam)) ? 1 : 0;
 
 	case Message::GetElementAllowsTranslucent:
-		return vs.ElementAllowsTranslucent(static_cast<Element>(wParam));
+		return GetElementAllowsTranslucent(static_cast<Element>(wParam)) ? 1 : 0;
 
 	case Message::GetElementBaseColour:
-		return vs.elementBaseColours[static_cast<Element>(wParam)].value_or(ColourRGBA()).AsInteger();
+		return GetElementBaseColour(static_cast<Element>(wParam));
 
 	case Message::SetFontLocale:
-		if (lParam) {
-			vs.SetFontLocaleName(ConstCharPtrFromSPtr(lParam));
-			InvalidateStyleRedraw();
-		}
+		SetFontLocale(ConstCharPtrFromSPtr(lParam));
 		break;
 
-	case Message::GetFontLocale:
-		return StringResult(lParam, vs.localeName.c_str());
+	case Message::GetFontLocale: {
+		char *buf = CharPtrFromSPtr(lParam);
+		if (!buf)
+			return GetFontLocale(nullptr);
+		// StringResult-compatible: copy then return length
+		const int n = GetFontLocale(buf);
+		return n;
+	}
 
-#ifdef INCLUDE_DEPRECATED_FEATURES
-	case SCI_SETSTYLEBITS:
-		vs.EnsureStyle(0xff);
-		break;
-
-	case SCI_GETSTYLEBITS:
-		return 8;
-#endif
+	// SetStyleBits / GetStyleBits deleted: full style bytes, no bit partition.
 
 	case Message::SetLineState:
 		return pdoc->SetLineState(LineFromUPtr(wParam), static_cast<int>(lParam));
@@ -6176,41 +5976,19 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return LinesOnScreen();
 
 	case Message::SetSelFore:
-		vs.elementColours[Element::SelectionText] = OptionalColour(wParam, lParam);
-		vs.elementColours[Element::SelectionAdditionalText] = OptionalColour(wParam, lParam);
-		InvalidateStyleRedraw();
+		SetSelFore(wParam != 0, static_cast<int>(lParam));
 		break;
 
 	case Message::SetSelBack:
-		if (wParam) {
-			vs.SetElementRGB(Element::SelectionBack, static_cast<int>(lParam));
-			vs.SetElementRGB(Element::SelectionAdditionalBack, static_cast<int>(lParam));
-		} else {
-			vs.ResetElement(Element::SelectionBack);
-			vs.ResetElement(Element::SelectionAdditionalBack);
-		}
-		InvalidateStyleRedraw();
+		SetSelBack(wParam != 0, static_cast<int>(lParam));
 		break;
 
-	case Message::SetSelAlpha: {
-			const Layer layerNew = (static_cast<Alpha>(wParam) == Alpha::NoAlpha) ? Layer::Base : Layer::OverText;
-			if (vs.selection.layer != layerNew) {
-			    vs.selection.layer = layerNew;
-			    UpdateBaseElements();
-			}
-			const int alpha = static_cast<int>(wParam);
-			vs.SetElementAlpha(Element::SelectionBack, alpha);
-			vs.SetElementAlpha(Element::SelectionAdditionalBack, alpha);
-			vs.SetElementAlpha(Element::SelectionSecondaryBack, alpha);
-			vs.SetElementAlpha(Element::SelectionInactiveBack, alpha);
-			InvalidateStyleRedraw();
-		}
+	case Message::SetSelAlpha:
+		SetSelAlpha(static_cast<int>(wParam));
 		break;
 
 	case Message::GetSelAlpha:
-		if (vs.selection.layer == Layer::Base)
-			return static_cast<sptr_t>(Alpha::NoAlpha);
-		return vs.ElementColourForced(Element::SelectionBack).GetAlpha();
+		return GetSelAlpha();
 
 	case Message::GetSelEOLFilled:
 		return GetSelEOLFilled() ? 1 : 0;
@@ -6220,15 +5998,11 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::SetWhitespaceFore:
-		if (vs.SetElementColourOptional(Element::WhiteSpace, wParam, lParam)) {
-			InvalidateStyleRedraw();
-		}
+		SetWhitespaceFore(wParam != 0, static_cast<int>(lParam));
 		break;
 
 	case Message::SetWhitespaceBack:
-		if (vs.SetElementColourOptional(Element::WhiteSpaceBack, wParam, lParam)) {
-			InvalidateStyleRedraw();
-		}
+		SetWhitespaceBack(wParam != 0, static_cast<int>(lParam));
 		break;
 
 	case Message::SetSelectionLayer:
@@ -6545,13 +6319,11 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::SetZoom:
-		if (SetAppearance(vs.zoomLevel, static_cast<int>(wParam))) {
-			NotifyZoom();
-		}
+		SetZoom(static_cast<int>(wParam));
 		break;
 
 	case Message::GetZoom:
-		return vs.zoomLevel;
+		return GetZoom();
 
 	case Message::GetEdgeColumn:
 		return GetEdgeColumn();
@@ -6561,29 +6333,25 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::GetEdgeMode:
-		return static_cast<sptr_t>(vs.edgeState);
+		return static_cast<sptr_t>(GetEdgeMode());
 
 	case Message::SetEdgeMode:
-		vs.edgeState = static_cast<EdgeVisualStyle>(wParam);
-		InvalidateStyleRedraw();
+		SetEdgeMode(static_cast<EdgeVisualStyle>(wParam));
 		break;
 
 	case Message::GetEdgeColour:
-		return vs.theEdge.colour.OpaqueRGB();
+		return GetEdgeColour();
 
 	case Message::SetEdgeColour:
-		vs.theEdge.colour = ColourRGBA::FromIpRGB(SPtrFromUPtr(wParam));
-		InvalidateStyleRedraw();
+		SetEdgeColour(static_cast<int>(SPtrFromUPtr(wParam)));
 		break;
 
 	case Message::MultiEdgeAddLine:
-		vs.AddMultiEdge(static_cast<int>(wParam), ColourRGBA::FromIpRGB(lParam));
-		InvalidateStyleRedraw();
+		MultiEdgeAddLine(static_cast<int>(wParam), static_cast<int>(lParam));
 		break;
 
 	case Message::MultiEdgeClearAll:
-		std::vector<EdgeProperties>().swap(vs.theMultiEdge); // Free vector and memory, C++03 compatible
-		InvalidateStyleRedraw();
+		MultiEdgeClearAll();
 		break;
 
 	case Message::GetMultiEdgeColumn:
@@ -6836,20 +6604,18 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 	}
 
 	case Message::SetExtraAscent:
-		vs.extraAscent = static_cast<int>(wParam);
-		InvalidateStyleRedraw();
+		SetExtraAscent(static_cast<int>(wParam));
 		break;
 
 	case Message::GetExtraAscent:
-		return vs.extraAscent;
+		return GetExtraAscent();
 
 	case Message::SetExtraDescent:
-		vs.extraDescent = static_cast<int>(wParam);
-		InvalidateStyleRedraw();
+		SetExtraDescent(static_cast<int>(wParam));
 		break;
 
 	case Message::GetExtraDescent:
-		return vs.extraDescent;
+		return GetExtraDescent();
 
 	case Message::MarginSetStyleOffset:
 		MarginSetStyleOffset(static_cast<int>(wParam));
@@ -6978,11 +6744,11 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return vs.eolAnnotationStyleOffset;
 
 	case Message::ReleaseAllExtendedStyles:
-		vs.ReleaseAllExtendedStyles();
+		ReleaseAllExtendedStyles();
 		break;
 
 	case Message::AllocateExtendedStyles:
-		return vs.AllocateExtendedStyles(static_cast<int>(wParam));
+		return AllocateExtendedStyles(static_cast<int>(wParam));
 
 	case Message::SupportsFeature:
 		return SupportsFeature(static_cast<Supports>(wParam));
@@ -7135,24 +6901,19 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return static_cast<sptr_t>(virtualSpaceOptions);
 
 	case Message::SetAdditionalSelFore:
-		vs.elementColours[Element::SelectionAdditionalText] = ColourRGBA::FromIpRGB(SPtrFromUPtr(wParam));
-		InvalidateStyleRedraw();
+		SetAdditionalSelFore(static_cast<int>(SPtrFromUPtr(wParam)));
 		break;
 
 	case Message::SetAdditionalSelBack:
-		vs.SetElementRGB(Element::SelectionAdditionalBack, static_cast<int>(wParam));
-		InvalidateStyleRedraw();
+		SetAdditionalSelBack(static_cast<int>(wParam));
 		break;
 
 	case Message::SetAdditionalSelAlpha:
-		vs.SetElementAlpha(Element::SelectionAdditionalBack, static_cast<int>(wParam));
-		InvalidateStyleRedraw();
+		SetAdditionalSelAlpha(static_cast<int>(wParam));
 		break;
 
 	case Message::GetAdditionalSelAlpha:
-		if (vs.selection.layer == Layer::Base)
-			return static_cast<sptr_t>(Alpha::NoAlpha);
-		return vs.ElementColourForced(Element::SelectionAdditionalBack).GetAlpha();
+		return GetAdditionalSelAlpha();
 
 	case Message::SetAdditionalCaretFore:
 		SetAdditionalCaretFore(static_cast<int>(SPtrFromUPtr(wParam)));
@@ -7184,12 +6945,7 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 	case Message::GetIdentifier:
 		return GetCtrlID();
 
-	case Message::SetTechnology:
-		// No action by default
-		break;
-
-	case Message::GetTechnology:
-		return static_cast<sptr_t>(technology);
+	// SetTechnology / GetTechnology deleted: one fixed renderer technology.
 
 	case Message::CountCharacters:
 		return CountCharacters(PositionFromUPtr(wParam), lParam);
