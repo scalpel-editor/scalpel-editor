@@ -455,7 +455,17 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void InsertPasteShape(std::string_view text, PasteShape shape);
 	[[deprecated]] void InsertPasteShape(const char *text, Sci::Position len, PasteShape shape);
 	void ClearSelection(bool retainMultipleSelections = false);
+	// Document text: definitions and descriptions in EditorDocument.cxx.
 	void ClearAll();
+	void AddText(std::string_view text);
+	void InsertText(Sci::Position pos, std::string_view text);
+	void AppendText(std::string_view text);
+	void DeleteRange(Sci::Position start, Sci::Position lengthDelete);
+	Sci::Position GetLength() const noexcept;
+	char GetCharAt(Sci::Position pos) const noexcept;
+	void Allocate(Sci::Position bytes);
+	const char *GetRangePointer(Sci::Position start, Sci::Position rangeLength);
+	Sci::Position GetGapPosition() const noexcept;
 	void ClearDocumentStyle();
 	virtual void Cut();
 	void PasteRectangular(SelectionPosition pos, std::string_view text);
@@ -712,6 +722,15 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 
 public:
 	~Editor() override;
+
+	// Whole-document text, dirty state, and read-only: definitions and
+	// descriptions live beside the implementations in EditorDocument.cxx.
+	void SetText(std::string_view text);
+	std::string GetText() const;
+	Sci::Position GetTextLength() const noexcept;
+	bool GetModify() const noexcept;
+	void SetReadOnly(bool readOnly);
+	bool GetReadOnly() const noexcept;
 
 	// Wrap mode is application-facing; its description lives beside the
 	// definition in EditorWrapping.cxx.

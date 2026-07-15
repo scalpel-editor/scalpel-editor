@@ -2009,28 +2009,6 @@ void Editor::ClearSelection(bool retainMultipleSelections) {
 	SetHoverIndicatorPosition(sel.MainCaret());
 }
 
-void Editor::ClearAll() {
-	{
-		UndoGroup ug(pdoc);
-		if (0 != pdoc->Length()) {
-			pdoc->DeleteChars(0, pdoc->Length());
-		}
-		if (!pdoc->IsReadOnly()) {
-			pcs->Clear();
-			pdoc->AnnotationClearAll();
-			pdoc->EOLAnnotationClearAll();
-			pdoc->MarginClearAll();
-		}
-	}
-
-	view.ClearAllTabstops();
-
-	sel.Clear();
-	SetTopLine(0);
-	SetVerticalScrollPos();
-	InvalidateStyleRedraw();
-}
-
 void Editor::ClearDocumentStyle() {
 	pdoc->decorations->DeleteLexerDecorations();
 	pdoc->StartStyling(0);
@@ -2138,39 +2116,6 @@ void Editor::PasteRectangular(SelectionPosition pos, const char *ptr, Sci::Posit
 
 bool Editor::CanPaste() {
 	return !pdoc->IsReadOnly() && !SelectionContainsProtected();
-}
-
-void Editor::Clear() {
-	// If multiple selections, don't delete EOLS
-	if (sel.Empty()) {
-		bool singleVirtual = false;
-		if ((sel.Count() == 1) &&
-			!RangeContainsProtected(sel.MainCaret(), sel.MainCaret() + 1) &&
-			sel.RangeMain().Start().VirtualSpace()) {
-			singleVirtual = true;
-		}
-		UndoGroup ug(pdoc, (sel.Count() > 1) || singleVirtual);
-		for (size_t r=0; r<sel.Count(); r++) {
-			if (!RangeContainsProtected(sel.Range(r).caret.Position(), sel.Range(r).caret.Position() + 1)) {
-				if (sel.Range(r).Start().VirtualSpace()) {
-					if (sel.Range(r).anchor < sel.Range(r).caret)
-						sel.Range(r) = SelectionRange(RealizeVirtualSpace(sel.Range(r).anchor.Position(), sel.Range(r).anchor.VirtualSpace()));
-					else
-						sel.Range(r) = SelectionRange(RealizeVirtualSpace(sel.Range(r).caret.Position(), sel.Range(r).caret.VirtualSpace()));
-				}
-				if ((sel.Count() == 1) || !pdoc->IsPositionInLineEnd(sel.Range(r).caret.Position())) {
-					pdoc->DelChar(sel.Range(r).caret.Position());
-					sel.Range(r).ClearVirtualSpace();
-				}  // else multiple selection so don't eat line ends
-			} else {
-				sel.Range(r).ClearVirtualSpace();
-			}
-		}
-	} else {
-		ClearSelection();
-	}
-	sel.RemoveDuplicates();
-	ShowCaretAtCurrentPosition();		// Avoid blinking
 }
 
 void Editor::SelectAll() {
@@ -5460,43 +5405,6 @@ std::unique_ptr<Surface> Editor::CreateDrawingSurface(SurfaceID sid, std::option
 	return surf;
 }
 
-void Editor::AddStyledText(const char *buffer, Sci::Position appendLength) {
-	// The buffer consists of alternating character bytes and style bytes
-	const Sci::Position textLength = appendLength / 2;
-	std::string text(textLength, '\0');
-	for (Sci::Position i = 0; i < textLength; i++) {
-		text[i] = buffer[i*2];
-	}
-	const Sci::Position lengthInserted = pdoc->InsertString(CurrentPosition(), text);
-	for (Sci::Position i = 0; i < textLength; i++) {
-		text[i] = buffer[i*2+1];
-	}
-	pdoc->StartStyling(CurrentPosition());
-	pdoc->SetStyles(textLength, text.c_str());
-	SetEmptySelection(sel.MainCaret() + lengthInserted);
-}
-
-Sci::Position Editor::GetStyledText(char *buffer, Sci::Position cpMin, Sci::Position cpMax) const noexcept {
-	Sci::Position iPlace = 0;
-	for (Sci::Position iChar = cpMin; iChar < cpMax; iChar++) {
-		buffer[iPlace++] = pdoc->CharAt(iChar);
-		buffer[iPlace++] = pdoc->StyleAtNoExcept(iChar);
-	}
-	buffer[iPlace] = '\0';
-	buffer[iPlace + 1] = '\0';
-	return iPlace;
-}
-
-Sci::Position Editor::GetTextRange(char *buffer, Sci::Position cpMin, Sci::Position cpMax) const {
-	const Sci::Position cpEnd = (cpMax == -1) ? pdoc->Length() : cpMax;
-	PLATFORM_ASSERT(cpEnd <= pdoc->Length());
-	const Sci::Position len = cpEnd - cpMin; 	// No -1 as cpMin and cpMax are referring to inter character positions
-	pdoc->GetCharRange(buffer, cpMin, len);
-	// Spec says copied text is terminated with a NUL
-	buffer[len] = '\0';
-	return len; 	// Not including NUL
-}
-
 bool Editor::ValidMargin(uptr_t wParam) const noexcept {
 	return wParam < vs.ms.size();
 }
@@ -5743,27 +5651,21 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 
 	case Message::GetText: {
 			if (lParam == 0)
-				return pdoc->Length();
-			char *ptr = CharPtrFromSPtr(lParam);
-			const Sci_Position len = std::min<Sci_Position>(wParam, pdoc->Length());
-			pdoc->GetCharRange(ptr, 0, len);
-			ptr[len] = '\0';
-			return len;
+				return GetTextLength();
+			const Sci_Position len = std::min<Sci_Position>(
+				static_cast<Sci_Position>(wParam), GetTextLength());
+			return GetTextRange(CharPtrFromSPtr(lParam), 0, len);
 		}
 
 	case Message::SetText: {
 			if (lParam == 0)
 				return 0;
-			UndoGroup ug(pdoc);
-			pdoc->DeleteChars(0, pdoc->Length());
-			SetEmptySelection(0);
-			const char *text = ConstCharPtrFromSPtr(lParam);
-			pdoc->InsertString(0, text, strlen(text));
+			SetText(ConstCharPtrFromSPtr(lParam));
 			return 1;
 		}
 
 	case Message::GetTextLength:
-		return pdoc->Length();
+		return GetTextLength();
 
 	case Message::Cut:
 	case Message::Copy:
@@ -5847,7 +5749,7 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::GetModify:
-		return !pdoc->IsSavePoint();
+		return GetModify() ? 1 : 0;
 
 	case Message::SetSel: {
 			Sci::Position nStart = PositionFromUPtr(wParam);
@@ -6038,11 +5940,11 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::SetReadOnly:
-		pdoc->SetReadOnly(wParam != 0);
+		SetReadOnly(wParam != 0);
 		return 1;
 
 	case Message::GetReadOnly:
-		return pdoc->IsReadOnly();
+		return GetReadOnly() ? 1 : 0;
 
 	case Message::CanPaste:
 		return CanPaste();
@@ -6072,12 +5974,6 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 
 	case Message::GetTextRange:
 		if (TextRange *tr = static_cast<TextRange *>(PtrFromSPtr(lParam))) {
-			return GetTextRange(tr->lpstrText, tr->chrg.cpMin, tr->chrg.cpMax);
-		}
-		return 0;
-
-	case Message::GetTextRangeFull:
-		if (TextRangeFull *tr = static_cast<TextRangeFull *>(PtrFromSPtr(lParam))) {
 			return GetTextRange(tr->lpstrText, tr->chrg.cpMin, tr->chrg.cpMax);
 		}
 		return 0;
@@ -6117,9 +6013,7 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 	case Message::AddText: {
 			if (lParam == 0)
 				return 0;
-			const Sci::Position lengthInserted = pdoc->InsertString(
-				CurrentPosition(), ConstCharPtrFromSPtr(lParam), PositionFromUPtr(wParam));
-			SetEmptySelection(sel.MainCaret() + lengthInserted);
+			AddText(std::string_view(ConstCharPtrFromSPtr(lParam), PositionFromUPtr(wParam)));
 			return 0;
 		}
 
@@ -6131,16 +6025,7 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 	case Message::InsertText: {
 			if (lParam == 0)
 				return 0;
-			Sci::Position insertPos = PositionFromUPtr(wParam);
-			if (insertPos == -1)
-				insertPos = CurrentPosition();
-			pdoc->CheckPosition(insertPos);
-			Sci::Position newCurrent = CurrentPosition();
-			const char *sz = ConstCharPtrFromSPtr(lParam);
-			const Sci::Position lengthInserted = pdoc->InsertString(insertPos, sz, strlen(sz));
-			if (newCurrent > insertPos)
-				newCurrent += lengthInserted;
-			SetEmptySelection(newCurrent);
+			InsertText(PositionFromUPtr(wParam), ConstCharPtrFromSPtr(lParam));
 			return 0;
 		}
 
@@ -6150,8 +6035,8 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return 0;
 
 	case Message::AppendText:
-		pdoc->InsertString(pdoc->Length(),
-			ConstCharPtrFromSPtr(lParam), PositionFromUPtr(wParam));
+		if (lParam)
+			AppendText(std::string_view(ConstCharPtrFromSPtr(lParam), PositionFromUPtr(wParam)));
 		return 0;
 
 	case Message::ClearAll:
@@ -6159,7 +6044,7 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return 0;
 
 	case Message::DeleteRange:
-		pdoc->DeleteChars(PositionFromUPtr(wParam), lParam);
+		DeleteRange(PositionFromUPtr(wParam), lParam);
 		return 0;
 
 	case Message::ClearDocumentStyle:
@@ -6284,14 +6169,14 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return pdoc->CharacterCategoryOptimization();
 
 	case Message::GetLength:
-		return pdoc->Length();
+		return GetLength();
 
 	case Message::Allocate:
-		pdoc->Allocate(PositionFromUPtr(wParam));
+		Allocate(PositionFromUPtr(wParam));
 		break;
 
 	case Message::GetCharAt:
-		return pdoc->CharAt(PositionFromUPtr(wParam));
+		return GetCharAt(PositionFromUPtr(wParam));
 
 	case Message::SetCurrentPos:
 		if (sel.IsRectangular()) {
@@ -6382,12 +6267,6 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 
 	case Message::GetStyledText:
 		if (TextRange *tr = static_cast<TextRange *>(PtrFromSPtr(lParam))) {
-			return GetStyledText(tr->lpstrText, tr->chrg.cpMin, tr->chrg.cpMax);
-		}
-		return 0;
-
-	case Message::GetStyledTextFull:
-		if (TextRangeFull *tr = static_cast<TextRangeFull *>(PtrFromSPtr(lParam))) {
 			return GetStyledText(tr->lpstrText, tr->chrg.cpMin, tr->chrg.cpMax);
 		}
 		return 0;
@@ -7841,42 +7720,9 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		// May be implemented by platform code.
 		break;
 
-	case Message::GetDocPointer:
-		return SPtrFromPtr(pdoc->AsDocumentEditable());
-
-	case Message::SetDocPointer:
-		CancelModes();
-		SetDocPointer(static_cast<Document *>(static_cast<IDocumentEditable *>(PtrFromSPtr(lParam))));
-		return 0;
-
-	case Message::CreateDocument: {
-			Document *doc = new Document(static_cast<DocumentOption>(lParam));
-			doc->AddRef();
-			doc->Allocate(PositionFromUPtr(wParam));
-			pcs = ContractionStateCreate(pdoc->IsLarge());
-			return SPtrFromPtr(doc->AsDocumentEditable());
-		}
-
-	case Message::AddRefDocument:
-		(static_cast<IDocumentEditable *>(PtrFromSPtr(lParam)))->AddRef();
-		break;
-
-	case Message::ReleaseDocument:
-		(static_cast<IDocumentEditable *>(PtrFromSPtr(lParam)))->Release();
-		break;
-
-	case Message::GetDocumentOptions:
-		return static_cast<sptr_t>(pdoc->Options());
-
-	case Message::CreateLoader: {
-			Document *doc = new Document(static_cast<DocumentOption>(lParam));
-			doc->AddRef();
-			doc->Allocate(PositionFromUPtr(wParam));
-			doc->SetUndoCollection(false);
-			pcs = ContractionStateCreate(pdoc->IsLarge());
-			ILoader *loader = doc;
-			return SPtrFromPtr(loader);
-		}
+	// GetDocPointer, SetDocPointer, CreateDocument, AddRefDocument,
+	// ReleaseDocument, GetDocumentOptions, and CreateLoader are deleted:
+	// this editor owns one document and has no multi-view or loader API.
 
 	case Message::SetModEventMask:
 		modEventMask = static_cast<ModificationFlags>(wParam);
@@ -8107,11 +7953,10 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return SPtrFromPtr(pdoc->BufferPointer());
 
 	case Message::GetRangePointer:
-		return SPtrFromPtr(pdoc->RangePointer(
-			PositionFromUPtr(wParam), lParam));
+		return SPtrFromPtr(GetRangePointer(PositionFromUPtr(wParam), lParam));
 
 	case Message::GetGapPosition:
-		return pdoc->GapPosition();
+		return GetGapPosition();
 
 	case Message::SetChangeHistory:
 		changeHistoryOption = static_cast<ChangeHistoryOption>(wParam);

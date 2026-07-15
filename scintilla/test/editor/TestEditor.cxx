@@ -97,15 +97,11 @@ PRectangle TestEditor::ClientRectangle() const {
 }
 
 void TestEditor::SetText(std::string_view text) {
-	WndProc(Scintilla::Message::ClearAll, 0, 0);
-	if (!text.empty()) {
-		WndProc(Scintilla::Message::AddText, text.length(),
-			reinterpret_cast<Scintilla::sptr_t>(text.data()));
-	}
+	Editor::SetText(text);
 }
 
 std::string TestEditor::Text() const {
-	return RangeText(0, pdoc->Length());
+	return GetText();
 }
 
 void TestEditor::SetHorizontalOffset(int offset) {

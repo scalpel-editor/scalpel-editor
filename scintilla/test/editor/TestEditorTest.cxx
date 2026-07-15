@@ -74,6 +74,8 @@ TEST_CASE("Test editor contract") {
 	CHECK(editor.ClientRectangle() == PRectangle(0, 0, 320, 200));
 	editor.SetText("one\ntwo \xE2\x82\xAC");
 	CHECK(editor.Text() == "one\ntwo \xE2\x82\xAC");
+	// SetText leaves an empty selection at position 0; move to the end before typing.
+	editor.WndProc(Message::GotoPos, static_cast<uptr_t>(editor.GetTextLength()), 0);
 	editor.InsertInput("!");
 	CHECK(editor.Text() == "one\ntwo \xE2\x82\xAC!");
 
