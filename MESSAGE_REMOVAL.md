@@ -270,9 +270,11 @@ Moved (2026-07-15): application scroll ops and many private scroll/scrollbar/hit
 
 ### Margins (31)
 
+Moved (2026-07-15): retained operations live in `EditorMargins.cxx` with temporary `WndProc` forwarders; focused coverage in `EditorMarginsTest.cxx`. Paint helpers (`PaintSelMargin`, `RedrawSelMargin`) and margin click notification stay in `Editor.cxx` as shared input/paint machinery.
+
 | Entries | Owner | Classification | Target and named entry point | Focused test | Documentation | Deletion reason |
 | --- | --- | --- | --- | --- | --- | --- |
-| All 31 entries below | `Editor`, `ViewStyle`, and `Document` margin state | Private editor operation | `EditorMargins.cxx`; named operations keep their interface names and use typed margin indices, masks, cursors, styles, and colours | Add editor paint and input tests for width, masks, sensitivity, cursors, text, styles, options, fold colours, invalidation, and margin notifications | Move API prose | Not deleted: margins and folding remain styling features |
+| All 31 entries below | `Editor`, `ViewStyle`, and `Document` margin state | Private editor operation | `EditorMargins.cxx`; named operations keep their interface names and use typed margin indices, masks, cursors, styles, and colours | `EditorMarginsTest.cxx`: width/layout redraw, sensitivity/cursor/back, margin text and styles, fold-margin colours, message parity | Move API prose | Not deleted: margins and folding remain styling features |
 
 `set SetMarginTypeN=2240`, `get GetMarginTypeN=2241`, `set SetMarginWidthN=2242`, `get GetMarginWidthN=2243`, `set SetMarginMaskN=2244`, `get GetMarginMaskN=2245`, `set SetMarginSensitiveN=2246`, `get GetMarginSensitiveN=2247`, `set SetMarginCursorN=2248`, `get GetMarginCursorN=2249`, `set SetMarginBackN=2250`, `get GetMarginBackN=2251`, `set SetMargins=2252`, `get GetMargins=2253`, `set SetMarginLeft=2155`, `get GetMarginLeft=2156`, `set SetMarginRight=2157`, `get GetMarginRight=2158`, `fun SetFoldMarginColour=2290`, `fun SetFoldMarginHiColour=2291`, `set MarginSetText=2530`, `get MarginGetText=2531`, `set MarginSetStyle=2532`, `get MarginGetStyle=2533`, `set MarginSetStyles=2534`, `get MarginGetStyles=2535`, `fun MarginTextClearAll=2536`, `set MarginSetStyleOffset=2537`, `get MarginGetStyleOffset=2538`, `set SetMarginOptions=2539`, `get GetMarginOptions=2557`
 

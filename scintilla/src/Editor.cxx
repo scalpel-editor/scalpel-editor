@@ -4873,10 +4873,6 @@ std::unique_ptr<Surface> Editor::CreateDrawingSurface(SurfaceID sid, std::option
 	return surf;
 }
 
-bool Editor::ValidMargin(uptr_t wParam) const noexcept {
-	return wParam < vs.ms.size();
-}
-
 void Editor::StyleSetMessage(Message iMessage, uptr_t wParam, sptr_t lParam) {
 	vs.EnsureStyle(wParam);
 	switch (iMessage) {
@@ -5302,20 +5298,17 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return FormatRange(iMessage, wParam, lParam);
 
 	case Message::GetMarginLeft:
-		return vs.leftMarginWidth;
+		return GetMarginLeft();
 
 	case Message::GetMarginRight:
-		return vs.rightMarginWidth;
+		return GetMarginRight();
 
 	case Message::SetMarginLeft:
-		lastXChosen += static_cast<int>(lParam) - vs.leftMarginWidth;
-		vs.leftMarginWidth = static_cast<int>(lParam);
-		InvalidateStyleRedraw();
+		SetMarginLeft(static_cast<int>(lParam));
 		break;
 
 	case Message::SetMarginRight:
-		vs.rightMarginWidth = static_cast<int>(lParam);
-		InvalidateStyleRedraw();
+		SetMarginRight(static_cast<int>(lParam));
 		break;
 
 		// Control specific messages
@@ -6132,92 +6125,53 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::SetMarginTypeN:
-		if (ValidMargin(wParam)) {
-			vs.ms[wParam].style = static_cast<MarginType>(lParam);
-			InvalidateStyleRedraw();
-		}
+		SetMarginTypeN(wParam, static_cast<MarginType>(lParam));
 		break;
 
 	case Message::GetMarginTypeN:
-		if (ValidMargin(wParam))
-			return static_cast<sptr_t>(vs.ms[wParam].style);
-		else
-			return 0;
+		return static_cast<sptr_t>(GetMarginTypeN(wParam));
 
 	case Message::SetMarginWidthN:
-		if (ValidMargin(wParam)) {
-			// Short-circuit if the width is unchanged, to avoid unnecessary redraw.
-			if (vs.ms[wParam].width != lParam) {
-				lastXChosen += static_cast<int>(lParam) - vs.ms[wParam].width;
-				vs.ms[wParam].width = static_cast<int>(lParam);
-				InvalidateStyleRedraw();
-			}
-		}
+		SetMarginWidthN(wParam, static_cast<int>(lParam));
 		break;
 
 	case Message::GetMarginWidthN:
-		if (ValidMargin(wParam))
-			return vs.ms[wParam].width;
-		else
-			return 0;
+		return GetMarginWidthN(wParam);
 
 	case Message::SetMarginMaskN:
-		if (ValidMargin(wParam)) {
-			vs.ms[wParam].mask = static_cast<int>(lParam);
-			InvalidateStyleRedraw();
-		}
+		SetMarginMaskN(wParam, static_cast<int>(lParam));
 		break;
 
 	case Message::GetMarginMaskN:
-		if (ValidMargin(wParam))
-			return vs.ms[wParam].mask;
-		else
-			return 0;
+		return GetMarginMaskN(wParam);
 
 	case Message::SetMarginSensitiveN:
-		if (ValidMargin(wParam)) {
-			vs.ms[wParam].sensitive = lParam != 0;
-			InvalidateStyleRedraw();
-		}
+		SetMarginSensitiveN(wParam, lParam != 0);
 		break;
 
 	case Message::GetMarginSensitiveN:
-		if (ValidMargin(wParam))
-			return vs.ms[wParam].sensitive ? 1 : 0;
-		else
-			return 0;
+		return GetMarginSensitiveN(wParam) ? 1 : 0;
 
 	case Message::SetMarginCursorN:
-		if (ValidMargin(wParam))
-			vs.ms[wParam].cursor = static_cast<CursorShape>(lParam);
+		SetMarginCursorN(wParam, static_cast<CursorShape>(lParam));
 		break;
 
 	case Message::GetMarginCursorN:
-		if (ValidMargin(wParam))
-			return static_cast<sptr_t>(vs.ms[wParam].cursor);
-		else
-			return 0;
+		return static_cast<sptr_t>(GetMarginCursorN(wParam));
 
 	case Message::SetMarginBackN:
-		if (ValidMargin(wParam)) {
-			vs.ms[wParam].back = ColourRGBA::FromIpRGB(lParam);
-			InvalidateStyleRedraw();
-		}
+		SetMarginBackN(wParam, static_cast<int>(lParam));
 		break;
 
 	case Message::GetMarginBackN:
-		if (ValidMargin(wParam))
-			return vs.ms[wParam].back.OpaqueRGB();
-		else
-			return 0;
+		return GetMarginBackN(wParam);
 
 	case Message::SetMargins:
-		if (wParam < 1000)
-			vs.ms.resize(wParam);
+		SetMargins(wParam);
 		break;
 
 	case Message::GetMargins:
-		return vs.ms.size();
+		return GetMargins();
 
 	case Message::StyleClearAll:
 		vs.ClearStyles();
@@ -7088,13 +7042,11 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::SetFoldMarginColour:
-		vs.foldmarginColour = OptionalColour(wParam, lParam);
-		InvalidateStyleRedraw();
+		SetFoldMarginColour(wParam != 0, static_cast<int>(lParam));
 		break;
 
 	case Message::SetFoldMarginHiColour:
-		vs.foldmarginHighlightColour = OptionalColour(wParam, lParam);
-		InvalidateStyleRedraw();
+		SetFoldMarginHiColour(wParam != 0, static_cast<int>(lParam));
 		break;
 
 	case Message::SetHotspotActiveFore:
@@ -7186,49 +7138,44 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return vs.extraDescent;
 
 	case Message::MarginSetStyleOffset:
-		vs.marginStyleOffset = static_cast<int>(wParam);
-		InvalidateStyleRedraw();
+		MarginSetStyleOffset(static_cast<int>(wParam));
 		break;
 
 	case Message::MarginGetStyleOffset:
-		return vs.marginStyleOffset;
+		return MarginGetStyleOffset();
 
 	case Message::SetMarginOptions:
-		marginOptions = static_cast<MarginOption>(wParam);
+		SetMarginOptions(static_cast<MarginOption>(wParam));
 		break;
 
 	case Message::GetMarginOptions:
-		return static_cast<sptr_t>(marginOptions);
+		return static_cast<sptr_t>(GetMarginOptions());
 
 	case Message::MarginSetText:
-		pdoc->MarginSetText(LineFromUPtr(wParam), ConstCharPtrFromSPtr(lParam));
+		MarginSetText(LineFromUPtr(wParam), ConstCharPtrFromSPtr(lParam));
 		break;
 
 	case Message::MarginGetText: {
-			const StyledText st = pdoc->MarginStyledText(LineFromUPtr(wParam));
-			return BytesResult(lParam, st.AsView());
+			return BytesResult(lParam, MarginGetText(LineFromUPtr(wParam)));
 		}
 
 	case Message::MarginSetStyle:
-		pdoc->MarginSetStyle(LineFromUPtr(wParam), static_cast<int>(lParam));
+		MarginSetStyle(LineFromUPtr(wParam), static_cast<int>(lParam));
 		break;
 
-	case Message::MarginGetStyle: {
-			const StyledText st = pdoc->MarginStyledText(LineFromUPtr(wParam));
-			return st.style;
-		}
+	case Message::MarginGetStyle:
+		return MarginGetStyle(LineFromUPtr(wParam));
 
 	case Message::MarginSetStyles:
-		pdoc->MarginSetStyles(LineFromUPtr(wParam), ConstUCharPtrFromSPtr(lParam));
+		MarginSetStyles(LineFromUPtr(wParam), ConstUCharPtrFromSPtr(lParam));
 		break;
 
 	case Message::MarginGetStyles: {
-			const StyledText st = pdoc->MarginStyledText(LineFromUPtr(wParam));
-			return BytesResult(lParam, st.styles, st.length);
+			return BytesResult(lParam, MarginGetStyles(LineFromUPtr(wParam)));
 		}
 
 	case Message::MarginTextClearAll:
-		pdoc->MarginClearAll();
+		MarginTextClearAll();
 		break;
 
 	case Message::AnnotationSetText:

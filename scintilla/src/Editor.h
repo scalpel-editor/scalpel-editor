@@ -738,6 +738,39 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void SetVisiblePolicy(Scintilla::uptr_t policy, Scintilla::sptr_t slop);
 	int PointXFromPosition(Sci::Position pos);
 	int PointYFromPosition(Sci::Position pos);
+	// Margins: definitions in EditorMargins.cxx.
+	bool ValidMargin(Scintilla::uptr_t margin) const noexcept;
+	void SetMargins(size_t margins);
+	size_t GetMargins() const noexcept;
+	void SetMarginTypeN(size_t margin, Scintilla::MarginType marginType);
+	Scintilla::MarginType GetMarginTypeN(size_t margin) const noexcept;
+	void SetMarginWidthN(size_t margin, int pixelWidth);
+	int GetMarginWidthN(size_t margin) const noexcept;
+	void SetMarginMaskN(size_t margin, int mask);
+	int GetMarginMaskN(size_t margin) const noexcept;
+	void SetMarginSensitiveN(size_t margin, bool sensitive);
+	bool GetMarginSensitiveN(size_t margin) const noexcept;
+	void SetMarginCursorN(size_t margin, Scintilla::CursorShape cursor);
+	Scintilla::CursorShape GetMarginCursorN(size_t margin) const noexcept;
+	void SetMarginBackN(size_t margin, int rgb);
+	int GetMarginBackN(size_t margin) const noexcept;
+	void SetMarginLeft(int pixelWidth);
+	int GetMarginLeft() const noexcept;
+	void SetMarginRight(int pixelWidth);
+	int GetMarginRight() const noexcept;
+	void SetFoldMarginColour(bool useSetting, int rgb);
+	void SetFoldMarginHiColour(bool useSetting, int rgb);
+	void MarginSetText(Sci::Line line, const char *text);
+	std::string MarginGetText(Sci::Line line) const;
+	void MarginSetStyle(Sci::Line line, int style);
+	int MarginGetStyle(Sci::Line line) const noexcept;
+	void MarginSetStyles(Sci::Line line, const unsigned char *styles);
+	std::string MarginGetStyles(Sci::Line line) const;
+	void MarginTextClearAll();
+	void MarginSetStyleOffset(int style);
+	int MarginGetStyleOffset() const noexcept;
+	void SetMarginOptions(Scintilla::MarginOption options);
+	Scintilla::MarginOption GetMarginOptions() const noexcept;
 
 	virtual void CopyToClipboard(const SelectionText &selectedText) = 0;
 	std::string RangeText(Sci::Position start, Sci::Position end) const;
@@ -835,7 +868,6 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	Sci::Position GetTextRange(char *buffer, Sci::Position cpMin, Sci::Position cpMax) const;
 
 	virtual Scintilla::sptr_t DefWndProc(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam) = 0;
-	bool ValidMargin(Scintilla::uptr_t wParam) const noexcept;
 	void StyleSetMessage(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
 	Scintilla::sptr_t StyleGetMessage(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
 	void SetSelectionNMessage(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
