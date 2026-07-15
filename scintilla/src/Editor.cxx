@@ -3647,6 +3647,8 @@ int Editor::KeyDownWithModifiers(Keys key, KeyMod modifiers, bool *consumed) {
 	if (command != EditorCommand::None) {
 		if (consumed)
 			*consumed = true;
+		if (recordingMacro)
+			NotifyMacroRecord(MessageFromCommand(command), 0, 0);
 		return ExecuteCommand(command);
 	}
 	if (consumed)
@@ -7495,8 +7497,10 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return vs.caret.width;
 
 	case Message::AssignCmdKey:
-		kmap.AssignCmdKey(KeysFromWParam(wParam),
-			KeyModFromWParam(wParam), CommandFromMessage(static_cast<Message>(lParam)));
+		if (const EditorCommand command = CommandFromMessage(static_cast<Message>(lParam));
+			command != EditorCommand::None) {
+			kmap.AssignCmdKey(KeysFromWParam(wParam), KeyModFromWParam(wParam), command);
+		}
 		break;
 
 	case Message::ClearCmdKey:

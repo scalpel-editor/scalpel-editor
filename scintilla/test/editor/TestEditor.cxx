@@ -257,6 +257,9 @@ void TestEditor::NotifyParent(Scintilla::NotificationData scn) {
 	notification.length = scn.length;
 	notification.modificationType = scn.modificationType;
 	notification.updated = scn.updated;
+	notification.message = scn.message;
+	notification.wParam = scn.wParam;
+	notification.lParam = scn.lParam;
 	if (scn.text) {
 		if (scn.length > 0)
 			notification.text.assign(scn.text, static_cast<size_t>(scn.length));

@@ -248,6 +248,22 @@ TEST_CASE("AssignCmdKey rebinds a key to another command") {
 	CHECK(editor.CurrentPos() == 2);
 }
 
+TEST_CASE("AssignCmdKey ignores operations outside EditorCommand") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.SetText("ab");
+	Goto(editor, 0);
+
+	const uptr_t keyWithMods = static_cast<uptr_t>(Keys::Right);
+	editor.WndProc(Message::AssignCmdKey, keyWithMods,
+		static_cast<sptr_t>(Message::ToggleCaretSticky));
+
+	bool consumed = false;
+	editor.KeyDown(Keys::Right, KeyMod::Norm, &consumed);
+	CHECK(consumed);
+	CHECK(editor.CurrentPos() == 1);
+}
+
 TEST_CASE("ClearCmdKey removes a binding") {
 	TestHost host;
 	TestEditor editor(host);
@@ -282,6 +298,48 @@ TEST_CASE("Message path and ExecuteCommand match for LineDown") {
 		CHECK(viaMessage.CurrentPos() == commandPos);
 		CHECK(commandPos > 0);
 	}
+}
+
+TEST_CASE("Bound keyboard commands remain observable to macro recording") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.SetText("ab");
+	Goto(editor, 0);
+	editor.WndProc(Message::StartRecord, 0, 0);
+	editor.ClearObservations();
+
+	bool consumed = false;
+	editor.KeyDown(Keys::Right, KeyMod::Norm, &consumed);
+
+	REQUIRE(consumed);
+	CHECK(std::count_if(editor.observations.notifications.begin(),
+		editor.observations.notifications.end(), [](const TestNotification &notification) {
+			return notification.code == Notification::MacroRecord;
+		}) == 1);
+	const auto macroRecord = std::find_if(editor.observations.notifications.begin(),
+		editor.observations.notifications.end(), [](const TestNotification &notification) {
+			return notification.code == Notification::MacroRecord;
+		});
+	REQUIRE(macroRecord != editor.observations.notifications.end());
+	CHECK(macroRecord->message == Message::CharRight);
+	CHECK(macroRecord->wParam == 0);
+	CHECK(macroRecord->lParam == 0);
+}
+
+TEST_CASE("Unbound keys are not recorded as macro commands") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.WndProc(Message::StartRecord, 0, 0);
+	editor.ClearObservations();
+
+	bool consumed = true;
+	editor.KeyDown(static_cast<Keys>('Q'), KeyMod::Norm, &consumed);
+
+	CHECK_FALSE(consumed);
+	CHECK(std::none_of(editor.observations.notifications.begin(),
+		editor.observations.notifications.end(), [](const TestNotification &notification) {
+			return notification.code == Notification::MacroRecord;
+		}));
 }
 
 TEST_CASE("SelectAll selects the whole document") {

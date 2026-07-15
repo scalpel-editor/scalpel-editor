@@ -6783,10 +6783,8 @@ struct Sci_TextToFindFull {
 
     <p>There is a default binding of keys to commands that is defined in the Scintilla source in
     the file <code>KeyMap.cxx</code> by the constant <code>KeyMap::MapDefault[]</code>. This table
-    maps key definitions to <code>SCI_*</code> messages with no parameters (mostly the <a
-    class="jump" href="#KeyboardCommands">keyboard commands</a> discussed above, but any Scintilla
-    command that has no arguments can be mapped). You can change the mapping to suit your own
-    requirements.</p>
+    maps key definitions to the bindable editing actions represented by <code>EditorCommand</code>.
+    You can change the mapping to suit your own requirements.</p>
     <code><a class="message" href="#SCI_ASSIGNCMDKEY">SCI_ASSIGNCMDKEY(int keyDefinition, int
     sciCommand)</a><br />
      <a class="message" href="#SCI_CLEARCMDKEY">SCI_CLEARCMDKEY(int keyDefinition)</a><br />
@@ -6827,9 +6825,9 @@ struct Sci_TextToFindFull {
 
     <p><b id="SCI_ASSIGNCMDKEY">SCI_ASSIGNCMDKEY(int <a class="jump"
     href="#keyDefinition">keyDefinition</a>, int sciCommand)</b><br />
-     This assigns the given key definition to a Scintilla command identified by
-    <code class="parameter">sciCommand</code>. <code class="parameter">sciCommand</code> can be any <code>SCI_*</code> command that has
-    no arguments.</p>
+     This assigns the given key definition to the <code>EditorCommand</code> action identified by
+    the temporary <code class="parameter">sciCommand</code> message number. Other message numbers
+    are ignored and do not replace the existing binding.</p>
 
     <p><b id="SCI_CLEARCMDKEY">SCI_CLEARCMDKEY(int <a class="jump"
     href="#keyDefinition">keyDefinition</a>)</b><br />
@@ -9897,4 +9895,3 @@ EM_SETTARGETDEVICE
 
   </body>
 </html>
-

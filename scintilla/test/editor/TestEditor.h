@@ -14,6 +14,9 @@ struct TestNotification {
 	Sci::Position length = 0;
 	Scintilla::ModificationFlags modificationType = Scintilla::ModificationFlags::None;
 	Scintilla::Update updated = Scintilla::Update::None;
+	Scintilla::Message message = Scintilla::Message::Null;
+	Scintilla::uptr_t wParam = 0;
+	Scintilla::sptr_t lParam = 0;
 	std::string text;
 };
 
