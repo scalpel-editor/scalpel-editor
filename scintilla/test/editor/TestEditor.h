@@ -72,6 +72,8 @@ public:
 	int HorizontalOffset() const noexcept;
 	void InsertInput(std::string_view text);
 	int KeyDown(Scintilla::Keys key, Scintilla::KeyMod modifiers, bool *consumed);
+	int RunCommand(EditorCommand command);
+	Sci::Position CurrentPos() const;
 	void MouseDown(Point point, Scintilla::KeyMod modifiers);
 	void MouseMove(Point point, Scintilla::KeyMod modifiers);
 	void MouseUp(Point point, Scintilla::KeyMod modifiers);

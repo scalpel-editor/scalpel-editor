@@ -124,6 +124,14 @@ int TestEditor::KeyDown(Scintilla::Keys key, Scintilla::KeyMod modifiers, bool *
 	return KeyDownWithModifiers(key, modifiers, consumed);
 }
 
+int TestEditor::RunCommand(EditorCommand command) {
+	return ExecuteCommand(command);
+}
+
+Sci::Position TestEditor::CurrentPos() const {
+	return sel.MainCaret();
+}
+
 void TestEditor::MouseDown(Point point, Scintilla::KeyMod modifiers) {
 	ButtonDownWithModifiers(point, currentTime, modifiers);
 }
