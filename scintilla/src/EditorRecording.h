@@ -6,7 +6,7 @@
  ** RecordedAction is a variant that owns any text and carries only typed
  ** fields. Lifecycle, command capture, parameterized capture, the host
  ** callback, and replay live in EditorRecording.cxx and the named entry
- ** points that emit actions. There is no numeric SCN_MACRORECORD path.
+ ** points that emit actions. There is no numeric recording-notification path.
  **
  ** # Recordable operations
  **

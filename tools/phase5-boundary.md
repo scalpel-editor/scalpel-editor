@@ -105,7 +105,9 @@ The generated structures header is **deleted**. Outcomes below record what produ
 
 | Term | Owner | Reason |
 | --- | --- | --- |
-| `SCI_METHOD` | `Sci_Position.h` / `ILexer.h` / `ILoader.h` | Lexilla calling convention macro. |
+| `SCI_METHOD` | `Sci_Position.h`, `ILexer.h`, `ILoader.h`, and their `Document` / lexer-test implementations | Lexilla calling convention macro. |
+| `SCI_POSITION_H` | `Sci_Position.h` | Include guard for the retained Lexilla position contract. |
+| `SCI_OWNREGEX` | `Document.cxx` | Build-time selection between Scintilla's built-in regular expression implementation and an external replacement. |
 | `Sci_Position`, `Sci_PositionU`, `Sci_PositionCR` | `Sci_Position.h` | Lexilla position typedefs. |
 | `IDocument::CodePage`, `IsDBCSLeadByte` | `ILexer.h` + document implementation | Lexilla compatibility; always UTF-8 / false. |
 | `lvRelease4`, `lvRelease5`, `dvRelease4` | `ILexer.h` | Lexilla interface version constants. |
