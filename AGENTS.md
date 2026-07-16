@@ -32,22 +32,36 @@ The editor itself is personal utility — SciTE already gives Wayland users the 
 
 ## Build and test
 
-The build uses CMake with the Ninja generator. Always configure from the repository root, never from inside `scintilla/`: the root `CMakeLists.txt` is the only top-level project, and it pulls `scintilla/` in as a subdirectory. Running CMake inside `scintilla/` would spawn a duplicate build tree that the presets and `.gitignore` do not manage, so `scintilla/CMakeLists.txt` rejects that with a fatal error. From the repository root:
+The build uses CMake with the Ninja generator. Always configure from the repository root, never from inside `scintilla/`: the root `CMakeLists.txt` is the only top-level project, and it pulls `scintilla/` in as a subdirectory. Running CMake inside `scintilla/` would spawn a duplicate build tree that the presets and `.gitignore` do not manage, so `scintilla/CMakeLists.txt` rejects that with a fatal error. From the repository root, configure the normal development tree once:
 
 ```
 cmake --preset dev          # configure into build/ (Debug)
-cmake --build build         # build the core library and both test executables
-ctest --test-dir build      # run the unit and editor tests
 ```
 
-The check matrix runs the same configure/build/test sequence for three trees — normal (`dev`, in `build/`), AddressSanitizer (`asan`, in `build-asan/`), and UndefinedBehaviorSanitizer (`ubsan`, in `build-ubsan/`):
+Use the smallest build and test scope that covers the code being changed. Ninja rebuilds the target's dependencies, and both Catch2 executables accept a test-name pattern:
+
+```
+cmake --build build --target editorTest
+./build/scintilla/test/editor/editorTest "Wrap mode*"
+
+cmake --build build --target unitTest
+./build/scintilla/test/unit/unitTest "Document*"
+```
+
+Documentation-only changes do not require a build unless they alter build or test instructions. Before handing off a compiled-code change, run the normal configure/build/test workflow once:
+
+```
+cmake --workflow --preset dev
+```
+
+The full check matrix runs the same sequence for three trees — normal (`dev`, in `build/`), AddressSanitizer (`asan`, in `build-asan/`), and UndefinedBehaviorSanitizer (`ubsan`, in `build-ubsan/`):
 
 ```
 ./check.sh                    # all three trees
 cmake --workflow --preset asan   # one tree
 ```
 
-Passing `./check.sh` is part of the definition of done for each reviewable step. There is no hosted CI; this script is the whole gate.
+Run `./check.sh` at roadmap phase gates, before a release, when requested, and when a change affects memory lifetime, sanitizer or compiler settings, the test host, or broad shared-core behavior. Do not run it merely because a development session is ending. There is no hosted CI, so the matrix remains the final local gate.
 
 The ASan test preset sets `ASAN_OPTIONS=detect_leaks=0` because this development runner uses `ptrace`, under which LeakSanitizer aborts before reporting results. AddressSanitizer's other checks remain enabled. The matrix therefore does not check for leaks; use a non-traced process for a separate leak check.
 
