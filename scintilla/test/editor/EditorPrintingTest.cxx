@@ -96,3 +96,17 @@ TEST_CASE("FormatRange measures without drawing and returns a position") {
 	CHECK(next > 0);
 	CHECK(next <= editor.GetTextLength());
 }
+
+TEST_CASE("FormatRange position bounds select whole lines") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.SetText("hello\nworld\n");
+
+	const SurfaceID sid = static_cast<SurfaceID>(&host.mainWindow);
+	const PRectangle rc = PRectangle::FromInts(0, 0, 400, 200);
+
+	// cpMax is inside the first line, which is formatted as a whole.
+	const Sci::Position next = editor.FormatRange(false, 0, 1, rc, sid, sid);
+	CHECK(next == editor.PositionFromLine(1));
+	CHECK(next > 1);
+}

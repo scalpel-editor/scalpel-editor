@@ -15,11 +15,6 @@ namespace Scintilla {
 
 enum class Message;	// Incomplete: client header deleted in phase 5 step 10
 
-// Declare in case ScintillaStructures.h not included
-struct TextRangeFull;
-struct TextToFindFull;
-struct RangeToFormatFull;
-
 class IDocumentEditable;
 
 using FunctionDirect = intptr_t(*)(intptr_t ptr, unsigned int iMessage, uintptr_t wParam, intptr_t lParam, int *pStatus);
@@ -103,7 +98,6 @@ public:
 	void SelectAll();
 	void SetSavePoint();
 	Position GetStyledText(void *tr);
-	Position GetStyledTextFull(TextRangeFull *tr);
 	bool CanRedo();
 	Line MarkerLineFromHandle(int markerHandle);
 	void MarkerDeleteHandle(int markerHandle);
@@ -355,9 +349,7 @@ public:
 	void SetPrintColourMode(Scintilla::PrintOption mode);
 	Scintilla::PrintOption PrintColourMode();
 	Position FindText(Scintilla::FindOption searchFlags, void *ft);
-	Position FindTextFull(Scintilla::FindOption searchFlags, TextToFindFull *ft);
 	Position FormatRange(bool draw, void *fr);
-	Position FormatRangeFull(bool draw, RangeToFormatFull *fr);
 	void SetChangeHistory(Scintilla::ChangeHistoryOption changeHistory);
 	Scintilla::ChangeHistoryOption ChangeHistory();
 	void SetUndoSelectionHistory(Scintilla::UndoSelectionHistoryOption undoSelectionHistory);
@@ -379,7 +371,6 @@ public:
 	Position GetSelText(char *text);
 	std::string GetSelText();
 	Position GetTextRange(void *tr);
-	Position GetTextRangeFull(TextRangeFull *tr);
 	void HideSelection(bool hide);
 	bool SelectionHidden();
 	int PointXFromPosition(Position pos);

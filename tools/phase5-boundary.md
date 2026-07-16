@@ -11,7 +11,7 @@ Run `tools/check-no-message-layer.sh` as the repeatable completion check. Until 
 | `scintilla/include/ScintillaMessages.h` | `enum class Message` for temporary shells and tests | **Deleted** in step 6. No retained project type keeps a message number. |
 | `scintilla/include/ScintillaTypes.h` | Enums, flag operators, `Position`/`Line`/`Colour` aliases, `uptr_t`/`sptr_t`, marker/indicator masks | **Split and re-own** retained definitions in concern-sized headers (step 9). Delete client/message-only enums and the file when empty of consumers. |
 | `scintilla/include/ScintillaStructures.h` | Ranges, find, print; notifications removed in step 7 | **Deleted** in step 8. Notifications live in `EditorNotifications.h`; print formatting uses direct `Sci::Position` / `PRectangle` / `SurfaceID` parameters; text range and search use named buffer and target APIs. |
-| `scintilla/include/ScintillaCall.h` | Generated C++ client wrapper over message numbers | **Delete** (step 10). No production consumer. |
+| `scintilla/include/ScintillaCall.h` | Generated C++ client wrapper over message numbers; `*Full` methods removed with their deleted parameter types | **Delete** (step 10). No production consumer. |
 | `scintilla/include/Scintilla.h` | C client constants (`SCI_*` / `SCN_*`) and parallel structs | **Delete** after any last retained constant moves (step 10). No production consumer. |
 | `scintilla/include/Scintilla.iface` | Generator input and phase 4 inventory source | **Delete** (step 10). Phase 4 inventory text is the historical record. |
 | `scintilla/include/ScintillaWidget.h` | GTK widget embedding | **Delete** (step 10). No consumer in this tree. |

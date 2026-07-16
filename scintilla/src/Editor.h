@@ -1256,9 +1256,10 @@ public:
 	Scintilla::PrintOption GetPrintColourMode() const noexcept;
 	void SetPrintWrapMode(Scintilla::Wrap wrapMode);
 	Scintilla::Wrap GetPrintWrapMode() const noexcept;
-	// Measure or draw [cpMin, cpMax) into rc on hdc / hdcTarget. Returns the next
-	// document position after the formatted page. When draw is false, only
-	// measurement runs (for pagination).
+	// Measure or draw a page into rc on hdc / hdcTarget. cpMin selects the first
+	// display line and cpMax selects the last eligible document line, so the
+	// returned next-page position may be greater than cpMax. When draw is false,
+	// only measurement runs (for pagination).
 	Sci::Position FormatRange(bool draw, Sci::Position cpMin, Sci::Position cpMax,
 		PRectangle rc, SurfaceID hdc, SurfaceID hdcTarget);
 

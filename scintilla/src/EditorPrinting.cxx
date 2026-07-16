@@ -6,10 +6,11 @@
  ** Print magnification scales the view styles for output. Colour mode chooses
  ** how colours are rendered for monochrome or colour devices. Print wrap mode
  ** is Word or None for the print layout (independent of the screen wrap mode).
- ** FormatRange measures or draws a document byte range into a rectangle on a
- ** pair of surfaces (draw and measure); the return value is the next document
- ** position after the formatted page. Positions are Sci::Position; the
- ** rectangle is PRectangle; surface handles are Platform SurfaceID values.
+ ** FormatRange measures or draws a page into a rectangle on a pair of surfaces
+ ** (draw and measure); the return value is the next document position after the
+ ** formatted page. The position bounds choose the first display line and last
+ ** document line. The rectangle is PRectangle; surface handles are Platform
+ ** SurfaceID values.
  **/
 // Copyright 1998-2011 by Neil Hodgson <neilh@scintilla.org>
 // The License.txt file describes the conditions under which this software may be distributed.

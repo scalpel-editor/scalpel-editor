@@ -156,7 +156,8 @@ private:
 public:
 	void PaintText(Surface *surfaceWindow, const EditModel &model, const ViewStyle &vsDraw,
 		PRectangle rcArea, PRectangle rcClient);
-	// Measure or draw document range [cpMin, cpMax) into rc on the given surfaces.
+	// Measure or draw a page from the display line at cpMin through the document
+	// line at cpMax into rc on the given surfaces.
 	Sci::Position FormatRange(bool draw, Sci::Position cpMin, Sci::Position cpMax, PRectangle rc,
 		Surface *surface, Surface *surfaceMeasure, const EditModel &model, const ViewStyle &vs);
 };
