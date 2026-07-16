@@ -246,3 +246,86 @@ TEST_CASE("List box SetList parses type separators") {
 	CHECK(host.listBox.items[1].text == "beta");
 	CHECK(host.listBox.items[1].type == 2);
 }
+
+namespace {
+
+bool PopupItemEnabled(const TestEditor &editor, std::string_view label) {
+	for (const std::string &item : editor.observations.popupItems) {
+		if (item.rfind(label, 0) == 0)
+			return item.find(" enabled") != std::string::npos;
+	}
+	return false;
+}
+
+bool PopupItemDisabled(const TestEditor &editor, std::string_view label) {
+	for (const std::string &item : editor.observations.popupItems) {
+		if (item.rfind(label, 0) == 0)
+			return item.find(" disabled") != std::string::npos;
+	}
+	return false;
+}
+
+}
+
+TEST_CASE("Context menu enablement uses named read-only and CanPaste") {
+	TestHost host;
+	TestEditor editor(host);
+	LoadClean(editor, "hello");
+	editor.SetSel(0, 5);
+	editor.ClearObservations();
+
+	editor.ContextMenu(Point(10, 10));
+	CHECK(PopupItemEnabled(editor, "Cut "));
+	CHECK(PopupItemEnabled(editor, "Copy "));
+	// CanPaste is true when the document is writable (clipboard emptiness is host policy).
+	CHECK(PopupItemEnabled(editor, "Paste "));
+	CHECK(PopupItemEnabled(editor, "Delete "));
+	CHECK(PopupItemEnabled(editor, "Select All "));
+
+	editor.ClearObservations();
+	editor.SetReadOnly(true);
+	editor.ContextMenu(Point(10, 10));
+	// Writable actions off when read-only; copy and select-all stay available.
+	CHECK(PopupItemDisabled(editor, "Cut "));
+	CHECK(PopupItemEnabled(editor, "Copy "));
+	CHECK(PopupItemDisabled(editor, "Paste "));
+	CHECK(PopupItemDisabled(editor, "Delete "));
+	CHECK(PopupItemDisabled(editor, "Undo "));
+	CHECK(PopupItemEnabled(editor, "Select All "));
+}
+
+TEST_CASE("Context menu commands run through ExecuteCommand") {
+	TestHost host;
+	TestEditor editor(host);
+	LoadClean(editor, "abcd");
+	editor.SetSel(1, 3);
+	editor.observations.clipboard.clear();
+
+	editor.Command(TestEditor::IdCmdCopy);
+	CHECK(editor.observations.clipboard == "bc");
+	CHECK(editor.GetText() == "abcd");
+
+	editor.Command(TestEditor::IdCmdCut);
+	CHECK(editor.GetText() == "ad");
+	CHECK(editor.observations.clipboard == "bc");
+
+	editor.Command(TestEditor::IdCmdSelectAll);
+	CHECK_FALSE(editor.GetSelectionEmpty());
+	CHECK(editor.GetSelectionStart() == 0);
+	CHECK(editor.GetSelectionEnd() == 2);
+
+	editor.Command(TestEditor::IdCmdDelete);
+	CHECK(editor.GetText() == "");
+	CHECK(editor.CanUndo());
+
+	editor.Command(TestEditor::IdCmdUndo);
+	CHECK(editor.GetText() == "ad");
+	CHECK(editor.CanRedo());
+
+	editor.Command(TestEditor::IdCmdRedo);
+	CHECK(editor.GetText() == "");
+
+	editor.observations.clipboard = "xy";
+	editor.Command(TestEditor::IdCmdPaste);
+	CHECK(editor.GetText() == "xy");
+}

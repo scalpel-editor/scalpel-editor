@@ -109,31 +109,31 @@ void ScintillaBase::Command(int cmdId) {
 		break;
 
 	case idcmdUndo:
-		WndProc(Message::Undo, 0, 0);
+		ExecuteCommand(EditorCommand::Undo);
 		break;
 
 	case idcmdRedo:
-		WndProc(Message::Redo, 0, 0);
+		ExecuteCommand(EditorCommand::Redo);
 		break;
 
 	case idcmdCut:
-		WndProc(Message::Cut, 0, 0);
+		ExecuteCommand(EditorCommand::Cut);
 		break;
 
 	case idcmdCopy:
-		WndProc(Message::Copy, 0, 0);
+		ExecuteCommand(EditorCommand::Copy);
 		break;
 
 	case idcmdPaste:
-		WndProc(Message::Paste, 0, 0);
+		ExecuteCommand(EditorCommand::Paste);
 		break;
 
 	case idcmdDelete:
-		WndProc(Message::Clear, 0, 0);
+		ExecuteCommand(EditorCommand::Clear);
 		break;
 
 	case idcmdSelectAll:
-		WndProc(Message::SelectAll, 0, 0);
+		ExecuteCommand(EditorCommand::SelectAll);
 		break;
 
 	default:
@@ -249,14 +249,15 @@ bool ScintillaBase::ShouldDisplayPopup(Point ptInWindowCoordinates) const {
 
 void ScintillaBase::ContextMenu(Point pt) {
 	if (displayPopupMenu != PopUp::Never) {
-		const bool writable = !WndProc(Message::GetReadOnly, 0, 0);
+		// Named editor state only — no temporary message path for menu enablement.
+		const bool writable = !GetReadOnly();
 		popup.CreatePopUp();
 		AddToPopUp("Undo", idcmdUndo, writable && pdoc->CanUndo());
 		AddToPopUp("Redo", idcmdRedo, writable && pdoc->CanRedo());
 		AddToPopUp("");
 		AddToPopUp("Cut", idcmdCut, writable && !sel.Empty());
 		AddToPopUp("Copy", idcmdCopy, !sel.Empty());
-		AddToPopUp("Paste", idcmdPaste, writable && WndProc(Message::CanPaste, 0, 0));
+		AddToPopUp("Paste", idcmdPaste, writable && CanPaste());
 		AddToPopUp("Delete", idcmdDelete, writable && !sel.Empty());
 		AddToPopUp("");
 		AddToPopUp("Select All", idcmdSelectAll);

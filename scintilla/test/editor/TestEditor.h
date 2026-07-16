@@ -167,6 +167,16 @@ public:
 	using Editor::SetStatus;
 	using ScintillaBase::GetUsePopUp;
 	using ScintillaBase::UsePopUp;
+	// Context menu and its command ids (protected on ScintillaBase).
+	using ScintillaBase::Command;
+	using ScintillaBase::ContextMenu;
+	static constexpr int IdCmdUndo = idcmdUndo;
+	static constexpr int IdCmdRedo = idcmdRedo;
+	static constexpr int IdCmdCut = idcmdCut;
+	static constexpr int IdCmdCopy = idcmdCopy;
+	static constexpr int IdCmdPaste = idcmdPaste;
+	static constexpr int IdCmdDelete = idcmdDelete;
+	static constexpr int IdCmdSelectAll = idcmdSelectAll;
 
 	// Thin public forwards of protected Editor decoration operations so free-function
 	// tests can compare the named path with temporary message forwarders.
