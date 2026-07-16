@@ -1,0 +1,183 @@
+// scalpel-editor test code
+/** @file EditorRecordingTest.cxx
+ ** Contract tests for typed RecordedAction ownership and the test host sink.
+ ** Production capture still uses the numeric path until phase 4 steps 15–16;
+ ** these cases exercise the type and host surface in isolation.
+ **/
+
+#include <algorithm>
+#include <array>
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <forward_list>
+#include <map>
+#include <memory>
+#include <optional>
+#include <set>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <variant>
+#include <vector>
+
+#include "ScintillaTypes.h"
+#include "ScintillaMessages.h"
+#include "ScintillaStructures.h"
+#include "ILoader.h"
+#include "ILexer.h"
+
+#include "Debugging.h"
+#include "Geometry.h"
+#include "Platform.h"
+#include "CharacterType.h"
+#include "CharacterCategoryMap.h"
+#include "Position.h"
+#include "UniqueString.h"
+#include "SplitVector.h"
+#include "Partitioning.h"
+#include "RunStyles.h"
+#include "ContractionState.h"
+#include "CellBuffer.h"
+#include "PerLine.h"
+#include "KeyMap.h"
+#include "Indicator.h"
+#include "LineMarker.h"
+#include "Style.h"
+#include "ViewStyle.h"
+#include "CharClassify.h"
+#include "Decoration.h"
+#include "CaseFolder.h"
+#include "Document.h"
+#include "UniConversion.h"
+#include "Selection.h"
+#include "PositionCache.h"
+#include "EditModel.h"
+#include "MarginView.h"
+#include "EditView.h"
+#include "Editor.h"
+#include "EditorRecording.h"
+#include "AutoComplete.h"
+#include "CallTip.h"
+#include "ScintillaBase.h"
+
+#include "TestPlatform.h"
+#include "TestEditor.h"
+
+#include "catch.hpp"
+
+using namespace Scintilla;
+using namespace Scintilla::Internal;
+
+namespace {
+
+// Deliver action through a callback, then destroy the original so the host
+// vector must hold an independent copy (especially for owned text).
+void DeliverAndDropOriginal(const RecordingCallback &callback, RecordedAction action) {
+	callback(action);
+}
+
+template <typename T>
+const T &As(const RecordedAction &action) {
+	const T *value = std::get_if<T>(&action);
+	REQUIRE(value != nullptr);
+	return *value;
+}
+
+}
+
+TEST_CASE("Recording host retains every RecordedAction alternative after callback return") {
+	TestHost host;
+	TestEditor editor(host);
+	const RecordingCallback callback = editor.MakeRecordingCallback();
+
+	DeliverAndDropOriginal(callback, RecordedCommand{EditorCommand::CharRight});
+	DeliverAndDropOriginal(callback, RecordedReplaceSelection{"hello"});
+	DeliverAndDropOriginal(callback, RecordedAddText{"add"});
+	DeliverAndDropOriginal(callback, RecordedInsertText{4, "ins"});
+	DeliverAndDropOriginal(callback, RecordedAppendText{"app"});
+	DeliverAndDropOriginal(callback, RecordedClearAll{});
+	DeliverAndDropOriginal(callback, RecordedGotoLine{3});
+	DeliverAndDropOriginal(callback, RecordedGotoPos{12});
+	DeliverAndDropOriginal(callback, RecordedSearchAnchor{});
+	DeliverAndDropOriginal(callback, RecordedSearch{
+		SearchDirection::Prev, FindOption::MatchCase | FindOption::WholeWord, "needle"});
+	DeliverAndDropOriginal(callback, RecordedSetSelectionMode{SelectionMode::Rectangle});
+
+	REQUIRE(editor.observations.recordedActions.size() == 11);
+
+	CHECK(As<RecordedCommand>(editor.observations.recordedActions[0]).command ==
+		EditorCommand::CharRight);
+	CHECK(As<RecordedReplaceSelection>(editor.observations.recordedActions[1]).text == "hello");
+	CHECK(As<RecordedAddText>(editor.observations.recordedActions[2]).text == "add");
+	CHECK(As<RecordedInsertText>(editor.observations.recordedActions[3]).position == 4);
+	CHECK(As<RecordedInsertText>(editor.observations.recordedActions[3]).text == "ins");
+	CHECK(As<RecordedAppendText>(editor.observations.recordedActions[4]).text == "app");
+	CHECK(std::holds_alternative<RecordedClearAll>(editor.observations.recordedActions[5]));
+	CHECK(As<RecordedGotoLine>(editor.observations.recordedActions[6]).line == 3);
+	CHECK(As<RecordedGotoPos>(editor.observations.recordedActions[7]).position == 12);
+	CHECK(std::holds_alternative<RecordedSearchAnchor>(editor.observations.recordedActions[8]));
+	const RecordedSearch &search = As<RecordedSearch>(editor.observations.recordedActions[9]);
+	CHECK(search.direction == SearchDirection::Prev);
+	CHECK(search.flags == (FindOption::MatchCase | FindOption::WholeWord));
+	CHECK(search.text == "needle");
+	CHECK(As<RecordedSetSelectionMode>(editor.observations.recordedActions[10]).mode ==
+		SelectionMode::Rectangle);
+}
+
+TEST_CASE("Recording host keeps multi-byte and invalid UTF-8 text after the original is gone") {
+	TestHost host;
+	TestEditor editor(host);
+	const RecordingCallback callback = editor.MakeRecordingCallback();
+
+	// U+00E9 in UTF-8, then a lone continuation byte (invalid under phase 3 policy).
+	const std::string multiByte = "\xC3\xA9";
+	const std::string invalidUtf8 = "a\x80z";
+
+	{
+		RecordedReplaceSelection replace{multiByte};
+		callback(replace);
+		// Mutate the stack value after delivery; host must not alias it.
+		replace.text = "mutated";
+	}
+	{
+		RecordedInsertText insert{0, invalidUtf8};
+		callback(insert);
+		insert.text.clear();
+		insert.position = -1;
+	}
+	{
+		RecordedSearch search{SearchDirection::Next, FindOption::None, invalidUtf8};
+		callback(search);
+		search.text = "other";
+	}
+
+	REQUIRE(editor.observations.recordedActions.size() == 3);
+	CHECK(As<RecordedReplaceSelection>(editor.observations.recordedActions[0]).text == multiByte);
+	CHECK(As<RecordedInsertText>(editor.observations.recordedActions[1]).position == 0);
+	CHECK(As<RecordedInsertText>(editor.observations.recordedActions[1]).text == invalidUtf8);
+	CHECK(As<RecordedSearch>(editor.observations.recordedActions[2]).text == invalidUtf8);
+}
+
+TEST_CASE("ClearObservations drops retained recorded actions") {
+	TestHost host;
+	TestEditor editor(host);
+
+	editor.OnRecordedAction(RecordedReplaceSelection{"kept only until clear"});
+	REQUIRE(editor.observations.recordedActions.size() == 1);
+
+	editor.ClearObservations();
+	CHECK(editor.observations.recordedActions.empty());
+}
+
+TEST_CASE("Without a recording sink the observation list stays empty") {
+	TestHost host;
+	TestEditor editor(host);
+
+	// Construct actions without delivering them to the host.
+	const RecordedAction unused = RecordedCommand{EditorCommand::LineDown};
+	(void)unused;
+
+	CHECK(editor.observations.recordedActions.empty());
+}

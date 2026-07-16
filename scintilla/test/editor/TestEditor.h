@@ -6,6 +6,8 @@
 #ifndef TESTEDITOR_H
 #define TESTEDITOR_H
 
+#include "EditorRecording.h"
+
 namespace Scintilla::Internal {
 
 struct TestNotification {
@@ -60,6 +62,8 @@ struct TestEditorObservations {
 	std::vector<Scintilla::Message> defaultWindowCalls;
 	std::vector<PRectangle> callTipWindows;
 	std::vector<std::string> popupItems;
+	// Typed recording sink (phase 4 step 14+). Copies survive the callback.
+	std::vector<RecordedAction> recordedActions;
 	// When set, NotifyParent replaces InsertCheck text via ChangeInsertion.
 	std::optional<std::string> changeInsertionOnInsertCheck;
 };
@@ -88,6 +92,13 @@ public:
 	void PaintAll();
 	void ClearObservations();
 	TestEditorSnapshot Snapshot() const;
+
+	// Typed recording host surface. Appends a full copy of the action so text
+	// remains available after the RecordingCallback returns. Production
+	// recording still uses SCN_MACRORECORD until steps 15–16; tests call this
+	// (or the callback below) to exercise the contract in isolation.
+	void OnRecordedAction(const RecordedAction &action);
+	RecordingCallback MakeRecordingCallback();
 
 	// Expose private input operations only to the focused editor tests.
 	using Editor::AssignCmdKey;

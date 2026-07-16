@@ -185,6 +185,16 @@ void TestEditor::ClearObservations() {
 	host.log.fontsAllocated = fontsAllocated;
 }
 
+void TestEditor::OnRecordedAction(const RecordedAction &action) {
+	observations.recordedActions.push_back(action);
+}
+
+RecordingCallback TestEditor::MakeRecordingCallback() {
+	return [this](const RecordedAction &action) {
+		OnRecordedAction(action);
+	};
+}
+
 void TestEditor::IndicSetStyle(size_t indicator, Scintilla::IndicatorStyle style) {
 	Editor::IndicSetStyle(indicator, style);
 }
