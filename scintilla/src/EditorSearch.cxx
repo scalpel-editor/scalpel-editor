@@ -168,8 +168,7 @@ void Editor::ReplaceRectangular(std::string_view text) {
 // On success moves the target to the match and returns the start position; on failure -1.
 // Invalid regular expressions set Status::RegEx and return -1.
 Sci::Position Editor::SearchInTarget(std::string_view text) {
-	const std::string copy(text);
-	return SearchInTarget(copy.c_str(), static_cast<Sci::Position>(copy.size()));
+	return SearchInTarget(text.data(), static_cast<Sci::Position>(text.size()));
 }
 
 // Remember SelectionStart as the anchor for SearchNext / SearchPrev commands.

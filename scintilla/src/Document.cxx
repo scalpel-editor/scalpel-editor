@@ -3053,7 +3053,7 @@ Sci::Position Cxx11RegexFindText(const Document *doc, Sci::Position minPos, Sci:
 		search.Clear();
 
 		bool matched = false;
-		const std::wstring ws = WStringFromUTF8(s);
+		const std::wstring ws = WStringFromUTF8(std::string_view(s, *length));
 		std::wregex regexp;
 		regexp.assign(ws, flagsRe);
 		matched = MatchOnLines<UTF8Iterator>(doc, regexp, resr, search);
