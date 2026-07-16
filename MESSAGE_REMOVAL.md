@@ -14,7 +14,7 @@ Classify each interface entry only after tracing its callers, implementation, do
 
 `EditorCommand` (`EditorCommands.h`) is the type for bindable zero-argument editing actions. `KeyMap` maps key chords to `EditorCommand`. `Editor::KeyDownWithModifiers` finds a binding and calls `ExecuteCommand`; unbound keys yield `EditorCommand::None` and fall through to `KeyDefault`. `Editor::ExecuteCommand` (in `EditorCommands.cxx`) is the dispatcher; `ScintillaBase::ExecuteCommand` intercepts a small set of commands while autocomplete or a call tip is active, then forwards to `Editor::ExecuteCommand`.
 
-Movement helpers that once took `Message` (`PositionMove`, `SelectionMove`, `HorizontalMove`, `DelWordOrLine`, and the extend/direction helpers) take `EditorCommand`. Temporary `WndProc` cases for commands forward with `CommandFromMessage`; `AssignCmdKey` still packs a message number in `lParam` and converts recognized commands until phase 5 removes the generated message layer. Unsupported message numbers leave the existing binding unchanged. Zero-argument command capture uses typed `RecordedCommand` at `ExecuteCommand`; parameterized capture emits typed `RecordedAction` values at named entry points (step 16). `MessageFromCommand` and `NotifyMacroRecord` are deleted. `SetZoom` as a command resets the zoom level to 0 (the old zero-parameter key-binding behaviour); the application zoom setter with an explicit level is in `EditorStyling.cxx`.
+Movement helpers that once took `Message` (`PositionMove`, `SelectionMove`, `HorizontalMove`, `DelWordOrLine`, and the extend/direction helpers) take `EditorCommand`. `AssignCmdKey` takes an `EditorCommand` directly; the message-number conversion path and its unsupported-number behavior were deleted with `WndProc` in phase 5. Zero-argument command capture uses typed `RecordedCommand` at `ExecuteCommand`; parameterized capture emits typed `RecordedAction` values at named entry points. `MessageFromCommand` and `NotifyMacroRecord` are deleted. `SetZoom` as a command resets the zoom level to 0 (the old zero-parameter key-binding behavior); the application zoom setter with an explicit level is in `EditorStyling.cxx`.
 - **Retained type or notification:** Data the editor, lexer, renderer, or host still exchanges. Keep a small project-owned definition without a callable message wrapper.
 - **Feature to delete:** Code that serves an absent platform or only implements the numeric message layer. An unused editing feature is not enough reason to delete it.
 
@@ -22,7 +22,7 @@ When one entry mixes these roles, split it along those boundaries instead of cho
 
 ## Documentation Pattern
 
-For every retained operation, read its implementation and its `ScintillaDoc.html` entry before editing. Add a focused editor test when current coverage does not observe the behavior. Keep a short authoritative doc comment with the named operation, following the placement checks in [DISCOVERABILITY.md](DISCOVERABILITY.md), remove the matching HTML API prose, and temporarily forward the old switch case to the named operation. Compare the forwarding path with the direct path when a snapshot gives a useful check. Temporary `WndProc` forwarders remain until phase 5 deletes the generated message layer; phase 4 does not remove those shells with each concern move.
+For every retained operation, read its implementation, nearby description, focused tests, and the historical classification in this guide before editing. Add a focused editor test when current coverage does not observe the behavior. Keep a short authoritative description with the named operation, following the placement checks in [DISCOVERABILITY.md](DISCOVERABILITY.md). The former `ScintillaDoc.html` catalog and temporary `WndProc` forwarders were deleted in phase 5; new work must use and test the named typed path directly.
 
 For a deleted feature, state which absent platform or message-layer need it served, remove its documentation in the same change, and test the behavior that remains.
 
@@ -30,7 +30,7 @@ For a deleted feature, state which absent platform or message-layer need it serv
 
 Before this change, `SCI_SETWRAPMODE` was declared as number 2268 in `Scintilla.iface`, generated as `Message::SetWrapMode`, packed into `wParam`, and sent through `ScintillaBase::WndProc` to `Editor::WndProc`. The switch case changed `ViewStyle::wrap.state`; on a real change it reset `xOffset`, queued `Update::HScroll`, invalidated style and layout for redraw, and called `ReconfigureScrollBars`. Reading the state followed the same generated route through message 2269.
 
-Wrap mode is application-facing because the editor's chrome chooses whether long lines wrap. The result is `Editor::SetWrapMode(Wrap)` and `Editor::GetWrapMode()`, with the useful API description beside those declarations. The old cases remain only as temporary forwarding calls. Focused tests check the state, zero horizontal offset, redraw request, queued horizontal-scroll update, scrollbar reconfiguration, no change-only effects when repeated, and an exact snapshot match between direct and forwarding calls.
+Wrap mode is application-facing because the editor's chrome chooses whether long lines wrap. The result is `Editor::SetWrapMode(Wrap)` and `Editor::GetWrapMode()`, with the useful API description beside those declarations. During phase 4 the old cases remained as temporary forwarding calls, and focused tests compared the direct and forwarding paths. Phase 5 deleted those cases; current tests use the named operations directly and check the state, zero horizontal offset, redraw request, queued horizontal-scroll update, scrollbar reconfiguration, and no change-only effects when repeated.
 
 ## Wrapping Classification
 
@@ -54,13 +54,13 @@ The wrapping concern owns `WrapPending`, `Wrapping`, `NeedWrapping`, `WrapOneLin
 
 Wrap-aware home and line-end actions remain keyboard commands for the dedicated command work. `LinesJoin` and `LinesSplit` are line transformations: they change target text, and `LinesSplit` only borrows wrapped layout to choose insertion positions. They belong with lines, whitespace, and EOL rather than the screen-wrapping pilot.
 
-Done: retained wrap descriptions live beside the named operations in `EditorWrapping.cxx`; the `ScintillaDoc.html` line-wrapping section is a short pointer. Temporary `WndProc` forwarders remain until phase 5.
+Done: retained wrap descriptions live beside the named operations in `EditorWrapping.cxx`. Phase 5 deleted the temporary `WndProc` forwarders and the pointer-only `ScintillaDoc.html` catalog.
 
 ## Autocomplete and call tip classification
 
 All 44 autocomplete entries (including user lists and registered images) and all 11 call tip entries are retained. They live on `ScintillaBase` because they own popup state. Lower-level helpers remain in `AutoComplete.cxx` and `CallTip.cxx`; orchestration and named API methods live in `EditorAutocomplete.cxx` and `EditorCallTips.cxx`.
 
-`EditorAutocompleteTest.cxx` and `EditorCallTipsTest.cxx` pin show/cancel/complete, option round-trips, choose-single, user-list selection without insert, stop characters, mutual exclusion with call tips, and direct versus temporary message forwarding. `PopupHostTest.cxx` remains the host-observability smoke suite from step 6.
+`EditorAutocompleteTest.cxx` and `EditorCallTipsTest.cxx` pin show/cancel/complete, option round-trips, choose-single, user-list selection without insert, stop characters, and mutual exclusion with call tips through named operations. During phase 4 they also compared direct calls with temporary message forwarding; phase 5 deleted that forwarding path. `PopupHostTest.cxx` remains the host-observability smoke suite from step 6.
 
 | Interface entry | Classification | Named operation and retained behavior |
 | --- | --- | --- |
@@ -103,7 +103,7 @@ Notifications `AutoCSelection`, `AutoCCancelled`, `AutoCCharDeleted`, `AutoCComp
 
 Private helpers `AutoCompleteStart`, `AutoCompleteCancel` (notifies), `AutoCompleteInsert`, move/selection/completed paths, `CallTipShow(Point)`, and `CallTipClick` stay protected. While a list or tip is active, `ScintillaBase::ExecuteCommand` intercepts the relevant `EditorCommand` values and calls these helpers; unbound routing falls through to `Editor::ExecuteCommand`.
 
-Authoritative descriptions for retained operations sit beside definitions in `EditorAutocomplete.cxx` and `EditorCallTips.cxx`. The matching `ScintillaDoc.html` Autocompletion, User lists, and Call tips prose is removed. Temporary `WndProc` cases forward to the named methods until phase 5.
+Authoritative descriptions for retained operations sit beside definitions in `EditorAutocomplete.cxx` and `EditorCallTips.cxx`. Phase 5 deleted the matching pointer-only `ScintillaDoc.html` sections and the temporary `WndProc` cases; the named methods are the only path.
 
 ## Macro recording decision
 
@@ -127,7 +127,7 @@ Deleted the remaining generated client and documentation surface: `ScintillaCall
 
 Generated from `scintilla/include/Scintilla.iface` on 2026-07-13 (that file is gone after phase 5 step 10). It contains all 821 `fun`, `get`, and `set` entries and all 32 `evt` entries, grouped for phase 4. It does not assign a removal classification without tracing the code. Constants, aliases, and enum declarations are type definitions rather than dispatch cases; phase 5 replaced them using the freeze in [tools/phase5-boundary.md](tools/phase5-boundary.md).
 
-The phase 4 scripts `tools/check-message-inventory.sh` and `tools/check-retained-entrypoints.sh` were deleted in step 6 with the temporary dispatch shells. The inventory text below is the retained historical record.
+The phase 4 scripts `tools/check-message-inventory.sh` and `tools/check-retained-entrypoints.sh` were deleted in step 6 with the temporary dispatch shells. The inventory text below is the retained historical record. Present-tense descriptions and references to temporary forwarders in that record describe the phase 4 state, not the current tree; the phase 5 removal boundary above records their deletion.
 
 ### Step 17 audit (2026-07-16)
 
