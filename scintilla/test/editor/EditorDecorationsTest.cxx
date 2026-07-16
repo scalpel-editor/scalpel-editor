@@ -376,8 +376,8 @@ TEST_CASE("Annotation text style styles lines visible offset clear") {
 	CHECK(editor.AnnotationGetText(1).empty());
 	CHECK(editor.AnnotationGetLines(0) == 0);
 
-	editor.AnnotationSetText(0, "via-msg");
-	CHECK(editor.AnnotationGetText(0) == "via-msg");
+	editor.AnnotationSetText(0, "replacement");
+	CHECK(editor.AnnotationGetText(0) == "replacement");
 	editor.SetAnnotationVisible(AnnotationVisible::Boxed);
 	CHECK(static_cast<AnnotationVisible>(editor.AnnotationGetVisible())
 		== AnnotationVisible::Boxed);

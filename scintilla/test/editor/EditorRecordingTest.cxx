@@ -219,17 +219,6 @@ TEST_CASE("Recording lifecycle defaults, start, stop, and nested start") {
 	CHECK_FALSE(editor.IsRecording());
 }
 
-TEST_CASE("Message start/stop forwarders match named lifecycle methods") {
-	TestHost host;
-	TestEditor editor(host);
-
-	editor.StartRecording();
-	CHECK(editor.IsRecording());
-
-	editor.StopRecording();
-	CHECK_FALSE(editor.IsRecording());
-}
-
 TEST_CASE("Recordable commands are captured as typed actions while recording") {
 	TestHost host;
 	TestEditor editor(host);
@@ -261,6 +250,7 @@ TEST_CASE("Recordable commands are captured as typed actions while recording") {
 		EditorCommand::CharRight);
 	CHECK(As<RecordedCommand>(editor.observations.recordedActions[6]).Command() ==
 		EditorCommand::Paste);
+	CHECK_FALSE(HasMacroRecord(editor));
 }
 
 TEST_CASE("Non-recordable commands do not produce RecordedCommand values") {
@@ -304,38 +294,6 @@ TEST_CASE("Commands are not captured when recording is off") {
 	editor.RunCommand(EditorCommand::CharRight);
 
 	CHECK(editor.observations.recordedActions.empty());
-}
-
-TEST_CASE("Message path and ExecuteCommand agree for recorded CharRight") {
-	EditorCommand directCommand = EditorCommand::None;
-	{
-		TestHost host;
-		TestEditor direct(host);
-		direct.SetText("ab");
-		direct.SetSel(0, 0);
-		direct.StartRecording();
-		direct.ClearObservations();
-		direct.RunCommand(EditorCommand::CharRight);
-		REQUIRE(direct.observations.recordedActions.size() == 1);
-		directCommand = As<RecordedCommand>(direct.observations.recordedActions[0]).Command();
-	}
-	{
-		TestHost host;
-		TestEditor viaMessage(host);
-		viaMessage.SetText("ab");
-		viaMessage.SetSel(0, 0);
-		viaMessage.StartRecording();
-		viaMessage.ClearObservations();
-		viaMessage.RunCommand(EditorCommand::CharRight);
-		REQUIRE(viaMessage.observations.recordedActions.size() == 1);
-		CHECK(As<RecordedCommand>(viaMessage.observations.recordedActions[0]).Command() ==
-			directCommand);
-		// Message path must not also emit numeric macro for the command.
-		CHECK(std::none_of(viaMessage.observations.notifications.begin(),
-			viaMessage.observations.notifications.end(), [](const TestNotification &n) {
-				return n.code == Notification::MacroRecord;
-			}));
-	}
 }
 
 TEST_CASE("Replay restores command sequence without recursive recording") {
@@ -470,52 +428,6 @@ TEST_CASE("Empty document text mutations still record the request") {
 	CHECK(editor.Text() == "keep");
 }
 
-TEST_CASE("Message path and named methods agree for document text recording") {
-	std::vector<RecordedAction> viaNamed;
-	{
-		TestHost host;
-		TestEditor editor(host);
-		editor.SetText("base");
-		editor.SetSel(0, 0);
-		editor.StartRecording();
-		editor.ClearObservations();
-		editor.AddText("A");
-		editor.InsertText(2, "B");
-		editor.AppendText("C");
-		editor.ReplaceSel("D");
-		viaNamed = editor.observations.recordedActions;
-		REQUIRE(viaNamed.size() == 4);
-	}
-	{
-		TestHost host;
-		TestEditor editor(host);
-		editor.SetText("base");
-		editor.SetSel(0, 0);
-		editor.StartRecording();
-		editor.ClearObservations();
-		const char add[] = "A";
-		editor.AddText(std::string_view(add, 1));
-		const char ins[] = "B";
-		editor.InsertText(2, ins);
-		const char app[] = "C";
-		editor.AppendText(std::string_view(app, 1));
-		const char rep[] = "D";
-		editor.ReplaceSel(rep);
-		REQUIRE(editor.observations.recordedActions.size() == 4);
-		CHECK(As<RecordedAddText>(editor.observations.recordedActions[0]).text ==
-			As<RecordedAddText>(viaNamed[0]).text);
-		CHECK(As<RecordedInsertText>(editor.observations.recordedActions[1]).position ==
-			As<RecordedInsertText>(viaNamed[1]).position);
-		CHECK(As<RecordedInsertText>(editor.observations.recordedActions[1]).text ==
-			As<RecordedInsertText>(viaNamed[1]).text);
-		CHECK(As<RecordedAppendText>(editor.observations.recordedActions[2]).text ==
-			As<RecordedAppendText>(viaNamed[2]).text);
-		CHECK(As<RecordedReplaceSelection>(editor.observations.recordedActions[3]).text ==
-			As<RecordedReplaceSelection>(viaNamed[3]).text);
-		CHECK_FALSE(HasMacroRecord(editor));
-	}
-}
-
 TEST_CASE("Document text recording owns multi-byte and invalid UTF-8 after source is gone") {
 	TestHost host;
 	TestEditor editor(host);
@@ -553,41 +465,6 @@ TEST_CASE("Goto and selection mode are captured as typed actions while recording
 	CHECK(As<RecordedSetSelectionMode>(editor.observations.recordedActions[2]).mode ==
 		SelectionMode::Rectangle);
 	CHECK_FALSE(HasMacroRecord(editor));
-}
-
-TEST_CASE("Named goto and selection mode recording is stable across editors") {
-	std::vector<RecordedAction> viaNamed;
-	{
-		TestHost host;
-		TestEditor editor(host);
-		editor.SetText("line0\nline1\n");
-		editor.StartRecording();
-		editor.ClearObservations();
-		editor.GotoLine(1);
-		editor.GotoPos(3);
-		editor.SetSelectionMode(SelectionMode::Lines, true);
-		viaNamed = editor.observations.recordedActions;
-		REQUIRE(viaNamed.size() == 3);
-	}
-	{
-		TestHost host;
-		TestEditor editor(host);
-		editor.SetText("line0\nline1\n");
-		editor.StartRecording();
-		editor.ClearObservations();
-		editor.GotoLine(1);
-		editor.GotoPos(3);
-		// setMoveExtends true is the recorded path (ChangeSelectionMode is not recorded).
-		editor.SetSelectionMode(SelectionMode::Lines, true);
-		REQUIRE(editor.observations.recordedActions.size() == 3);
-		CHECK(As<RecordedGotoLine>(editor.observations.recordedActions[0]).line ==
-			As<RecordedGotoLine>(viaNamed[0]).line);
-		CHECK(As<RecordedGotoPos>(editor.observations.recordedActions[1]).position ==
-			As<RecordedGotoPos>(viaNamed[1]).position);
-		CHECK(As<RecordedSetSelectionMode>(editor.observations.recordedActions[2]).mode ==
-			As<RecordedSetSelectionMode>(viaNamed[2]).mode);
-		CHECK_FALSE(HasMacroRecord(editor));
-	}
 }
 
 TEST_CASE("Search anchor and parameterized search are captured while recording") {
@@ -761,44 +638,6 @@ TEST_CASE("Replay character and newline inserts on a fresh editor") {
 	CHECK(editor.IsRecording());
 }
 
-TEST_CASE("Message path and named methods agree for search recording") {
-	std::vector<RecordedAction> viaNamed;
-	{
-		TestHost host;
-		TestEditor editor(host);
-		editor.SetText("find me");
-		editor.SetSel(0, 0);
-		editor.StartRecording();
-		editor.ClearObservations();
-		editor.SearchAnchor();
-		const char needle[] = "me";
-		editor.SearchText(EditorCommand::SearchNext, FindOption::WholeWord, needle);
-		viaNamed = editor.observations.recordedActions;
-		REQUIRE(viaNamed.size() == 2);
-	}
-	{
-		TestHost host;
-		TestEditor editor(host);
-		editor.SetText("find me");
-		editor.SetSel(0, 0);
-		editor.StartRecording();
-		editor.ClearObservations();
-		editor.SearchAnchor();
-		const char needle[] = "me";
-		editor.SearchText(EditorCommand::SearchNext, FindOption::WholeWord, needle);
-		REQUIRE(editor.observations.recordedActions.size() == 2);
-		CHECK(std::holds_alternative<RecordedSearchAnchor>(
-			editor.observations.recordedActions[0]));
-		CHECK(As<RecordedSearch>(editor.observations.recordedActions[1]).direction ==
-			As<RecordedSearch>(viaNamed[1]).direction);
-		CHECK(As<RecordedSearch>(editor.observations.recordedActions[1]).flags ==
-			As<RecordedSearch>(viaNamed[1]).flags);
-		CHECK(As<RecordedSearch>(editor.observations.recordedActions[1]).text ==
-			As<RecordedSearch>(viaNamed[1]).text);
-		CHECK_FALSE(HasMacroRecord(editor));
-	}
-}
-
 TEST_CASE("Mixed parameterized capture replays on a fresh editor") {
 	std::vector<RecordedAction> recorded;
 	std::string afterText;
@@ -900,81 +739,6 @@ TEST_CASE("Constructed script of every RecordedAction alternative replays cleanl
 	CHECK(editor.Text().find("beta") == std::string::npos);
 	CHECK(editor.Text().find('x') != std::string::npos);
 	CHECK(editor.Text().find("ZQalpha") != std::string::npos);
-}
-
-TEST_CASE("Message path mixed script matches named capture for replay") {
-	std::vector<RecordedAction> viaNamed;
-	std::string namedText;
-	Sci::Position namedPos = 0;
-	{
-		TestHost host;
-		TestEditor editor(host);
-		editor.SetText("seed");
-		editor.SetSel(0, 0);
-		editor.StartRecording();
-		editor.ClearObservations();
-		editor.AddText("A");
-		editor.GotoPos(0);
-		editor.InsertText(1, "B");
-		editor.AppendText("C");
-		editor.SearchAnchor();
-		const char needle[] = "B";
-		editor.SearchText(EditorCommand::SearchNext, FindOption::None, needle);
-		editor.ReplaceSel("D");
-		viaNamed = editor.observations.recordedActions;
-		namedText = editor.Text();
-		namedPos = editor.CurrentPos();
-	}
-	std::vector<RecordedAction> viaMessage;
-	std::string messageText;
-	Sci::Position messagePos = 0;
-	{
-		TestHost host;
-		TestEditor editor(host);
-		editor.SetText("seed");
-		editor.SetSel(0, 0);
-		editor.StartRecording();
-		editor.ClearObservations();
-		const char a[] = "A";
-		editor.AddText(std::string_view(a, 1));
-		editor.GotoPos(0);
-		const char b[] = "B";
-		editor.InsertText(1, b);
-		const char c[] = "C";
-		editor.AppendText(std::string_view(c, 1));
-		editor.SearchAnchor();
-		const char needle[] = "B";
-		editor.SearchText(EditorCommand::SearchNext, FindOption::None, needle);
-		const char d[] = "D";
-		editor.ReplaceSel(d);
-		viaMessage = editor.observations.recordedActions;
-		messageText = editor.Text();
-		messagePos = editor.CurrentPos();
-		CHECK_FALSE(HasMacroRecord(editor));
-	}
-
-	REQUIRE(viaNamed.size() == viaMessage.size());
-	CHECK(namedText == messageText);
-	CHECK(namedPos == messagePos);
-
-	std::string namedReplayText;
-	Sci::Position namedReplayPos = 0;
-	{
-		TestHost host;
-		TestEditor namedReplay(host);
-		namedReplay.SetText("seed");
-		namedReplay.ReplayRecordedActions(viaNamed);
-		namedReplayText = namedReplay.Text();
-		namedReplayPos = namedReplay.CurrentPos();
-	}
-	{
-		TestHost host;
-		TestEditor messageReplay(host);
-		messageReplay.SetText("seed");
-		messageReplay.ReplayRecordedActions(viaMessage);
-		CHECK(namedReplayText == messageReplay.Text());
-		CHECK(namedReplayPos == messageReplay.CurrentPos());
-	}
 }
 
 TEST_CASE("Moving selected lines records one command and replays the selection") {

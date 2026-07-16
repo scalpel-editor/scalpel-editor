@@ -82,7 +82,7 @@ void InstallSimpleFold(TestEditor &editor) {
 
 }  // namespace
 
-TEST_CASE("Fold level parent last-child and message path") {
+TEST_CASE("Fold level parent and last-child queries") {
 	TestHost host;
 	TestEditor editor(host);
 	InstallSimpleFold(editor);

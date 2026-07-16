@@ -265,7 +265,7 @@ TEST_CASE("Zoom edge mode multi-edge highlight guide and extended styles") {
 	CHECK(again == first);
 }
 
-TEST_CASE("TextWidth and named zoom parity with message path") {
+TEST_CASE("Text width preserves embedded NUL bytes and zoom round-trips") {
 	TestHost host;
 	TestEditor editor(host);
 	editor.SetText("MMMM");
@@ -279,9 +279,7 @@ TEST_CASE("TextWidth and named zoom parity with message path") {
 
 	editor.SetZoom(6);
 	CHECK(editor.GetZoom() == 6);
-	CHECK(editor.GetZoom() == 6);
 
-	// Message path matches named setter.
 	editor.SetZoom(static_cast<int>(2));
 	CHECK(editor.GetZoom() == 2);
 }
