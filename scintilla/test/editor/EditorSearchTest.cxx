@@ -125,9 +125,13 @@ TEST_CASE("ReplaceSel replaces the selection") {
 	TestEditor editor(host);
 	LoadClean(editor, "abcdef");
 	editor.SetSel(2, 4);
-	const char *rep = "ZZ";
-	editor.WndProc(Message::ReplaceSel, 0, reinterpret_cast<sptr_t>(rep));
+	editor.ReplaceSel("ZZ");
 	CHECK(editor.GetText() == "abZZef");
+	// Temporary message path matches the named operation.
+	editor.SetSel(2, 4);
+	const char *rep = "cd";
+	editor.WndProc(Message::ReplaceSel, 0, reinterpret_cast<sptr_t>(rep));
+	CHECK(editor.GetText() == "abcdef");
 }
 
 TEST_CASE("FindText messages are no longer dispatched") {

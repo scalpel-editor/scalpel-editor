@@ -140,7 +140,7 @@ TEST_CASE("SetText replaces content and reports dirty state") {
 	TestHost host;
 	TestEditor editor(host);
 	editor.SetText("initial");
-	editor.WndProc(Message::SetSavePoint, 0, 0);
+	editor.SetSavePoint();
 	editor.ClearObservations();
 
 	editor.SetText("hello");
@@ -177,7 +177,7 @@ TEST_CASE("SetText message path matches named method") {
 	{
 		TestHost host;
 		TestEditor editor(host);
-		editor.WndProc(Message::SetSavePoint, 0, 0);
+		editor.SetSavePoint();
 		editor.ClearObservations();
 		editor.SetText("via-name");
 		editor.FlushUpdateNotifications();
@@ -187,7 +187,7 @@ TEST_CASE("SetText message path matches named method") {
 	{
 		TestHost host;
 		TestEditor editor(host);
-		editor.WndProc(Message::SetSavePoint, 0, 0);
+		editor.SetSavePoint();
 		editor.ClearObservations();
 		const char *text = "via-name";
 		editor.WndProc(Message::SetText, 0, reinterpret_cast<sptr_t>(text));

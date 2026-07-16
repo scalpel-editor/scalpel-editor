@@ -72,15 +72,15 @@ using namespace Scintilla::Internal;
 namespace {
 
 Sci::Position Anchor(TestEditor &editor) {
-	return static_cast<Sci::Position>(editor.WndProc(Message::GetAnchor, 0, 0));
+	return editor.GetAnchor();
 }
 
 void Goto(TestEditor &editor, Sci::Position pos) {
-	editor.WndProc(Message::GotoPos, static_cast<uptr_t>(pos), 0);
+	editor.GotoPos(pos);
 }
 
 void SelectRange(TestEditor &editor, Sci::Position anchor, Sci::Position caret) {
-	editor.WndProc(Message::SetSel, static_cast<uptr_t>(anchor), caret);
+	editor.SetSel(anchor, caret);
 }
 
 }
@@ -188,7 +188,7 @@ TEST_CASE("Cut is refused when the document is read-only") {
 	TestEditor editor(host);
 	editor.SetText("keep");
 	SelectRange(editor, 0, 4);
-	editor.WndProc(Message::SetReadOnly, 1, 0);
+	editor.SetReadOnly(true);
 
 	editor.RunCommand(EditorCommand::Cut);
 	CHECK(editor.Text() == "keep");
@@ -359,9 +359,9 @@ TEST_CASE("SelectAll selects the whole document") {
 TEST_CASE("SetZoom command resets zoom to zero") {
 	TestHost host;
 	TestEditor editor(host);
-	editor.WndProc(Message::SetZoom, 4, 0);
-	CHECK(editor.WndProc(Message::GetZoom, 0, 0) == 4);
+	editor.SetZoom(4);
+	CHECK(editor.GetZoom() == 4);
 
 	editor.RunCommand(EditorCommand::SetZoom);
-	CHECK(editor.WndProc(Message::GetZoom, 0, 0) == 0);
+	CHECK(editor.GetZoom() == 0);
 }
