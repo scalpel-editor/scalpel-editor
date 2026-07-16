@@ -67,4 +67,6 @@ Each output directory contains:
 
 Each JSONL object stores the ranked paths, line spans, and scores plus `concern_rank`, the first result from the expected concern file, and `definition_rank`, the first result from that file whose chunk contains the recorded definition text. Chunk content is used to calculate the definition rank but is not retained in the result file. `obsolete_hits` records ranked results from locations that should disappear as the concern is migrated. Ranks are one-based and `null` means the expected result was absent from the first 10 results.
 
+`summary.json` calculates acceptance roll-ups from retained and command features. Deleted features are reported separately because their success condition is the absence of a live implementation, not a high rank for the decision record.
+
 The automatic ranks do not replace source checks. Use `rg` to verify exact definitions and callers, and record boundary-stability and cold-navigation observations separately because they require a temporary source change or a reader's navigation record.
