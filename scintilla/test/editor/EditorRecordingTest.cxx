@@ -107,7 +107,7 @@ TEST_CASE("Recording host retains every RecordedAction alternative after callbac
 
 	REQUIRE(editor.observations.recordedActions.size() == 11);
 
-	CHECK(As<RecordedCommand>(editor.observations.recordedActions[0]).command ==
+	CHECK(As<RecordedCommand>(editor.observations.recordedActions[0]).Command() ==
 		EditorCommand::CharRight);
 	CHECK(As<RecordedReplaceSelection>(editor.observations.recordedActions[1]).text == "hello");
 	CHECK(As<RecordedAddText>(editor.observations.recordedActions[2]).text == "add");
@@ -124,6 +124,21 @@ TEST_CASE("Recording host retains every RecordedAction alternative after callbac
 	CHECK(search.text == "needle");
 	CHECK(As<RecordedSetSelectionMode>(editor.observations.recordedActions[10]).mode ==
 		SelectionMode::Rectangle);
+}
+
+TEST_CASE("RecordedCommand rejects actions with dedicated or ignored recording forms") {
+	CHECK_FALSE(IsRecordableCommand(EditorCommand::SearchAnchor));
+	CHECK_FALSE(IsRecordableCommand(EditorCommand::SearchNext));
+	CHECK_FALSE(IsRecordableCommand(EditorCommand::SearchPrev));
+	CHECK_FALSE(IsRecordableCommand(EditorCommand::Undo));
+	CHECK_FALSE(IsRecordableCommand(EditorCommand::Redo));
+	CHECK_FALSE(IsRecordableCommand(EditorCommand::NewLine));
+	CHECK_FALSE(IsRecordableCommand(EditorCommand::ZoomIn));
+	CHECK_FALSE(IsRecordableCommand(EditorCommand::None));
+
+	CHECK_THROWS_AS(RecordedCommand{EditorCommand::SearchNext}, std::invalid_argument);
+	CHECK_THROWS_AS(RecordedCommand{EditorCommand::Undo}, std::invalid_argument);
+	CHECK_NOTHROW(RecordedCommand{EditorCommand::CharRight});
 }
 
 TEST_CASE("Recording host keeps multi-byte and invalid UTF-8 text after the original is gone") {

@@ -11,10 +11,12 @@
  **
  ** # Recordable operations
  **
- ** - Zero-argument bindable actions as RecordedCommand (EditorCommand values
- **   that NotifyMacroRecord currently allowlists: movement and selection
- **   extension, editing, clipboard cut/copy/paste/clear, scroll-to-start/end,
- **   vertical centre caret, and similar). Undo and redo are not recorded.
+ ** - Zero-argument bindable actions as RecordedCommand (the EditorCommand
+ **   values accepted by IsRecordableCommand: movement and selection extension,
+ **   editing, clipboard cut/copy/paste/clear, scroll-to-start/end, vertical
+ **   centre caret, and similar). Undo, redo, newline, zoom, and search commands
+ **   are not RecordedCommand values. Search anchor and parameterized search use
+ **   their dedicated alternatives below.
  ** - ReplaceSelection with owned text (typed characters and ReplaceSel; also
  **   how newline insertion is stored today — one ReplaceSelection per EOL
  **   character after insertion, not a separate NewLine command).
@@ -60,6 +62,7 @@
 #define EDITOR_RECORDING_H
 
 #include <functional>
+#include <stdexcept>
 #include <string>
 #include <variant>
 
@@ -75,9 +78,133 @@ enum class SearchDirection {
 	Prev,
 };
 
+/**
+ * True for zero-argument commands that macro recording captures and replay can
+ * apply through ExecuteCommand. Search actions use their dedicated alternatives.
+ */
+constexpr bool IsRecordableCommand(EditorCommand command) noexcept {
+	switch (command) {
+	case EditorCommand::LineDown:
+	case EditorCommand::LineDownExtend:
+	case EditorCommand::LineDownRectExtend:
+	case EditorCommand::LineUp:
+	case EditorCommand::LineUpExtend:
+	case EditorCommand::LineUpRectExtend:
+	case EditorCommand::LineScrollDown:
+	case EditorCommand::LineScrollUp:
+	case EditorCommand::ParaDown:
+	case EditorCommand::ParaDownExtend:
+	case EditorCommand::ParaUp:
+	case EditorCommand::ParaUpExtend:
+	case EditorCommand::CharLeft:
+	case EditorCommand::CharLeftExtend:
+	case EditorCommand::CharLeftRectExtend:
+	case EditorCommand::CharRight:
+	case EditorCommand::CharRightExtend:
+	case EditorCommand::CharRightRectExtend:
+	case EditorCommand::WordLeft:
+	case EditorCommand::WordLeftExtend:
+	case EditorCommand::WordRight:
+	case EditorCommand::WordRightExtend:
+	case EditorCommand::WordLeftEnd:
+	case EditorCommand::WordLeftEndExtend:
+	case EditorCommand::WordRightEnd:
+	case EditorCommand::WordRightEndExtend:
+	case EditorCommand::WordPartLeft:
+	case EditorCommand::WordPartLeftExtend:
+	case EditorCommand::WordPartRight:
+	case EditorCommand::WordPartRightExtend:
+	case EditorCommand::Home:
+	case EditorCommand::HomeExtend:
+	case EditorCommand::HomeRectExtend:
+	case EditorCommand::HomeDisplay:
+	case EditorCommand::HomeDisplayExtend:
+	case EditorCommand::HomeWrap:
+	case EditorCommand::HomeWrapExtend:
+	case EditorCommand::VCHome:
+	case EditorCommand::VCHomeExtend:
+	case EditorCommand::VCHomeRectExtend:
+	case EditorCommand::VCHomeDisplay:
+	case EditorCommand::VCHomeDisplayExtend:
+	case EditorCommand::VCHomeWrap:
+	case EditorCommand::VCHomeWrapExtend:
+	case EditorCommand::LineEnd:
+	case EditorCommand::LineEndExtend:
+	case EditorCommand::LineEndRectExtend:
+	case EditorCommand::LineEndDisplay:
+	case EditorCommand::LineEndDisplayExtend:
+	case EditorCommand::LineEndWrap:
+	case EditorCommand::LineEndWrapExtend:
+	case EditorCommand::DocumentStart:
+	case EditorCommand::DocumentStartExtend:
+	case EditorCommand::DocumentEnd:
+	case EditorCommand::DocumentEndExtend:
+	case EditorCommand::PageUp:
+	case EditorCommand::PageUpExtend:
+	case EditorCommand::PageUpRectExtend:
+	case EditorCommand::PageDown:
+	case EditorCommand::PageDownExtend:
+	case EditorCommand::PageDownRectExtend:
+	case EditorCommand::StutteredPageUp:
+	case EditorCommand::StutteredPageUpExtend:
+	case EditorCommand::StutteredPageDown:
+	case EditorCommand::StutteredPageDownExtend:
+	case EditorCommand::ScrollToStart:
+	case EditorCommand::ScrollToEnd:
+	case EditorCommand::EditToggleOvertype:
+	case EditorCommand::Cancel:
+	case EditorCommand::DeleteBack:
+	case EditorCommand::DeleteBackNotLine:
+	case EditorCommand::Tab:
+	case EditorCommand::LineIndent:
+	case EditorCommand::BackTab:
+	case EditorCommand::LineDedent:
+	case EditorCommand::FormFeed:
+	case EditorCommand::DelWordLeft:
+	case EditorCommand::DelWordRight:
+	case EditorCommand::DelWordRightEnd:
+	case EditorCommand::DelLineLeft:
+	case EditorCommand::DelLineRight:
+	case EditorCommand::LineCopy:
+	case EditorCommand::LineCut:
+	case EditorCommand::LineDelete:
+	case EditorCommand::LineTranspose:
+	case EditorCommand::LineReverse:
+	case EditorCommand::LineDuplicate:
+	case EditorCommand::SelectionDuplicate:
+	case EditorCommand::LowerCase:
+	case EditorCommand::UpperCase:
+	case EditorCommand::Cut:
+	case EditorCommand::Copy:
+	case EditorCommand::Paste:
+	case EditorCommand::Clear:
+	case EditorCommand::CopyAllowLine:
+	case EditorCommand::CutAllowLine:
+	case EditorCommand::SelectAll:
+	case EditorCommand::VerticalCentreCaret:
+	case EditorCommand::MoveSelectedLinesUp:
+	case EditorCommand::MoveSelectedLinesDown:
+		return true;
+	default:
+		return false;
+	}
+}
+
 // Zero-argument bindable action (key map / ExecuteCommand).
-struct RecordedCommand {
-	EditorCommand command = EditorCommand::None;
+class RecordedCommand {
+public:
+	explicit RecordedCommand(EditorCommand command_) : command(command_) {
+		if (!IsRecordableCommand(command)) {
+			throw std::invalid_argument("command is not recordable");
+		}
+	}
+
+	EditorCommand Command() const noexcept {
+		return command;
+	}
+
+private:
+	EditorCommand command;
 };
 
 // Replace the selection (or insert at the caret) with owned text.
