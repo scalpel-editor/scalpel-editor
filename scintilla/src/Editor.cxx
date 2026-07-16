@@ -6131,6 +6131,9 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 	// GrabFocus deleted: the Wayland shell calls SetFocus when the compositor changes focus.
 	// SetKeysUnicode / GetKeysUnicode deleted: all input is UTF-8 after phase 3.
 
+	// GetDirectFunction, GetDirectStatusFunction, and GetDirectPointer are deleted:
+	// applications call named methods; there is no direct message-function export.
+
 	// GetDocPointer, SetDocPointer, CreateDocument, AddRefDocument,
 	// ReleaseDocument, GetDocumentOptions, and CreateLoader are deleted:
 	// this editor owns one document and has no multi-view or loader API.

@@ -1497,96 +1497,16 @@ struct Sci_TextRangeFull {
     <code>FormatRangeFull</code> is deleted: use the typed <code>FormatRange</code> with native positions.</p>
 
     <h2 id="DirectAccess">Direct access</h2>
-    <p>Range pointer and gap position moved to <code>scintilla/src/EditorDocument.cxx</code>.
-    Direct function/pointer accessors are scheduled for deletion with the message layer.
-    Descriptions for retained range/gap helpers live beside the definitions.</p>
-
-    <code>
-     <a class="message" href="#SCI_GETDIRECTFUNCTION">SCI_GETDIRECTFUNCTION &rarr; pointer</a><br />
-     <a class="message" href="#SCI_GETDIRECTSTATUSFUNCTION">SCI_GETDIRECTSTATUSFUNCTION &rarr; pointer</a><br />
-     <a class="message" href="#SCI_GETDIRECTPOINTER">SCI_GETDIRECTPOINTER &rarr; pointer</a><br />
-     <a class="message" href="#SCI_GETCHARACTERPOINTER">SCI_GETCHARACTERPOINTER &rarr; pointer</a></code>
-
-    <p>On Windows, the message-passing scheme used to communicate between the container and
-    Scintilla is mediated by the operating system <code>SendMessage</code> function and can lead to
-    bad performance when calling intensively. To avoid this overhead, Scintilla provides messages
-    that allow you to call the Scintilla message function directly. The code to do this in C/C++ is
-    of the form:</p>
-<pre>
-#include "Scintilla.h"
-SciFnDirect pSciMsg = (SciFnDirect)SendMessage(hSciWnd, SCI_GETDIRECTFUNCTION, 0, 0);
-sptr_t pSciWndData = (sptr_t)SendMessage(hSciWnd, SCI_GETDIRECTPOINTER, 0, 0);
-
-// now a wrapper to call Scintilla directly
-sptr_t CallScintilla(unsigned int iMessage, uptr_t wParam, sptr_t lParam){
-    return pSciMsg(pSciWndData, iMessage, wParam, lParam);
-}
-</pre>
-
-    <p><code>SciFnDirect</code>, <code>SciFnDirectStatus</code>, <code>sptr_t</code> and <code>uptr_t</code> are declared in
-    <code>Scintilla.h</code>. <code class="parameter">hSciWnd</code> is the window handle returned when you created
-    the Scintilla window.</p>
-
-    <p>While faster, this direct calling will cause problems if performed from a different thread
-    to the native thread of the Scintilla window in which case <code>SendMessage(hSciWnd, SCI_*,
-    wParam, lParam)</code> should be used to synchronize with the window's thread.</p>
-
-    <p>This feature also works on other platforms but has less impact on speed.</p>
-
-    <p>On Windows, Scintilla exports a function called
-    <code>Scintilla_DirectFunction</code> that can be used the same as the function returned by
-    <code>SCI_GETDIRECTFUNCTION</code>. This saves you the call to
-    <code>SCI_GETDIRECTFUNCTION</code> and the need to call Scintilla indirectly via the function
-    pointer.</p>
-
-    <p><b id="SCI_GETDIRECTFUNCTION">SCI_GETDIRECTFUNCTION &rarr; pointer</b><br />
-     This message returns the address of the function to call to handle Scintilla messages without
-    the overhead of passing through the Windows messaging system. You need only call this once,
-    regardless of the number of Scintilla windows you create.</p>
-
-    <p><b id="SCI_GETDIRECTSTATUSFUNCTION">SCI_GETDIRECTSTATUSFUNCTION &rarr; pointer</b><br />
-     This is similar to <code>SCI_GETDIRECTFUNCTION</code> but the returned function
-     is of type <code>SciFnDirectStatus</code> which also returns the status to the caller through a
-     pointer to an int.
-     This saves performing an extra call to retrieve the status in many situations so can be faster.</p>
-
-    <p><b id="SCI_GETDIRECTPOINTER">SCI_GETDIRECTPOINTER &rarr; pointer</b><br />
-     This returns a pointer to data that identifies which Scintilla window is in use. You must call
-    this once for each Scintilla window you create. When you call the direct function, you must
-    pass in the direct pointer associated with the target window.</p>
-
-    <p><b id="SCI_GETCHARACTERPOINTER">SCI_GETCHARACTERPOINTER &rarr; pointer</b><br />
-    
-    
-     Grant temporary direct read-only access to the memory used by Scintilla to store
-     the document.</p>
-     <p><code>SCI_GETCHARACTERPOINTER</code> moves the gap within Scintilla so that the
-     text of the document is stored consecutively
-     and ensure there is a NUL character after the text, then returns a pointer to the first character.
-     Applications may then pass this to a function that accepts a character pointer such as a regular
-     expression search or a parser. The pointer should <em>not</em> be written to as that may desynchronize
-     the internal state of Scintilla.</p>
-     <p>Since any action in Scintilla may change its internal state
-     this pointer becomes invalid after any call or by allowing user interface activity. The application
-     should reacquire the pointer after making any call to Scintilla or performing any user-interface calls such
-     as modifying a progress indicator.</p>
-     <p>This call takes similar time to inserting a character at the end of the document and this may
-     include moving the document contents. Specifically, all the characters after the document gap
-     are moved to before the gap. This compacted state should persist over calls and user interface
-     actions that do not change the document contents so reacquiring the pointer afterwards is very
-     quick. If this call is used to implement a global replace operation, then each replacement will
-     move the gap so if <code>SCI_GETCHARACTERPOINTER</code> is called after
-     each replacement then the operation will become O(n^2) rather than O(n). Instead, all
-     matches should be found and remembered, then all the replacements performed.</p>
-
-     <p><code>SCI_GETRANGEPOINTER</code> provides direct access to just the
-     range requested. The gap is not moved unless it is within the requested range so this call
-     can be faster than <code>SCI_GETCHARACTERPOINTER</code>.
-     This can be used by application code that is able to act on blocks of text or ranges of lines.</p>
-
-     <p><code>SCI_GETGAPPOSITION</code> returns the current gap position.
-     This is a hint that applications can use to avoid calling <code>SCI_GETRANGEPOINTER</code>
-     with a range that contains the gap and consequent costs of moving the gap.</p>
+    <p><code>SCI_GETDIRECTFUNCTION</code>, <code>SCI_GETDIRECTSTATUSFUNCTION</code>, and
+    <code>SCI_GETDIRECTPOINTER</code> are deleted. They existed only to call the numeric message
+    dispatcher without a widget send-message hop; applications call named methods on the editor
+    instead. Temporary message numbers may still fall through to the default handler until phase 5
+    removes the generated message layer.</p>
+    <p>Document buffer pointers remain: <code>GetCharacterPointer</code> is in
+    <code>scintilla/src/EditorTextBoundaries.cxx</code>; <code>GetRangePointer</code> and
+    <code>GetGapPosition</code> are in <code>scintilla/src/EditorDocument.cxx</code>. Behavior
+    descriptions live beside those definitions. Temporary message forwarders remain for retained
+    operations.</p>
 
     <h2 id="MultipleViews">Multiple views</h2>
 

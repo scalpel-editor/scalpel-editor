@@ -181,3 +181,27 @@ TEST_CASE("Deleted widget identifier messages fall through without affecting not
 	CHECK(editor.Text().size() == 5);
 	CHECK(editor.Text().find('x') != std::string::npos);
 }
+
+TEST_CASE("Deleted direct-call accessor messages fall through") {
+	TestHost host;
+	TestEditor editor(host);
+	LoadClean(editor, "direct");
+	editor.ClearObservations();
+
+	// These never had core Editor dispatch; they only existed as platform direct-call glue.
+	CHECK(editor.WndProc(Message::GetDirectFunction, 0, 0) == 0);
+	CHECK(editor.WndProc(Message::GetDirectStatusFunction, 0, 0) == 0);
+	CHECK(editor.WndProc(Message::GetDirectPointer, 0, 0) == 0);
+	CHECK(std::find(editor.observations.defaultWindowCalls.begin(),
+		editor.observations.defaultWindowCalls.end(),
+		Message::GetDirectFunction) != editor.observations.defaultWindowCalls.end());
+	CHECK(std::find(editor.observations.defaultWindowCalls.begin(),
+		editor.observations.defaultWindowCalls.end(),
+		Message::GetDirectStatusFunction) != editor.observations.defaultWindowCalls.end());
+	CHECK(std::find(editor.observations.defaultWindowCalls.begin(),
+		editor.observations.defaultWindowCalls.end(),
+		Message::GetDirectPointer) != editor.observations.defaultWindowCalls.end());
+	CHECK(editor.Text() == "direct");
+	// Named whole-buffer and range access remain the positive path.
+	CHECK(editor.GetTextLength() == 6);
+}
