@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "label": "phase5-final",
+  "started_at": "2026-07-16T23:23:10Z",
+  "project": {
+    "revision": "03d6703f7268ce885de73b2967187a821a24373e",
+    "dirty": false
+  },
+  "grepai": {
+    "version": "grepai version 47bba43",
+    "binary": "/home/one/bin/grepai",
+    "binary_sha256": "c88e9cba9c96333dd5a1746ef97747bd42c6bc1fbda41cf06ca576863a50ffce",
+    "source": "/my/src/grepai",
+    "source_revision": "47bba436e4efb4602295782c390f616c4a5a8eb9",
+    "source_branch": "status-wait",
+    "source_dirty": false,
+    "source_diff_sha256": ""
+  },
+  "grepai_config_sha256": "7b242516c35607b300f3604a681406ce9ab0eacfde1ff631d3819786c4e6ec56",
+  "grepai_index_sha256": "9a82690e24464835553f234ccf53d799c73c93b96098435c047605f4f592a238",
+  "selection": {
+    "mode": "both",
+    "scope": "both",
+    "query_set": "all",
+    "query_id": null,
+    "all_target": true,
+    "features": [],
+    "target_features": []
+  }
+}
