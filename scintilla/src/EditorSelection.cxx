@@ -287,7 +287,7 @@ void Editor::ClearSelections() {
 	Redraw();
 }
 
-// Message SetSelection: replace the selection model with one stream range.
+// SetSelection: replace the selection model with one stream range.
 void Editor::SetStreamSelection(Sci::Position caret, Sci::Position anchor) {
 	sel.SetSelection(SelectionRange(caret, anchor));
 	Redraw();

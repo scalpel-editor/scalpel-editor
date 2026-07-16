@@ -471,7 +471,7 @@ void Editor::AnnotationSetStyles(Sci::Line line, const unsigned char *styles) {
 	pdoc->AnnotationSetStyles(line, styles);
 }
 
-// Copy per-character style bytes into buffer. When the line uses one shared style, returns 0 and, if buffer is non-null and text exists, writes a single 0 byte (historical BytesResult behaviour). When per-character styles exist, returns their length.
+// Copy per-character style bytes into buffer. When the line uses one shared style, returns 0 and, if buffer is non-null and text exists, writes a single 0 byte so measure-only callers still see a length of 1. When per-character styles exist, returns their length.
 Sci::Position Editor::AnnotationGetStyles(Sci::Line line, char *buffer) const {
 	const StyledText st = pdoc->AnnotationStyledText(line);
 	if (buffer && st.length > 0) {
