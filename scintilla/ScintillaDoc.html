@@ -317,8 +317,8 @@
     <p>Lexer libraries that provide the same functions as Lexilla may provide lexers for use by Scintilla,
     augmenting or replacing those provided by Lexilla.</p>
 
-    <p>A lexer created by Lexilla may be used in Scintilla by calling
-    <a class="seealso" href="#SCI_SETILEXER">SCI_SETILEXER</a>.</p>
+    <p>A lexer created by Lexilla may be used in Scintilla with
+    <code>ScintillaBase::SetILexer</code>.</p>
 
     <h2 id="MessageCategories">Contents</h2>
 
@@ -880,16 +880,8 @@ struct Sci_TextRangeFull {
     view-EOL, line-end types allowed/active, and related line operations moved to
     <code>scintilla/src/EditorLines.cxx</code>. Named operations and their behavior descriptions live
     beside the definitions there. Temporary message forwarders remain until the generated message
-    layer is removed. <code>SCI_GETLINEENDTYPESSUPPORTED</code> stays with the lexer concern until
-    that move.</p>
-
-    <a class="message" href="#SCI_GETLINEENDTYPESSUPPORTED">SCI_GETLINEENDTYPESSUPPORTED &rarr; int</a><br />
-
-    <p><b id="SCI_GETLINEENDTYPESSUPPORTED">SCI_GETLINEENDTYPESSUPPORTED &rarr; int</b><br />
-     <code>SCI_GETLINEENDTYPESSUPPORTED</code> reports the different types of line ends supported
-     by the current lexer. This is a bit set although there is currently only a single choice
-     with either <code>SC_LINE_END_TYPE_DEFAULT</code> (0) or <code>SC_LINE_END_TYPE_UNICODE</code> (1).
-     These values are also used by the other messages concerned with Unicode line ends.</p>
+    layer is removed. The current lexer's supported line-end types moved to
+    <code>scintilla/src/EditorLexing.cxx</code>.</p>
 
     <h2 id="Words">Words</h2>
     <p>Word, whitespace, and punctuation character classes moved to
@@ -1702,223 +1694,11 @@ sptr_t CallScintilla(unsigned int iMessage, uptr_t wParam, sptr_t lParam){
     
     <h2 id="Lexer">Lexer</h2>
 
-    <p>
-    To style files in different languages, different 'lexers' are used.
-    These are objects that are called by Scintilla with a range of text and some context information and which
-    then set styles and folding information for that range.
-    Lexers for Scintilla are now provided by the <a href="Lexilla.html">Lexilla</a> project.
-    Before 5.0, lexers were built into most versions of Scintilla.</p>
-
-     <a class="message" href="#SCI_GETLEXER">SCI_GETLEXER &rarr; int</a><br />
-     <a class="message" href="#SCI_GETLEXERLANGUAGE">SCI_GETLEXERLANGUAGE(&lt;unused&gt;, char *language) &rarr; int</a><br />
-     <a class="message" href="#SCI_SETILEXER">SCI_SETILEXER(&lt;unused&gt;, pointer ilexer)</a><br />
-     <a class="message" href="#SCI_COLOURISE">SCI_COLOURISE(position start, position end)</a><br />
-     <a class="message" href="#SCI_CHANGELEXERSTATE">SCI_CHANGELEXERSTATE(position start, position end) &rarr; int</a><br />
-     <a class="message" href="#SCI_PROPERTYNAMES">SCI_PROPERTYNAMES(&lt;unused&gt;, char *names) &rarr; int</a><br />
-     <a class="message" href="#SCI_PROPERTYTYPE">SCI_PROPERTYTYPE(const char *name) &rarr; int</a><br />
-     <a class="message" href="#SCI_DESCRIBEPROPERTY">SCI_DESCRIBEPROPERTY(const char *name, char *description) &rarr; int</a><br />
-     <a class="message" href="#SCI_SETPROPERTY">SCI_SETPROPERTY(const char *key, const char *value)</a><br />
-     <a class="message" href="#SCI_GETPROPERTY">SCI_GETPROPERTY(const char *key, char *value) &rarr; int</a><br />
-     <a class="message" href="#SCI_GETPROPERTYEXPANDED">SCI_GETPROPERTYEXPANDED(const char *key, char *value) &rarr; int</a><br />
-     <a class="message" href="#SCI_GETPROPERTYINT">SCI_GETPROPERTYINT(const char *key, int defaultValue) &rarr; int</a><br />
-     <a class="message" href="#SCI_DESCRIBEKEYWORDSETS">SCI_DESCRIBEKEYWORDSETS(&lt;unused&gt;, char *descriptions) &rarr; int</a><br />
-     <a class="message" href="#SCI_SETKEYWORDS">SCI_SETKEYWORDS(int keyWordSet, const char
-    *keyWords)</a><br />
-
-     <a class="message" href="#SCI_GETSUBSTYLEBASES">SCI_GETSUBSTYLEBASES(&lt;unused&gt;, char *styles) &rarr; int</a><br />
-     <a class="message" href="#SCI_DISTANCETOSECONDARYSTYLES">SCI_DISTANCETOSECONDARYSTYLES &rarr; int</a><br />
-     <a class="message" href="#SCI_ALLOCATESUBSTYLES">SCI_ALLOCATESUBSTYLES(int styleBase, int numberStyles) &rarr; int</a><br />
-     <a class="message" href="#SCI_FREESUBSTYLES">SCI_FREESUBSTYLES</a><br />
-     <a class="message" href="#SCI_GETSUBSTYLESSTART">SCI_GETSUBSTYLESSTART(int styleBase) &rarr; int</a><br />
-     <a class="message" href="#SCI_GETSUBSTYLESLENGTH">SCI_GETSUBSTYLESLENGTH(int styleBase) &rarr; int</a><br />
-     <a class="message" href="#SCI_GETSTYLEFROMSUBSTYLE">SCI_GETSTYLEFROMSUBSTYLE(int subStyle) &rarr; int</a><br />
-     <a class="message" href="#SCI_GETPRIMARYSTYLEFROMSTYLE">SCI_GETPRIMARYSTYLEFROMSTYLE(int style) &rarr; int</a><br />
-     <a class="message" href="#SCI_SETIDENTIFIERS">SCI_SETIDENTIFIERS(int style, const char *identifiers)</a><br />
-     <a class="message" href="#SCI_PRIVATELEXERCALL">SCI_PRIVATELEXERCALL(int operation, pointer pointer) &rarr; pointer</a><br />
-     <a class="message" href="#SCI_GETNAMEDSTYLES">SCI_GETNAMEDSTYLES &rarr; int</a><br />
-     <a class="message" href="#SCI_NAMEOFSTYLE">SCI_NAMEOFSTYLE(int style, char *name) &rarr; int</a><br />
-     <a class="message" href="#SCI_TAGSOFSTYLE">SCI_TAGSOFSTYLE(int style, char *tags) &rarr; int</a><br />
-     <a class="message" href="#SCI_DESCRIPTIONOFSTYLE">SCI_DESCRIPTIONOFSTYLE(int style, char *description) &rarr; int</a><br />
-
-    <p><b id="SCI_GETLEXER">SCI_GETLEXER &rarr; int</b><br />
-     You can retrieve an integer lexer ID for the current lexer from the <code>SCLEX_*</code> enumeration
-    in <code>SciLexer.h</code>. Some lexers may not have a lexer ID, just a lexer name in which case 0 is returned.</p>
-
-    <p><b id="SCI_GETLEXERLANGUAGE">SCI_GETLEXERLANGUAGE(&lt;unused&gt;, char *language NUL-terminated) &rarr; int</b><br />
-     <code>SCI_GETLEXERLANGUAGE</code> returns the name of the current lexer which must be set with <code>SCI_SETILEXER</code>.
-    To locate the name for a lexer, open the relevant
-    <code>lexilla/lexers/Lex*.cxx</code> file and search for <code>LexerModule</code>. The third argument in the
-    <code>LexerModule</code> constructor is the name to use.</p>
-
-     <p><b id="SCI_SETILEXER">SCI_SETILEXER(&lt;unused&gt;, pointer ilexer)</b><br />
-     <code>SCI_SETILEXER</code> allows setting a lexer as an <code>ILexer5*</code>.
-     The lexer may be implemented by an application or a shared library such as Lexilla.</p>
-
-    <p>To test if your lexer assignment worked, use <a class="seealso" href="#SCI_GETLEXER"><code>SCI_GETLEXER</code></a>
-    before and after setting the new lexer to
-    see if the lexer number changed.</p>
-
-    <p><code>SCI_GETLEXERLANGUAGE</code> retrieves the name of the lexer.</p>
-
-    <p><b id="SCI_COLOURISE">SCI_COLOURISE(position start, position end)</b><br />
-     This requests the current lexer or the container (if the lexer is set to
-    <code>NULL</code>) to style the document between <code class="parameter">start</code> and
-    <code class="parameter">end</code>. If <code class="parameter">end</code> is -1, the document is styled from
-    <code class="parameter">start</code> to the end. If the <code>"fold"</code> property is set to
-    <code>"1"</code> and your lexer or container supports folding, fold levels are also set. This
-    message causes a redraw.</p>
-
-    <p><b id="SCI_CHANGELEXERSTATE">SCI_CHANGELEXERSTATE(position start, position end) &rarr; int</b><br />
-    Indicate that the internal state of a lexer has changed over a range and therefore
-    there may be a need to redraw.</p>
-
-    <p><b id="SCI_PROPERTYNAMES">SCI_PROPERTYNAMES(&lt;unused&gt;, char *names NUL-terminated) &rarr; int</b><br />
-    <b id="SCI_PROPERTYTYPE">SCI_PROPERTYTYPE(const char *name) &rarr; int</b><br />
-    <b id="SCI_DESCRIBEPROPERTY">SCI_DESCRIBEPROPERTY(const char *name, char *description NUL-terminated) &rarr; int</b><br />
-    Information may be retrieved about the properties that can be set for the current lexer.
-    This information is only available for newer lexers.
-    <code>SCI_PROPERTYNAMES</code> returns a string with all of the valid properties separated by "\n".
-    If the lexer does not support this call then an empty string is returned.
-    Properties may be boolean (<code>SC_TYPE_BOOLEAN</code>), integer (<code>SC_TYPE_INTEGER</code>),
-    or string (<code>SC_TYPE_STRING</code>) and this is found with <code>SCI_PROPERTYTYPE</code>.
-    A description of a property in English is returned by <code>SCI_DESCRIBEPROPERTY</code>.</p>
-
-    <p><b id="SCI_SETPROPERTY">SCI_SETPROPERTY(const char *key, const char *value)</b><br />
-     You can communicate settings to lexers with keyword:value string pairs. There is no limit to
-    the number of keyword pairs you can set, other than available memory. <code class="parameter">key</code> is a
-    case sensitive keyword, <code class="parameter">value</code> is a string that is associated with the keyword. If
-    there is already a value string associated with the keyword, it is replaced. If you pass a zero
-    length string, the message does nothing. Both <code class="parameter">key</code> and <code class="parameter">value</code> are used
-    without modification; extra spaces at the beginning or end of <code class="parameter">key</code> are
-    significant.</p>
-
-    <p>The <code class="parameter">value</code> string can no longer refer to other keywords
-    as was possible in older releases of Scintilla.</p>
-
-    <p>Lexers may only store values for keywords they support.</p>
-
-    <p>Currently the "fold" property is defined for most of the lexers to set the fold structure if
-    set to "1". <code>SCLEX_PYTHON</code> understands <code>"tab.timmy.whinge.level"</code> as a
-    setting that determines how to indicate bad indentation. Most keywords have values that are
-    interpreted as integers. Search the lexer sources for <code>GetPropertyInt</code> to see how
-    properties are used.</p>
-
-    <p>There is a convention for naming properties used by lexers so that the set of properties can be found by scripts.
-    Property names should start with "lexer.&lt;lexer&gt;." or "fold.&lt;lexer&gt;." when they apply to one
-    lexer or start with "lexer." or "fold." if they apply to multiple lexers.</p>
-
-    <p>Applications may discover the set of properties used by searching the source code of lexers for lines that contain
-    <code>GetProperty</code> or <code>DefineProperty</code> and a double quoted string and extract the value of
-    the double quoted string as the property name.
-    The <code>lexilla/scripts/LexillaData.py</code> script does this and can be used as an example.
-    Documentation for the property may be located above the call as a multi-line comment starting with
-    <br/><code>// property &lt;property-name&gt;</code></p>
-
-    <p><b id="SCI_GETPROPERTY">SCI_GETPROPERTY(const char *key, char *value NUL-terminated) &rarr; int</b><br />
-    Lookup a keyword:value pair using the specified key; if found, copy the value to the user-supplied
-    buffer and return the length (not including the terminating 0).  If not found, copy an empty string
-    to the buffer and return 0.</p>
-
-    <p>If the value argument is 0 then the length that should be allocated to store the value is returned;
-    again, the terminating 0 is not included.</p>
-
-    <p><b id="SCI_GETPROPERTYEXPANDED">SCI_GETPROPERTYEXPANDED(const char *key, char *value NUL-terminated) &rarr; int</b><br />
-    This is now the same as <a class="message" href="#SCI_GETPROPERTY"><code>SCI_GETPROPERTY</code></a>
-    - no expansion is performed.</p>
-
-    <p>Lookup a keyword:value pair using the specified key; if found, copy the value to the user-supplied
-    buffer and return the length (not including the terminating 0).  If not found, copy an empty string
-    to the buffer and return 0.</p>
-
-    <p>If the value argument is 0 then the length that should be allocated to store the value is returned;
-    again, the terminating 0 is not included.</p>
-
-    <p><b id="SCI_GETPROPERTYINT">SCI_GETPROPERTYINT(const char *key, int defaultValue) &rarr; int</b><br />
-    Lookup a keyword:value pair using the specified key; if found, interpret the value as an integer and return it.
-    If not found (or the value is an empty string) then return the supplied default.  If the keyword:value pair is found but is not
-    a number, then return 0.</p>
-
-    <p><b id="SCI_SETKEYWORDS">SCI_SETKEYWORDS(int keyWordSet, const char *keyWords)</b><br />
-     You can set up to 9 lists of keywords for use by the current lexer.
-     <code class="parameter">keyWordSet</code> can be 0 to 8 (actually 0 to <code>KEYWORDSET_MAX</code>)
-    and selects which keyword list to replace. <code class="parameter">keyWords</code> is a list of keywords
-    separated by spaces, tabs, <code>"\n"</code> or <code>"\r"</code> or any combination of these.
-    It is expected that the keywords will be composed of standard ASCII printing characters,
-    but there is nothing to stop you using any non-separator character codes from 1 to 255
-    (except common sense).</p>
-
-    <p>How these keywords are used is entirely up to the lexer. Some languages, such as HTML may
-    contain embedded languages, VBScript and JavaScript are common for HTML. For HTML, key word set
-    0 is for HTML, 1 is for JavaScript and 2 is for VBScript, 3 is for Python, 4 is for PHP and 5
-    is for SGML and DTD keywords. Review the lexer code to see examples of keyword list. A fully
-    conforming lexer sets the fourth argument of the <code>LexerModule</code> constructor to be a
-    list of strings that describe the uses of the keyword lists.</p>
-
-    <p>Alternatively, you might use set 0 for general keywords, set 1 for keywords that cause
-    indentation and set 2 for keywords that cause unindentation. Yet again, you might have a simple
-    lexer that colours keywords and you could change languages by changing the keywords in set 0.
-    There is nothing to stop you building your own keyword lists into the lexer, but this means
-    that the lexer must be rebuilt if more keywords are added.</p>
-
-    <p><b id="SCI_DESCRIBEKEYWORDSETS">SCI_DESCRIBEKEYWORDSETS(&lt;unused&gt;, char *descriptions NUL-terminated) &rarr; int</b><br />
-    A description of all of the keyword sets separated by "\n" is returned by <code>SCI_DESCRIBEKEYWORDSETS</code>.</p>
-
-    <h3 id="Substyles">Substyles</h3>
-    <p>Lexers may support several different sublanguages and each sublanguage may want to style some number of
-    sets of identifiers (or similar lexemes such as documentation keywords) uniquely. Preallocating a large number for each
-    purpose would exhaust the number of allowed styles quickly.
-    This is alleviated by substyles which allow the application to determine how many sets of identifiers to allocate for
-    each purpose.
-    Lexers have to explicitly support this feature by implementing particular methods.</p>
-
-    <p><b id="SCI_GETSUBSTYLEBASES">SCI_GETSUBSTYLEBASES(&lt;unused&gt;, char *styles NUL-terminated) &rarr; int</b><br />
-     Fill <code class="parameter">styles</code> with a byte for each style that can be split into substyles.</p>
-
-    <p><b id="SCI_DISTANCETOSECONDARYSTYLES">SCI_DISTANCETOSECONDARYSTYLES &rarr; int</b><br />
-     Returns the distance between a primary style and its corresponding secondary style.</p>
-
-    <p><b id="SCI_ALLOCATESUBSTYLES">SCI_ALLOCATESUBSTYLES(int styleBase, int numberStyles) &rarr; int</b><br />
-     Allocate some number of substyles for a particular base style returning the first substyle number allocated.
-     A failure, such as requesting more substyles than available, is indicated by returning a negative number.
-     Lexers that support substyles will commonly allow allocating 64 substyles. 
-     Substyles are allocated contiguously.</p>
-
-    <p><b id="SCI_FREESUBSTYLES">SCI_FREESUBSTYLES</b><br />
-     Free all allocated substyles.</p>
-
-    <p><b id="SCI_GETSUBSTYLESSTART">SCI_GETSUBSTYLESSTART(int styleBase) &rarr; int</b><br />
-    <b id="SCI_GETSUBSTYLESLENGTH">SCI_GETSUBSTYLESLENGTH(int styleBase) &rarr; int</b><br />
-     Return the start and length of the substyles allocated for a base style.</p>
-
-    <p><b id="SCI_GETSTYLEFROMSUBSTYLE">SCI_GETSTYLEFROMSUBSTYLE(int subStyle) &rarr; int</b><br />
-     For a sub style, return the base style, else return the argument.</p>
-
-    <p><b id="SCI_GETPRIMARYSTYLEFROMSTYLE">SCI_GETPRIMARYSTYLEFROMSTYLE(int style) &rarr; int</b><br />
-     For a secondary style, return the primary style, else return the argument.</p>
-
-    <p><b id="SCI_SETIDENTIFIERS">SCI_SETIDENTIFIERS(int style, const char *identifiers)</b><br />
-     Similar to <code>SCI_SETKEYWORDS</code> but for substyles.
-     The prefix feature available with <code>SCI_SETKEYWORDS</code> is not implemented for <code>SCI_SETIDENTIFIERS</code>.</p>
-
-    <p><b id="SCI_PRIVATELEXERCALL">SCI_PRIVATELEXERCALL(int operation, pointer pointer) &rarr; pointer</b><br />
-     Call into a lexer in a way not understood by Scintilla.</p>
-
-    <h3 id="StyleMetadata">Style Metadata</h3>
-    <p>Lexers may provide information on the styles they use.
-    Lexers have to explicitly support this feature by implementing particular methods.</p>
-
-    <p><b id="SCI_GETNAMEDSTYLES">SCI_GETNAMEDSTYLES &rarr; int</b><br />
-     Retrieve the number of named styles for the lexer.</p>
-
-    <p><b id="SCI_NAMEOFSTYLE">SCI_NAMEOFSTYLE(int style, char *name NUL-terminated) &rarr; int</b><br />
-     Retrieve the name of a style. This is a C preprocessor symbol like "SCE_C_COMMENTDOC".</p>
-
-    <p><b id="SCI_TAGSOFSTYLE">SCI_TAGSOFSTYLE(int style, char *tags NUL-terminated) &rarr; int</b><br />
-     Retrieve the tags of a style. This is a space-separated set of words like "comment documentation".</p>
-
-    <p><b id="SCI_DESCRIPTIONOFSTYLE">SCI_DESCRIPTIONOFSTYLE(int style, char *description NUL-terminated) &rarr; int</b><br />
-     Retrieve an English-language description of a style which may be suitable for display in a user interface.
-     This looks like "Doc comment: block comments beginning with /** or /*!".</p>
+    <p>Lexer attachment, colourise, properties, keywords, substyles, style metadata,
+    line state, and supported line-end types moved to
+    <code>scintilla/src/EditorLexing.cxx</code>. Named operations and their behavior
+    descriptions live beside the definitions there. Temporary message forwarders remain
+    until the generated message layer is removed.</p>
 
     <h2 id="LexerObjects">Lexer Objects</h2>
 
@@ -2009,7 +1789,7 @@ maintains a single large data structure containing symbolic information
 about system headers (like Windows.h) and provides this to the lexer
 where it can be applied to each document. This avoids the costs of
 constructing the system header information for each document. This is
-invoked with the <code>SCI_PRIVATELEXERCALL</code> API.</p>
+invoked with <code>ScintillaBase::PrivateLexerCall</code>.</p>
 
 <p><code>Fold</code> is called with the exact range that needs folding.
 Previously, lexers were called with a range that started one line before the range that
@@ -2030,13 +1810,12 @@ A set of common tags and conventions for combining them is <a  class="jump" href
 </p>
 
 <p><code>GetName</code> and <code>GetIdentifier</code> may be called
-to discover the identity of a lexer and be used to implement
-<a class="seealso" href="#SCI_GETLEXERLANGUAGE">SCI_GETLEXERLANGUAGE</a> and
-<a class="seealso" href="#SCI_GETLEXER">SCI_GETLEXER</a>.</p>
+to discover the identity of a lexer and are exposed by
+<code>ScintillaBase::GetLexerLanguage</code> and <code>ScintillaBase::GetLexer</code>.</p>
 
 <p><code>PropertyGet</code> may be called
-to discover the value of a property stored by a lexer and be used to implement
-<a class="seealso" href="#SCI_GETPROPERTY">SCI_GETPROPERTY</a>.</p>
+to discover the value of a property stored by a lexer and is exposed by
+<code>ScintillaBase::GetProperty</code>.</p>
 
 <h4>IDocument</h4>
 
@@ -2242,8 +2021,7 @@ struct SCNotification {
     </p>
 
     <p><b id="SCN_STYLENEEDED">SCN_STYLENEEDED</b><br />
-     If you used <code><a class="message"
-    href="#SCI_SETILEXER">SCI_SETILEXER</a>(NULL)</code> to make the container act as the
+     If you used <code>ScintillaBase::SetILexer(nullptr)</code> to make the container act as the
     lexer, you will receive this notification when Scintilla is about to display or print text that
     requires styling. You are required to style the text from the line that contains the position
     returned by <a class="seealso" href="#SCI_GETENDSTYLED"><code>SCI_GETENDSTYLED</code></a> up to
@@ -2637,8 +2415,7 @@ struct SCNotification {
 
           <td align="right">0x8000</td>
 
-          <td>A line state has changed because <a class="seealso" href="#SCI_SETLINESTATE">SCI_SETLINESTATE</a>
-          was called.</td>
+          <td>A line state has changed because <code>Editor::SetLineState</code> was called.</td>
 
           <td><code>line</code></td>
         </tr>
