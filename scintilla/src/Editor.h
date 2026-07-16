@@ -713,7 +713,7 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void MultiEdgeClearAll();
 	void ReleaseAllExtendedStyles();
 	int AllocateExtendedStyles(int numberStyles);
-	long TextWidth(int style, const char *text);
+	long TextWidth(int style, std::string_view text);
 	// Clipboard: definitions and descriptions in EditorClipboard.cxx.
 	// Clipboard cut/copy helpers and options: EditorClipboard.cxx.
 	// Copy and Paste remain pure virtual host hooks.
@@ -833,7 +833,7 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	// Search and replace helpers: EditorSearch.cxx.
 	// Application target/search methods are public below.
 	void SearchAnchor();
-	Sci::Position SearchText(EditorCommand command, Scintilla::FindOption flags, const char *text);
+	Sci::Position SearchText(EditorCommand command, Scintilla::FindOption flags, std::string_view text);
 	Sci::Position SearchInTarget(const char *text, Sci::Position length);
 	void SetTargetStartVirtualSpace(Sci::Position space);
 	Sci::Position GetTargetStartVirtualSpace() const noexcept;

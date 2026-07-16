@@ -275,6 +275,8 @@ TEST_CASE("TextWidth and named zoom parity with message path") {
 
 	const long w = editor.WndProc(Message::TextWidth, 0, reinterpret_cast<sptr_t>("MM"));
 	CHECK(w > 0);
+	const std::string_view textWithNul("M\0M", 3);
+	CHECK(editor.TextWidth(0, textWithNul) == 3 * editor.TextWidth(0, "M"));
 
 	editor.SetZoom(6);
 	CHECK(editor.GetZoom() == 6);

@@ -466,7 +466,7 @@ int Editor::GetFontLocale(char *buffer) const {
 
 // Pixel width of text measured in the given style after refreshing style data.
 // Useful for sizing the line-number margin. Returns 1 if no measurement surface is available.
-long Editor::TextWidth(int style, const char *text) {
+long Editor::TextWidth(int style, std::string_view text) {
 	RefreshStyleData();
 	AutoSurface surface(this);
 	if (surface) {

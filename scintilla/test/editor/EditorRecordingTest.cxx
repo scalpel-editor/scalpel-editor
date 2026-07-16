@@ -636,6 +636,33 @@ TEST_CASE("Search recording owns the needle after the original buffer is overwri
 	CHECK(As<RecordedSearch>(editor.observations.recordedActions[1]).text == "needle");
 }
 
+TEST_CASE("Search and recording preserve embedded NUL bytes") {
+	TestHost host;
+	TestEditor editor(host);
+	const std::string document("a\0bc", 4);
+	const std::string needle("\0b", 2);
+	editor.SetText(document);
+	editor.SetSel(0, 0);
+	editor.StartRecording();
+	editor.ClearObservations();
+
+	editor.SearchAnchor();
+	const Sci::Position found = editor.SearchText(
+		EditorCommand::SearchNext, FindOption::MatchCase, needle);
+
+	CHECK(found == 1);
+	REQUIRE(editor.observations.recordedActions.size() == 2);
+	CHECK(As<RecordedSearch>(editor.observations.recordedActions[1]).text == needle);
+	const std::vector<RecordedAction> recorded = editor.observations.recordedActions;
+
+	editor.SetSel(0, 0);
+	editor.ClearObservations();
+	editor.ReplayRecordedActions(recorded);
+
+	CHECK(editor.CurrentPos() == 1);
+	CHECK(editor.observations.recordedActions.empty());
+}
+
 TEST_CASE("Failed search still records the request") {
 	TestHost host;
 	TestEditor editor(host);

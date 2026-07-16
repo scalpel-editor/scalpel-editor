@@ -5670,9 +5670,11 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return ExecuteCommand(EditorCommand::SearchAnchor);
 
 	case Message::SearchNext:
-	case Message::SearchPrev:
+	case Message::SearchPrev: {
+		const char *text = ConstCharPtrFromSPtr(lParam);
 		return SearchText(CommandFromMessage(iMessage), static_cast<FindOption>(wParam),
-			ConstCharPtrFromSPtr(lParam));
+			text ? std::string_view(text) : std::string_view{});
+	}
 
 	case Message::SetXCaretPolicy:
 		SetXCaretPolicy(static_cast<CaretPolicy>(wParam), static_cast<int>(lParam));

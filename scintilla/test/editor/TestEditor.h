@@ -133,6 +133,7 @@ public:
 	using Editor::GetSelectionNEnd;
 	using Editor::SetRectangularSelectionModifier;
 	using Editor::GetRectangularSelectionModifier;
+	using Editor::TextWidth;
 	using Editor::TextHeightPixels;
 
 	// ReplaceTarget and its enum stay protected on Editor; thin public wrapper for tests.

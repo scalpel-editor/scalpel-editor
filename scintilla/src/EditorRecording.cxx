@@ -182,7 +182,7 @@ void Editor::ApplyRecordedAction(const RecordedAction &action) {
 		const EditorCommand command = search->direction == SearchDirection::Next
 			? EditorCommand::SearchNext
 			: EditorCommand::SearchPrev;
-		SearchText(command, search->flags, search->text.c_str());
+		SearchText(command, search->flags, search->text);
 		return;
 	}
 	if (const RecordedSetSelectionMode *mode = std::get_if<RecordedSetSelectionMode>(&action)) {

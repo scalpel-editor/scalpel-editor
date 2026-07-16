@@ -182,25 +182,24 @@ void Editor::SearchAnchor() {
 // SearchNext or SearchPrev from the search anchor.
 // On success selects the match and returns its start; otherwise invalidPosition.
 // When macro recording is on, emits RecordedSearch with owned needle text.
-Sci::Position Editor::SearchText(EditorCommand command, FindOption flags, const char *text) {
+Sci::Position Editor::SearchText(EditorCommand command, FindOption flags, std::string_view text) {
 	const SearchDirection direction = command == EditorCommand::SearchNext
 		? SearchDirection::Next
 		: SearchDirection::Prev;
 	// Copy the needle before search so the host owns bytes even if the caller
 	// frees or overwrites the buffer after return.
-	EmitRecordedAction(RecordedSearch{
-		direction, flags, text ? std::string(text) : std::string{}});
+	EmitRecordedAction(RecordedSearch{direction, flags, std::string(text)});
 	Sci::Position pos = Sci::invalidPosition;
-	Sci::Position lengthFound = text ? static_cast<Sci::Position>(strlen(text)) : 0;
+	Sci::Position lengthFound = static_cast<Sci::Position>(text.size());
 	if (!pdoc->HasCaseFolder())
 		pdoc->SetCaseFolder(std::make_unique<CaseFolderUnicode>());
 	try {
 		if (command == EditorCommand::SearchNext) {
-			pos = pdoc->FindText(searchAnchor, pdoc->Length(), text,
+			pos = pdoc->FindText(searchAnchor, pdoc->Length(), text.data(),
 					flags,
 					&lengthFound);
 		} else {
-			pos = pdoc->FindText(searchAnchor, 0, text,
+			pos = pdoc->FindText(searchAnchor, 0, text.data(),
 					flags,
 					&lengthFound);
 		}
@@ -310,4 +309,3 @@ Sci::Position Editor::GetTag(char *tagValue, int tagNumber) {
 	}
 	return length;
 }
-
