@@ -1827,16 +1827,13 @@ struct SCNotification {
      <a class="message" href="#SCN_SAVEPOINTREACHED">SCN_SAVEPOINTREACHED</a><br />
      <a class="message" href="#SCN_SAVEPOINTLEFT">SCN_SAVEPOINTLEFT</a><br />
      <a class="message" href="#SCN_MODIFYATTEMPTRO">SCN_MODIFYATTEMPTRO</a><br />
-     <a class="message" href="#SCN_KEY">SCN_KEY</a><br />
      <a class="message" href="#SCN_DOUBLECLICK">SCN_DOUBLECLICK</a><br />
      <a class="message" href="#SCN_UPDATEUI">SCN_UPDATEUI</a><br />
      <a class="message" href="#SCN_MODIFIED">SCN_MODIFIED</a><br />
-     <a class="message" href="#SCN_MACRORECORD">SCN_MACRORECORD</a><br />
      <a class="message" href="#SCN_MARGINCLICK">SCN_MARGINCLICK</a><br />
      <a class="message" href="#SCN_NEEDSHOWN">SCN_NEEDSHOWN</a><br />
      <a class="message" href="#SCN_PAINTED">SCN_PAINTED</a><br />
      <a class="message" href="#SCN_USERLISTSELECTION">SCN_USERLISTSELECTION</a><br />
-     <a class="message" href="#SCN_URIDROPPED">SCN_URIDROPPED</a><br />
      <a class="message" href="#SCN_DWELLSTART">SCN_DWELLSTART</a><br />
      <a class="message" href="#SCN_DWELLEND">SCN_DWELLEND</a><br />
      <a class="message" href="#SCN_ZOOM">SCN_ZOOM</a><br />
@@ -1950,17 +1947,13 @@ struct SCNotification {
     href="#SCI_SETREADONLY">SCI_SETREADONLY</a></code>.</p>
 
     <p><b id="SCN_KEY">SCN_KEY</b><br />
-     Reports all keys pressed but not consumed by Scintilla. Used on GTK because of
-     some problems with keyboard focus and is not sent by the Windows version. <code>SCNotification::ch</code> holds the key code and
-    <code>SCNotification.modifiers</code> holds the modifiers. This notification is sent if the
-    modifiers include <code>SCMOD_ALT</code> or <code>SCMOD_CTRL</code> and the key code is less
-    than 256.</p>
+     Deleted. The standalone Wayland host receives keys through the typed key and command path;
+     there is no parent-widget key-interception notification.</p>
 
     <p><b id="SCN_DOUBLECLICK">SCN_DOUBLECLICK</b><br />
      The mouse button was double clicked in editor. The <code>position</code> field is set to the text position of the
     double click, the <code>line</code> field is set to the line of the double click, and
-    the <code>modifiers</code> field is set to the key modifiers
-    held down in a similar manner to <a class="message" href="#SCN_KEY">SCN_KEY</a>.</p>
+    the <code>modifiers</code> field is set to the key modifiers held down.</p>
 
     <p><b id="SCN_UPDATEUI">SCN_UPDATEUI</b><br />
      Either the text or styling of the document has changed or the selection range or scroll position may have changed.
@@ -2531,9 +2524,8 @@ for line = lineStart to lineEnd do SCI_ENSUREVISIBLE(line) next
      See the <code><a class="jump" href="#SCN_AUTOCCOMPLETED">SCN_AUTOCCOMPLETED</a></code> notification
     for the possible values for <code>listCompletionMethod.</code>
     <p><b id="SCN_URIDROPPED">SCN_URIDROPPED</b><br />
-     Only on the GTK version. Indicates that the user has dragged a URI such as a file name or Web
-    address onto Scintilla. The container could interpret this as a request to open the file. The
-    <code>text</code> field of <code>SCNotification</code> points at the URI text.</p>
+     Deleted. Platform widget drag-and-drop URI delivery is not part of this roadmap; open
+    and save go through the desktop portal in a later phase.</p>
 
     <p><b id="SCN_DWELLSTART">SCN_DWELLSTART</b><br />
      <b id="SCN_DWELLEND">SCN_DWELLEND</b><br />
@@ -2592,8 +2584,7 @@ for line = lineStart to lineEnd do SCI_ENSUREVISIBLE(line) next
     This notification can be used to link to variable definitions or web pages.
     In the notification handler, you should avoid calling any function that modifies the current selection or caret position.
     The <code>position</code> field is set the text position of the click or
-    double click and the <code>modifiers</code> field set to the key modifiers
-    held down in a similar manner to <a class="message" href="#SCN_KEY">SCN_KEY</a>.
+    double click and the <code>modifiers</code> field set to the key modifiers held down.
     Only the state of the Ctrl key is reported for <code>SCN_HOTSPOTRELEASECLICK</code>.</p>
 
     <p>
@@ -2602,8 +2593,7 @@ for line = lineStart to lineEnd do SCI_ENSUREVISIBLE(line) next
      These notifications are generated when the user clicks or releases the mouse on
      text that has an indicator.
     The <code>position</code> field is set the text position of the click or
-    double click and the <code>modifiers</code> field set to the key modifiers
-    held down in a similar manner to <a class="message" href="#SCN_KEY">SCN_KEY</a>.</p>
+    double click and the <code>modifiers</code> field set to the key modifiers held down.</p>
 
     <p><b id="SCN_CALLTIPCLICK">SCN_CALLTIPCLICK</b><br />
      This notification is generated when the user clicks on a calltip.
