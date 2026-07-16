@@ -126,6 +126,11 @@ TEST_CASE("Empty selection and position setters") {
 	editor.SetSelectionEnd(4);
 	CHECK(editor.GetSelectionStart() == 1);
 	CHECK(editor.GetSelectionEnd() == 4);
+
+	editor.SetEmptySelection(2);
+	CHECK(editor.GetSelectionEmpty());
+	CHECK(editor.GetCurrentPos() == 2);
+	CHECK(editor.GetAnchor() == 2);
 }
 
 TEST_CASE("GotoLine and GotoPos clamp and move caret") {
@@ -175,34 +180,36 @@ TEST_CASE("SetSelectionN endpoints update one range by index") {
 	TestHost host;
 	TestEditor editor(host);
 	LoadClean(editor, "abcdefgh");
-	editor.WndProc(Message::SetMultipleSelection, 1, 0);
-	// Main range caret/anchor, then a second range.
-	editor.WndProc(Message::SetSelection, 2, 0);
-	editor.WndProc(Message::AddSelection, 6, 4);
+	editor.SetMultipleSelection(true);
+	editor.SetSelection(2, 0);
+	editor.AddSelection(6, 4);
 
-	editor.WndProc(Message::SetSelectionNCaret, 1, 7);
-	CHECK(editor.WndProc(Message::GetSelectionNCaret, 1, 0) == 7);
-	editor.WndProc(Message::SetSelectionNAnchor, 1, 3);
-	CHECK(editor.WndProc(Message::GetSelectionNAnchor, 1, 0) == 3);
-	editor.WndProc(Message::SetSelectionNStart, 0, 1);
-	editor.WndProc(Message::SetSelectionNEnd, 0, 3);
-	CHECK(editor.WndProc(Message::GetSelectionNStart, 0, 0) == 1);
-	CHECK(editor.WndProc(Message::GetSelectionNEnd, 0, 0) == 3);
+	editor.SetSelectionNCaret(1, 7);
+	CHECK(editor.GetSelectionNCaret(1) == 7);
+	editor.SetSelectionNAnchor(1, 3);
+	CHECK(editor.GetSelectionNAnchor(1) == 3);
+	editor.SetSelectionNStart(0, 1);
+	editor.SetSelectionNEnd(0, 3);
+	CHECK(editor.GetSelectionNStart(0) == 1);
+	CHECK(editor.GetSelectionNEnd(0) == 3);
+
+	// Temporary message path matches the named setters.
+	editor.WndProc(Message::SetSelectionNCaret, 1, 5);
+	CHECK(editor.GetSelectionNCaret(1) == 5);
+	CHECK(editor.WndProc(Message::GetSelectionNCaret, 1, 0) == 5);
 }
 
 TEST_CASE("RectangularSelectionModifier defaults to Alt and round-trips") {
 	TestHost host;
 	TestEditor editor(host);
-	CHECK(editor.WndProc(Message::GetRectangularSelectionModifier, 0, 0)
-		== static_cast<sptr_t>(KeyMod::Alt));
-	editor.WndProc(Message::SetRectangularSelectionModifier,
-		static_cast<uptr_t>(KeyMod::Ctrl), 0);
+	CHECK(editor.GetRectangularSelectionModifier() == KeyMod::Alt);
+	editor.SetRectangularSelectionModifier(KeyMod::Ctrl);
+	CHECK(editor.GetRectangularSelectionModifier() == KeyMod::Ctrl);
 	CHECK(editor.WndProc(Message::GetRectangularSelectionModifier, 0, 0)
 		== static_cast<sptr_t>(KeyMod::Ctrl));
 	editor.WndProc(Message::SetRectangularSelectionModifier,
 		static_cast<uptr_t>(KeyMod::Alt), 0);
-	CHECK(editor.WndProc(Message::GetRectangularSelectionModifier, 0, 0)
-		== static_cast<sptr_t>(KeyMod::Alt));
+	CHECK(editor.GetRectangularSelectionModifier() == KeyMod::Alt);
 }
 
 TEST_CASE("HideSelection toggles visibility flag") {

@@ -119,6 +119,26 @@ public:
 	using Editor::SearchText;
 	using Editor::SetSelectionMode;
 	using Editor::InsertCharacter;
+	using Editor::SetEmptySelection;
+	using Editor::SetMultipleSelection;
+	using Editor::SetSelection;
+	using Editor::AddSelection;
+	using Editor::SetSelectionNCaret;
+	using Editor::GetSelectionNCaret;
+	using Editor::SetSelectionNAnchor;
+	using Editor::GetSelectionNAnchor;
+	using Editor::SetSelectionNStart;
+	using Editor::GetSelectionNStart;
+	using Editor::SetSelectionNEnd;
+	using Editor::GetSelectionNEnd;
+	using Editor::SetRectangularSelectionModifier;
+	using Editor::GetRectangularSelectionModifier;
+	using Editor::TextHeightPixels;
+
+	// ReplaceTarget and its enum stay protected on Editor; thin public wrapper for tests.
+	Sci::Position ReplaceTargetBasic(std::string_view text) {
+		return Editor::ReplaceTarget(Editor::ReplaceType::basic, text);
+	}
 
 	// Expose private input operations only to the focused editor tests.
 	using Editor::AssignCmdKey;

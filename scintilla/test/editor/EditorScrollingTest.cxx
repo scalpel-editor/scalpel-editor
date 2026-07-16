@@ -78,6 +78,13 @@ TEST_CASE("X offset and first-visible-line message path round-trip") {
 	CHECK(editor.WndProc(Message::GetXOffset, 0, 0) == 12);
 	editor.WndProc(Message::SetXOffset, 0, 0);
 	CHECK(editor.GetXOffset() == 0);
+
+	// Named setters for application scroll ops (clamped when the buffer fits on screen).
+	editor.SetFirstVisibleLine(0);
+	CHECK(editor.GetFirstVisibleLine() == 0);
+	editor.LineScroll(0, 0);
+	editor.ScrollVertical(0, 0);
+	CHECK(editor.GetFirstVisibleLine() == 0);
 }
 
 TEST_CASE("Scroll width and end-at-last-line options") {
@@ -107,6 +114,6 @@ TEST_CASE("Scroll bar visibility options round-trip") {
 TEST_CASE("TextHeight reports a positive line height") {
 	TestHost host;
 	TestEditor editor(host);
-	const sptr_t h = editor.WndProc(Message::TextHeight, 0, 0);
-	CHECK(h > 0);
+	CHECK(editor.TextHeightPixels() > 0);
+	CHECK(editor.WndProc(Message::TextHeight, 0, 0) == editor.TextHeightPixels());
 }

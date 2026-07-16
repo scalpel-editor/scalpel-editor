@@ -71,7 +71,8 @@ TEST_CASE("Target range and SearchInTarget find text") {
 	TestEditor editor(host);
 	LoadClean(editor, "hello world hello");
 
-	editor.TargetWholeDocument();
+	editor.SetTargetStart(0);
+	editor.SetTargetEnd(editor.GetTextLength());
 	CHECK(editor.GetTargetStart() == 0);
 	CHECK(editor.GetTargetEnd() == editor.GetTextLength());
 
@@ -102,8 +103,12 @@ TEST_CASE("ReplaceTarget replaces the target range") {
 	LoadClean(editor, "one two three");
 	editor.SetTargetRange(4, 7);
 	CHECK(editor.GetTargetText() == "two");
-	editor.WndProc(Message::ReplaceTarget, 1, reinterpret_cast<sptr_t>("2"));
+	CHECK(editor.ReplaceTargetBasic("2") == 1);
 	CHECK(editor.GetText() == "one 2 three");
+	// Temporary message path matches the named operation.
+	editor.SetTargetRange(4, 5);
+	editor.WndProc(Message::ReplaceTarget, 3, reinterpret_cast<sptr_t>("two"));
+	CHECK(editor.GetText() == "one two three");
 }
 
 TEST_CASE("Search flags round-trip") {
