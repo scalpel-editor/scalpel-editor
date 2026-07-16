@@ -73,59 +73,7 @@ struct RangeToFormatFull {
 	CharacterRangeFull chrg;
 };
 
-struct NotifyHeader {
-	/* Compatible with Windows NMHDR.
-	 * hwndFrom is really an environment specific window handle or pointer
-	 * but most clients of Scintilla.h do not have this type visible. */
-	void *hwndFrom;
-	uptr_t idFrom;
-	Notification code;
-};
-
-struct NotificationData {
-	NotifyHeader nmhdr;
-	Position position;
-	/* SCN_STYLENEEDED, SCN_DOUBLECLICK, SCN_MODIFIED, SCN_MARGINCLICK, */
-	/* SCN_MARGINRIGHTCLICK, SCN_NEEDSHOWN, SCN_DWELLSTART, SCN_DWELLEND, */
-	/* SCN_CALLTIPCLICK, */
-	/* SCN_HOTSPOTCLICK, SCN_HOTSPOTDOUBLECLICK, SCN_HOTSPOTRELEASECLICK, */
-	/* SCN_INDICATORCLICK, SCN_INDICATORRELEASE, */
-	/* SCN_USERLISTSELECTION, SCN_AUTOCCOMPLETED, SCN_AUTOCSELECTION, */
-	/* SCN_AUTOCSELECTIONCHANGE */
-
-	int ch;
-	/* SCN_CHARADDED, SCN_KEY, SCN_AUTOCCOMPLETED, SCN_AUTOCSELECTION, */
-	/* SCN_USERLISTSELECTION */
-	KeyMod modifiers;
-	/* SCN_KEY, SCN_DOUBLECLICK, SCN_HOTSPOTCLICK, SCN_HOTSPOTDOUBLECLICK, */
-	/* SCN_HOTSPOTRELEASECLICK, SCN_INDICATORCLICK, SCN_INDICATORRELEASE, */
-	/* SCN_MARGINCLICK, SCN_MARGINRIGHTCLICK */
-
-	ModificationFlags modificationType;	/* SCN_MODIFIED */
-	const char *text;
-	/* SCN_MODIFIED, SCN_USERLISTSELECTION, SCN_URIDROPPED, */
-	/* SCN_AUTOCCOMPLETED, SCN_AUTOCSELECTION, SCN_AUTOCSELECTIONCHANGE */
-
-	Position length;		/* SCN_MODIFIED */
-	Position linesAdded;	/* SCN_MODIFIED */
-	// Former Message macro-record field; integer until phase 5 step 7 retypes notifications.
-	uptr_t message;
-	uptr_t wParam;	/* SCN_MACRORECORD / autocomplete packing */
-	sptr_t lParam;	/* SCN_MACRORECORD / autocomplete packing */
-	Position line;		/* SCN_MODIFIED */
-	FoldLevel foldLevelNow;	/* SCN_MODIFIED */
-	FoldLevel foldLevelPrev;	/* SCN_MODIFIED */
-	int margin;		/* SCN_MARGINCLICK, SCN_MARGINRIGHTCLICK */
-	int listType;	/* SCN_USERLISTSELECTION, SCN_AUTOCSELECTIONCHANGE */
-	int x;			/* SCN_DWELLSTART, SCN_DWELLEND */
-	int y;		/* SCN_DWELLSTART, SCN_DWELLEND */
-	int token;		/* SCN_MODIFIED with SC_MOD_CONTAINER */
-	Position annotationLinesAdded;	/* SCN_MODIFIED with SC_MOD_CHANGEANNOTATION */
-	Update updated;	/* SCN_UPDATEUI */
-	CompletionMethods listCompletionMethod;
-	/* SCN_AUTOCSELECTION, SCN_AUTOCCOMPLETED, SCN_USERLISTSELECTION */
-	CharacterSource characterSource;	/* SCN_CHARADDED */
-};
+// NotifyHeader and NotificationData moved to EditorNotifications.h (phase 5 step 7).
 
 }
 

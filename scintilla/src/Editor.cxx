@@ -1861,7 +1861,7 @@ void Editor::DelCharBack(bool allowLineStartDeletion) {
 
 void Editor::NotifyFocus(bool focus) {
 	NotificationData scn = {};
-	scn.nmhdr.code = focus ? Notification::FocusIn : Notification::FocusOut;
+	scn.code = focus ? Notification::FocusIn : Notification::FocusOut;
 	NotifyParent(scn);
 }
 
@@ -1869,7 +1869,7 @@ void Editor::NotifyFocus(bool focus) {
 // beginning of the line containing the current end-styled position.
 void Editor::NotifyStyleToNeeded(Sci::Position endStyleNeeded) {
 	NotificationData scn = {};
-	scn.nmhdr.code = Notification::StyleNeeded;
+	scn.code = Notification::StyleNeeded;
 	scn.position = endStyleNeeded;
 	NotifyParent(scn);
 }
@@ -1894,7 +1894,7 @@ void Editor::NotifyGroupCompleted(Document *, void *) noexcept {
 // direct, tentative, or completed IME input.
 void Editor::NotifyChar(int ch, CharacterSource charSource) {
 	NotificationData scn = {};
-	scn.nmhdr.code = Notification::CharAdded;
+	scn.code = Notification::CharAdded;
 	scn.ch = ch;
 	scn.characterSource = charSource;
 	NotifyParent(scn);
@@ -1905,12 +1905,12 @@ void Editor::NotifyChar(int ch, CharacterSource charSource) {
 void Editor::NotifySavePoint(bool isSavePoint) {
 	NotificationData scn = {};
 	if (isSavePoint) {
-		scn.nmhdr.code = Notification::SavePointReached;
+		scn.code = Notification::SavePointReached;
 		if (changeHistoryOption != ChangeHistoryOption::Disabled) {
 			Redraw();
 		}
 	} else {
-		scn.nmhdr.code = Notification::SavePointLeft;
+		scn.code = Notification::SavePointLeft;
 	}
 	NotifyParent(scn);
 }
@@ -1918,14 +1918,14 @@ void Editor::NotifySavePoint(bool isSavePoint) {
 // Report an attempted text change rejected because the document is read-only.
 void Editor::NotifyModifyAttempt() {
 	NotificationData scn = {};
-	scn.nmhdr.code = Notification::ModifyAttemptRO;
+	scn.code = Notification::ModifyAttemptRO;
 	NotifyParent(scn);
 }
 
 // DoubleClick reports the document position, its line, and the held modifiers.
 void Editor::NotifyDoubleClick(Point pt, KeyMod modifiers) {
 	NotificationData scn = {};
-	scn.nmhdr.code = Notification::DoubleClick;
+	scn.code = Notification::DoubleClick;
 	scn.line = LineFromLocation(pt);
 	scn.position = PositionFromLocation(pt, true);
 	scn.modifiers = modifiers;
@@ -1936,7 +1936,7 @@ void Editor::NotifyDoubleClick(Point pt, KeyMod modifiers) {
 // reports only the Ctrl modifier because that is all the mouse path preserves.
 void Editor::NotifyHotSpotDoubleClicked(Sci::Position position, KeyMod modifiers) {
 	NotificationData scn = {};
-	scn.nmhdr.code = Notification::HotSpotDoubleClick;
+	scn.code = Notification::HotSpotDoubleClick;
 	scn.position = position;
 	scn.modifiers = modifiers;
 	NotifyParent(scn);
@@ -1944,7 +1944,7 @@ void Editor::NotifyHotSpotDoubleClicked(Sci::Position position, KeyMod modifiers
 
 void Editor::NotifyHotSpotClicked(Sci::Position position, KeyMod modifiers) {
 	NotificationData scn = {};
-	scn.nmhdr.code = Notification::HotSpotClick;
+	scn.code = Notification::HotSpotClick;
 	scn.position = position;
 	scn.modifiers = modifiers;
 	NotifyParent(scn);
@@ -1952,7 +1952,7 @@ void Editor::NotifyHotSpotClicked(Sci::Position position, KeyMod modifiers) {
 
 void Editor::NotifyHotSpotReleaseClick(Sci::Position position, KeyMod modifiers) {
 	NotificationData scn = {};
-	scn.nmhdr.code = Notification::HotSpotReleaseClick;
+	scn.code = Notification::HotSpotReleaseClick;
 	scn.position = position;
 	scn.modifiers = modifiers;
 	NotifyParent(scn);
@@ -1963,7 +1963,7 @@ void Editor::NotifyHotSpotReleaseClick(Sci::Position position, KeyMod modifiers)
 bool Editor::NotifyUpdateUI() {
 	if (needUpdateUI != Update::None) {
 		NotificationData scn = {};
-		scn.nmhdr.code = Notification::UpdateUI;
+		scn.code = Notification::UpdateUI;
 		scn.updated = needUpdateUI;
 		NotifyParent(scn);
 		needUpdateUI = Update::None;
@@ -1974,7 +1974,7 @@ bool Editor::NotifyUpdateUI() {
 
 void Editor::NotifyPainted() {
 	NotificationData scn = {};
-	scn.nmhdr.code = Notification::Painted;
+	scn.code = Notification::Painted;
 	NotifyParent(scn);
 }
 
@@ -1985,7 +1985,7 @@ void Editor::NotifyIndicatorClick(bool click, Sci::Position position, KeyMod mod
 	if ((click && mask) || pdoc->decorations->ClickNotified()) {
 		NotificationData scn = {};
 		pdoc->decorations->SetClickNotified(click);
-		scn.nmhdr.code = click ? Notification::IndicatorClick : Notification::IndicatorRelease;
+		scn.code = click ? Notification::IndicatorClick : Notification::IndicatorRelease;
 		scn.modifiers = modifiers;
 		scn.position = position;
 		NotifyParent(scn);
@@ -2021,7 +2021,7 @@ bool Editor::NotifyMarginClick(Point pt, KeyMod modifiers) {
 			return true;
 		}
 		NotificationData scn = {};
-		scn.nmhdr.code = Notification::MarginClick;
+		scn.code = Notification::MarginClick;
 		scn.modifiers = modifiers;
 		scn.position = position;
 		scn.margin = marginClicked;
@@ -2036,7 +2036,7 @@ bool Editor::NotifyMarginRightClick(Point pt, KeyMod modifiers) {
 	if ((marginRightClicked >= 0) && vs.ms[marginRightClicked].sensitive) {
 		const Sci::Position position = pdoc->LineStart(LineFromLocation(pt));
 		NotificationData scn = {};
-		scn.nmhdr.code = Notification::MarginRightClick;
+		scn.code = Notification::MarginRightClick;
 		scn.modifiers = modifiers;
 		scn.position = position;
 		scn.margin = marginRightClicked;
@@ -2050,7 +2050,7 @@ bool Editor::NotifyMarginRightClick(Point pt, KeyMod modifiers) {
 // change affects text hidden by folding.
 void Editor::NotifyNeedShown(Sci::Position pos, Sci::Position len) {
 	NotificationData scn = {};
-	scn.nmhdr.code = Notification::NeedShown;
+	scn.code = Notification::NeedShown;
 	scn.position = pos;
 	scn.length = len;
 	NotifyParent(scn);
@@ -2060,7 +2060,7 @@ void Editor::NotifyNeedShown(Sci::Position pos, Sci::Position len) {
 // coordinates where the dwell began or ended.
 void Editor::NotifyDwelling(Point pt, bool state) {
 	NotificationData scn = {};
-	scn.nmhdr.code = state ? Notification::DwellStart : Notification::DwellEnd;
+	scn.code = state ? Notification::DwellStart : Notification::DwellEnd;
 	scn.position = PositionFromLocation(pt, true);
 	scn.x = static_cast<int>(pt.x + vs.ExternalMarginWidth());
 	scn.y = static_cast<int>(pt.y);
@@ -2070,7 +2070,7 @@ void Editor::NotifyDwelling(Point pt, bool state) {
 // Report a zoom change after the display scale has changed; there is no payload.
 void Editor::NotifyZoom() {
 	NotificationData scn = {};
-	scn.nmhdr.code = Notification::Zoom;
+	scn.code = Notification::Zoom;
 	NotifyParent(scn);
 }
 
@@ -2294,7 +2294,7 @@ void Editor::NotifyModified(Document *, DocModification mh, void *) {
 		// Modified reports what changed and whether it is before or after the change.
 		// The host must not modify the document while handling this notification.
 		NotificationData scn = {};
-		scn.nmhdr.code = Notification::Modified;
+		scn.code = Notification::Modified;
 		scn.position = mh.position;
 		scn.modificationType = mh.modificationType;
 		scn.text = mh.text;

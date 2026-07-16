@@ -9,6 +9,7 @@
 #define EDITOR_H
 
 #include "EditorCommands.h"
+#include "EditorNotifications.h"
 #include "EditorRecording.h"
 
 namespace Scintilla::Internal {

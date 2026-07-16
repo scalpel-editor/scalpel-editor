@@ -82,12 +82,6 @@ const T &As(const RecordedAction &action) {
 	return *value;
 }
 
-bool HasMacroRecord(const TestEditor &editor) {
-	return std::any_of(editor.observations.notifications.begin(),
-		editor.observations.notifications.end(),
-		[](const TestNotification &n) { return n.code == Notification::MacroRecord; });
-}
-
 }
 
 TEST_CASE("Recording host retains every RecordedAction alternative after callback return") {
@@ -250,7 +244,6 @@ TEST_CASE("Recordable commands are captured as typed actions while recording") {
 		EditorCommand::CharRight);
 	CHECK(As<RecordedCommand>(editor.observations.recordedActions[6]).Command() ==
 		EditorCommand::Paste);
-	CHECK_FALSE(HasMacroRecord(editor));
 }
 
 TEST_CASE("Non-recordable commands do not produce RecordedCommand values") {
@@ -336,7 +329,6 @@ TEST_CASE("Replay suppresses character capture during FormFeed command") {
 
 	CHECK(editor.Text() == "\f");
 	CHECK(editor.observations.recordedActions.empty());
-	CHECK_FALSE(HasMacroRecord(editor));
 }
 
 TEST_CASE("Nested replay keeps outer capture suppression active") {
@@ -406,7 +398,6 @@ TEST_CASE("Document text mutations are captured as typed actions while recording
 	CHECK(As<RecordedAppendText>(editor.observations.recordedActions[2]).text == "Z");
 	CHECK(As<RecordedReplaceSelection>(editor.observations.recordedActions[3]).text == "Q");
 	CHECK(std::holds_alternative<RecordedClearAll>(editor.observations.recordedActions[4]));
-	CHECK_FALSE(HasMacroRecord(editor));
 }
 
 TEST_CASE("Empty document text mutations still record the request") {
@@ -464,7 +455,6 @@ TEST_CASE("Goto and selection mode are captured as typed actions while recording
 	CHECK(As<RecordedGotoPos>(editor.observations.recordedActions[1]).position == 1);
 	CHECK(As<RecordedSetSelectionMode>(editor.observations.recordedActions[2]).mode ==
 		SelectionMode::Rectangle);
-	CHECK_FALSE(HasMacroRecord(editor));
 }
 
 TEST_CASE("Search anchor and parameterized search are captured while recording") {
@@ -492,7 +482,6 @@ TEST_CASE("Search anchor and parameterized search are captured while recording")
 	CHECK(searchPrev.direction == SearchDirection::Prev);
 	CHECK(searchPrev.flags == FindOption::MatchCase);
 	CHECK(searchPrev.text == "one");
-	CHECK_FALSE(HasMacroRecord(editor));
 }
 
 TEST_CASE("Search recording owns the needle after the original buffer is overwritten") {
@@ -574,7 +563,6 @@ TEST_CASE("Character insert is captured as RecordedReplaceSelection") {
 	CHECK(As<RecordedReplaceSelection>(editor.observations.recordedActions[0]).text == "Hi");
 	CHECK(As<RecordedReplaceSelection>(editor.observations.recordedActions[1]).text == "\xC3\xA9");
 	CHECK(As<RecordedReplaceSelection>(editor.observations.recordedActions[2]).text == "\x80");
-	CHECK_FALSE(HasMacroRecord(editor));
 	CHECK(editor.Text() == "Hi\xC3\xA9\x80");
 }
 
@@ -613,7 +601,6 @@ TEST_CASE("Newline records EOL bytes as replace-selection, not a command") {
 		recordedEol += As<RecordedReplaceSelection>(action).text;
 	}
 	CHECK(editor.Text() == "x" + recordedEol);
-	CHECK_FALSE(HasMacroRecord(editor));
 }
 
 TEST_CASE("Replay character and newline inserts on a fresh editor") {
@@ -706,8 +693,7 @@ TEST_CASE("Mixed parameterized capture replays on a fresh editor") {
 		CHECK(static_cast<SelectionMode>(fresh.GetSelectionMode()) == afterMode);
 		CHECK(fresh.observations.recordedActions.empty());
 		CHECK(fresh.IsRecording());
-		CHECK_FALSE(HasMacroRecord(fresh));
-	}
+		}
 }
 
 TEST_CASE("Constructed script of every RecordedAction alternative replays cleanly") {

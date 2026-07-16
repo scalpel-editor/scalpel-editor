@@ -119,7 +119,7 @@ void ScintillaBase::CallTipShow(Point pt, const char *defn) {
 // arrow, and 0 is the body. The host may use arrows to choose another overload.
 void ScintillaBase::CallTipClick() {
 	NotificationData scn = {};
-	scn.nmhdr.code = Notification::CallTipClick;
+	scn.code = Notification::CallTipClick;
 	scn.position = ct.clickPlace;
 	NotifyParent(scn);
 }

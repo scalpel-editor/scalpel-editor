@@ -428,8 +428,7 @@ void ScintillaBase::AutoCompleteStart(Sci::Position lenEntered, const char *list
 void ScintillaBase::AutoCompleteCancel() {
 	if (ac.Active()) {
 		NotificationData scn = {};
-		scn.nmhdr.code = Notification::AutoCCancelled;
-		scn.wParam = 0;
+		scn.code = Notification::AutoCCancelled;
 		scn.listType = 0;
 		NotifyParent(scn);
 	}
@@ -457,13 +456,10 @@ void ScintillaBase::AutoCompleteSelection() {
 	}
 
 	NotificationData scn = {};
-	scn.nmhdr.code = Notification::AutoCSelectionChange;
-	scn.message = 0;
-	scn.wParam = listType;
+	scn.code = Notification::AutoCSelectionChange;
 	scn.listType = listType;
 	const Sci::Position firstPos = ac.posStart - ac.startLen;
 	scn.position = firstPos;
-	scn.lParam = firstPos;
 	scn.text = selected.c_str();
 	NotifyParent(scn);
 }
@@ -488,8 +484,7 @@ void ScintillaBase::AutoCompleteCharacterDeleted() {
 		AutoCompleteMoveToCurrentWord();
 	}
 	NotificationData scn = {};
-	scn.nmhdr.code = Notification::AutoCCharDeleted;
-	scn.wParam = 0;
+	scn.code = Notification::AutoCCharDeleted;
 	scn.listType = 0;
 	NotifyParent(scn);
 }
@@ -498,14 +493,11 @@ void ScintillaBase::AutoCompleteCharacterDeleted() {
 // item and list start; ch and listCompletionMethod describe how it was accepted.
 void ScintillaBase::AutoCompleteNotifyCompleted(char ch, CompletionMethods completionMethod, Sci::Position firstPos, const char *text) {
 	NotificationData scn = {};
-	scn.nmhdr.code = Notification::AutoCCompleted;
-	scn.message = 0;
+	scn.code = Notification::AutoCCompleted;
 	scn.ch = ch;
 	scn.listCompletionMethod = completionMethod;
-	scn.wParam = listType;
 	scn.listType = listType;
 	scn.position = firstPos;
-	scn.lParam = firstPos;
 	scn.text = text;
 	NotifyParent(scn);
 }
@@ -523,15 +515,12 @@ void ScintillaBase::AutoCompleteCompleted(char ch, CompletionMethods completionM
 	ac.Show(false);
 
 	NotificationData scn = {};
-	scn.nmhdr.code = listType > 0 ? Notification::UserListSelection : Notification::AutoCSelection;
-	scn.message = 0;
+	scn.code = listType > 0 ? Notification::UserListSelection : Notification::AutoCSelection;
 	scn.ch = ch;
 	scn.listCompletionMethod = completionMethod;
-	scn.wParam = listType;
 	scn.listType = listType;
 	const Sci::Position firstPos = ac.posStart - ac.startLen;
 	scn.position = firstPos;
-	scn.lParam = firstPos;
 	scn.text = selected.c_str();
 	NotifyParent(scn);
 

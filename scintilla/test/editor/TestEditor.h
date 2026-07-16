@@ -14,12 +14,17 @@ struct TestNotification {
 	Scintilla::Notification code = Scintilla::Notification::StyleNeeded;
 	Sci::Position position = 0;
 	Sci::Position length = 0;
+	Sci::Position line = 0;
+	int ch = 0;
+	int margin = 0;
+	int listType = 0;
+	int x = 0;
+	int y = 0;
+	Scintilla::KeyMod modifiers = Scintilla::KeyMod::Norm;
 	Scintilla::ModificationFlags modificationType = Scintilla::ModificationFlags::None;
 	Scintilla::Update updated = Scintilla::Update::None;
-	// Residual packing fields until phase 5 step 7 retypes notifications.
-	Scintilla::uptr_t message = 0;
-	Scintilla::uptr_t wParam = 0;
-	Scintilla::sptr_t lParam = 0;
+	Scintilla::CompletionMethods listCompletionMethod{};
+	Scintilla::CharacterSource characterSource = Scintilla::CharacterSource::DirectInput;
 	std::string text;
 };
 

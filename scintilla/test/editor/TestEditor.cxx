@@ -386,26 +386,32 @@ void TestEditor::NotifyChange() {
 }
 
 void TestEditor::NotifyParent(Scintilla::NotificationData scn) {
-	if (scn.nmhdr.code == Scintilla::Notification::Modified &&
+	if (scn.code == Scintilla::Notification::Modified &&
 		observations.replayOnModified.has_value()) {
 		const RecordedAction nestedAction = std::move(*observations.replayOnModified);
 		observations.replayOnModified.reset();
 		ReplayRecordedAction(nestedAction);
 	}
-	if (scn.nmhdr.code == Scintilla::Notification::Modified &&
+	if (scn.code == Scintilla::Notification::Modified &&
 		FlagSet(scn.modificationType, Scintilla::ModificationFlags::InsertCheck) &&
 		observations.changeInsertionOnInsertCheck.has_value()) {
 		ChangeInsertion(*observations.changeInsertionOnInsertCheck);
 	}
 	TestNotification notification;
-	notification.code = scn.nmhdr.code;
+	notification.code = scn.code;
 	notification.position = scn.position;
 	notification.length = scn.length;
+	notification.line = scn.line;
+	notification.ch = scn.ch;
+	notification.margin = scn.margin;
+	notification.listType = scn.listType;
+	notification.x = scn.x;
+	notification.y = scn.y;
+	notification.modifiers = scn.modifiers;
 	notification.modificationType = scn.modificationType;
 	notification.updated = scn.updated;
-	notification.message = scn.message;
-	notification.wParam = scn.wParam;
-	notification.lParam = scn.lParam;
+	notification.listCompletionMethod = scn.listCompletionMethod;
+	notification.characterSource = scn.characterSource;
 	if (scn.text) {
 		if (scn.length > 0)
 			notification.text.assign(scn.text, static_cast<size_t>(scn.length));

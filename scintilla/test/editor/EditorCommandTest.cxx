@@ -289,11 +289,7 @@ TEST_CASE("Bound keyboard commands remain observable to macro recording") {
 		std::get_if<RecordedCommand>(&editor.observations.recordedActions[0]);
 	REQUIRE(command != nullptr);
 	CHECK(command->Command() == EditorCommand::CharRight);
-	// Commands no longer emit numeric SCN_MACRORECORD.
-	CHECK(std::none_of(editor.observations.notifications.begin(),
-		editor.observations.notifications.end(), [](const TestNotification &notification) {
-			return notification.code == Notification::MacroRecord;
-		}));
+	// Recording delivers only typed RecordedAction values, not notifications.
 }
 
 TEST_CASE("Unbound keys are not recorded as macro commands") {
@@ -307,10 +303,7 @@ TEST_CASE("Unbound keys are not recorded as macro commands") {
 
 	CHECK_FALSE(consumed);
 	CHECK(editor.observations.recordedActions.empty());
-	CHECK(std::none_of(editor.observations.notifications.begin(),
-		editor.observations.notifications.end(), [](const TestNotification &notification) {
-			return notification.code == Notification::MacroRecord;
-		}));
+	// Unbound keys leave both recorded actions and notifications untouched for recording.
 }
 
 TEST_CASE("SelectAll selects the whole document") {
