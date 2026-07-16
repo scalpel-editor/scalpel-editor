@@ -4543,13 +4543,14 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::GetSelText: {
-			const std::string text = GetSelText();
+			SelectionText selectedText;
+			CopySelectionRange(&selectedText);
 			if (lParam) {
 				char *ptr = CharPtrFromSPtr(lParam);
-				memcpy(ptr, text.data(), text.size());
-				ptr[text.size()] = '\0';
+				memcpy(ptr, selectedText.Data(), selectedText.Length());
+				ptr[selectedText.Length()] = '\0';
 			}
-			return text.size();
+			return selectedText.Length();
 	}
 
 	case Message::LineFromPosition:
