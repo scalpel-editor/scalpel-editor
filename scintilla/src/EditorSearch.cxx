@@ -76,6 +76,31 @@ using namespace Scintilla;
 using namespace Scintilla::Internal;
 
 
+// --- Selection replacement ---
+
+// Replace the main selection with text. One undo action. Moves the caret after
+// the insert and ensures it is visible.
+// When macro recording is on, emits RecordedReplaceSelection with owned text.
+void Editor::ReplaceSel(std::string_view text) {
+	EmitRecordedAction(RecordedReplaceSelection{std::string(text)});
+	UndoGroup ug(pdoc);
+	ClearSelection();
+	const Sci::Position lengthInserted = pdoc->InsertString(sel.MainCaret(), text);
+	SetEmptySelection(sel.MainCaret() + lengthInserted);
+	SetLastXChosen();
+	EnsureCaretVisible();
+}
+
+// Paste shape replacement of the selection as a rectangular paste of text.
+void Editor::ReplaceRectangular(std::string_view text) {
+	UndoGroup ug(pdoc);
+	if (!sel.Empty()) {
+		ClearSelection();
+	}
+	InsertPasteShape(text, PasteShape::rectangular);
+}
+
+
 // --- Target range and search (application + private) ---
 
 // Start of the search/replace target range (byte position).
@@ -145,30 +170,10 @@ FindOption Editor::GetSearchFlags() const noexcept {
 	return searchFlags;
 }
 
-// Replace the main selection with text. One undo action. Moves the caret after
-// the insert and ensures it is visible.
-// When macro recording is on, emits RecordedReplaceSelection with owned text.
-void Editor::ReplaceSel(std::string_view text) {
-	EmitRecordedAction(RecordedReplaceSelection{std::string(text)});
-	UndoGroup ug(pdoc);
-	ClearSelection();
-	const Sci::Position lengthInserted = pdoc->InsertString(sel.MainCaret(), text);
-	SetEmptySelection(sel.MainCaret() + lengthInserted);
-	SetLastXChosen();
-	EnsureCaretVisible();
-}
-
-// Paste shape replacement of the selection as a rectangular paste of text.
-void Editor::ReplaceRectangular(std::string_view text) {
-	UndoGroup ug(pdoc);
-	if (!sel.Empty()) {
-		ClearSelection();
-	}
-	InsertPasteShape(text, PasteShape::rectangular);
-}
-
-// Search for text inside the target using searchFlags.
-// On success moves the target to the match and returns the start position; on failure -1.
+// Search for text between the current target endpoints using searchFlags. A
+// target start before its end searches forward; the opposite order searches
+// backward. On success moves the target to the match and returns its start;
+// on failure returns -1.
 // Invalid regular expressions set Status::RegEx and return -1.
 Sci::Position Editor::SearchInTarget(std::string_view text) {
 	return SearchInTarget(text.data(), static_cast<Sci::Position>(text.size()));
