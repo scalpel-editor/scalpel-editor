@@ -13,29 +13,11 @@
 #define SCINTILLATYPES_H
 
 #include "EditorBasicTypes.h"
+#include "EditorDocumentTypes.h"
 
 namespace Scintilla {
 
 // Enumerations still pending move into concern headers (step 9 batches).
-
-enum class WhiteSpace {
-	Invisible = 0,
-	VisibleAlways = 1,
-	VisibleAfterIndent = 2,
-	VisibleOnlyInIndent = 3,
-};
-
-enum class TabDrawMode {
-	LongArrow = 0,
-	StrikeOut = 1,
-	ControlChar = 2,
-};
-
-enum class EndOfLine {
-	CrLf = 0,
-	Cr = 1,
-	Lf = 2,
-};
 
 enum class IMEInteraction {
 	Windowed = 0,
@@ -285,29 +267,6 @@ enum class PrintOption {
 	ScreenColours = 5,
 };
 
-enum class FindOption {
-	None = 0x0,
-	WholeWord = 0x2,
-	MatchCase = 0x4,
-	WordStart = 0x00100000,
-	RegExp = 0x00200000,
-	Posix = 0x00400000,
-	Cxx11RegEx = 0x00800000,
-};
-
-enum class ChangeHistoryOption {
-	Disabled = 0,
-	Enabled = 1,
-	Markers = 2,
-	Indicators = 4,
-};
-
-enum class UndoSelectionHistoryOption {
-	Disabled = 0,
-	Enabled = 1,
-	Scroll = 2,
-};
-
 enum class FoldLevel {
 	None = 0x0,
 	Base = 0x400,
@@ -344,13 +303,6 @@ enum class FoldFlag {
 	LineAfterContracted = 0x0010,
 	LevelNumbers = 0x0040,
 	LineState = 0x0080,
-};
-
-enum class IdleStyling {
-	None = 0,
-	ToVisible = 1,
-	AfterVisible = 2,
-	All = 3,
 };
 
 enum class Wrap {
@@ -424,21 +376,6 @@ enum class PopUp {
 	Text = 2,
 };
 
-enum class DocumentOption {
-	Default = 0,
-	StylesNone = 0x1,
-	TextLarge = 0x100,
-};
-
-enum class Status {
-	Ok = 0,
-	Failure = 1,
-	BadAlloc = 2,
-	OutsideDocument = 3,
-	WarnStart = 1000,
-	RegEx = 1001,
-};
-
 enum class VisiblePolicy {
 	Slop = 0x01,
 	Strict = 0x04,
@@ -503,21 +440,11 @@ enum class AnnotationVisible {
 	Indented = 3,
 };
 
-enum class UndoFlags {
-	None = 0,
-	MayCoalesce = 1,
-};
-
 enum class VirtualSpace {
 	None = 0,
 	RectangularSelection = 1,
 	UserAccessible = 2,
 	NoWrapLineStart = 4,
-};
-
-enum class LineEndType {
-	Default = 0,
-	Unicode = 1,
 };
 
 enum class RepresentationAppearance {
@@ -548,18 +475,6 @@ enum class Supports {
 	TranslucentStroke = 3,
 	PixelModification = 4,
 	ThreadSafeMeasureWidths = 5,
-};
-
-enum class LineCharacterIndexType {
-	None = 0,
-	Utf32 = 1,
-	Utf16 = 2,
-};
-
-enum class TypeProperty {
-	Boolean = 0,
-	Integer = 1,
-	String = 2,
 };
 
 enum class ModificationFlags {
@@ -675,15 +590,6 @@ inline int operator<<(int i, MarkerOutline marker) noexcept {
 	return i << static_cast<int>(marker);
 }
 
-constexpr FindOption operator|(FindOption a, FindOption b) noexcept {
-	return static_cast<FindOption>(static_cast<int>(a) | static_cast<int>(b));
-}
-
-inline FindOption &operator|=(FindOption &self, FindOption a) noexcept {
-	self = self | a;
-	return self;
-}
-
 constexpr FoldLevel operator&(FoldLevel lhs, FoldLevel rhs) noexcept {
 	return static_cast<FoldLevel>(static_cast<int>(lhs) & static_cast<int>(rhs));
 }
@@ -712,10 +618,6 @@ constexpr FontQuality operator&(FontQuality a, FontQuality b) noexcept {
 	return static_cast<FontQuality>(static_cast<int>(a) & static_cast<int>(b));
 }
 
-constexpr DocumentOption operator|(DocumentOption a, DocumentOption b) noexcept {
-	return static_cast<DocumentOption>(static_cast<int>(a) | static_cast<int>(b));
-}
-
 constexpr CaretPolicy operator|(CaretPolicy a, CaretPolicy b) noexcept {
 	return static_cast<CaretPolicy>(static_cast<int>(a) | static_cast<int>(b));
 }
@@ -728,16 +630,8 @@ constexpr CaretStyle operator&(CaretStyle a, CaretStyle b) noexcept {
 	return static_cast<CaretStyle>(static_cast<int>(a) & static_cast<int>(b));
 }
 
-constexpr LineEndType operator&(LineEndType a, LineEndType b) noexcept {
-	return static_cast<LineEndType>(static_cast<int>(a) & static_cast<int>(b));
-}
-
 constexpr RepresentationAppearance operator|(RepresentationAppearance a, RepresentationAppearance b) noexcept {
 	return static_cast<RepresentationAppearance>(static_cast<int>(a) | static_cast<int>(b));
-}
-
-constexpr LineCharacterIndexType operator|(LineCharacterIndexType a, LineCharacterIndexType b) noexcept {
-	return static_cast<LineCharacterIndexType>(static_cast<int>(a) | static_cast<int>(b));
 }
 
 constexpr ModificationFlags operator|(ModificationFlags a, ModificationFlags b) noexcept {
