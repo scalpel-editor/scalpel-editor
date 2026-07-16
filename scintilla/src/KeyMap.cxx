@@ -61,118 +61,120 @@ const std::map<KeyModifiers, EditorCommand> &KeyMap::GetKeyMap() const noexcept 
 #define OS_X_KEYS 0
 #endif
 
-// Define a modifier that is exactly Ctrl key on all platforms
-// Most uses of Ctrl map to Cmd on macOS but some can't so use SCI_[S]CTRL_META
-#if OS_X_KEYS
-#define SCI_CTRL_META SCI_META
-#define SCI_SCTRL_META (SCI_META | SCI_SHIFT)
-#else
-#define SCI_CTRL_META SCI_CTRL
-#define SCI_SCTRL_META (SCI_CTRL | SCI_SHIFT)
-#endif
-
 namespace {
 
 constexpr Keys Key(char ch) noexcept {
-    return static_cast<Keys>(ch);
+	return static_cast<Keys>(ch);
 }
+
+// Modifier that is exactly Ctrl on non-macOS platforms. Most Ctrl bindings
+// map to Cmd (Meta) on macOS; bindings that must stay Ctrl use KeyMod::Ctrl.
+#if OS_X_KEYS
+constexpr KeyMod CtrlOrMeta = KeyMod::Meta;
+constexpr KeyMod CtrlOrMetaShift = KeyMod::Meta | KeyMod::Shift;
+#else
+constexpr KeyMod CtrlOrMeta = KeyMod::Ctrl;
+constexpr KeyMod CtrlOrMetaShift = KeyMod::Ctrl | KeyMod::Shift;
+#endif
+
+constexpr KeyMod CtrlShift = KeyMod::Ctrl | KeyMod::Shift;
+constexpr KeyMod AltShift = KeyMod::Alt | KeyMod::Shift;
 
 }
 
 const KeyToCommand KeyMap::MapDefault[] = {
 
 #if OS_X_KEYS
-    {Keys::Down,		SCI_CTRL,	EditorCommand::DocumentEnd},
-    {Keys::Down,		SCI_CSHIFT,	EditorCommand::DocumentEndExtend},
-    {Keys::Up,		    SCI_CTRL,	EditorCommand::DocumentStart},
-    {Keys::Up,		    SCI_CSHIFT,	EditorCommand::DocumentStartExtend},
-    {Keys::Left,		SCI_CTRL,	EditorCommand::VCHome},
-    {Keys::Left,		SCI_CSHIFT,	EditorCommand::VCHomeExtend},
-    {Keys::Right,		SCI_CTRL,	EditorCommand::LineEnd},
-    {Keys::Right,		SCI_CSHIFT,	EditorCommand::LineEndExtend},
+	{Keys::Down,		KeyMod::Ctrl,	EditorCommand::DocumentEnd},
+	{Keys::Down,		CtrlShift,	EditorCommand::DocumentEndExtend},
+	{Keys::Up,		KeyMod::Ctrl,	EditorCommand::DocumentStart},
+	{Keys::Up,		CtrlShift,	EditorCommand::DocumentStartExtend},
+	{Keys::Left,		KeyMod::Ctrl,	EditorCommand::VCHome},
+	{Keys::Left,		CtrlShift,	EditorCommand::VCHomeExtend},
+	{Keys::Right,		KeyMod::Ctrl,	EditorCommand::LineEnd},
+	{Keys::Right,		CtrlShift,	EditorCommand::LineEndExtend},
 #endif
 
-    {Keys::Down,		SCI_NORM,	EditorCommand::LineDown},
-    {Keys::Down,		SCI_SHIFT,	EditorCommand::LineDownExtend},
-    {Keys::Down,		SCI_CTRL_META,	EditorCommand::LineScrollDown},
-    {Keys::Down,		SCI_ASHIFT,	EditorCommand::LineDownRectExtend},
-    {Keys::Up,		    SCI_NORM,	EditorCommand::LineUp},
-    {Keys::Up,			SCI_SHIFT,	EditorCommand::LineUpExtend},
-    {Keys::Up,			SCI_CTRL_META,	EditorCommand::LineScrollUp},
-    {Keys::Up,		    SCI_ASHIFT,	EditorCommand::LineUpRectExtend},
-    {Key('['),			SCI_CTRL,	EditorCommand::ParaUp},
-    {Key('['),			SCI_CSHIFT,	EditorCommand::ParaUpExtend},
-    {Key(']'),			SCI_CTRL,	EditorCommand::ParaDown},
-    {Key(']'),			SCI_CSHIFT,	EditorCommand::ParaDownExtend},
-    {Keys::Left,		SCI_NORM,	EditorCommand::CharLeft},
-    {Keys::Left,		SCI_SHIFT,	EditorCommand::CharLeftExtend},
-    {Keys::Left,		SCI_CTRL_META,	EditorCommand::WordLeft},
-    {Keys::Left,		SCI_SCTRL_META,	EditorCommand::WordLeftExtend},
-    {Keys::Left,		SCI_ASHIFT,	EditorCommand::CharLeftRectExtend},
-    {Keys::Right,		SCI_NORM,	EditorCommand::CharRight},
-    {Keys::Right,		SCI_SHIFT,	EditorCommand::CharRightExtend},
-    {Keys::Right,		SCI_CTRL_META,	EditorCommand::WordRight},
-    {Keys::Right,		SCI_SCTRL_META,	EditorCommand::WordRightExtend},
-    {Keys::Right,		SCI_ASHIFT,	EditorCommand::CharRightRectExtend},
-    {Key('/'),		    SCI_CTRL,	EditorCommand::WordPartLeft},
-    {Key('/'),		    SCI_CSHIFT,	EditorCommand::WordPartLeftExtend},
-    {Key('\\'),		    SCI_CTRL,	EditorCommand::WordPartRight},
-    {Key('\\'),		    SCI_CSHIFT,	EditorCommand::WordPartRightExtend},
-    {Keys::Home,		SCI_NORM,	EditorCommand::VCHome},
-    {Keys::Home, 		SCI_SHIFT, 	EditorCommand::VCHomeExtend},
-    {Keys::Home, 		SCI_CTRL, 	EditorCommand::DocumentStart},
-    {Keys::Home, 		SCI_CSHIFT, EditorCommand::DocumentStartExtend},
-    {Keys::Home, 		SCI_ALT, 	EditorCommand::HomeDisplay},
-    {Keys::Home,		SCI_ASHIFT,	EditorCommand::VCHomeRectExtend},
-    {Keys::End,	 	    SCI_NORM,	EditorCommand::LineEnd},
-    {Keys::End,	 	    SCI_SHIFT, 	EditorCommand::LineEndExtend},
-    {Keys::End, 		SCI_CTRL, 	EditorCommand::DocumentEnd},
-    {Keys::End, 		SCI_CSHIFT, EditorCommand::DocumentEndExtend},
-    {Keys::End, 		SCI_ALT, 	EditorCommand::LineEndDisplay},
-    {Keys::End,		    SCI_ASHIFT,	EditorCommand::LineEndRectExtend},
-    {Keys::Prior,		SCI_NORM,	EditorCommand::PageUp},
-    {Keys::Prior,		SCI_SHIFT, 	EditorCommand::PageUpExtend},
-    {Keys::Prior,		SCI_ASHIFT,	EditorCommand::PageUpRectExtend},
-    {Keys::Next, 		SCI_NORM, 	EditorCommand::PageDown},
-    {Keys::Next, 		SCI_SHIFT, 	EditorCommand::PageDownExtend},
-    {Keys::Next,		SCI_ASHIFT,	EditorCommand::PageDownRectExtend},
-    {Keys::Delete,      SCI_NORM,	EditorCommand::Clear},
-    {Keys::Delete, 	    SCI_SHIFT,	EditorCommand::Cut},
-    {Keys::Delete, 	    SCI_CTRL,	EditorCommand::DelWordRight},
-    {Keys::Delete,	    SCI_CSHIFT,	EditorCommand::DelLineRight},
-    {Keys::Insert, 		SCI_NORM,	EditorCommand::EditToggleOvertype},
-    {Keys::Insert, 		SCI_SHIFT,	EditorCommand::Paste},
-    {Keys::Insert, 		SCI_CTRL,	EditorCommand::Copy},
-    {Keys::Escape,  	SCI_NORM,	EditorCommand::Cancel},
-    {Keys::Back,		SCI_NORM, 	EditorCommand::DeleteBack},
-    {Keys::Back,		SCI_SHIFT, 	EditorCommand::DeleteBack},
-    {Keys::Back,		SCI_CTRL, 	EditorCommand::DelWordLeft},
-    {Keys::Back, 		SCI_ALT,	EditorCommand::Undo},
-    {Keys::Back,		SCI_CSHIFT,	EditorCommand::DelLineLeft},
-    {Key('Z'), 			SCI_CTRL,	EditorCommand::Undo},
+	{Keys::Down,		KeyMod::Norm,	EditorCommand::LineDown},
+	{Keys::Down,		KeyMod::Shift,	EditorCommand::LineDownExtend},
+	{Keys::Down,		CtrlOrMeta,	EditorCommand::LineScrollDown},
+	{Keys::Down,		AltShift,	EditorCommand::LineDownRectExtend},
+	{Keys::Up,		KeyMod::Norm,	EditorCommand::LineUp},
+	{Keys::Up,		KeyMod::Shift,	EditorCommand::LineUpExtend},
+	{Keys::Up,		CtrlOrMeta,	EditorCommand::LineScrollUp},
+	{Keys::Up,		AltShift,	EditorCommand::LineUpRectExtend},
+	{Key('['),		KeyMod::Ctrl,	EditorCommand::ParaUp},
+	{Key('['),		CtrlShift,	EditorCommand::ParaUpExtend},
+	{Key(']'),		KeyMod::Ctrl,	EditorCommand::ParaDown},
+	{Key(']'),		CtrlShift,	EditorCommand::ParaDownExtend},
+	{Keys::Left,		KeyMod::Norm,	EditorCommand::CharLeft},
+	{Keys::Left,		KeyMod::Shift,	EditorCommand::CharLeftExtend},
+	{Keys::Left,		CtrlOrMeta,	EditorCommand::WordLeft},
+	{Keys::Left,		CtrlOrMetaShift,	EditorCommand::WordLeftExtend},
+	{Keys::Left,		AltShift,	EditorCommand::CharLeftRectExtend},
+	{Keys::Right,		KeyMod::Norm,	EditorCommand::CharRight},
+	{Keys::Right,		KeyMod::Shift,	EditorCommand::CharRightExtend},
+	{Keys::Right,		CtrlOrMeta,	EditorCommand::WordRight},
+	{Keys::Right,		CtrlOrMetaShift,	EditorCommand::WordRightExtend},
+	{Keys::Right,		AltShift,	EditorCommand::CharRightRectExtend},
+	{Key('/'),		KeyMod::Ctrl,	EditorCommand::WordPartLeft},
+	{Key('/'),		CtrlShift,	EditorCommand::WordPartLeftExtend},
+	{Key('\\'),		KeyMod::Ctrl,	EditorCommand::WordPartRight},
+	{Key('\\'),		CtrlShift,	EditorCommand::WordPartRightExtend},
+	{Keys::Home,		KeyMod::Norm,	EditorCommand::VCHome},
+	{Keys::Home,		KeyMod::Shift,	EditorCommand::VCHomeExtend},
+	{Keys::Home,		KeyMod::Ctrl,	EditorCommand::DocumentStart},
+	{Keys::Home,		CtrlShift,	EditorCommand::DocumentStartExtend},
+	{Keys::Home,		KeyMod::Alt,	EditorCommand::HomeDisplay},
+	{Keys::Home,		AltShift,	EditorCommand::VCHomeRectExtend},
+	{Keys::End,		KeyMod::Norm,	EditorCommand::LineEnd},
+	{Keys::End,		KeyMod::Shift,	EditorCommand::LineEndExtend},
+	{Keys::End,		KeyMod::Ctrl,	EditorCommand::DocumentEnd},
+	{Keys::End,		CtrlShift,	EditorCommand::DocumentEndExtend},
+	{Keys::End,		KeyMod::Alt,	EditorCommand::LineEndDisplay},
+	{Keys::End,		AltShift,	EditorCommand::LineEndRectExtend},
+	{Keys::Prior,		KeyMod::Norm,	EditorCommand::PageUp},
+	{Keys::Prior,		KeyMod::Shift,	EditorCommand::PageUpExtend},
+	{Keys::Prior,		AltShift,	EditorCommand::PageUpRectExtend},
+	{Keys::Next,		KeyMod::Norm,	EditorCommand::PageDown},
+	{Keys::Next,		KeyMod::Shift,	EditorCommand::PageDownExtend},
+	{Keys::Next,		AltShift,	EditorCommand::PageDownRectExtend},
+	{Keys::Delete,		KeyMod::Norm,	EditorCommand::Clear},
+	{Keys::Delete,		KeyMod::Shift,	EditorCommand::Cut},
+	{Keys::Delete,		KeyMod::Ctrl,	EditorCommand::DelWordRight},
+	{Keys::Delete,		CtrlShift,	EditorCommand::DelLineRight},
+	{Keys::Insert,		KeyMod::Norm,	EditorCommand::EditToggleOvertype},
+	{Keys::Insert,		KeyMod::Shift,	EditorCommand::Paste},
+	{Keys::Insert,		KeyMod::Ctrl,	EditorCommand::Copy},
+	{Keys::Escape,		KeyMod::Norm,	EditorCommand::Cancel},
+	{Keys::Back,		KeyMod::Norm,	EditorCommand::DeleteBack},
+	{Keys::Back,		KeyMod::Shift,	EditorCommand::DeleteBack},
+	{Keys::Back,		KeyMod::Ctrl,	EditorCommand::DelWordLeft},
+	{Keys::Back,		KeyMod::Alt,	EditorCommand::Undo},
+	{Keys::Back,		CtrlShift,	EditorCommand::DelLineLeft},
+	{Key('Z'),		KeyMod::Ctrl,	EditorCommand::Undo},
 #if OS_X_KEYS
-    {Key('Z'), 			SCI_CSHIFT,	EditorCommand::Redo},
+	{Key('Z'),		CtrlShift,	EditorCommand::Redo},
 #else
-    {Key('Y'), 			SCI_CTRL,	EditorCommand::Redo},
+	{Key('Y'),		KeyMod::Ctrl,	EditorCommand::Redo},
 #endif
-    {Key('X'), 			SCI_CTRL,	EditorCommand::Cut},
-    {Key('C'), 			SCI_CTRL,	EditorCommand::Copy},
-    {Key('V'), 			SCI_CTRL,	EditorCommand::Paste},
-    {Key('A'), 			SCI_CTRL,	EditorCommand::SelectAll},
-    {Keys::Tab,		    SCI_NORM,	EditorCommand::Tab},
-    {Keys::Tab,		    SCI_SHIFT,	EditorCommand::BackTab},
-    {Keys::Return, 	    SCI_NORM,	EditorCommand::NewLine},
-    {Keys::Return, 	    SCI_SHIFT,	EditorCommand::NewLine},
-    {Keys::Add, 		SCI_CTRL,	EditorCommand::ZoomIn},
-    {Keys::Subtract,	SCI_CTRL,	EditorCommand::ZoomOut},
-    {Keys::Divide,	    SCI_CTRL,	EditorCommand::SetZoom},
-    {Key('L'), 			SCI_CTRL,	EditorCommand::LineCut},
-    {Key('L'), 			SCI_CSHIFT,	EditorCommand::LineDelete},
-    {Key('T'), 			SCI_CSHIFT,	EditorCommand::LineCopy},
-    {Key('T'), 			SCI_CTRL,	EditorCommand::LineTranspose},
-    {Key('D'), 			SCI_CTRL,	EditorCommand::SelectionDuplicate},
-    {Key('U'), 			SCI_CTRL,	EditorCommand::LowerCase},
-    {Key('U'), 			SCI_CSHIFT,	EditorCommand::UpperCase},
-    {Key(0),SCI_NORM,EditorCommand::None},
+	{Key('X'),		KeyMod::Ctrl,	EditorCommand::Cut},
+	{Key('C'),		KeyMod::Ctrl,	EditorCommand::Copy},
+	{Key('V'),		KeyMod::Ctrl,	EditorCommand::Paste},
+	{Key('A'),		KeyMod::Ctrl,	EditorCommand::SelectAll},
+	{Keys::Tab,		KeyMod::Norm,	EditorCommand::Tab},
+	{Keys::Tab,		KeyMod::Shift,	EditorCommand::BackTab},
+	{Keys::Return,		KeyMod::Norm,	EditorCommand::NewLine},
+	{Keys::Return,		KeyMod::Shift,	EditorCommand::NewLine},
+	{Keys::Add,		KeyMod::Ctrl,	EditorCommand::ZoomIn},
+	{Keys::Subtract,	KeyMod::Ctrl,	EditorCommand::ZoomOut},
+	{Keys::Divide,		KeyMod::Ctrl,	EditorCommand::SetZoom},
+	{Key('L'),		KeyMod::Ctrl,	EditorCommand::LineCut},
+	{Key('L'),		CtrlShift,	EditorCommand::LineDelete},
+	{Key('T'),		CtrlShift,	EditorCommand::LineCopy},
+	{Key('T'),		KeyMod::Ctrl,	EditorCommand::LineTranspose},
+	{Key('D'),		KeyMod::Ctrl,	EditorCommand::SelectionDuplicate},
+	{Key('U'),		KeyMod::Ctrl,	EditorCommand::LowerCase},
+	{Key('U'),		CtrlShift,	EditorCommand::UpperCase},
+	{Key(0),		KeyMod::Norm,	EditorCommand::None},
 };
-

@@ -12,15 +12,6 @@
 
 namespace Scintilla::Internal {
 
-#define SCI_NORM KeyMod::Norm
-#define SCI_SHIFT KeyMod::Shift
-#define SCI_CTRL KeyMod::Ctrl
-#define SCI_ALT KeyMod::Alt
-#define SCI_META KeyMod::Meta
-#define SCI_SUPER KeyMod::Super
-#define SCI_CSHIFT (KeyMod::Ctrl | KeyMod::Shift)
-#define SCI_ASHIFT (KeyMod::Alt | KeyMod::Shift)
-
 /**
  */
 class KeyModifiers {
