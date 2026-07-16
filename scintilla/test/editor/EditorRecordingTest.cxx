@@ -258,7 +258,7 @@ TEST_CASE("Recordable commands are captured as typed actions while recording") {
 		EditorCommand::Paste);
 }
 
-TEST_CASE("Non-recordable commands do not produce typed records") {
+TEST_CASE("Non-recordable commands do not produce RecordedCommand values") {
 	TestHost host;
 	TestEditor editor(host);
 	editor.SetText("ab");
@@ -266,15 +266,28 @@ TEST_CASE("Non-recordable commands do not produce typed records") {
 	editor.StartRecording();
 	editor.ClearObservations();
 
+	// Undo, redo, zoom, and parameterless SearchNext/Prev emit nothing.
 	editor.RunCommand(EditorCommand::Undo);
 	editor.RunCommand(EditorCommand::Redo);
-	editor.RunCommand(EditorCommand::NewLine);
 	editor.RunCommand(EditorCommand::ZoomIn);
-	editor.RunCommand(EditorCommand::SearchAnchor);
 	editor.RunCommand(EditorCommand::SearchNext);
 	editor.RunCommand(EditorCommand::SearchPrev);
-
 	CHECK(editor.observations.recordedActions.empty());
+
+	// SearchAnchor is not a RecordedCommand; it has a dedicated alternative.
+	editor.ClearObservations();
+	editor.RunCommand(EditorCommand::SearchAnchor);
+	REQUIRE(editor.observations.recordedActions.size() == 1);
+	CHECK(std::holds_alternative<RecordedSearchAnchor>(editor.observations.recordedActions[0]));
+
+	// NewLine is not a RecordedCommand; EOL bytes are stored as ReplaceSelection.
+	editor.ClearObservations();
+	editor.RunCommand(EditorCommand::NewLine);
+	REQUIRE_FALSE(editor.observations.recordedActions.empty());
+	for (const RecordedAction &action : editor.observations.recordedActions) {
+		CHECK(std::holds_alternative<RecordedReplaceSelection>(action));
+		CHECK_FALSE(std::holds_alternative<RecordedCommand>(action));
+	}
 }
 
 TEST_CASE("Commands are not captured when recording is off") {
@@ -649,6 +662,89 @@ TEST_CASE("Failed search still records the request") {
 	CHECK(pos == Sci::invalidPosition);
 	REQUIRE(editor.observations.recordedActions.size() == 2);
 	CHECK(As<RecordedSearch>(editor.observations.recordedActions[1]).text == "zzz");
+}
+
+TEST_CASE("Character insert is captured as RecordedReplaceSelection") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.SetText("");
+	editor.StartRecording();
+	editor.ClearObservations();
+
+	editor.InsertInput("Hi");
+	editor.InsertInput("\xC3\xA9");
+	{
+		std::string invalid = "\x80";
+		editor.InsertInput(invalid);
+		invalid[0] = 'Z';
+	}
+
+	REQUIRE(editor.observations.recordedActions.size() == 3);
+	CHECK(As<RecordedReplaceSelection>(editor.observations.recordedActions[0]).text == "Hi");
+	CHECK(As<RecordedReplaceSelection>(editor.observations.recordedActions[1]).text == "\xC3\xA9");
+	CHECK(As<RecordedReplaceSelection>(editor.observations.recordedActions[2]).text == "\x80");
+	CHECK_FALSE(HasMacroRecord(editor));
+	CHECK(editor.Text() == "Hi\xC3\xA9\x80");
+}
+
+TEST_CASE("Tentative IME input is not recorded") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.StartRecording();
+	editor.ClearObservations();
+
+	editor.InsertCharacter("ab", CharacterSource::TentativeInput);
+	CHECK(editor.observations.recordedActions.empty());
+	CHECK(editor.Text() == "ab");
+
+	editor.InsertCharacter("c", CharacterSource::DirectInput);
+	REQUIRE(editor.observations.recordedActions.size() == 1);
+	CHECK(As<RecordedReplaceSelection>(editor.observations.recordedActions[0]).text == "c");
+}
+
+TEST_CASE("Newline records EOL bytes as replace-selection, not a command") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.SetText("x");
+	editor.SetSel(1, 1);
+	editor.StartRecording();
+	editor.ClearObservations();
+
+	editor.RunCommand(EditorCommand::NewLine);
+
+	// NewLine is not a RecordedCommand; each EOL character is one ReplaceSelection.
+	REQUIRE_FALSE(editor.observations.recordedActions.empty());
+	for (const RecordedAction &action : editor.observations.recordedActions) {
+		CHECK(std::holds_alternative<RecordedReplaceSelection>(action));
+	}
+	std::string recordedEol;
+	for (const RecordedAction &action : editor.observations.recordedActions) {
+		recordedEol += As<RecordedReplaceSelection>(action).text;
+	}
+	CHECK(editor.Text() == "x" + recordedEol);
+	CHECK_FALSE(HasMacroRecord(editor));
+}
+
+TEST_CASE("Replay character and newline inserts on a fresh editor") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.StartRecording();
+	editor.ClearObservations();
+
+	editor.InsertInput("ab");
+	editor.RunCommand(EditorCommand::NewLine);
+	editor.InsertInput("c");
+	const std::vector<RecordedAction> recorded = editor.observations.recordedActions;
+	const std::string after = editor.Text();
+	REQUIRE_FALSE(recorded.empty());
+
+	editor.SetText("");
+	editor.ClearObservations();
+	editor.ReplayRecordedActions(recorded);
+
+	CHECK(editor.Text() == after);
+	CHECK(editor.observations.recordedActions.empty());
+	CHECK(editor.IsRecording());
 }
 
 TEST_CASE("Message path and named methods agree for search recording") {

@@ -1609,9 +1609,9 @@ void Editor::InsertCharacter(std::string_view sv, CharacterSource charSource) {
 	}
 	NotifyChar(ch, charSource);
 
-	if (recording && !replaying && charSource != CharacterSource::TentativeInput) {
-		std::string copy(sv); // ensure NUL-terminated
-		NotifyMacroRecord(Message::ReplaceSel, 0, SPtrFromPtr(copy.data()));
+	// Record committed and direct input as replace-selection; skip tentative IME.
+	if (charSource != CharacterSource::TentativeInput) {
+		EmitRecordedAction(RecordedReplaceSelection{std::string(sv)});
 	}
 }
 
@@ -2294,21 +2294,11 @@ void Editor::NotifyDeleted(Document *, void *) noexcept {
 }
 
 void Editor::NotifyMacroRecord(Message iMessage, uptr_t wParam, sptr_t lParam) {
-
-	// Temporary numeric path used only by InsertCharacter and NewLine, which
-	// still pass Message::ReplaceSel. All other parameterized ops are typed at
-	// named entry points. The WndProc front-hook is gone so message-path
-	// ReplaceSel is not double-recorded. Step 16 converts the insert sites next.
-	if (iMessage != Message::ReplaceSel) {
-		return;
-	}
-
-	NotificationData scn = {};
-	scn.nmhdr.code = Notification::MacroRecord;
-	scn.message = iMessage;
-	scn.wParam = wParam;
-	scn.lParam = lParam;
-	NotifyParent(scn);
+	// Unused: all recordable paths emit typed RecordedAction. Removed in the
+	// step-16 cleanup commit that deletes this function and MessageFromCommand.
+	(void)iMessage;
+	(void)wParam;
+	(void)lParam;
 }
 
 // Something has changed that the container should know about
@@ -2538,13 +2528,12 @@ void Editor::NewLine() {
 
 	// Perform notifications after all the changes as the application may change the
 	// selections in response to the characters.
+	// Newline is not a RecordedCommand; each EOL byte is stored as ReplaceSelection
+	// so replay inserts the same line ending bytes the document used.
 	for (size_t i = 0; i < countInsertions; i++) {
 		for (const char ch : eol) {
 			NotifyChar(ch, CharacterSource::DirectInput);
-			if (recording && !replaying) {
-				const char txt[2] = { ch, '\0' };
-				NotifyMacroRecord(Message::ReplaceSel, 0, SPtrFromPtr(txt));
-			}
+			EmitRecordedAction(RecordedReplaceSelection{std::string(1, ch)});
 		}
 	}
 
@@ -4316,11 +4305,6 @@ sptr_t Editor::BytesResult(Scintilla::sptr_t lParam, std::string_view sv) noexce
 
 sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 	//Platform::DebugPrintf("S start wnd proc %d %d %d\n",iMessage, wParam, lParam);
-
-	// Macro recording no longer hooks every message here. Commands are captured
-	// at ExecuteCommand; parameterized ops at their named entry points.
-	// InsertCharacter/NewLine still call NotifyMacroRecord directly until the
-	// next step-16 commit moves them to EmitRecordedAction.
 
 	switch (iMessage) {
 
