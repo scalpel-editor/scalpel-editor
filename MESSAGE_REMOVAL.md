@@ -338,7 +338,7 @@ Moved (2026-07-15): print settings and typed `FormatRange` live in `EditorPrinti
 
 ### Host and lifecycle (14)
 
-Moved (2026-07-15): modification-event filtering, command-event filtering, status reporting, and surface feature queries live in `EditorHost.cxx` with temporary `WndProc` forwarders; focused coverage is in `EditorHostTest.cxx`. Widget identifiers deleted (2026-07-15): `SetIdentifier` / `GetIdentifier` and `ctrlID` / `SetCtrlID` / `GetCtrlID` removed; notifications go to the single test host. Direct-call accessors deleted (2026-07-15): `GetDirectFunction` / `GetDirectStatusFunction` / `GetDirectPointer` never had core dispatch cases; API prose removed and fall-through tests pin the absence. Recording remains for steps 14-16.
+Moved (2026-07-15): modification-event filtering, command-event filtering, status reporting, and surface feature queries live in `EditorHost.cxx` with temporary `WndProc` forwarders; focused coverage is in `EditorHostTest.cxx`. Step 13 host and embedding deletions complete (2026-07-15): widget identifiers (`SetIdentifier` / `GetIdentifier`, `ctrlID` plumbing) and direct-call accessors (`GetDirectFunction` / `GetDirectStatusFunction` / `GetDirectPointer`) are deleted from dispatch and API prose; renderer-selection messages were already removed with styling. Fall-through and single-host notification coverage is in `EditorHostTest.cxx`. Recording remains for steps 14-16.
 
 | Entries | Owner | Classification | Target and named entry point | Focused test | Documentation | Deletion reason |
 | --- | --- | --- | --- | --- | --- | --- |
