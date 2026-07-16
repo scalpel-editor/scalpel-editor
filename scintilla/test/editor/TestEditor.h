@@ -15,6 +15,7 @@ struct TestNotification {
 	Sci::Position position = 0;
 	Sci::Position length = 0;
 	Sci::Position line = 0;
+	Sci::Position linesAdded = 0;
 	int ch = 0;
 	int margin = 0;
 	int listType = 0;
@@ -22,6 +23,10 @@ struct TestNotification {
 	int y = 0;
 	Scintilla::KeyMod modifiers = Scintilla::KeyMod::Norm;
 	Scintilla::ModificationFlags modificationType = Scintilla::ModificationFlags::None;
+	Scintilla::FoldLevel foldLevelNow{};
+	Scintilla::FoldLevel foldLevelPrev{};
+	int token = 0;
+	Sci::Position annotationLinesAdded = 0;
 	Scintilla::Update updated = Scintilla::Update::None;
 	Scintilla::CompletionMethods listCompletionMethod{};
 	Scintilla::CharacterSource characterSource = Scintilla::CharacterSource::DirectInput;
@@ -490,6 +495,7 @@ public:
 	using Editor::SetIMEInteraction;
 	using Editor::SetCommandEvents;
 	using Editor::SetModEventMask;
+	using Editor::AddUndoAction;
 	using Editor::SetMouseDownCaptures;
 	using Editor::SetMouseDwellTime;
 	using Editor::SetMouseWheelCaptures;

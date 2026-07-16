@@ -406,6 +406,7 @@ void TestEditor::NotifyParent(Scintilla::NotificationData scn) {
 	notification.position = scn.position;
 	notification.length = scn.length;
 	notification.line = scn.line;
+	notification.linesAdded = scn.linesAdded;
 	notification.ch = scn.ch;
 	notification.margin = scn.margin;
 	notification.listType = scn.listType;
@@ -413,6 +414,10 @@ void TestEditor::NotifyParent(Scintilla::NotificationData scn) {
 	notification.y = scn.y;
 	notification.modifiers = scn.modifiers;
 	notification.modificationType = scn.modificationType;
+	notification.foldLevelNow = scn.foldLevelNow;
+	notification.foldLevelPrev = scn.foldLevelPrev;
+	notification.token = scn.token;
+	notification.annotationLinesAdded = scn.annotationLinesAdded;
 	notification.updated = scn.updated;
 	notification.listCompletionMethod = scn.listCompletionMethod;
 	notification.characterSource = scn.characterSource;

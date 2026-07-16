@@ -729,16 +729,15 @@
     <code>scintilla/src/EditorHost.cxx</code>.</p>
 
     <p>This is not a multi-platform widget document: there is no Windows <code>WM_NOTIFY</code>,
-    GTK signal, or Cocoa delegate transport in this tree. Generated notification constants and the
-    <code>SCNotification</code> layout remain until phase 5 replaces them with project-owned types.
-    A separate <code>EditorNotifications.h</code> split is not part of phase 4; emission stays with
-    the shared editor shell and the concerns that raise each event.</p>
+    GTK signal, or Cocoa delegate transport in this tree. Project-owned notification kinds and the
+    flat host payload live in <code>scintilla/src/EditorNotifications.h</code>. The payload has no
+    Windows notification header or message-parameter packing fields.</p>
 
     <p>Deleted for this project:</p>
     <ul>
       <li><code>SCN_KEY</code> — no parent widget intercepts a numeric key notification; input uses the typed key and command path.</li>
       <li><code>SCN_URIDROPPED</code> — no URI drag-target host path.</li>
-      <li>Production <code>SCN_MACRORECORD</code> — recording uses the typed <code>RecordedAction</code> callback in <code>EditorRecording.h</code> / <code>EditorRecording.cxx</code>; generated constants remain until phase 5.</li>
+      <li>Production <code>SCN_MACRORECORD</code> — recording uses the typed <code>RecordedAction</code> callback in <code>EditorRecording.h</code> / <code>EditorRecording.cxx</code>; there is no macro-record notification kind.</li>
     </ul>
 
     <p>Retained event names (style needed, character added, save point, modified, update UI, margin click,

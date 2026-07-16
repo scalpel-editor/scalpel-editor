@@ -76,6 +76,15 @@ const TestNotification *FindNotification(const TestEditor &editor, Notification 
 	return nullptr;
 }
 
+const TestNotification *FindModified(const TestEditor &editor, ModificationFlags flags) {
+	const auto it = std::find_if(editor.observations.notifications.begin(), editor.observations.notifications.end(),
+		[flags](const TestNotification &notification) {
+			return notification.code == Notification::Modified &&
+				FlagSet(notification.modificationType, flags);
+		});
+	return it == editor.observations.notifications.end() ? nullptr : &*it;
+}
+
 bool HasNotification(const TestEditor &editor, Notification code) {
 	return FindNotification(editor, code) != nullptr;
 }
@@ -398,21 +407,60 @@ TEST_CASE("Autocomplete notification kinds") {
 	CHECK(editor.Text() == "keep");
 }
 
-TEST_CASE("Modified carries modification flags and text payload") {
+TEST_CASE("Modified carries text and line payload") {
 	TestHost host;
 	TestEditor editor(host);
 	LoadClean(editor, "ab");
 	editor.ClearObservations();
-	editor.InsertInput("X");
-	const TestNotification *n = nullptr;
-	for (const TestNotification &notification : editor.observations.notifications) {
-		if (notification.code == Notification::Modified &&
-			FlagSet(notification.modificationType, ModificationFlags::InsertText)) {
-			n = &notification;
-			break;
-		}
-	}
+	editor.InsertInput("X\n");
+	const TestNotification *n = FindModified(editor, ModificationFlags::InsertText);
 	REQUIRE(n != nullptr);
-	CHECK(n->text == "X");
-	CHECK(n->length == 1);
+	CHECK(n->text == "X\n");
+	CHECK(n->length == 2);
+	CHECK(n->linesAdded == 1);
+	CHECK(n->line == 0);
+}
+
+TEST_CASE("Modified carries fold levels") {
+	TestHost host;
+	TestEditor editor(host);
+	LoadClean(editor, "line\n");
+	const FoldLevel previous = editor.GetFoldLevel(0);
+	const FoldLevel current = static_cast<FoldLevel>(
+		static_cast<int>(FoldLevel::Base) | static_cast<int>(FoldLevel::HeaderFlag));
+
+	editor.ClearObservations();
+	editor.SetFoldLevel(0, current);
+	const TestNotification *n = FindModified(editor, ModificationFlags::ChangeFold);
+	REQUIRE(n != nullptr);
+	CHECK(n->line == 0);
+	CHECK(n->foldLevelNow == current);
+	CHECK(n->foldLevelPrev == previous);
+}
+
+TEST_CASE("Modified carries annotation line change") {
+	TestHost host;
+	TestEditor editor(host);
+	LoadClean(editor, "line\n");
+
+	editor.ClearObservations();
+	editor.AnnotationSetText(0, "first\nsecond");
+	const TestNotification *n = FindModified(editor, ModificationFlags::ChangeAnnotation);
+	REQUIRE(n != nullptr);
+	CHECK(n->line == 0);
+	CHECK(n->annotationLinesAdded == 2);
+}
+
+TEST_CASE("Modified returns container action token on undo") {
+	TestHost host;
+	TestEditor editor(host);
+	LoadClean(editor, "");
+	editor.AddUndoAction(73, false);
+
+	editor.ClearObservations();
+	editor.RunCommand(EditorCommand::Undo);
+	const TestNotification *n = FindModified(editor, ModificationFlags::Container);
+	REQUIRE(n != nullptr);
+	CHECK(FlagSet(n->modificationType, ModificationFlags::Undo));
+	CHECK(n->token == 73);
 }
