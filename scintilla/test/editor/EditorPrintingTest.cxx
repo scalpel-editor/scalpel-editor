@@ -88,16 +88,11 @@ TEST_CASE("FormatRange measures without drawing and returns a position") {
 	TestEditor editor(host);
 	editor.SetText("hello\nworld\n");
 
-	// Use the test main window address as a stand-in SurfaceID for AutoSurface.
-	RangeToFormatFull fr{};
-	fr.hdc = static_cast<SurfaceID>(&host.mainWindow);
-	fr.hdcTarget = fr.hdc;
-	fr.rc = {0, 0, 400, 200};
-	fr.rcPage = fr.rc;
-	fr.chrg.cpMin = 0;
-	fr.chrg.cpMax = editor.GetTextLength();
+	// Stand-in SurfaceID from the test main window for AutoSurface.
+	const SurfaceID sid = static_cast<SurfaceID>(&host.mainWindow);
+	const PRectangle rc = PRectangle::FromInts(0, 0, 400, 200);
 
-	const Sci::Position next = editor.FormatRange(false, fr);
+	const Sci::Position next = editor.FormatRange(false, 0, editor.GetTextLength(), rc, sid, sid);
 	// Measurement should advance past some or all of the document.
 	CHECK(next > 0);
 	CHECK(next <= editor.GetTextLength());

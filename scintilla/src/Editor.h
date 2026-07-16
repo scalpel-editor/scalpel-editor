@@ -1256,7 +1256,11 @@ public:
 	Scintilla::PrintOption GetPrintColourMode() const noexcept;
 	void SetPrintWrapMode(Scintilla::Wrap wrapMode);
 	Scintilla::Wrap GetPrintWrapMode() const noexcept;
-	Sci::Position FormatRange(bool draw, const Scintilla::RangeToFormatFull &fr);
+	// Measure or draw [cpMin, cpMax) into rc on hdc / hdcTarget. Returns the next
+	// document position after the formatted page. When draw is false, only
+	// measurement runs (for pagination).
+	Sci::Position FormatRange(bool draw, Sci::Position cpMin, Sci::Position cpMax,
+		PRectangle rc, SurfaceID hdc, SurfaceID hdcTarget);
 
 	// Macro recording lifecycle, host sink, and replay; EditorRecording.cxx.
 	void StartRecording() noexcept;

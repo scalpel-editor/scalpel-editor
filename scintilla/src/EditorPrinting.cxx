@@ -6,10 +6,10 @@
  ** Print magnification scales the view styles for output. Colour mode chooses
  ** how colours are rendered for monochrome or colour devices. Print wrap mode
  ** is Word or None for the print layout (independent of the screen wrap mode).
- ** FormatRange measures or draws a character range into a rectangle on a
+ ** FormatRange measures or draws a document byte range into a rectangle on a
  ** pair of surfaces (draw and measure); the return value is the next document
- ** position after the formatted page. FormatRangeFull is deleted: use the typed
- ** FormatRange with native positions.
+ ** position after the formatted page. Positions are Sci::Position; the
+ ** rectangle is PRectangle; surface handles are Platform SurfaceID values.
  **/
 // Copyright 1998-2011 by Neil Hodgson <neilh@scintilla.org>
 // The License.txt file describes the conditions under which this software may be distributed.
@@ -108,16 +108,14 @@ Wrap Editor::GetPrintWrapMode() const noexcept {
 	return view.printParameters.wrapState;
 }
 
-// Measure or draw a character range into fr.rc on fr.hdc / fr.hdcTarget.
-// Returns the next document position after the formatted area. When draw is
-// false, only measurement is performed (for pagination).
 // This is mostly copied from the Paint path but omits margin markers,
 // selection, and caret. An enabled line-number margin is printed.
-Sci::Position Editor::FormatRange(bool draw, const RangeToFormatFull &fr) {
-	AutoSurface surface(fr.hdc, this, Technology::Default);
-	AutoSurface surfaceMeasure(fr.hdcTarget, this, Technology::Default);
+Sci::Position Editor::FormatRange(bool draw, Sci::Position cpMin, Sci::Position cpMax,
+	PRectangle rc, SurfaceID hdc, SurfaceID hdcTarget) {
+	AutoSurface surface(hdc, this, Technology::Default);
+	AutoSurface surfaceMeasure(hdcTarget, this, Technology::Default);
 	if (!surface || !surfaceMeasure) {
 		return 0;
 	}
-	return view.FormatRange(draw, fr.chrg, fr.rc, surface, surfaceMeasure, *this, vs);
+	return view.FormatRange(draw, cpMin, cpMax, rc, surface, surfaceMeasure, *this, vs);
 }

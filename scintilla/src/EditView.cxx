@@ -2666,10 +2666,17 @@ void EditView::PaintText(Surface *surfaceWindow, const EditModel &model, const V
 // Space (3 space characters) between line numbers and text when printing.
 #define lineNumberPrintSpace "   "
 
-Sci::Position EditView::FormatRange(bool draw, CharacterRangeFull chrg, Rectangle rc, Surface *surface, Surface *surfaceMeasure,
-	const EditModel &model, const ViewStyle &vs) {
+Sci::Position EditView::FormatRange(bool draw, Sci::Position cpMin, Sci::Position cpMax, PRectangle rc,
+	Surface *surface, Surface *surfaceMeasure, const EditModel &model, const ViewStyle &vs) {
 	// Can't use measurements cached for screen
 	posCache->Clear();
+
+	// Integer pixel edges match the former client Rectangle path so pagination
+	// line-height division and advances stay whole pixels.
+	const int rcLeft = static_cast<int>(rc.left);
+	const int rcTop = static_cast<int>(rc.top);
+	const int rcRight = static_cast<int>(rc.right);
+	const int rcBottom = static_cast<int>(rc.bottom);
 
 	ViewStyle vsPrint(vs);
 	vsPrint.technology = Technology::Default;
@@ -2740,13 +2747,13 @@ Sci::Position EditView::FormatRange(bool draw, CharacterRangeFull chrg, Rectangl
 		1u << static_cast<unsigned int>(MarkerOutline::HistoryRevertedToModified);
 	vsPrint.maskInLine &= ~changeMarkers;
 
-	const int linesInArea = (rc.bottom - rc.top) / vsPrint.lineHeight;
-	const Sci::Line linePrintStart = model.pdoc->SciLineFromPosition(chrg.cpMin);
-	const Sci::Line linePrintMax = model.pdoc->SciLineFromPosition(chrg.cpMax);
+	const int linesInArea = (rcBottom - rcTop) / vsPrint.lineHeight;
+	const Sci::Line linePrintStart = model.pdoc->SciLineFromPosition(cpMin);
+	const Sci::Line linePrintMax = model.pdoc->SciLineFromPosition(cpMax);
 	const Sci::Line linePrintLast = std::min(std::max(linePrintStart + linesInArea - 1, linePrintStart), linePrintMax);
 
 	//Platform::DebugPrintf("Formatting lines=[%0d,%0d,%0d] top=%0d bottom=%0d line=%0d %0d\n",
-	//      linePrintStart, linePrintLast, linePrintMax, rc.top, rc.bottom, vsPrint.lineHeight,
+	//      linePrintStart, linePrintLast, linePrintMax, rcTop, rcBottom, vsPrint.lineHeight,
 	//      surfaceMeasure->Height(vsPrint.styles[StyleLineNumber].font));
 	Sci::Position endPosPrint = model.pdoc->Length();
 	if (linePrintLast < model.pdoc->LinesTotal())
@@ -2755,20 +2762,20 @@ Sci::Position EditView::FormatRange(bool draw, CharacterRangeFull chrg, Rectangl
 	// Ensure we are styled to where we are formatting.
 	model.pdoc->EnsureStyledTo(endPosPrint);
 
-	const int xOrigin = vsPrint.fixedColumnWidth + rc.left;
-	int ypos = rc.top;
+	const int xOrigin = vsPrint.fixedColumnWidth + rcLeft;
+	int ypos = rcTop;
 
 	Sci::Line lineDoc = linePrintStart;
 
-	Sci::Position nPrintPos = chrg.cpMin;
+	Sci::Position nPrintPos = cpMin;
 	int lineVisible = 0;
-	int widthPrint = rc.right - rc.left - vsPrint.fixedColumnWidth;
+	int widthPrint = rcRight - rcLeft - vsPrint.fixedColumnWidth;
 	if (printParameters.wrapState == Wrap::None)
 		widthPrint = LineLayout::wrapWidthInfinite;
 
-	while (lineDoc <= linePrintLast && ypos < rc.bottom) {
+	while (lineDoc <= linePrintLast && ypos < rcBottom) {
 
-		// When printing, the hdc and hdcTarget may be the same, so
+		// When printing, the draw and measure surfaces may share a handle, so
 		// changing the state of surfaceMeasure may change the underlying
 		// state of surface. Therefore, any cached state is discarded before
 		// using each surface.
@@ -2782,9 +2789,9 @@ Sci::Position EditView::FormatRange(bool draw, CharacterRangeFull chrg, Rectangl
 		ll.containsCaret = false;
 
 		PRectangle rcLine = PRectangle::FromInts(
-			rc.left,
+			rcLeft,
 			ypos,
-			rc.right - 1,
+			rcRight - 1,
 			ypos + vsPrint.lineHeight);
 
 		// When document line is wrapped over multiple display lines, find where
@@ -2805,7 +2812,7 @@ Sci::Position EditView::FormatRange(bool draw, CharacterRangeFull chrg, Rectangl
 		}
 
 		if (draw && lineNumberWidth &&
-			(ypos + vsPrint.lineHeight <= rc.bottom) &&
+			(ypos + vsPrint.lineHeight <= rcBottom) &&
 			(lineVisible >= 0)) {
 			const std::string number = std::to_string(lineDoc + 1) + lineNumberPrintSpace;
 			PRectangle rcNumber = rcLine;
@@ -2824,7 +2831,7 @@ Sci::Position EditView::FormatRange(bool draw, CharacterRangeFull chrg, Rectangl
 		surface->FlushCachedState();
 
 		for (int iwl = 0; iwl < ll.lines; iwl++) {
-			if (ypos + vsPrint.lineHeight <= rc.bottom) {
+			if (ypos + vsPrint.lineHeight <= rcBottom) {
 				if (lineVisible >= 0) {
 					if (draw) {
 						rcLine.top = static_cast<XYPOSITION>(ypos);
