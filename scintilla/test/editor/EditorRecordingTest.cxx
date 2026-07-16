@@ -83,6 +83,12 @@ const T &As(const RecordedAction &action) {
 	return *value;
 }
 
+bool HasMacroRecord(const TestEditor &editor) {
+	return std::any_of(editor.observations.notifications.begin(),
+		editor.observations.notifications.end(),
+		[](const TestNotification &n) { return n.code == Notification::MacroRecord; });
+}
+
 }
 
 TEST_CASE("Recording host retains every RecordedAction alternative after callback return") {
@@ -363,7 +369,7 @@ TEST_CASE("Replay restores command sequence without recursive recording") {
 	CHECK(editor.IsRecording());
 }
 
-TEST_CASE("Replay suppresses temporary numeric character capture") {
+TEST_CASE("Replay suppresses character capture during FormFeed command") {
 	TestHost host;
 	TestEditor editor(host);
 	editor.StartRecording();
@@ -373,10 +379,7 @@ TEST_CASE("Replay suppresses temporary numeric character capture") {
 
 	CHECK(editor.Text() == "\f");
 	CHECK(editor.observations.recordedActions.empty());
-	CHECK(std::none_of(editor.observations.notifications.begin(),
-		editor.observations.notifications.end(), [](const TestNotification &notification) {
-			return notification.code == Notification::MacroRecord;
-		}));
+	CHECK_FALSE(HasMacroRecord(editor));
 }
 
 TEST_CASE("Nested replay keeps outer capture suppression active") {
@@ -423,16 +426,6 @@ TEST_CASE("Stop recording ends further command capture") {
 	editor.RunCommand(EditorCommand::CharLeft);
 
 	CHECK(editor.observations.recordedActions.empty());
-}
-
-namespace {
-
-bool HasMacroRecord(const TestEditor &editor) {
-	return std::any_of(editor.observations.notifications.begin(),
-		editor.observations.notifications.end(),
-		[](const TestNotification &n) { return n.code == Notification::MacroRecord; });
-}
-
 }
 
 TEST_CASE("Document text mutations are captured as typed actions while recording") {
@@ -786,5 +779,183 @@ TEST_CASE("Message path and named methods agree for search recording") {
 		CHECK(As<RecordedSearch>(editor.observations.recordedActions[1]).text ==
 			As<RecordedSearch>(viaNamed[1]).text);
 		CHECK_FALSE(HasMacroRecord(editor));
+	}
+}
+
+TEST_CASE("Mixed parameterized capture replays on a fresh editor") {
+	std::vector<RecordedAction> recorded;
+	std::string afterText;
+	Sci::Position afterPos = 0;
+	SelectionMode afterMode = SelectionMode::Stream;
+
+	{
+		TestHost host;
+		TestEditor editor(host);
+		editor.StartRecording();
+		editor.ClearObservations();
+
+		editor.ClearAll();
+		editor.AddText("one two");
+		editor.InsertText(0, "X");
+		editor.AppendText("!");
+		editor.GotoPos(2);
+		editor.ReplaceSel("Y");
+		editor.GotoLine(0);
+		editor.RunCommand(EditorCommand::CharRight);
+		editor.SearchAnchor();
+		const char needle[] = "two";
+		editor.SearchText(EditorCommand::SearchNext, 0, reinterpret_cast<sptr_t>(needle));
+		editor.SetSelectionMode(static_cast<uptr_t>(SelectionMode::Stream), true);
+		editor.InsertInput("z");
+
+		recorded = editor.observations.recordedActions;
+		afterText = editor.Text();
+		afterPos = editor.CurrentPos();
+		afterMode = static_cast<SelectionMode>(editor.WndProc(Message::GetSelectionMode, 0, 0));
+	}
+
+	// Every production alternative should appear at least once in this script.
+	REQUIRE(std::any_of(recorded.begin(), recorded.end(),
+		[](const RecordedAction &a) { return std::holds_alternative<RecordedClearAll>(a); }));
+	REQUIRE(std::any_of(recorded.begin(), recorded.end(),
+		[](const RecordedAction &a) { return std::holds_alternative<RecordedAddText>(a); }));
+	REQUIRE(std::any_of(recorded.begin(), recorded.end(),
+		[](const RecordedAction &a) { return std::holds_alternative<RecordedInsertText>(a); }));
+	REQUIRE(std::any_of(recorded.begin(), recorded.end(),
+		[](const RecordedAction &a) { return std::holds_alternative<RecordedAppendText>(a); }));
+	REQUIRE(std::any_of(recorded.begin(), recorded.end(),
+		[](const RecordedAction &a) { return std::holds_alternative<RecordedGotoPos>(a); }));
+	REQUIRE(std::any_of(recorded.begin(), recorded.end(),
+		[](const RecordedAction &a) { return std::holds_alternative<RecordedReplaceSelection>(a); }));
+	REQUIRE(std::any_of(recorded.begin(), recorded.end(),
+		[](const RecordedAction &a) { return std::holds_alternative<RecordedGotoLine>(a); }));
+	REQUIRE(std::any_of(recorded.begin(), recorded.end(),
+		[](const RecordedAction &a) { return std::holds_alternative<RecordedCommand>(a); }));
+	REQUIRE(std::any_of(recorded.begin(), recorded.end(),
+		[](const RecordedAction &a) { return std::holds_alternative<RecordedSearchAnchor>(a); }));
+	REQUIRE(std::any_of(recorded.begin(), recorded.end(),
+		[](const RecordedAction &a) { return std::holds_alternative<RecordedSearch>(a); }));
+	REQUIRE(std::any_of(recorded.begin(), recorded.end(),
+		[](const RecordedAction &a) { return std::holds_alternative<RecordedSetSelectionMode>(a); }));
+
+	{
+		TestHost host;
+		TestEditor fresh(host);
+		fresh.StartRecording();
+		fresh.ClearObservations();
+		fresh.ReplayRecordedActions(recorded);
+
+		CHECK(fresh.Text() == afterText);
+		CHECK(fresh.CurrentPos() == afterPos);
+		CHECK(static_cast<SelectionMode>(fresh.WndProc(Message::GetSelectionMode, 0, 0)) == afterMode);
+		CHECK(fresh.observations.recordedActions.empty());
+		CHECK(fresh.IsRecording());
+		CHECK_FALSE(HasMacroRecord(fresh));
+	}
+}
+
+TEST_CASE("Constructed script of every RecordedAction alternative replays cleanly") {
+	const std::vector<RecordedAction> script = {
+		RecordedClearAll{},
+		RecordedAddText{"alpha beta"},
+		RecordedInsertText{0, "Z"},
+		RecordedAppendText{"!"},
+		RecordedGotoPos{1},
+		RecordedReplaceSelection{"Q"},
+		RecordedGotoLine{0},
+		RecordedCommand{EditorCommand::CharRight},
+		RecordedSearchAnchor{},
+		RecordedSearch{SearchDirection::Next, FindOption::None, "beta"},
+		RecordedSetSelectionMode{SelectionMode::Stream},
+		RecordedReplaceSelection{"x"},
+	};
+
+	TestHost host;
+	TestEditor editor(host);
+	editor.StartRecording();
+	editor.ClearObservations();
+	editor.ReplayRecordedActions(script);
+
+	// Replay must not re-record even while recording is on.
+	CHECK(editor.observations.recordedActions.empty());
+	CHECK(editor.Text().find('!') != std::string::npos);
+	// Search selected "beta"; final replace-selection overwrites that match with "x".
+	CHECK(editor.Text().find("beta") == std::string::npos);
+	CHECK(editor.Text().find('x') != std::string::npos);
+	CHECK(editor.Text().find("ZQalpha") != std::string::npos);
+}
+
+TEST_CASE("Message path mixed script matches named capture for replay") {
+	std::vector<RecordedAction> viaNamed;
+	std::string namedText;
+	Sci::Position namedPos = 0;
+	{
+		TestHost host;
+		TestEditor editor(host);
+		editor.SetText("seed");
+		editor.SetSel(0, 0);
+		editor.StartRecording();
+		editor.ClearObservations();
+		editor.AddText("A");
+		editor.GotoPos(0);
+		editor.InsertText(1, "B");
+		editor.AppendText("C");
+		editor.SearchAnchor();
+		const char needle[] = "B";
+		editor.SearchText(EditorCommand::SearchNext, 0, reinterpret_cast<sptr_t>(needle));
+		editor.ReplaceSel("D");
+		viaNamed = editor.observations.recordedActions;
+		namedText = editor.Text();
+		namedPos = editor.CurrentPos();
+	}
+	std::vector<RecordedAction> viaMessage;
+	std::string messageText;
+	Sci::Position messagePos = 0;
+	{
+		TestHost host;
+		TestEditor editor(host);
+		editor.SetText("seed");
+		editor.SetSel(0, 0);
+		editor.StartRecording();
+		editor.ClearObservations();
+		const char a[] = "A";
+		editor.WndProc(Message::AddText, 1, reinterpret_cast<sptr_t>(a));
+		editor.WndProc(Message::GotoPos, 0, 0);
+		const char b[] = "B";
+		editor.WndProc(Message::InsertText, 1, reinterpret_cast<sptr_t>(b));
+		const char c[] = "C";
+		editor.WndProc(Message::AppendText, 1, reinterpret_cast<sptr_t>(c));
+		editor.WndProc(Message::SearchAnchor, 0, 0);
+		const char needle[] = "B";
+		editor.WndProc(Message::SearchNext, 0, reinterpret_cast<sptr_t>(needle));
+		const char d[] = "D";
+		editor.WndProc(Message::ReplaceSel, 0, reinterpret_cast<sptr_t>(d));
+		viaMessage = editor.observations.recordedActions;
+		messageText = editor.Text();
+		messagePos = editor.CurrentPos();
+		CHECK_FALSE(HasMacroRecord(editor));
+	}
+
+	REQUIRE(viaNamed.size() == viaMessage.size());
+	CHECK(namedText == messageText);
+	CHECK(namedPos == messagePos);
+
+	std::string namedReplayText;
+	Sci::Position namedReplayPos = 0;
+	{
+		TestHost host;
+		TestEditor namedReplay(host);
+		namedReplay.SetText("seed");
+		namedReplay.ReplayRecordedActions(viaNamed);
+		namedReplayText = namedReplay.Text();
+		namedReplayPos = namedReplay.CurrentPos();
+	}
+	{
+		TestHost host;
+		TestEditor messageReplay(host);
+		messageReplay.SetText("seed");
+		messageReplay.ReplayRecordedActions(viaMessage);
+		CHECK(namedReplayText == messageReplay.Text());
+		CHECK(namedReplayPos == messageReplay.CurrentPos());
 	}
 }
