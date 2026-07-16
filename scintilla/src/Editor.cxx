@@ -202,7 +202,8 @@ Editor::Editor() : durationWrapOneByte(0.000001, 0.00000001, 0.00001) {
 
 	pdoc->AddWatcher(this, nullptr);
 
-	recordingMacro = false;
+	recording = false;
+	replaying = false;
 	foldAutomatic = AutomaticFold::None;
 
 	insideWrapScroll = false;
@@ -1608,7 +1609,7 @@ void Editor::InsertCharacter(std::string_view sv, CharacterSource charSource) {
 	}
 	NotifyChar(ch, charSource);
 
-	if (recordingMacro && charSource != CharacterSource::TentativeInput) {
+	if (recording && charSource != CharacterSource::TentativeInput) {
 		std::string copy(sv); // ensure NUL-terminated
 		NotifyMacroRecord(Message::ReplaceSel, 0, SPtrFromPtr(copy.data()));
 	}
@@ -2294,126 +2295,27 @@ void Editor::NotifyDeleted(Document *, void *) noexcept {
 
 void Editor::NotifyMacroRecord(Message iMessage, uptr_t wParam, sptr_t lParam) {
 
-	// Enumerates all macroable messages
+	// Temporary numeric path for parameterized recordable ops only. Zero-arg
+	// commands are captured at ExecuteCommand as typed RecordedCommand (step 15).
+	// Step 16 moves the remaining cases onto named entry points and deletes this.
 	switch (iMessage) {
-	case Message::Cut:
-	case Message::Copy:
-	case Message::Paste:
-	case Message::Clear:
 	case Message::ReplaceSel:
 	case Message::AddText:
 	case Message::InsertText:
 	case Message::AppendText:
 	case Message::ClearAll:
-	case Message::SelectAll:
 	case Message::GotoLine:
 	case Message::GotoPos:
 	case Message::SearchAnchor:
 	case Message::SearchNext:
 	case Message::SearchPrev:
-	case Message::LineDown:
-	case Message::LineDownExtend:
-	case Message::ParaDown:
-	case Message::ParaDownExtend:
-	case Message::LineUp:
-	case Message::LineUpExtend:
-	case Message::ParaUp:
-	case Message::ParaUpExtend:
-	case Message::CharLeft:
-	case Message::CharLeftExtend:
-	case Message::CharRight:
-	case Message::CharRightExtend:
-	case Message::WordLeft:
-	case Message::WordLeftExtend:
-	case Message::WordRight:
-	case Message::WordRightExtend:
-	case Message::WordPartLeft:
-	case Message::WordPartLeftExtend:
-	case Message::WordPartRight:
-	case Message::WordPartRightExtend:
-	case Message::WordLeftEnd:
-	case Message::WordLeftEndExtend:
-	case Message::WordRightEnd:
-	case Message::WordRightEndExtend:
-	case Message::Home:
-	case Message::HomeExtend:
-	case Message::LineEnd:
-	case Message::LineEndExtend:
-	case Message::HomeWrap:
-	case Message::HomeWrapExtend:
-	case Message::LineEndWrap:
-	case Message::LineEndWrapExtend:
-	case Message::DocumentStart:
-	case Message::DocumentStartExtend:
-	case Message::DocumentEnd:
-	case Message::DocumentEndExtend:
-	case Message::StutteredPageUp:
-	case Message::StutteredPageUpExtend:
-	case Message::StutteredPageDown:
-	case Message::StutteredPageDownExtend:
-	case Message::PageUp:
-	case Message::PageUpExtend:
-	case Message::PageDown:
-	case Message::PageDownExtend:
-	case Message::EditToggleOvertype:
-	case Message::Cancel:
-	case Message::DeleteBack:
-	case Message::Tab:
-	case Message::LineIndent:
-	case Message::BackTab:
-	case Message::LineDedent:
-	case Message::FormFeed:
-	case Message::VCHome:
-	case Message::VCHomeExtend:
-	case Message::VCHomeWrap:
-	case Message::VCHomeWrapExtend:
-	case Message::VCHomeDisplay:
-	case Message::VCHomeDisplayExtend:
-	case Message::DelWordLeft:
-	case Message::DelWordRight:
-	case Message::DelWordRightEnd:
-	case Message::DelLineLeft:
-	case Message::DelLineRight:
-	case Message::LineCopy:
-	case Message::LineCut:
-	case Message::LineDelete:
-	case Message::LineTranspose:
-	case Message::LineReverse:
-	case Message::LineDuplicate:
-	case Message::LowerCase:
-	case Message::UpperCase:
-	case Message::LineScrollDown:
-	case Message::LineScrollUp:
-	case Message::DeleteBackNotLine:
-	case Message::HomeDisplay:
-	case Message::HomeDisplayExtend:
-	case Message::LineEndDisplay:
-	case Message::LineEndDisplayExtend:
 	case Message::SetSelectionMode:
-	case Message::LineDownRectExtend:
-	case Message::LineUpRectExtend:
-	case Message::CharLeftRectExtend:
-	case Message::CharRightRectExtend:
-	case Message::HomeRectExtend:
-	case Message::VCHomeRectExtend:
-	case Message::LineEndRectExtend:
-	case Message::PageUpRectExtend:
-	case Message::PageDownRectExtend:
-	case Message::SelectionDuplicate:
-	case Message::CopyAllowLine:
-	case Message::CutAllowLine:
-	case Message::VerticalCentreCaret:
-	case Message::MoveSelectedLinesUp:
-	case Message::MoveSelectedLinesDown:
-	case Message::ScrollToStart:
-	case Message::ScrollToEnd:
 		break;
 
-		// Filter out all others like display changes. Also, newlines are redundant
-		// with char insert messages.
+		// Filter out commands (typed path), display changes, and newlines
+		// (redundant with char insert as ReplaceSel).
 	case Message::NewLine:
 	default:
-		//		printf("Filtered out %ld of macro recording\n", iMessage);
 		return;
 	}
 
@@ -2656,7 +2558,7 @@ void Editor::NewLine() {
 	for (size_t i = 0; i < countInsertions; i++) {
 		for (const char ch : eol) {
 			NotifyChar(ch, CharacterSource::DirectInput);
-			if (recordingMacro) {
+			if (recording) {
 				const char txt[2] = { ch, '\0' };
 				NotifyMacroRecord(Message::ReplaceSel, 0, SPtrFromPtr(txt));
 			}
@@ -3233,8 +3135,7 @@ int Editor::KeyDownWithModifiers(Keys key, KeyMod modifiers, bool *consumed) {
 	if (command != EditorCommand::None) {
 		if (consumed)
 			*consumed = true;
-		if (recordingMacro)
-			NotifyMacroRecord(MessageFromCommand(command), 0, 0);
+		// Command capture is at ExecuteCommand as typed RecordedCommand.
 		return ExecuteCommand(command);
 	}
 	if (consumed)
@@ -4433,8 +4334,9 @@ sptr_t Editor::BytesResult(Scintilla::sptr_t lParam, std::string_view sv) noexce
 sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 	//Platform::DebugPrintf("S start wnd proc %d %d %d\n",iMessage, wParam, lParam);
 
-	// Optional macro recording hook
-	if (recordingMacro)
+	// Optional macro recording hook (parameterized ops until step 16).
+	// Zero-arg commands are captured at ExecuteCommand as typed actions.
+	if (recording)
 		NotifyMacroRecord(iMessage, wParam, lParam);
 
 	switch (iMessage) {
@@ -6259,11 +6161,11 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return GetRepresentationColour(ConstCharPtrFromUPtr(wParam));
 
 	case Message::StartRecord:
-		recordingMacro = true;
+		StartRecording();
 		return 0;
 
 	case Message::StopRecord:
-		recordingMacro = false;
+		StopRecording();
 		return 0;
 
 	case Message::MoveCaretInsideView:

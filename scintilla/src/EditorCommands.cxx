@@ -68,6 +68,7 @@
 #include "MarginView.h"
 #include "EditView.h"
 #include "Editor.h"
+#include "EditorRecording.h"
 #include "ElapsedPeriod.h"
 
 using namespace Scintilla;
@@ -322,6 +323,13 @@ EditorCommand CommandFromMessage(Message message) noexcept {
 } // namespace Scintilla::Internal
 
 int Editor::ExecuteCommand(EditorCommand command) {
+	// Capture bindable commands as typed RecordedCommand while recording.
+	// Autocomplete/call-tip interception in ScintillaBase never reaches here
+	// for keys it consumes, so those do not produce records.
+	if (IsRecordableCommand(command)) {
+		EmitRecordedAction(RecordedCommand{command});
+	}
+
 	switch (command) {
 	case EditorCommand::LineDown:
 		CursorUpOrDown(1, Selection::SelTypes::none);

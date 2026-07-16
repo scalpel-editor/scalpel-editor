@@ -9,6 +9,7 @@
 #define EDITOR_H
 
 #include "EditorCommands.h"
+#include "EditorRecording.h"
 
 namespace Scintilla::Internal {
 
@@ -280,7 +281,10 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 
 	Sci::Position searchAnchor;
 
-	bool recordingMacro;
+	// Macro recording state; lifecycle and emit live in EditorRecording.cxx.
+	bool recording = false;
+	bool replaying = false;
+	RecordingCallback recordingCallback;
 
 	Scintilla::AutomaticFold foldAutomatic;
 
@@ -780,7 +784,12 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void NotifyStyleNeeded(Document *doc, void *userData, Sci::Position endStyleNeeded) override;
 	void NotifyErrorOccurred(Document *doc, void *userData, Scintilla::Status status) override;
 	void NotifyGroupCompleted(Document *, void *) noexcept override;
+	// Temporary numeric macro path for parameterized ops until step 16.
 	void NotifyMacroRecord(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
+	// Deliver one owned action to the host when recording and not replaying.
+	void EmitRecordedAction(const RecordedAction &action);
+	// Apply one action through named editor operations (used by replay).
+	void ApplyRecordedAction(const RecordedAction &action);
 
 	void ContainerNeedsUpdate(Scintilla::Update flags) noexcept;
 	void PageMove(int direction, Selection::SelTypes selt=Selection::SelTypes::none, bool stuttered = false);
@@ -1293,6 +1302,14 @@ public:
 	void SetPrintWrapMode(Scintilla::Wrap wrapMode);
 	Scintilla::Wrap GetPrintWrapMode() const noexcept;
 	Sci::Position FormatRange(bool draw, const Scintilla::RangeToFormatFull &fr);
+
+	// Macro recording lifecycle, host sink, and replay; EditorRecording.cxx.
+	void StartRecording() noexcept;
+	void StopRecording() noexcept;
+	bool IsRecording() const noexcept;
+	void SetRecordingCallback(RecordingCallback callback);
+	void ReplayRecordedAction(const RecordedAction &action);
+	void ReplayRecordedActions(const std::vector<RecordedAction> &actions);
 
 	// Public so scintilla_send_message can use it.
 	virtual Scintilla::sptr_t WndProc(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);

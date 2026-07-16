@@ -94,11 +94,18 @@ public:
 	TestEditorSnapshot Snapshot() const;
 
 	// Typed recording host surface. Appends a full copy of the action so text
-	// remains available after the RecordingCallback returns. Production
-	// recording still uses SCN_MACRORECORD until steps 15–16; tests call this
-	// (or the callback below) to exercise the contract in isolation.
+	// remains available after the RecordingCallback returns. The constructor
+	// installs MakeRecordingCallback as the production sink so StartRecording
+	// delivers into observations.recordedActions.
 	void OnRecordedAction(const RecordedAction &action);
 	RecordingCallback MakeRecordingCallback();
+
+	using Editor::StartRecording;
+	using Editor::StopRecording;
+	using Editor::IsRecording;
+	using Editor::SetRecordingCallback;
+	using Editor::ReplayRecordedAction;
+	using Editor::ReplayRecordedActions;
 
 	// Expose private input operations only to the focused editor tests.
 	using Editor::AssignCmdKey;

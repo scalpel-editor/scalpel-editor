@@ -81,6 +81,8 @@ bool TestEditorSnapshot::operator==(const TestEditorSnapshot &other) const noexc
 TestEditor::TestEditor(TestHost &host_, PRectangle clientRectangle) : host(host_) {
 	host.mainWindow.rect = clientRectangle;
 	wMain = static_cast<WindowID>(&host.mainWindow);
+	// Production capture delivers typed actions here while recording is on.
+	SetRecordingCallback(MakeRecordingCallback());
 }
 
 TestEditor::~TestEditor() {

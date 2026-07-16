@@ -47,6 +47,7 @@ add_library(scintilla_core STATIC
   src/EditorMargins.cxx
   src/EditorMarkers.cxx
   src/EditorPrinting.cxx
+  src/EditorRecording.cxx
   src/EditorScrolling.cxx
   src/EditorSearch.cxx
   src/EditorSelection.cxx

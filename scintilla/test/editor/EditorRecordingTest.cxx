@@ -1,8 +1,6 @@
 // scalpel-editor test code
 /** @file EditorRecordingTest.cxx
- ** Contract tests for typed RecordedAction ownership and the test host sink.
- ** Production capture still uses the numeric path until phase 4 steps 15–16;
- ** these cases exercise the type and host surface in isolation.
+ ** Typed recording contract, lifecycle, command capture, and replay tests.
  **/
 
 #include <algorithm>
@@ -189,10 +187,191 @@ TEST_CASE("ClearObservations drops retained recorded actions") {
 TEST_CASE("Without a recording sink the observation list stays empty") {
 	TestHost host;
 	TestEditor editor(host);
+	// Drop the constructor-installed sink so emit has nowhere to go.
+	editor.SetRecordingCallback({});
+	editor.StartRecording();
+	editor.ClearObservations();
 
-	// Construct actions without delivering them to the host.
-	const RecordedAction unused = RecordedCommand{EditorCommand::LineDown};
-	(void)unused;
+	editor.RunCommand(EditorCommand::LineDown);
+
+	CHECK(editor.observations.recordedActions.empty());
+}
+
+TEST_CASE("Recording lifecycle defaults, start, stop, and nested start") {
+	TestHost host;
+	TestEditor editor(host);
+
+	CHECK_FALSE(editor.IsRecording());
+
+	editor.StartRecording();
+	CHECK(editor.IsRecording());
+
+	// Nested start stays recording.
+	editor.StartRecording();
+	CHECK(editor.IsRecording());
+
+	editor.StopRecording();
+	CHECK_FALSE(editor.IsRecording());
+}
+
+TEST_CASE("Message start/stop forwarders match named lifecycle methods") {
+	TestHost host;
+	TestEditor editor(host);
+
+	editor.WndProc(Message::StartRecord, 0, 0);
+	CHECK(editor.IsRecording());
+
+	editor.WndProc(Message::StopRecord, 0, 0);
+	CHECK_FALSE(editor.IsRecording());
+}
+
+TEST_CASE("Recordable commands are captured as typed actions while recording") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.SetText("hello");
+	editor.SetSel(0, 0);
+	editor.StartRecording();
+	editor.ClearObservations();
+
+	editor.RunCommand(EditorCommand::CharRight);
+	editor.RunCommand(EditorCommand::CharRightExtend);
+	editor.RunCommand(EditorCommand::DeleteBack);
+	editor.RunCommand(EditorCommand::SelectAll);
+	editor.RunCommand(EditorCommand::Copy);
+	editor.RunCommand(EditorCommand::CharRight);
+	editor.RunCommand(EditorCommand::Paste);
+
+	REQUIRE(editor.observations.recordedActions.size() == 7);
+	CHECK(As<RecordedCommand>(editor.observations.recordedActions[0]).Command() ==
+		EditorCommand::CharRight);
+	CHECK(As<RecordedCommand>(editor.observations.recordedActions[1]).Command() ==
+		EditorCommand::CharRightExtend);
+	CHECK(As<RecordedCommand>(editor.observations.recordedActions[2]).Command() ==
+		EditorCommand::DeleteBack);
+	CHECK(As<RecordedCommand>(editor.observations.recordedActions[3]).Command() ==
+		EditorCommand::SelectAll);
+	CHECK(As<RecordedCommand>(editor.observations.recordedActions[4]).Command() ==
+		EditorCommand::Copy);
+	CHECK(As<RecordedCommand>(editor.observations.recordedActions[5]).Command() ==
+		EditorCommand::CharRight);
+	CHECK(As<RecordedCommand>(editor.observations.recordedActions[6]).Command() ==
+		EditorCommand::Paste);
+}
+
+TEST_CASE("Non-recordable commands do not produce typed records") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.SetText("ab");
+	editor.SetSel(2, 2);
+	editor.StartRecording();
+	editor.ClearObservations();
+
+	editor.RunCommand(EditorCommand::Undo);
+	editor.RunCommand(EditorCommand::Redo);
+	editor.RunCommand(EditorCommand::NewLine);
+	editor.RunCommand(EditorCommand::ZoomIn);
+	editor.RunCommand(EditorCommand::SearchAnchor);
+	editor.RunCommand(EditorCommand::SearchNext);
+	editor.RunCommand(EditorCommand::SearchPrev);
+
+	CHECK(editor.observations.recordedActions.empty());
+}
+
+TEST_CASE("Commands are not captured when recording is off") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.SetText("x");
+	editor.ClearObservations();
+
+	editor.RunCommand(EditorCommand::CharRight);
+
+	CHECK(editor.observations.recordedActions.empty());
+}
+
+TEST_CASE("Message path and ExecuteCommand agree for recorded CharRight") {
+	EditorCommand directCommand = EditorCommand::None;
+	{
+		TestHost host;
+		TestEditor direct(host);
+		direct.SetText("ab");
+		direct.SetSel(0, 0);
+		direct.StartRecording();
+		direct.ClearObservations();
+		direct.RunCommand(EditorCommand::CharRight);
+		REQUIRE(direct.observations.recordedActions.size() == 1);
+		directCommand = As<RecordedCommand>(direct.observations.recordedActions[0]).Command();
+	}
+	{
+		TestHost host;
+		TestEditor viaMessage(host);
+		viaMessage.SetText("ab");
+		viaMessage.SetSel(0, 0);
+		viaMessage.StartRecording();
+		viaMessage.ClearObservations();
+		viaMessage.WndProc(Message::CharRight, 0, 0);
+		REQUIRE(viaMessage.observations.recordedActions.size() == 1);
+		CHECK(As<RecordedCommand>(viaMessage.observations.recordedActions[0]).Command() ==
+			directCommand);
+		// Message path must not also emit numeric macro for the command.
+		CHECK(std::none_of(viaMessage.observations.notifications.begin(),
+			viaMessage.observations.notifications.end(), [](const TestNotification &n) {
+				return n.code == Notification::MacroRecord;
+			}));
+	}
+}
+
+TEST_CASE("Replay restores command sequence without recursive recording") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.SetText("abcd");
+	editor.SetSel(0, 0);
+	editor.StartRecording();
+	editor.ClearObservations();
+
+	editor.RunCommand(EditorCommand::CharRight);
+	editor.RunCommand(EditorCommand::CharRight);
+	editor.RunCommand(EditorCommand::CharRightExtend);
+	editor.RunCommand(EditorCommand::DeleteBack);
+
+	const std::vector<RecordedAction> recorded = editor.observations.recordedActions;
+	REQUIRE(recorded.size() == 4);
+	const std::string afterRecord = editor.Text();
+	const Sci::Position afterPos = editor.CurrentPos();
+
+	// Fresh document; leave recording on so recursive capture would show up.
+	editor.SetText("abcd");
+	editor.SetSel(0, 0);
+	editor.ClearObservations();
+	editor.ReplayRecordedActions(recorded);
+
+	CHECK(editor.Text() == afterRecord);
+	CHECK(editor.CurrentPos() == afterPos);
+	CHECK(editor.observations.recordedActions.empty());
+	CHECK(editor.IsRecording());
+}
+
+TEST_CASE("Replay of a single RecordedCommand moves the caret") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.SetText("xy");
+	editor.SetSel(0, 0);
+
+	editor.ReplayRecordedAction(RecordedCommand{EditorCommand::CharRight});
+
+	CHECK(editor.CurrentPos() == 1);
+	CHECK(editor.observations.recordedActions.empty());
+}
+
+TEST_CASE("Stop recording ends further command capture") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.SetText("z");
+	editor.StartRecording();
+	editor.RunCommand(EditorCommand::CharRight);
+	editor.StopRecording();
+	editor.ClearObservations();
+
+	editor.RunCommand(EditorCommand::CharLeft);
 
 	CHECK(editor.observations.recordedActions.empty());
 }

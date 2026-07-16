@@ -18,9 +18,11 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "ScintillaTypes.h"
+#include "EditorRecording.h"
 #include "ScintillaMessages.h"
 #include "ScintillaStructures.h"
 #include "ILoader.h"
@@ -305,37 +307,36 @@ TEST_CASE("Bound keyboard commands remain observable to macro recording") {
 	TestEditor editor(host);
 	editor.SetText("ab");
 	Goto(editor, 0);
-	editor.WndProc(Message::StartRecord, 0, 0);
+	editor.StartRecording();
 	editor.ClearObservations();
 
 	bool consumed = false;
 	editor.KeyDown(Keys::Right, KeyMod::Norm, &consumed);
 
 	REQUIRE(consumed);
-	CHECK(std::count_if(editor.observations.notifications.begin(),
+	REQUIRE(editor.observations.recordedActions.size() == 1);
+	const RecordedCommand *command =
+		std::get_if<RecordedCommand>(&editor.observations.recordedActions[0]);
+	REQUIRE(command != nullptr);
+	CHECK(command->Command() == EditorCommand::CharRight);
+	// Commands no longer emit numeric SCN_MACRORECORD.
+	CHECK(std::none_of(editor.observations.notifications.begin(),
 		editor.observations.notifications.end(), [](const TestNotification &notification) {
 			return notification.code == Notification::MacroRecord;
-		}) == 1);
-	const auto macroRecord = std::find_if(editor.observations.notifications.begin(),
-		editor.observations.notifications.end(), [](const TestNotification &notification) {
-			return notification.code == Notification::MacroRecord;
-		});
-	REQUIRE(macroRecord != editor.observations.notifications.end());
-	CHECK(macroRecord->message == Message::CharRight);
-	CHECK(macroRecord->wParam == 0);
-	CHECK(macroRecord->lParam == 0);
+		}));
 }
 
 TEST_CASE("Unbound keys are not recorded as macro commands") {
 	TestHost host;
 	TestEditor editor(host);
-	editor.WndProc(Message::StartRecord, 0, 0);
+	editor.StartRecording();
 	editor.ClearObservations();
 
 	bool consumed = true;
 	editor.KeyDown(static_cast<Keys>('Q'), KeyMod::Norm, &consumed);
 
 	CHECK_FALSE(consumed);
+	CHECK(editor.observations.recordedActions.empty());
 	CHECK(std::none_of(editor.observations.notifications.begin(),
 		editor.observations.notifications.end(), [](const TestNotification &notification) {
 			return notification.code == Notification::MacroRecord;

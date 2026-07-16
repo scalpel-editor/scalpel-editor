@@ -1478,15 +1478,16 @@ struct Sci_TextRangeFull {
 
     <p>The typed record format is <code>RecordedAction</code> in
     <code>scintilla/src/EditorRecording.h</code>: an owned variant for commands, text
-    insert/replace, navigation, search, and selection mode. That header documents which
-    operations are recordable, which are ignored, how text is owned, and how replay avoids
-    recording itself. Temporary message start/stop and the numeric
-    <code>SCN_MACRORECORD</code> path remain until phase 4 steps 15 and 16 move lifecycle and
-    capture onto the typed form.</p>
+    insert/replace, navigation, search, and selection mode. Lifecycle, zero-argument command
+    capture at <code>ExecuteCommand</code>, the host callback, and replay live in
+    <code>scintilla/src/EditorRecording.cxx</code>. That header documents which operations are
+    recordable, which are ignored, how text is owned, and how replay avoids recording itself.
+    Parameterized capture still uses the temporary numeric <code>SCN_MACRORECORD</code> path
+    until phase 4 step 16 moves it onto named entry points and deletes the numeric form.</p>
 
     <p id="SCI_STARTRECORD"><b>SCI_STARTRECORD</b> / <b id="SCI_STOPRECORD">SCI_STOPRECORD</b>
-    still turn recording on and off through temporary message forwarders. Named
-    <code>StartRecording</code> / <code>StopRecording</code> land with the lifecycle move.</p>
+    are temporary message forwarders to named <code>StartRecording</code> /
+    <code>StopRecording</code> in <code>EditorRecording.cxx</code>.</p>
 
     <h2 id="Printing">Printing</h2>
 

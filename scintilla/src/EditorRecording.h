@@ -5,9 +5,9 @@
  ** Recording captures user-level edits so a host can store and replay them.
  ** The numeric SCN_MACRORECORD form (message number plus raw parameters) is
  ** replaced by RecordedAction: a variant that owns any text and carries only
- ** typed fields. Production recording still uses the temporary numeric path
- ** until phase 4 steps 15 and 16 move lifecycle, command capture, and
- ** parameterized capture onto this type.
+ ** typed fields. Lifecycle, zero-argument command capture, and replay live in
+ ** EditorRecording.cxx. Parameterized capture (text, goto, search, selection
+ ** mode) still uses the temporary numeric path until phase 4 step 16.
  **
  ** # Recordable operations
  **
