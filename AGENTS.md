@@ -32,7 +32,7 @@ The editor itself is personal utility — SciTE already gives Wayland users the 
 
 ## Build and test
 
-The build uses CMake with the Ninja generator. From the repository root:
+The build uses CMake with the Ninja generator. Always configure from the repository root, never from inside `scintilla/`: the root `CMakeLists.txt` is the only top-level project, and it pulls `scintilla/` in as a subdirectory. Running CMake inside `scintilla/` would spawn a duplicate build tree that the presets and `.gitignore` do not manage, so `scintilla/CMakeLists.txt` rejects that with a fatal error. From the repository root:
 
 ```
 cmake --preset dev          # configure into build/ (Debug)

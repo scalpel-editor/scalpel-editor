@@ -1,3 +1,15 @@
+# This directory is a subdirectory of the scalpel-editor build, never a
+# project of its own. Configuring it directly (for example `cd scintilla &&
+# cmake -B build`) makes a second, duplicate build tree that the presets in
+# CMakePresets.json and the rules in .gitignore do not manage. Fail loudly and
+# point the caller back at the sanctioned entry points.
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+	message(FATAL_ERROR
+		"scintilla/ is built as part of scalpel-editor, not on its own. "
+		"Configure from the repository root instead:\n"
+		"  cmake --preset dev   (or ./check.sh for the full matrix)")
+endif()
+
 # The Scintilla core as one static library. Everything in src/ compiles
 # against Platform.h alone; the concrete platform implementation arrives in a
 # later phase, so nothing here links into a runnable program yet. The unit
