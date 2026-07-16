@@ -223,6 +223,8 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	bool multipleSelection;
 	bool additionalSelectionTyping;
 	Scintilla::MultiPaste multiPasteMode;
+	// Which modifier held during mouse drag makes a rectangular selection (default Alt).
+	Scintilla::KeyMod rectangularSelectionModifier;
 
 	Scintilla::VirtualSpace virtualSpaceOptions;
 
@@ -401,14 +403,22 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	Sci::Position GetRectangularSelectionCaretVirtualSpace() noexcept;
 	void SetRectangularSelectionAnchorVirtualSpace(Sci::Position space);
 	Sci::Position GetRectangularSelectionAnchorVirtualSpace() noexcept;
+	void SetSelectionNCaret(size_t selection, Sci::Position caret);
 	Sci::Position GetSelectionNCaret(size_t selection) const noexcept;
+	void SetSelectionNAnchor(size_t selection, Sci::Position anchor);
 	Sci::Position GetSelectionNAnchor(size_t selection) const noexcept;
+	void SetSelectionNCaretVirtualSpace(size_t selection, Sci::Position space);
 	Sci::Position GetSelectionNCaretVirtualSpace(size_t selection) const noexcept;
+	void SetSelectionNAnchorVirtualSpace(size_t selection, Sci::Position space);
 	Sci::Position GetSelectionNAnchorVirtualSpace(size_t selection) const noexcept;
+	void SetSelectionNStart(size_t selection, Sci::Position pos);
 	Sci::Position GetSelectionNStart(size_t selection) const noexcept;
 	Sci::Position GetSelectionNStartVirtualSpace(size_t selection) const noexcept;
+	void SetSelectionNEnd(size_t selection, Sci::Position pos);
 	Sci::Position GetSelectionNEnd(size_t selection) const noexcept;
 	Sci::Position GetSelectionNEndVirtualSpace(size_t selection) const noexcept;
+	void SetRectangularSelectionModifier(Scintilla::KeyMod modifier);
+	Scintilla::KeyMod GetRectangularSelectionModifier() const noexcept;
 	enum class AddNumber { one, each };
 	void MultipleSelectAdd(AddNumber addNumber);
 	bool RangeContainsProtected(Sci::Position start, Sci::Position end) const noexcept;
@@ -1101,7 +1111,6 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	Sci::Position GetTextRange(char *buffer, Sci::Position cpMin, Sci::Position cpMax) const;
 
 	virtual Scintilla::sptr_t DefWndProc(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam) = 0;
-	void SetSelectionNMessage(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
 	void SetSelectionMode(uptr_t wParam, bool setMoveExtends);
 
 	// Coercion functions for transforming WndProc parameters into pointers

@@ -179,6 +179,7 @@ Editor::Editor() : durationWrapOneByte(0.000001, 0.00000001, 0.00001) {
 	multipleSelection = false;
 	additionalSelectionTyping = false;
 	multiPasteMode = MultiPaste::Once;
+	rectangularSelectionModifier = KeyMod::Alt;
 	virtualSpaceOptions = VirtualSpace::None;
 
 	targetRange = SelectionSegment();
@@ -3536,8 +3537,9 @@ void Editor::ButtonDownWithModifiers(Point pt, unsigned int curTime, KeyMod modi
 	ptMouseLast = pt;
 	const bool ctrl = FlagSet(modifiers, KeyMod::Ctrl);
 	const bool shift = FlagSet(modifiers, KeyMod::Shift);
-	const bool alt = FlagSet(modifiers, KeyMod::Alt);
-	const SelectionPosition clickPos = SPositionFromLocation(pt, false, false, AllowVirtualSpace(virtualSpaceOptions, alt));
+	const bool rectangularModifier = FlagSet(modifiers, rectangularSelectionModifier);
+	const SelectionPosition clickPos = SPositionFromLocation(pt, false, false,
+		AllowVirtualSpace(virtualSpaceOptions, rectangularModifier));
 	const SelectionPosition newPos = MovePositionOutsideChar(clickPos, sel.MainCaret() - clickPos.Position());
 	const SelectionPosition newCharPos = MovePositionOutsideChar(
 		SPositionFromLocation(pt, false, true, false), -1);
@@ -3700,7 +3702,7 @@ void Editor::ButtonDownWithModifiers(Point pt, unsigned int curTime, KeyMod modi
 							Redraw();
 						if ((sel.Count() > 1) || (sel.selType != Selection::SelTypes::stream))
 							sel.Clear();
-						sel.selType = alt ? Selection::SelTypes::rectangle : Selection::SelTypes::stream;
+						sel.selType = rectangularModifier ? Selection::SelTypes::rectangle : Selection::SelTypes::stream;
 						SetSelection(newPos, newPos);
 					}
 				}
@@ -3708,7 +3710,7 @@ void Editor::ButtonDownWithModifiers(Point pt, unsigned int curTime, KeyMod modi
 				if (shift)
 					anchorCurrent = sel.IsRectangular() ?
 						sel.Rectangular().anchor : sel.RangeMain().anchor;
-				sel.selType = alt ? Selection::SelTypes::rectangle : Selection::SelTypes::stream;
+				sel.selType = rectangularModifier ? Selection::SelTypes::rectangle : Selection::SelTypes::stream;
 				selectionUnit = TextUnit::character;
 				originalAnchorPos = sel.MainCaret();
 				sel.Rectangular() = SelectionRange(newPos, anchorCurrent);
@@ -3830,7 +3832,9 @@ void Editor::ButtonMoveWithModifiers(Point pt, unsigned int, KeyMod modifiers) {
 			SetDragPosition(movePos);
 		} else {
 			if (selectionUnit == TextUnit::character) {
-				if (sel.selType == Selection::SelTypes::stream && FlagSet(modifiers, KeyMod::Alt) && mouseSelectionRectangularSwitch) {
+				if (sel.selType == Selection::SelTypes::stream
+					&& FlagSet(modifiers, rectangularSelectionModifier)
+					&& mouseSelectionRectangularSwitch) {
 					sel.selType = Selection::SelTypes::rectangle;
 				}
 				if (sel.IsRectangular()) {
@@ -6427,12 +6431,27 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return GetMainSelection();
 
 	case Message::SetSelectionNCaret:
+		SetSelectionNCaret(wParam, lParam);
+		break;
+
 	case Message::SetSelectionNAnchor:
+		SetSelectionNAnchor(wParam, lParam);
+		break;
+
 	case Message::SetSelectionNCaretVirtualSpace:
+		SetSelectionNCaretVirtualSpace(wParam, lParam);
+		break;
+
 	case Message::SetSelectionNAnchorVirtualSpace:
+		SetSelectionNAnchorVirtualSpace(wParam, lParam);
+		break;
+
 	case Message::SetSelectionNStart:
+		SetSelectionNStart(wParam, lParam);
+		break;
+
 	case Message::SetSelectionNEnd:
-		SetSelectionNMessage(iMessage, wParam, lParam);
+		SetSelectionNEnd(wParam, lParam);
 		break;
 
 	case Message::GetSelectionNCaret:
@@ -6486,6 +6505,13 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 
 	case Message::GetRectangularSelectionAnchorVirtualSpace:
 		return GetRectangularSelectionAnchorVirtualSpace();
+
+	case Message::SetRectangularSelectionModifier:
+		SetRectangularSelectionModifier(static_cast<KeyMod>(wParam));
+		break;
+
+	case Message::GetRectangularSelectionModifier:
+		return static_cast<sptr_t>(GetRectangularSelectionModifier());
 
 	case Message::SetVirtualSpaceOptions:
 		SetVirtualSpaceOptions(static_cast<VirtualSpace>(wParam));

@@ -171,6 +171,40 @@ TEST_CASE("Multiple selection options and counts round-trip") {
 	CHECK(editor.WndProc(Message::GetSelections, 0, 0) >= 2);
 }
 
+TEST_CASE("SetSelectionN endpoints update one range by index") {
+	TestHost host;
+	TestEditor editor(host);
+	LoadClean(editor, "abcdefgh");
+	editor.WndProc(Message::SetMultipleSelection, 1, 0);
+	// Main range caret/anchor, then a second range.
+	editor.WndProc(Message::SetSelection, 2, 0);
+	editor.WndProc(Message::AddSelection, 6, 4);
+
+	editor.WndProc(Message::SetSelectionNCaret, 1, 7);
+	CHECK(editor.WndProc(Message::GetSelectionNCaret, 1, 0) == 7);
+	editor.WndProc(Message::SetSelectionNAnchor, 1, 3);
+	CHECK(editor.WndProc(Message::GetSelectionNAnchor, 1, 0) == 3);
+	editor.WndProc(Message::SetSelectionNStart, 0, 1);
+	editor.WndProc(Message::SetSelectionNEnd, 0, 3);
+	CHECK(editor.WndProc(Message::GetSelectionNStart, 0, 0) == 1);
+	CHECK(editor.WndProc(Message::GetSelectionNEnd, 0, 0) == 3);
+}
+
+TEST_CASE("RectangularSelectionModifier defaults to Alt and round-trips") {
+	TestHost host;
+	TestEditor editor(host);
+	CHECK(editor.WndProc(Message::GetRectangularSelectionModifier, 0, 0)
+		== static_cast<sptr_t>(KeyMod::Alt));
+	editor.WndProc(Message::SetRectangularSelectionModifier,
+		static_cast<uptr_t>(KeyMod::Ctrl), 0);
+	CHECK(editor.WndProc(Message::GetRectangularSelectionModifier, 0, 0)
+		== static_cast<sptr_t>(KeyMod::Ctrl));
+	editor.WndProc(Message::SetRectangularSelectionModifier,
+		static_cast<uptr_t>(KeyMod::Alt), 0);
+	CHECK(editor.WndProc(Message::GetRectangularSelectionModifier, 0, 0)
+		== static_cast<sptr_t>(KeyMod::Alt));
+}
+
 TEST_CASE("HideSelection toggles visibility flag") {
 	TestHost host;
 	TestEditor editor(host);

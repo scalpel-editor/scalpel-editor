@@ -155,7 +155,7 @@ Moved (2026-07-15): retained operations live in `EditorLines.cxx` with temporary
 
 ### Selection (71)
 
-Moved (2026-07-15): retained operations live in `EditorSelection.cxx` with temporary `WndProc` forwarders; focused coverage in `EditorSelectionTest.cxx`. Application methods use typed positions; multi-selection and rectangular helpers are private named operations. `GotoLine` / `GotoPos` moved here from the other-settings table. `SetRectangularSelectionModifier` remains without a core body (falls through until a host needs it).
+Moved (2026-07-15): retained operations live in `EditorSelection.cxx` with temporary `WndProc` forwarders; focused coverage in `EditorSelectionTest.cxx`. Application methods use typed positions; multi-selection and rectangular helpers are private named operations. `GotoLine` / `GotoPos` moved here from the other-settings table. Step 17 (2026-07-16): `SetSelectionN*` setters are individual named methods (no longer a Message switch helper); `SetRectangularSelectionModifier` / `GetRectangularSelectionModifier` store the mouse rectangular-drag modifier (default Alt) and drive ButtonDown / drag rectangular detection.
 
 | Entries | Owner | Classification | Target and named entry point | Focused test | Documentation | Deletion reason |
 | --- | --- | --- | --- | --- | --- | --- |

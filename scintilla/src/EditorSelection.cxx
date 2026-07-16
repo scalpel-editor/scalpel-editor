@@ -590,45 +590,76 @@ void Editor::SelectAll() {
 	Redraw();
 }
 
-// Dispatch a selection-N message number for temporary WndProc forwarding.
-void Editor::SetSelectionNMessage(Message iMessage, uptr_t wParam, sptr_t lParam) {
-	if (wParam >= sel.Count()) {
+// Update one selection range's endpoints and request redraw of the old and new spans.
+void Editor::SetSelectionNCaret(size_t selection, Sci::Position caret) {
+	if (selection >= sel.Count()) {
 		return;
 	}
-	InvalidateRange(sel.Range(wParam).Start().Position(), sel.Range(wParam).End().Position());
-
-	switch (iMessage) {
-	case Message::SetSelectionNCaret:
-		sel.Range(wParam).caret.SetPosition(lParam);
-		break;
-
-	case Message::SetSelectionNAnchor:
-		sel.Range(wParam).anchor.SetPosition(lParam);
-		break;
-
-	case Message::SetSelectionNCaretVirtualSpace:
-		sel.Range(wParam).caret.SetVirtualSpace(lParam);
-		break;
-
-	case Message::SetSelectionNAnchorVirtualSpace:
-		sel.Range(wParam).anchor.SetVirtualSpace(lParam);
-		break;
-
-	case Message::SetSelectionNStart:
-		sel.Range(wParam).StartSet(SelectionPosition(lParam));
-		break;
-
-	case Message::SetSelectionNEnd:
-		sel.Range(wParam).EndSet(SelectionPosition(lParam));
-		break;
-
-	default:
-		break;
-
-	}
-
-	InvalidateRange(sel.Range(wParam).Start().Position(), sel.Range(wParam).End().Position());
+	InvalidateRange(sel.Range(selection).Start().Position(), sel.Range(selection).End().Position());
+	sel.Range(selection).caret.SetPosition(caret);
+	InvalidateRange(sel.Range(selection).Start().Position(), sel.Range(selection).End().Position());
 	ContainerNeedsUpdate(Update::Selection);
+}
+
+void Editor::SetSelectionNAnchor(size_t selection, Sci::Position anchor) {
+	if (selection >= sel.Count()) {
+		return;
+	}
+	InvalidateRange(sel.Range(selection).Start().Position(), sel.Range(selection).End().Position());
+	sel.Range(selection).anchor.SetPosition(anchor);
+	InvalidateRange(sel.Range(selection).Start().Position(), sel.Range(selection).End().Position());
+	ContainerNeedsUpdate(Update::Selection);
+}
+
+void Editor::SetSelectionNCaretVirtualSpace(size_t selection, Sci::Position space) {
+	if (selection >= sel.Count()) {
+		return;
+	}
+	InvalidateRange(sel.Range(selection).Start().Position(), sel.Range(selection).End().Position());
+	sel.Range(selection).caret.SetVirtualSpace(space);
+	InvalidateRange(sel.Range(selection).Start().Position(), sel.Range(selection).End().Position());
+	ContainerNeedsUpdate(Update::Selection);
+}
+
+void Editor::SetSelectionNAnchorVirtualSpace(size_t selection, Sci::Position space) {
+	if (selection >= sel.Count()) {
+		return;
+	}
+	InvalidateRange(sel.Range(selection).Start().Position(), sel.Range(selection).End().Position());
+	sel.Range(selection).anchor.SetVirtualSpace(space);
+	InvalidateRange(sel.Range(selection).Start().Position(), sel.Range(selection).End().Position());
+	ContainerNeedsUpdate(Update::Selection);
+}
+
+void Editor::SetSelectionNStart(size_t selection, Sci::Position pos) {
+	if (selection >= sel.Count()) {
+		return;
+	}
+	InvalidateRange(sel.Range(selection).Start().Position(), sel.Range(selection).End().Position());
+	sel.Range(selection).StartSet(SelectionPosition(pos));
+	InvalidateRange(sel.Range(selection).Start().Position(), sel.Range(selection).End().Position());
+	ContainerNeedsUpdate(Update::Selection);
+}
+
+void Editor::SetSelectionNEnd(size_t selection, Sci::Position pos) {
+	if (selection >= sel.Count()) {
+		return;
+	}
+	InvalidateRange(sel.Range(selection).Start().Position(), sel.Range(selection).End().Position());
+	sel.Range(selection).EndSet(SelectionPosition(pos));
+	InvalidateRange(sel.Range(selection).Start().Position(), sel.Range(selection).End().Position());
+	ContainerNeedsUpdate(Update::Selection);
+}
+
+// Modifier that turns a mouse drag into a rectangular selection (default Alt).
+// Hosts that use Ctrl for this gesture call SetRectangularSelectionModifier(KeyMod::Ctrl).
+void Editor::SetRectangularSelectionModifier(KeyMod modifier) {
+	rectangularSelectionModifier = modifier;
+}
+
+// Current rectangular mouse-selection modifier.
+KeyMod Editor::GetRectangularSelectionModifier() const noexcept {
+	return rectangularSelectionModifier;
 }
 
 namespace {
