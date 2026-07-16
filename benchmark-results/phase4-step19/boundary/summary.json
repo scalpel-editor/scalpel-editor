@@ -1,0 +1,94 @@
+[
+  {
+    "mode": "hybrid",
+    "scope": "repository",
+    "set": "normal",
+    "n": 12,
+    "concern_top3": 12,
+    "concern_top3_pct": 100,
+    "concern_found": 12,
+    "definition_top3": 6,
+    "definition_found": 6,
+    "exact": {
+      "n": 3,
+      "definition_top3": 3,
+      "concern_top3": 3
+    },
+    "natural_language": {
+      "n": 9,
+      "concern_top3": 9,
+      "concern_top3_pct": 100
+    },
+    "misses": []
+  },
+  {
+    "mode": "hybrid",
+    "scope": "source",
+    "set": "normal",
+    "n": 12,
+    "concern_top3": 11,
+    "concern_top3_pct": 91.7,
+    "concern_found": 12,
+    "definition_top3": 6,
+    "definition_found": 6,
+    "exact": {
+      "n": 3,
+      "definition_top3": 3,
+      "concern_top3": 3
+    },
+    "natural_language": {
+      "n": 9,
+      "concern_top3": 8,
+      "concern_top3_pct": 88.9
+    },
+    "misses": []
+  },
+  {
+    "mode": "vector",
+    "scope": "repository",
+    "set": "normal",
+    "n": 12,
+    "concern_top3": 10,
+    "concern_top3_pct": 83.3,
+    "concern_found": 11,
+    "definition_top3": 4,
+    "definition_found": 4,
+    "exact": {
+      "n": 3,
+      "definition_top3": 1,
+      "concern_top3": 2
+    },
+    "natural_language": {
+      "n": 9,
+      "concern_top3": 8,
+      "concern_top3_pct": 88.9
+    },
+    "misses": [
+      "search-target-exact"
+    ]
+  },
+  {
+    "mode": "vector",
+    "scope": "source",
+    "set": "normal",
+    "n": 12,
+    "concern_top3": 10,
+    "concern_top3_pct": 83.3,
+    "concern_found": 11,
+    "definition_top3": 4,
+    "definition_found": 4,
+    "exact": {
+      "n": 3,
+      "definition_top3": 1,
+      "concern_top3": 2
+    },
+    "natural_language": {
+      "n": 9,
+      "concern_top3": 8,
+      "concern_top3_pct": 88.9
+    },
+    "misses": [
+      "search-target-exact"
+    ]
+  }
+]

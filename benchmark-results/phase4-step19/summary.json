@@ -1,0 +1,262 @@
+[
+  {
+    "mode": "hybrid",
+    "scope": "repository",
+    "set": "held-out",
+    "n": 12,
+    "concern_top3": 6,
+    "concern_top3_pct": 50,
+    "concern_found": 8,
+    "definition_top3": 2,
+    "definition_found": 2,
+    "exact": {
+      "n": 0,
+      "definition_top3": 0,
+      "concern_top3": 0
+    },
+    "natural_language": {
+      "n": 12,
+      "concern_top3": 6,
+      "concern_top3_pct": 50
+    },
+    "misses": [
+      "mod-event-mask-held-out",
+      "undo-held-out",
+      "line-down-held-out",
+      "technology-held-out"
+    ]
+  },
+  {
+    "mode": "hybrid",
+    "scope": "repository",
+    "set": "normal",
+    "n": 48,
+    "concern_top3": 30,
+    "concern_top3_pct": 62.5,
+    "concern_found": 35,
+    "definition_top3": 16,
+    "definition_found": 19,
+    "exact": {
+      "n": 12,
+      "definition_top3": 5,
+      "concern_top3": 7
+    },
+    "natural_language": {
+      "n": 36,
+      "concern_top3": 23,
+      "concern_top3_pct": 63.9
+    },
+    "misses": [
+      "read-only-exact",
+      "mod-event-mask-exact",
+      "mod-event-mask-spaced",
+      "mod-event-mask-intent",
+      "mod-event-mask-effect",
+      "undo-exact",
+      "undo-intent",
+      "undo-effect",
+      "line-down-intent",
+      "line-down-effect",
+      "technology-exact",
+      "technology-spaced",
+      "technology-intent"
+    ]
+  },
+  {
+    "mode": "hybrid",
+    "scope": "source",
+    "set": "held-out",
+    "n": 12,
+    "concern_top3": 5,
+    "concern_top3_pct": 41.7,
+    "concern_found": 7,
+    "definition_top3": 1,
+    "definition_found": 2,
+    "exact": {
+      "n": 0,
+      "definition_top3": 0,
+      "concern_top3": 0
+    },
+    "natural_language": {
+      "n": 12,
+      "concern_top3": 5,
+      "concern_top3_pct": 41.7
+    },
+    "misses": [
+      "mod-event-mask-held-out",
+      "undo-held-out",
+      "line-down-held-out",
+      "call-tip-show-held-out",
+      "technology-held-out"
+    ]
+  },
+  {
+    "mode": "hybrid",
+    "scope": "source",
+    "set": "normal",
+    "n": 48,
+    "concern_top3": 31,
+    "concern_top3_pct": 64.6,
+    "concern_found": 36,
+    "definition_top3": 19,
+    "definition_found": 21,
+    "exact": {
+      "n": 12,
+      "definition_top3": 6,
+      "concern_top3": 8
+    },
+    "natural_language": {
+      "n": 36,
+      "concern_top3": 23,
+      "concern_top3_pct": 63.9
+    },
+    "misses": [
+      "mod-event-mask-exact",
+      "mod-event-mask-spaced",
+      "mod-event-mask-intent",
+      "mod-event-mask-effect",
+      "undo-exact",
+      "undo-intent",
+      "undo-effect",
+      "line-down-intent",
+      "technology-exact",
+      "technology-spaced",
+      "technology-intent",
+      "technology-effect"
+    ]
+  },
+  {
+    "mode": "vector",
+    "scope": "repository",
+    "set": "held-out",
+    "n": 12,
+    "concern_top3": 6,
+    "concern_top3_pct": 50,
+    "concern_found": 8,
+    "definition_top3": 2,
+    "definition_found": 2,
+    "exact": {
+      "n": 0,
+      "definition_top3": 0,
+      "concern_top3": 0
+    },
+    "natural_language": {
+      "n": 12,
+      "concern_top3": 6,
+      "concern_top3_pct": 50
+    },
+    "misses": [
+      "mod-event-mask-held-out",
+      "undo-held-out",
+      "line-down-held-out",
+      "technology-held-out"
+    ]
+  },
+  {
+    "mode": "vector",
+    "scope": "repository",
+    "set": "normal",
+    "n": 48,
+    "concern_top3": 27,
+    "concern_top3_pct": 56.3,
+    "concern_found": 31,
+    "definition_top3": 15,
+    "definition_found": 15,
+    "exact": {
+      "n": 12,
+      "definition_top3": 4,
+      "concern_top3": 6
+    },
+    "natural_language": {
+      "n": 36,
+      "concern_top3": 21,
+      "concern_top3_pct": 58.3
+    },
+    "misses": [
+      "mod-event-mask-exact",
+      "mod-event-mask-spaced",
+      "mod-event-mask-intent",
+      "mod-event-mask-effect",
+      "search-target-exact",
+      "undo-exact",
+      "undo-spaced",
+      "undo-intent",
+      "undo-effect",
+      "line-down-exact",
+      "line-down-spaced",
+      "line-down-intent",
+      "line-down-effect",
+      "technology-exact",
+      "technology-spaced",
+      "technology-intent",
+      "technology-effect"
+    ]
+  },
+  {
+    "mode": "vector",
+    "scope": "source",
+    "set": "held-out",
+    "n": 12,
+    "concern_top3": 6,
+    "concern_top3_pct": 50,
+    "concern_found": 8,
+    "definition_top3": 2,
+    "definition_found": 2,
+    "exact": {
+      "n": 0,
+      "definition_top3": 0,
+      "concern_top3": 0
+    },
+    "natural_language": {
+      "n": 12,
+      "concern_top3": 6,
+      "concern_top3_pct": 50
+    },
+    "misses": [
+      "mod-event-mask-held-out",
+      "undo-held-out",
+      "line-down-held-out",
+      "technology-held-out"
+    ]
+  },
+  {
+    "mode": "vector",
+    "scope": "source",
+    "set": "normal",
+    "n": 48,
+    "concern_top3": 27,
+    "concern_top3_pct": 56.3,
+    "concern_found": 31,
+    "definition_top3": 15,
+    "definition_found": 15,
+    "exact": {
+      "n": 12,
+      "definition_top3": 4,
+      "concern_top3": 6
+    },
+    "natural_language": {
+      "n": 36,
+      "concern_top3": 21,
+      "concern_top3_pct": 58.3
+    },
+    "misses": [
+      "mod-event-mask-exact",
+      "mod-event-mask-spaced",
+      "mod-event-mask-intent",
+      "mod-event-mask-effect",
+      "search-target-exact",
+      "undo-exact",
+      "undo-spaced",
+      "undo-intent",
+      "undo-effect",
+      "line-down-exact",
+      "line-down-spaced",
+      "line-down-intent",
+      "line-down-effect",
+      "technology-exact",
+      "technology-spaced",
+      "technology-intent",
+      "technology-effect"
+    ]
+  }
+]

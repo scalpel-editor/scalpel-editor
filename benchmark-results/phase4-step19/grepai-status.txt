@@ -1,0 +1,22 @@
+grepai index status
+Project root: /my/src/scalpel-editor
+Index path: /my/src/scalpel-editor/.grepai/index.gob
+Files indexed: 234
+Total chunks: 2240
+Index size: 14.0 MB
+Newest indexed source mtime: 2026-07-16T08:28:46Z
+Index saved at: 2026-07-16T08:29:16Z
+Index generation: 234
+Provider: ollama (nomic-embed-text)
+Chunking: 512 (overlap 50)
+Hybrid search: false
+Config hash: a7a7877e333d1ebbfc7a7b7bce9e468c8a917541eb670b157583fb07b79da3e4
+Configuration matches index: yes
+Watcher: running (foreground, PID 70947)
+Watcher state: steady
+Pending work: queued=3 active=0 failed=4 dropped=0 retries=0
+Last event: 2026-07-16T08:29:28Z
+Last failure: 2026-07-16T01:27:52Z stage=scan file=scintilla/test/editor/build/CMakeFiles/3.31.7/CompilerIdC/CMakeCCompilerId.c error=stat /my/src/scalpel-editor/scintilla/test/editor/build/CMakeFiles/3.31.7/CompilerIdC/CMakeCCompilerId.c: no such file or directory
+Watcher project root: /my/src/scalpel-editor (match: yes)
+Watcher index path: /my/src/scalpel-editor/.grepai/index.gob (match: yes)
+Watcher log: /home/one/.local/state/grepai/logs/grepai-worktree-06e370c84c21.log

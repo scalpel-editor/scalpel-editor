@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "label": "phase4-step19",
+  "started_at": "2026-07-16T08:29:28Z",
+  "project": {
+    "revision": "1c2783ebd88f15120ea6dc0c2a97374e4e84699a",
+    "dirty": false
+  },
+  "grepai": {
+    "version": "grepai version 47bba43",
+    "binary": "/home/one/bin/grepai",
+    "binary_sha256": "c88e9cba9c96333dd5a1746ef97747bd42c6bc1fbda41cf06ca576863a50ffce",
+    "source": "/my/src/grepai",
+    "source_revision": "47bba436e4efb4602295782c390f616c4a5a8eb9",
+    "source_branch": "status-wait",
+    "source_dirty": false,
+    "source_diff_sha256": ""
+  },
+  "grepai_config_sha256": "f58414f17fba91215c016a31ea9667592e11f18a7a820285271c46b2647a2c36",
+  "grepai_index_sha256": "8b93bc3665a05b352274bd3564bb1d6476d9413774f10d33682dc12b83e12cb6",
+  "selection": {
+    "mode": "both",
+    "scope": "both",
+    "query_set": "all",
+    "query_id": null,
+    "all_target": true,
+    "features": [],
+    "target_features": []
+  }
+}

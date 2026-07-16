@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "label": "phase4-step19-boundary",
+  "started_at": "2026-07-16T08:31:16Z",
+  "project": {
+    "revision": "1c2783ebd88f15120ea6dc0c2a97374e4e84699a",
+    "dirty": true
+  },
+  "grepai": {
+    "version": "grepai version 47bba43",
+    "binary": "/home/one/bin/grepai",
+    "binary_sha256": "c88e9cba9c96333dd5a1746ef97747bd42c6bc1fbda41cf06ca576863a50ffce",
+    "source": "/my/src/grepai",
+    "source_revision": "47bba436e4efb4602295782c390f616c4a5a8eb9",
+    "source_branch": "status-wait",
+    "source_dirty": false,
+    "source_diff_sha256": ""
+  },
+  "grepai_config_sha256": "d4e089449425246ff49a4becfee546f79227d4af947e6d1592c7c3767292b5c8",
+  "grepai_index_sha256": "52b06d391dc0a878ba08824b756d4520f6f77bda1c939de056598a6a08deabce",
+  "selection": {
+    "mode": "both",
+    "scope": "both",
+    "query_set": "normal",
+    "query_id": null,
+    "all_target": true,
+    "features": [
+      "SetWrapMode",
+      "WrapCount",
+      "SearchInTarget"
+    ],
+    "target_features": []
+  }
+}
