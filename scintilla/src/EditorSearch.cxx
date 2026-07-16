@@ -173,12 +173,15 @@ Sci::Position Editor::SearchInTarget(std::string_view text) {
 }
 
 // Remember SelectionStart as the anchor for SearchNext / SearchPrev commands.
-void Editor::SearchAnchor() noexcept {
+// When macro recording is on, emits RecordedSearchAnchor.
+void Editor::SearchAnchor() {
+	EmitRecordedAction(RecordedSearchAnchor{});
 	searchAnchor = SelectionStart().Position();
 }
 
 // SearchNext or SearchPrev from the search anchor with flags in wParam and C string in lParam.
 // On success selects the match and returns its start; otherwise invalidPosition.
+// When macro recording is on, emits RecordedSearch with owned needle text.
 Sci::Position Editor::SearchText(
     EditorCommand command,		///< Accepts both @c EditorCommand::SearchNext and @c EditorCommand::SearchPrev.
     uptr_t wParam,				///< Search modes : @c FindOption::MatchCase, @c FindOption::WholeWord,
@@ -186,8 +189,15 @@ Sci::Position Editor::SearchText(
     sptr_t lParam) {			///< The text to search for.
 
 	const char *txt = ConstCharPtrFromSPtr(lParam);
+	const SearchDirection direction = command == EditorCommand::SearchNext
+		? SearchDirection::Next
+		: SearchDirection::Prev;
+	// Copy the needle before search so the host owns bytes even if the caller
+	// frees or overwrites lParam after return.
+	EmitRecordedAction(RecordedSearch{
+		direction, static_cast<FindOption>(wParam), txt ? std::string(txt) : std::string{}});
 	Sci::Position pos = Sci::invalidPosition;
-	Sci::Position lengthFound = strlen(txt);
+	Sci::Position lengthFound = txt ? static_cast<Sci::Position>(strlen(txt)) : 0;
 	if (!pdoc->HasCaseFolder())
 		pdoc->SetCaseFolder(std::make_unique<CaseFolderUnicode>());
 	try {

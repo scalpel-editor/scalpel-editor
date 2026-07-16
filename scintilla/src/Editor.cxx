@@ -2295,31 +2295,14 @@ void Editor::NotifyDeleted(Document *, void *) noexcept {
 
 void Editor::NotifyMacroRecord(Message iMessage, uptr_t wParam, sptr_t lParam) {
 
-	// Temporary numeric path for parameterized ops not yet on named entry points.
-	// Document text, goto, and selection mode are typed at named methods.
-	// Search remains here until the next step-16 commit; then this is deleted.
-	switch (iMessage) {
-	case Message::SearchAnchor:
-	case Message::SearchNext:
-	case Message::SearchPrev:
-		break;
-
-		// Filter out commands, document text, navigation, selection mode (typed),
-		// display changes, and newlines (redundant with char insert as ReplaceSel).
-	case Message::ReplaceSel:
-	case Message::AddText:
-	case Message::InsertText:
-	case Message::AppendText:
-	case Message::ClearAll:
-	case Message::GotoLine:
-	case Message::GotoPos:
-	case Message::SetSelectionMode:
-	case Message::NewLine:
-	default:
+	// Temporary numeric path used only by InsertCharacter and NewLine, which
+	// still pass Message::ReplaceSel. All other parameterized ops are typed at
+	// named entry points. The WndProc front-hook is gone so message-path
+	// ReplaceSel is not double-recorded. Step 16 converts the insert sites next.
+	if (iMessage != Message::ReplaceSel) {
 		return;
 	}
 
-	// Send notification
 	NotificationData scn = {};
 	scn.nmhdr.code = Notification::MacroRecord;
 	scn.message = iMessage;
@@ -4334,10 +4317,10 @@ sptr_t Editor::BytesResult(Scintilla::sptr_t lParam, std::string_view sv) noexce
 sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 	//Platform::DebugPrintf("S start wnd proc %d %d %d\n",iMessage, wParam, lParam);
 
-	// Optional macro recording hook (parameterized ops until step 16).
-	// Zero-arg commands are captured at ExecuteCommand as typed actions.
-	if (recording && !replaying)
-		NotifyMacroRecord(iMessage, wParam, lParam);
+	// Macro recording no longer hooks every message here. Commands are captured
+	// at ExecuteCommand; parameterized ops at their named entry points.
+	// InsertCharacter/NewLine still call NotifyMacroRecord directly until the
+	// next step-16 commit moves them to EmitRecordedAction.
 
 	switch (iMessage) {
 

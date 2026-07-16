@@ -823,7 +823,7 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 
 	// Search and replace helpers: EditorSearch.cxx.
 	// Application target/search methods are public below.
-	void SearchAnchor() noexcept;
+	void SearchAnchor();
 	Sci::Position SearchText(EditorCommand command, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
 	Sci::Position SearchInTarget(const char *text, Sci::Position length);
 	void SetTargetStartVirtualSpace(Sci::Position space);

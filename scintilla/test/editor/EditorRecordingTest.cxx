@@ -584,3 +584,111 @@ TEST_CASE("Message path and named methods agree for goto and selection mode reco
 		CHECK_FALSE(HasMacroRecord(editor));
 	}
 }
+
+TEST_CASE("Search anchor and parameterized search are captured while recording") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.SetText("one two one");
+	editor.SetSel(0, 0);
+	editor.StartRecording();
+	editor.ClearObservations();
+
+	editor.SearchAnchor();
+	const char needle[] = "one";
+	const Sci::Position found = editor.SearchText(EditorCommand::SearchNext,
+		static_cast<uptr_t>(FindOption::None),
+		reinterpret_cast<sptr_t>(needle));
+	REQUIRE(found == 0);
+	const Sci::Position prev = editor.SearchText(EditorCommand::SearchPrev,
+		static_cast<uptr_t>(FindOption::MatchCase),
+		reinterpret_cast<sptr_t>(needle));
+	(void)prev;
+
+	REQUIRE(editor.observations.recordedActions.size() == 3);
+	CHECK(std::holds_alternative<RecordedSearchAnchor>(editor.observations.recordedActions[0]));
+	const RecordedSearch &next = As<RecordedSearch>(editor.observations.recordedActions[1]);
+	CHECK(next.direction == SearchDirection::Next);
+	CHECK(next.flags == FindOption::None);
+	CHECK(next.text == "one");
+	const RecordedSearch &searchPrev = As<RecordedSearch>(editor.observations.recordedActions[2]);
+	CHECK(searchPrev.direction == SearchDirection::Prev);
+	CHECK(searchPrev.flags == FindOption::MatchCase);
+	CHECK(searchPrev.text == "one");
+	CHECK_FALSE(HasMacroRecord(editor));
+}
+
+TEST_CASE("Search recording owns the needle after the original buffer is overwritten") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.SetText("needle here");
+	editor.SetSel(0, 0);
+	editor.StartRecording();
+	editor.ClearObservations();
+
+	char needle[] = "needle";
+	editor.SearchAnchor();
+	editor.SearchText(EditorCommand::SearchNext, 0, reinterpret_cast<sptr_t>(needle));
+	needle[0] = 'X';
+
+	REQUIRE(editor.observations.recordedActions.size() == 2);
+	CHECK(As<RecordedSearch>(editor.observations.recordedActions[1]).text == "needle");
+}
+
+TEST_CASE("Failed search still records the request") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.SetText("abc");
+	editor.SetSel(0, 0);
+	editor.StartRecording();
+	editor.ClearObservations();
+
+	const char missing[] = "zzz";
+	editor.SearchAnchor();
+	const Sci::Position pos = editor.SearchText(EditorCommand::SearchNext, 0,
+		reinterpret_cast<sptr_t>(missing));
+	CHECK(pos == Sci::invalidPosition);
+	REQUIRE(editor.observations.recordedActions.size() == 2);
+	CHECK(As<RecordedSearch>(editor.observations.recordedActions[1]).text == "zzz");
+}
+
+TEST_CASE("Message path and named methods agree for search recording") {
+	std::vector<RecordedAction> viaNamed;
+	{
+		TestHost host;
+		TestEditor editor(host);
+		editor.SetText("find me");
+		editor.SetSel(0, 0);
+		editor.StartRecording();
+		editor.ClearObservations();
+		editor.SearchAnchor();
+		const char needle[] = "me";
+		editor.SearchText(EditorCommand::SearchNext,
+			static_cast<uptr_t>(FindOption::WholeWord),
+			reinterpret_cast<sptr_t>(needle));
+		viaNamed = editor.observations.recordedActions;
+		REQUIRE(viaNamed.size() == 2);
+	}
+	{
+		TestHost host;
+		TestEditor editor(host);
+		editor.SetText("find me");
+		editor.SetSel(0, 0);
+		editor.StartRecording();
+		editor.ClearObservations();
+		editor.WndProc(Message::SearchAnchor, 0, 0);
+		const char needle[] = "me";
+		editor.WndProc(Message::SearchNext,
+			static_cast<uptr_t>(FindOption::WholeWord),
+			reinterpret_cast<sptr_t>(needle));
+		REQUIRE(editor.observations.recordedActions.size() == 2);
+		CHECK(std::holds_alternative<RecordedSearchAnchor>(
+			editor.observations.recordedActions[0]));
+		CHECK(As<RecordedSearch>(editor.observations.recordedActions[1]).direction ==
+			As<RecordedSearch>(viaNamed[1]).direction);
+		CHECK(As<RecordedSearch>(editor.observations.recordedActions[1]).flags ==
+			As<RecordedSearch>(viaNamed[1]).flags);
+		CHECK(As<RecordedSearch>(editor.observations.recordedActions[1]).text ==
+			As<RecordedSearch>(viaNamed[1]).text);
+		CHECK_FALSE(HasMacroRecord(editor));
+	}
+}
