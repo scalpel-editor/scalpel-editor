@@ -89,6 +89,27 @@ public:
 	void ClearObservations();
 	TestEditorSnapshot Snapshot() const;
 
+	// Expose private input operations only to the focused editor tests.
+	using Editor::AssignCmdKey;
+	using Editor::ClearAllCmdKeys;
+	using Editor::ClearCmdKey;
+	using Editor::GetCursor;
+	using Editor::GetDragDropEnabled;
+	using Editor::GetIMEInteraction;
+	using Editor::GetMouseDownCaptures;
+	using Editor::GetMouseDwellTime;
+	using Editor::GetMouseWheelCaptures;
+	using Editor::GetOvertype;
+	using Editor::SetCursor;
+	using Editor::SetDragDropEnabled;
+	using Editor::SetIMEInteraction;
+	using Editor::SetMouseDownCaptures;
+	using Editor::SetMouseDwellTime;
+	using Editor::SetMouseWheelCaptures;
+	using Editor::SetOvertype;
+	using ScintillaBase::GetUsePopUp;
+	using ScintillaBase::UsePopUp;
+
 	// Thin public forwards of protected Editor decoration operations so free-function
 	// tests can compare the named path with temporary message forwarders.
 	void IndicSetStyle(size_t indicator, Scintilla::IndicatorStyle style);

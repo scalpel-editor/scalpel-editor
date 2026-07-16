@@ -89,6 +89,8 @@ protected:
 	virtual void AddToPopUp(const char *label, int cmd=0, bool enabled=true) = 0;
 	bool ShouldDisplayPopup(Point ptInWindowCoordinates) const;
 	void ContextMenu(Point pt);
+	void UsePopUp(Scintilla::PopUp popUpMode);
+	Scintilla::PopUp GetUsePopUp() const noexcept;
 
 	void ButtonDownWithModifiers(Point pt, unsigned int curTime, Scintilla::KeyMod modifiers) override;
 	void RightButtonDownWithModifiers(Point pt, unsigned int curTime, Scintilla::KeyMod modifiers) override;
@@ -158,10 +160,6 @@ public:
 	void CallTipSetForeHlt(ColourRGBA fore);
 	void CallTipUseStyle(int tabSize);
 	void CallTipSetPosition(bool above);
-
-	// Context-menu policy; definition in EditorInput.cxx with the other input surface.
-	void UsePopUp(Scintilla::PopUp popUpMode);
-	Scintilla::PopUp GetUsePopUp() const noexcept;
 
 	// Lexer attachment and Lexilla-facing surface; definitions in EditorLexing.cxx.
 	void SetILexer(Scintilla::ILexer5 *lexer);

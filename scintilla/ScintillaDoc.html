@@ -417,7 +417,7 @@
         <tr>
           <td>&cir; <a class="toc" href="#Zooming">Zooming</a></td>
           <td>&cir; <a class="toc" href="#LongLines">Long lines</a></td>
-          <td>&cir; <a class="toc" href="#Accessibility">Accessibility</a></td>
+          <td></td>
         </tr>
 
         <tr>
@@ -1129,9 +1129,8 @@ struct Sci_TextRangeFull {
     <p>IME interaction and focus moved to <code>scintilla/src/EditorInput.cxx</code>. Named
     <code>SetIMEInteraction</code> / <code>GetIMEInteraction</code>, <code>SetFocus</code> /
     <code>HasFocus</code>, and their behavior descriptions live beside the definitions there.
-    Temporary message forwarders remain. <code>GrabFocus</code> is deleted: the Wayland shell calls
-    <code>SetFocus</code> when the compositor changes focus. Feature query
-    (<code>SupportsFeature</code>) remains until the host concern move.</p>
+    Temporary message forwarders remain. Feature query (<code>SupportsFeature</code>) remains until
+    the host concern move.</p>
     <code>
      <a class="message" href="#SCI_SUPPORTSFEATURE">SCI_SUPPORTSFEATURE(int feature) &rarr; bool</a><br />
     </code>
@@ -1701,11 +1700,6 @@ sptr_t CallScintilla(unsigned int iMessage, uptr_t wParam, sptr_t lParam){
     Temporary message forwarders remain.</p>
 
     
-    <h2 id="Accessibility">Accessibility</h2>
-
-    <p>Deleted: there is no accessibility bridge in this roadmap. The setter had no core effect and
-    the getter always reported disabled.</p>
-
     <h2 id="Lexer">Lexer</h2>
 
     <p>
@@ -3265,16 +3259,6 @@ for line = lineStart to lineEnd do SCI_ENSUREVISIBLE(line) next
     <code>GetPhasesDraw</code> in <code>EditorStyling.cxx</code> for drawing phases; styles use
     full style bytes.</p>
 
-    <code>
-     <a class="message" href="#SCI_SETKEYSUNICODE">SCI_SETKEYSUNICODE(bool keysUnicode)</a><br />
-     <a class="message" href="#SCI_GETKEYSUNICODE">SCI_GETKEYSUNICODE &rarr; bool</a><br />
-    </code>
-
-    <p><b id="SCI_SETKEYSUNICODE">SCI_SETKEYSUNICODE(bool keysUnicode)</b> Deprecated<br />
-     <b id="SCI_GETKEYSUNICODE">SCI_GETKEYSUNICODE &rarr; bool</b> Deprecated<br />
-     On Windows, Scintilla no longer supports narrow character windows so input is always treated as Unicode.</p>
-
-    
     <h2 id="EditMessagesNeverSupportedByScintilla">Edit messages never supported by Scintilla</h2>
 <pre>
 EM_GETWORDBREAKPROC EM_GETWORDBREAKPROCEX
