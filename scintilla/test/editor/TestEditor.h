@@ -59,7 +59,6 @@ struct TestEditorObservations {
 	std::string clipboard;
 	std::vector<TestNotification> notifications;
 	std::vector<TestTickerRequest> tickerRequests;
-	std::vector<Scintilla::Message> defaultWindowCalls;
 	std::vector<PRectangle> callTipWindows;
 	std::vector<std::string> popupItems;
 	// Typed recording sink (phase 4 step 14+). Copies survive the callback.

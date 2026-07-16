@@ -472,9 +472,10 @@ bool TestEditor::SetIdle(bool on) {
 	return true;
 }
 
-Scintilla::sptr_t TestEditor::DefWndProc(Scintilla::Message message, Scintilla::uptr_t,
+// Temporary pure-virtual override until phase 5 step 6 deletes DefWndProc.
+// Fall-through messages are no longer observed; no test drives the shell.
+Scintilla::sptr_t TestEditor::DefWndProc(Scintilla::Message, Scintilla::uptr_t,
 	Scintilla::sptr_t) {
-	observations.defaultWindowCalls.push_back(message);
 	return 0;
 }
 
