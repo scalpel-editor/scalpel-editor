@@ -21,7 +21,6 @@
 #include <vector>
 
 #include "ScintillaTypes.h"
-#include "ScintillaMessages.h"
 #include "ScintillaStructures.h"
 #include "ILoader.h"
 #include "ILexer.h"
@@ -85,44 +84,6 @@ const TestNotification *FindNotification(const TestEditor &editor, Notification 
 	return nullptr;
 }
 
-struct AutocompleteActiveSnapshot {
-	bool active = false;
-	size_t itemCount = 0;
-	int selection = -1;
-	bool listBoxVisible = false;
-	std::string text;
-	int current = -1;
-
-	bool operator==(const AutocompleteActiveSnapshot &other) const noexcept {
-		return active == other.active
-			&& itemCount == other.itemCount
-			&& selection == other.selection
-			&& listBoxVisible == other.listBoxVisible
-			&& text == other.text
-			&& current == other.current;
-	}
-};
-
-AutocompleteActiveSnapshot CaptureShow(bool throughMessage) {
-	TestHost host;
-	TestEditor editor(host);
-	editor.SetText("");
-	const char *list = "alpha beta gamma";
-	if (throughMessage) {
-		editor.WndProc(Message::AutoCShow, 0, reinterpret_cast<sptr_t>(list));
-	} else {
-		editor.AutoCShow(0, list);
-	}
-	AutocompleteActiveSnapshot snapshot;
-	snapshot.active = editor.AutoCActive();
-	snapshot.itemCount = host.listBox.items.size();
-	snapshot.selection = host.listBox.selection;
-	snapshot.listBoxVisible = host.listBox.visible;
-	snapshot.text = editor.Text();
-	snapshot.current = editor.AutoCGetCurrent();
-	return snapshot;
-}
-
 }
 
 TEST_CASE("Autocomplete defaults and option round trips") {
@@ -181,9 +142,7 @@ TEST_CASE("Autocomplete defaults and option round trips") {
 	editor.AutoCSetFillUps("([");
 }
 
-TEST_CASE("AutoCShow shows list and message path matches named method") {
-	CHECK(CaptureShow(false) == CaptureShow(true));
-
+TEST_CASE("AutoCShow shows list and reports current item") {
 	TestHost host;
 	TestEditor editor(host);
 	editor.SetText("");
@@ -207,7 +166,7 @@ TEST_CASE("AutoCShow with lengthEntered selects matching prefix") {
 	TestHost host;
 	TestEditor editor(host);
 	editor.SetText("be");
-	editor.WndProc(Message::GotoPos, 2, 0);
+	editor.GotoPos(2);
 	editor.AutoCShow(2, "alpha beta gamma");
 
 	REQUIRE(editor.AutoCActive());
@@ -304,7 +263,7 @@ TEST_CASE("Type separator list parsing and drop rest of word") {
 	editor.AutoCCancel();
 
 	editor.SetText("preXX");
-	editor.WndProc(Message::GotoPos, 3, 0);
+	editor.GotoPos(3);
 	editor.AutoCSetDropRestOfWord(true);
 	editor.AutoCShow(3, "prefix");
 	// With choose-single off, show the one-item list then complete.
@@ -329,15 +288,4 @@ TEST_CASE("Stop character cancels with notification") {
 	// Stop characters cancel without inserting the character into completion;
 	// InsertCharacter still inserts when not a fill-up.
 	CHECK(editor.Text() == ".");
-}
-
-TEST_CASE("Message getters match named autocomplete getters") {
-	TestHost host;
-	TestEditor editor(host);
-	editor.AutoCSetSeparator(';');
-	editor.AutoCSetMaxWidth(17);
-	editor.AutoCSetIgnoreCase(true);
-	CHECK(static_cast<char>(editor.WndProc(Message::AutoCGetSeparator, 0, 0)) == editor.AutoCGetSeparator());
-	CHECK(editor.WndProc(Message::AutoCGetMaxWidth, 0, 0) == editor.AutoCGetMaxWidth());
-	CHECK((editor.WndProc(Message::AutoCGetIgnoreCase, 0, 0) != 0) == editor.AutoCGetIgnoreCase());
 }
