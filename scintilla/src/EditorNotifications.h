@@ -3,7 +3,7 @@
  ** Project-owned notification kinds and payload for the host callback.
  **
  ** The editor reports events through NotifyParent(NotificationData). Kinds are
- ** only those the retained core emits. There is no Windows NotifyHeader, no
+ ** only those the retained core emits. There is no Windows-style header, no
  ** message-number packing fields (message / wParam / lParam), and no
  ** MacroRecord kind: typed recording uses RecordedAction only.
  **
