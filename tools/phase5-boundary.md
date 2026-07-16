@@ -9,7 +9,7 @@ Run `tools/check-no-message-layer.sh` as the repeatable completion check. Until 
 | Header / file | Role today | Disposition |
 | --- | --- | --- |
 | `scintilla/include/ScintillaMessages.h` | `enum class Message` for temporary shells and tests | **Deleted** in step 6. No retained project type keeps a message number. |
-| `scintilla/include/ScintillaTypes.h` | Enums, flag operators, `Position`/`Line`/`Colour` aliases, `uptr_t`/`sptr_t`, marker/indicator masks | **Split and re-own** retained definitions in concern-sized headers (step 9). Delete client/message-only enums and the file when empty of consumers. |
+| `scintilla/include/ScintillaTypes.h` | Enums, flag operators, `Position`/`Line`/`Colour` aliases, `uptr_t`/`sptr_t`, marker/indicator masks | **Deleted** (step 9). Retained definitions live in `scintilla/src/EditorBasicTypes.h`, `EditorDocumentTypes.h`, `EditorStyleTypes.h`, `EditorInputTypes.h`, and `EditorLayoutTypes.h`. `Accessibility` and `ScaleTechnique` were not re-homed. |
 | `scintilla/include/ScintillaStructures.h` | Ranges, find, print; notifications removed in step 7 | **Deleted** in step 8. Notifications live in `EditorNotifications.h`; print formatting uses direct `Sci::Position` / `PRectangle` / `SurfaceID` parameters; text range and search use named buffer and target APIs. |
 | `scintilla/include/ScintillaCall.h` | Generated C++ client wrapper over message numbers; `*Full` methods removed with their deleted parameter types | **Delete** (step 10). No production consumer. |
 | `scintilla/include/Scintilla.h` | C client constants (`SCI_*` / `SCN_*`) and parallel structs | **Delete** after any last retained constant moves (step 10). No production consumer. |
@@ -26,7 +26,7 @@ Values that retained behavior, masks, identifier ranges, or Lexilla still need k
 
 ### Retain (move into project-owned headers in step 9 batches)
 
-**Shared position / colour / pointer aliases (batch: shared):** `Position`, `Line`, `Colour`, `ColourAlpha`, `InvalidPosition`, `CpUtf8` (UTF-8-only document reports this to Lexilla). `uptr_t` / `sptr_t` stay only until the last shell and packing helper die; they are not a long-term project API.
+**Shared position / colour / platform state (`EditorBasicTypes.h`):** `Position`, `Line`, `Colour`, `ColourAlpha`, `InvalidPosition`, `CpUtf8` (UTF-8-only document reports this to Lexilla), `Technology`, `Bidirectional`, `FlagSet`. `uptr_t` / `sptr_t` were temporary message aliases and are gone (step 9).
 
 **Document / history / search:** `WhiteSpace`, `TabDrawMode`, `EndOfLine`, `FindOption` (+ operators), `ChangeHistoryOption`, `UndoSelectionHistoryOption`, `UndoFlags`, `LineEndType` (+ operators), `LineCharacterIndexType` (+ operators), `Status` (includes regex error), `DocumentOption` (internal `Document` construction still uses `DocumentOption::Default`; multi-document *messages* already deleted), `IdleStyling`, `TypeProperty` (lexer property typing).
 
@@ -36,11 +36,12 @@ Values that retained behavior, masks, identifier ranges, or Lexilla still need k
 
 **Wrapping / folding / lexing:** `Wrap`, `WrapVisualFlag`, `WrapVisualLocation`, `WrapIndentMode`, `FoldLevel` (+ helpers), `FoldDisplayTextStyle`, `FoldAction`, `AutomaticFold`, `FoldFlag` (+ operators), `AutoCompleteOption`, `CaseInsensitiveBehaviour`, `MultiAutoComplete`, `Ordering`.
 
-**Still used internally though application messages were removed:** `Technology` (surface / font realise still carry a default technology until phase 6 collapses the platform), `Bidirectional` (state and named set/get remain; full mixed-direction layout is later work), `ScaleTechnique` only if a retained type still references it after renderer collapse — treat as **review at step 9**; prefer delete if no production field remains.
+**Still used internally though application messages were removed:** `Technology` and `Bidirectional` live in `EditorBasicTypes.h` (surface / font realise still carry a default technology until phase 6; bidirectional state remains for a later layout path). `ScaleTechnique` had no production field and was **deleted** in step 9.
 
 ### Client / message-only (delete with the layer; no project re-home)
 
-- `Accessibility` — dispatch deleted; always-disabled bridge never implemented.
+- `Accessibility` — dispatch deleted; always-disabled bridge never implemented; type deleted in step 9.
+- `ScaleTechnique` — no production field; deleted in step 9.
 - Notification kind `MacroRecord` and any constant that exists only for `SCN_MACRORECORD` — production recording is `RecordedAction` only.
 - Notification kinds already deleted as callables: `Key`, `URIDropped` (and any other deleted `evt` rows in MESSAGE_REMOVAL).
 - Generated C names in `Scintilla.h` (`SCI_*`, `SCN_*`) that duplicate the enums above.
