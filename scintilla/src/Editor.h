@@ -270,6 +270,7 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 
 	Scintilla::ModificationFlags modEventMask;
 	bool commandEvents;
+	Scintilla::Status errorStatus;
 
 	SelectionText drag;
 
@@ -745,6 +746,13 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	virtual void ClaimSelection() = 0;
 
 	virtual void NotifyChange() = 0;
+	// Fixed-host policy and status; definitions in EditorHost.cxx.
+	void SetModEventMask(Scintilla::ModificationFlags eventMask) noexcept;
+	Scintilla::ModificationFlags GetModEventMask() const noexcept;
+	void SetCommandEvents(bool enabled) noexcept;
+	bool GetCommandEvents() const noexcept;
+	void SetStatus(Scintilla::Status status) noexcept;
+	Scintilla::Status GetStatus() const noexcept;
 	virtual void NotifyFocus(bool focus);
 	virtual void SetCtrlID(int identifier);
 	virtual int GetCtrlID() { return ctrlID; }
@@ -1023,7 +1031,7 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	virtual void IdleWork();
 	virtual void QueueIdleWork(WorkItems items, Sci::Position upTo=0);
 
-	virtual int SupportsFeature(Scintilla::Supports feature);
+	int SupportsFeature(Scintilla::Supports feature);
 	virtual bool PaintContains(PRectangle rc);
 	bool PaintContainsMargin();
 	void CheckForChangeOutsidePaint(Range r);
@@ -1292,8 +1300,6 @@ public:
 	virtual Scintilla::sptr_t WndProc(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
 	// Public so scintilla_set_id can use it.
 	int ctrlID;
-	// Public so COM methods for drag and drop can set it.
-	Scintilla::Status errorStatus;
 	friend class AutoSurface;
 };
 

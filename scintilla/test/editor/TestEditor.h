@@ -96,17 +96,24 @@ public:
 	using Editor::GetCursor;
 	using Editor::GetDragDropEnabled;
 	using Editor::GetIMEInteraction;
+	using Editor::GetCommandEvents;
+	using Editor::GetModEventMask;
 	using Editor::GetMouseDownCaptures;
 	using Editor::GetMouseDwellTime;
 	using Editor::GetMouseWheelCaptures;
 	using Editor::GetOvertype;
+	using Editor::GetStatus;
+	using Editor::SupportsFeature;
 	using Editor::SetCursor;
 	using Editor::SetDragDropEnabled;
 	using Editor::SetIMEInteraction;
+	using Editor::SetCommandEvents;
+	using Editor::SetModEventMask;
 	using Editor::SetMouseDownCaptures;
 	using Editor::SetMouseDwellTime;
 	using Editor::SetMouseWheelCaptures;
 	using Editor::SetOvertype;
+	using Editor::SetStatus;
 	using ScintillaBase::GetUsePopUp;
 	using ScintillaBase::UsePopUp;
 

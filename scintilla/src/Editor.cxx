@@ -1885,10 +1885,6 @@ void Editor::NotifyStyleNeeded(Document *, void *, Sci::Position endStyleNeeded)
 	NotifyStyleToNeeded(endStyleNeeded);
 }
 
-void Editor::NotifyErrorOccurred(Document *, void *, Status status) {
-	errorStatus = status;
-}
-
 void Editor::NotifyGroupCompleted(Document *, void *) noexcept {
 	// RememberCurrentSelectionForRedoOntoStack may throw (for memory exhaustion)
 	// but this method may not as it is called in UndoGroup destructor so ignore
@@ -4275,11 +4271,6 @@ void Editor::QueueIdleWork(WorkItems items, Sci::Position upTo) {
 	workNeeded.Need(items, upTo);
 }
 
-int Editor::SupportsFeature(Supports feature) {
-	AutoSurface surface(this);
-	return surface->SupportsFeature(feature);
-}
-
 bool Editor::PaintContains(PRectangle rc) {
 	if (rc.Empty()) {
 		return true;
@@ -6151,18 +6142,18 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 	// this editor owns one document and has no multi-view or loader API.
 
 	case Message::SetModEventMask:
-		modEventMask = static_cast<ModificationFlags>(wParam);
+		SetModEventMask(static_cast<ModificationFlags>(wParam));
 		return 0;
 
 	case Message::GetModEventMask:
-		return static_cast<sptr_t>(modEventMask);
+		return static_cast<sptr_t>(GetModEventMask());
 
 	case Message::SetCommandEvents:
-		commandEvents = static_cast<bool>(wParam);
+		SetCommandEvents(wParam != 0);
 		return 0;
 
 	case Message::GetCommandEvents:
-		return commandEvents;
+		return GetCommandEvents() ? 1 : 0;
 
 	case Message::ConvertEOLs:
 		ConvertEOLs(static_cast<EndOfLine>(wParam));
@@ -6205,11 +6196,11 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return HasFocus() ? 1 : 0;
 
 	case Message::SetStatus:
-		errorStatus = static_cast<Status>(wParam);
+		SetStatus(static_cast<Status>(wParam));
 		break;
 
 	case Message::GetStatus:
-		return static_cast<sptr_t>(errorStatus);
+		return static_cast<sptr_t>(GetStatus());
 
 	case Message::SetMouseDownCaptures:
 		SetMouseDownCaptures(wParam != 0);

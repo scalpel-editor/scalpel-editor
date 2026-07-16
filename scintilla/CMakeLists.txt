@@ -40,6 +40,7 @@ add_library(scintilla_core STATIC
   src/EditorDocument.cxx
   src/EditorFolding.cxx
   src/EditorHistory.cxx
+  src/EditorHost.cxx
   src/EditorInput.cxx
   src/EditorLexing.cxx
   src/EditorLines.cxx

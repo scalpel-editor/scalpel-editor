@@ -706,58 +706,9 @@ struct Sci_TextRangeFull {
 
     <h2 id="ErrorHandling">Error handling</h2>
 
-    <code><a class="message" href="#SCI_SETSTATUS">SCI_SETSTATUS(int status)</a><br />
-     <a class="message" href="#SCI_GETSTATUS">SCI_GETSTATUS &rarr; int</a><br />
-    </code>
-
-    <p><b id="SCI_SETSTATUS">SCI_SETSTATUS(int status)</b><br />
-     <b id="SCI_GETSTATUS">SCI_GETSTATUS &rarr; int</b><br />
-     If an error occurs, Scintilla may set an internal error number that can be retrieved with
-    <code>SCI_GETSTATUS</code>.
-    To clear the error status call <code>SCI_SETSTATUS(0)</code>.
-    Status values from 1 to 999 are errors and status <code>SC_STATUS_WARN_START</code> (1000)
-    and above are warnings.
-    The currently defined statuses are:
-    </p>
-
-    <table class="standard" summary="Status values">
-      <tbody valign="top">
-        <tr>
-          <th align="left"><code>SC_STATUS_OK</code></th>
-          <td>0</td>
-          <td>No failures</td>
-        </tr>
-
-        <tr>
-          <th align="left"><code>SC_STATUS_FAILURE</code></th>
-          <td>1</td>
-          <td>Generic failure</td>
-        </tr>
-
-        <tr>
-          <th align="left"><code>SC_STATUS_BADALLOC</code></th>
-          <td>2</td>
-          <td>Memory is exhausted</td>
-        </tr>
-
-        <tr>
-          <th align="left"><code>SC_STATUS_OUTSIDE_DOCUMENT</code></th>
-          <td>3</td>
-          <td>An operation was attempted on a position that is outside the document</td>
-        </tr>
-
-        <tr>
-          <th align="left"><code>SC_STATUS_WARN_REGEX</code></th>
-          <td>1001</td>
-          <td>Regular expression is invalid</td>
-        </tr>
-
-      </tbody>
-    </table>
-
-    <p>To more easily check the status of APIs, applications should call the direct status function using
-    <a class="message" href="#SCI_GETDIRECTSTATUSFUNCTION"><code>SCI_GETDIRECTSTATUSFUNCTION</code></a>.
-    </p>
+    <p>Status reporting moved to <code>scintilla/src/EditorHost.cxx</code>. The typed
+    <code>SetStatus</code> / <code>GetStatus</code> operations and status behavior are documented
+    beside their definitions. Temporary message forwarders remain.</p>
 
     <h2 id="Selection">Selection</h2>
 
@@ -1121,11 +1072,10 @@ struct Sci_TextRangeFull {
     <p>IME interaction and focus moved to <code>scintilla/src/EditorInput.cxx</code>. Named
     <code>SetIMEInteraction</code> / <code>GetIMEInteraction</code>, <code>SetFocus</code> /
     <code>HasFocus</code>, and their behavior descriptions live beside the definitions there.
-    Temporary message forwarders remain. Feature query (<code>SupportsFeature</code>) remains until
-    the host concern move.</p>
-    <code>
-     <a class="message" href="#SCI_SUPPORTSFEATURE">SCI_SUPPORTSFEATURE(int feature) &rarr; bool</a><br />
-    </code>
+    Temporary message forwarders remain.</p>
+    <p>Surface feature queries moved to <code>scintilla/src/EditorHost.cxx</code>. The named
+    <code>SupportsFeature</code> operation delegates to the active drawing surface; the Phase 6
+    renderer will provide the fixed Wayland answers.</p>
 
     
     <h2 id="BraceHighlighting">Brace highlighting</h2>
@@ -1986,11 +1936,7 @@ struct SCNotification {
     </code>
 
     <p>The following <code>SCI_*</code> messages are associated with these notifications:</p>
-    <code><a class="message" href="#SCI_SETMODEVENTMASK">SCI_SETMODEVENTMASK(int eventMask)</a><br />
-     <a class="message" href="#SCI_GETMODEVENTMASK">SCI_GETMODEVENTMASK &rarr; int</a><br />
-     <a class="message" href="#SCI_SETCOMMANDEVENTS">SCI_SETCOMMANDEVENTS(bool commandEvents)</a><br />
-     <a class="message" href="#SCI_GETCOMMANDEVENTS">SCI_GETCOMMANDEVENTS &rarr; bool</a><br />
-     <a class="message" href="#SCI_SETMOUSEDWELLTIME">SCI_SETMOUSEDWELLTIME(int periodMilliseconds)</a><br />
+    <code><a class="message" href="#SCI_SETMOUSEDWELLTIME">SCI_SETMOUSEDWELLTIME(int periodMilliseconds)</a><br />
      <a class="message" href="#SCI_GETMOUSEDWELLTIME">SCI_GETMOUSEDWELLTIME &rarr; int</a><br />
      <a class="message" href="#SCI_SETIDENTIFIER">SCI_SETIDENTIFIER(int identifier)</a><br />
      <a class="message" href="#SCI_GETIDENTIFIER">SCI_GETIDENTIFIER &rarr; int</a><br />
@@ -2176,8 +2122,7 @@ struct SCNotification {
 
     <p><b id="SCN_MODIFIED">SCN_MODIFIED</b><br />
      This notification is sent when the text or styling of the document changes or is about to
-    change. You can set a mask for the notifications that are sent to the container with <a
-    class="message" href="#SCI_SETMODEVENTMASK"><code>SCI_SETMODEVENTMASK</code></a>. The
+     change. <code>SetModEventMask</code> controls which modifications reach the host. The
     notification structure contains information about what changed, how the change occurred and
     whether this changed the number of lines in the document. No modifications may be performed
     while in a <code>SCN_MODIFIED</code> event. The <code>SCNotification</code> fields used
@@ -2525,8 +2470,7 @@ struct SCNotification {
 
           <td align="right">0x7FFFFF</td>
 
-          <td>This is a mask for all valid flags. This is the default mask state set by <a
-          class="message" href="#SCI_SETMODEVENTMASK"><code>SCI_SETMODEVENTMASK</code></a>.</td>
+          <td>This is a mask for all valid flags and is the default modification-event mask.</td>
 
           <td>None</td>
         </tr>
@@ -2539,37 +2483,13 @@ struct SCNotification {
     "command" signal on GTK as this is the behaviour of the standard Edit control
     (<code>SCEN_CHANGE</code> has the same value as the Windows Edit control
     <code>EN_CHANGE</code>). No other information is sent. If you need more detailed information
-    use <a class="message" href="#SCN_MODIFIED"><code>SCN_MODIFIED</code></a>. You can filter the
-    types of changes you are notified about with <a class="message"
-    href="#SCI_SETMODEVENTMASK"><code>SCI_SETMODEVENTMASK</code></a> and
-    <a class="message"
-    href="#SCI_SETCOMMANDEVENTS"><code>SCI_SETCOMMANDEVENTS</code></a>.</p>
+    use <a class="message" href="#SCN_MODIFIED"><code>SCN_MODIFIED</code></a>.
+    <code>SetModEventMask</code> and <code>SetCommandEvents</code> control delivery.</p>
 
-    <p><b id="SCI_SETMODEVENTMASK">SCI_SETMODEVENTMASK(int eventMask)</b><br />
-     <b id="SCI_GETMODEVENTMASK">SCI_GETMODEVENTMASK &rarr; int</b><br />
-     These messages set and get an event mask that determines which document change events are
-    notified to the container with <a class="message"
-    href="#SCN_MODIFIED"><code>SCN_MODIFIED</code></a> and <a class="message"
-    href="#SCEN_CHANGE"><code>SCEN_CHANGE</code></a>. For example, a container may decide to see
-    only notifications about changes to text and not styling changes by calling
-    <code>SCI_SETMODEVENTMASK(SC_MOD_INSERTTEXT|SC_MOD_DELETETEXT)</code>.</p>
-
-    <p>The possible notification types are the same as the <code>modificationType</code> bit flags
-    used by <code>SCN_MODIFIED</code>: <code>SC_MOD_INSERTTEXT</code>,
-    <code>SC_MOD_DELETETEXT</code>, <code>SC_MOD_CHANGESTYLE</code>,
-    <code>SC_MOD_CHANGEFOLD</code>, <code>SC_PERFORMED_USER</code>, <code>SC_PERFORMED_UNDO</code>,
-    <code>SC_PERFORMED_REDO</code>, <code>SC_MULTISTEPUNDOREDO</code>,
-    <code>SC_LASTSTEPINUNDOREDO</code>, <code>SC_MOD_CHANGEMARKER</code>,
-    <code>SC_MOD_BEFOREINSERT</code>, <code>SC_MOD_BEFOREDELETE</code>,
-    <code>SC_MULTILINEUNDOREDO</code>, and <code>SC_MODEVENTMASKALL</code>.</p>
-
-    <p><b id="SCI_SETCOMMANDEVENTS">SCI_SETCOMMANDEVENTS(bool commandEvents)</b><br />
-     <b id="SCI_GETCOMMANDEVENTS">SCI_GETCOMMANDEVENTS &rarr; bool</b><br />
-     These messages set and get whether <code>SCEN_*</code> command events are
-    sent to the container. For <code>SCEN_CHANGE</code> this acts as an additional filter over
-    <a class="message" href="#SCI_SETMODEVENTMASK"><code>SCI_SETMODEVENTMASK</code></a>.
-    Most applications should set this off to avoid overhead and only use
-    <a class="message" href="#SCN_MODIFIED"><code>SCN_MODIFIED</code></a>.</p>
+    <p>Modification and command-event filtering moved to
+    <code>scintilla/src/EditorHost.cxx</code>. The typed operations and the distinction between
+    detailed modification notifications and the coarse text-change callback are documented beside
+    their definitions. Temporary message forwarders remain.</p>
 
     <p><b id="SCEN_SETFOCUS">SCEN_SETFOCUS</b><br />
      <b id="SCEN_KILLFOCUS">SCEN_KILLFOCUS</b><br />
