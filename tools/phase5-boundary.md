@@ -109,11 +109,11 @@ When an enum value was never referenced outside generated headers and deleted me
 
 Historical mentions in `MESSAGE_REMOVAL.md`, `ROADMAP.md`, `tools/phase5-boundary.md`, `benchmark-results/`, and commit messages are documentation of the old path, not live API.
 
-## Named APIs still message-shaped at freeze time (step 2 targets)
+## Named APIs that were message-shaped at freeze time (step 2)
 
-These are production entry points that still take packed integers or `uptr_t`/`sptr_t` instead of domain types. Step 2 replaces them; temporary shells adapt at the boundary until steps 5–6 delete the shells.
+Step 2 (2026-07-16) replaced packed parameters on these production entry points. Temporary shells still convert at the boundary until steps 5–6 delete the shells.
 
-| API | Current shape | Target shape |
+| API | Former shape | Typed shape (done) |
 | --- | --- | --- |
 | `SetXCaretPolicy` / `SetYCaretPolicy` | `uptr_t policy, sptr_t slop` | `CaretPolicy policy, int slop` |
 | `SetVisiblePolicy` | `uptr_t policy, sptr_t slop` | `VisiblePolicy policy, int slop` |
@@ -123,9 +123,9 @@ These are production entry points that still take packed integers or `uptr_t`/`s
 | `ValidMargin` | `uptr_t margin` | `size_t margin` |
 | `OptionalColour` | `uptr_t useFlag, sptr_t rgb` | `bool useSetting, int rgb` |
 | `ViewStyle::SetElementColourOptional` | `uptr_t useFlag, sptr_t rgb` | `bool useSetting, int rgb` |
-| `CaretPolicySlop` / `VisiblePolicySlop` | `uintptr_t` constructors | Prefer typed enum constructors; drop packed forms when unused |
+| `CaretPolicySlop` / `VisiblePolicySlop` | `uintptr_t` constructors | Typed enum constructors only |
 
-`CommandFromMessage` has no non-shell production callers at freeze time beyond the WndProc path (including message-shaped `AssignCmdKey`); it stays until step 6.
+`CommandFromMessage` has no non-shell production callers beyond the WndProc path (including message-shaped `AssignCmdKey`); it stays until step 6.
 
 ## Completion check
 

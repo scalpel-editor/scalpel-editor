@@ -466,7 +466,7 @@ int Editor::GetFontLocale(char *buffer) const {
 
 // Pixel width of text measured in the given style after refreshing style data.
 // Useful for sizing the line-number margin. Returns 1 if no measurement surface is available.
-long Editor::TextWidth(uptr_t style, const char *text) {
+long Editor::TextWidth(int style, const char *text) {
 	RefreshStyleData();
 	AutoSurface surface(this);
 	if (surface) {
@@ -576,14 +576,14 @@ WhiteSpace Editor::GetViewWS() const noexcept {
 
 // Colour of visible whitespace marks when useSetting is true; otherwise clear the override.
 void Editor::SetWhitespaceFore(bool useSetting, int rgb) {
-	if (vs.SetElementColourOptional(Element::WhiteSpace, useSetting ? 1 : 0, rgb)) {
+	if (vs.SetElementColourOptional(Element::WhiteSpace, useSetting, rgb)) {
 		InvalidateStyleRedraw();
 	}
 }
 
 // Background behind whitespace marks when useSetting is true; otherwise clear the override.
 void Editor::SetWhitespaceBack(bool useSetting, int rgb) {
-	if (vs.SetElementColourOptional(Element::WhiteSpaceBack, useSetting ? 1 : 0, rgb)) {
+	if (vs.SetElementColourOptional(Element::WhiteSpaceBack, useSetting, rgb)) {
 		InvalidateStyleRedraw();
 	}
 }
@@ -602,8 +602,8 @@ int Editor::GetWhitespaceSize() const noexcept {
 
 // Selection (and additional-selection) text colour when useSetting is true; otherwise clear both overrides.
 void Editor::SetSelFore(bool useSetting, int rgb) {
-	vs.elementColours[Element::SelectionText] = OptionalColour(useSetting ? 1 : 0, rgb);
-	vs.elementColours[Element::SelectionAdditionalText] = OptionalColour(useSetting ? 1 : 0, rgb);
+	vs.elementColours[Element::SelectionText] = OptionalColour(useSetting, rgb);
+	vs.elementColours[Element::SelectionAdditionalText] = OptionalColour(useSetting, rgb);
 	InvalidateStyleRedraw();
 }
 

@@ -293,12 +293,12 @@ void Editor::SetCaretLineBackAlpha(int alpha) {
 }
 
 // Horizontal caret visibility policy: combination of Slop, Strict, Jumps, Even, and a pixel slop.
-void Editor::SetXCaretPolicy(uptr_t policy, sptr_t slop) {
+void Editor::SetXCaretPolicy(CaretPolicy policy, int slop) {
 	caretPolicies.x = CaretPolicySlop(policy, slop);
 }
 
 // Vertical caret visibility policy: same flags as X, with slop in lines.
-void Editor::SetYCaretPolicy(uptr_t policy, sptr_t slop) {
+void Editor::SetYCaretPolicy(CaretPolicy policy, int slop) {
 	caretPolicies.y = CaretPolicySlop(policy, slop);
 }
 

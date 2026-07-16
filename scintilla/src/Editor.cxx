@@ -164,7 +164,7 @@ Editor::Editor() : durationWrapOneByte(0.000001, 0.00000001, 0.00001) {
 	caretPolicies.x = { CaretPolicy::Slop | CaretPolicy::Even, 50 };
 	caretPolicies.y = { CaretPolicy::Even, 0 };
 
-	visiblePolicy = { 0, 0 };
+	visiblePolicy = VisiblePolicySlop{};
 
 	searchAnchor = 0;
 
@@ -5140,7 +5140,7 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 	case Message::TextWidth:
 		PLATFORM_ASSERT(wParam < vs.styles.size());
 		PLATFORM_ASSERT(lParam);
-		return TextWidth(wParam, ConstCharPtrFromSPtr(lParam));
+		return TextWidth(static_cast<int>(wParam), ConstCharPtrFromSPtr(lParam));
 
 	case Message::TextHeight:
 		return TextHeightPixels();
@@ -5671,18 +5671,19 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 
 	case Message::SearchNext:
 	case Message::SearchPrev:
-		return SearchText(CommandFromMessage(iMessage), wParam, lParam);
+		return SearchText(CommandFromMessage(iMessage), static_cast<FindOption>(wParam),
+			ConstCharPtrFromSPtr(lParam));
 
 	case Message::SetXCaretPolicy:
-		SetXCaretPolicy(wParam, lParam);
+		SetXCaretPolicy(static_cast<CaretPolicy>(wParam), static_cast<int>(lParam));
 		break;
 
 	case Message::SetYCaretPolicy:
-		SetYCaretPolicy(wParam, lParam);
+		SetYCaretPolicy(static_cast<CaretPolicy>(wParam), static_cast<int>(lParam));
 		break;
 
 	case Message::SetVisiblePolicy:
-		SetVisiblePolicy(wParam, lParam);
+		SetVisiblePolicy(static_cast<VisiblePolicy>(wParam), static_cast<int>(lParam));
 		break;
 
 	case Message::LinesOnScreen:
@@ -6054,10 +6055,10 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return SelectionIsRectangle() ? 1 : 0;
 
 	case Message::SetSelectionMode:
-		SetSelectionMode(wParam, true);
+		SetSelectionMode(static_cast<SelectionMode>(wParam), true);
 		break;
 	case Message::ChangeSelectionMode:
-		SetSelectionMode(wParam, false);
+		SetSelectionMode(static_cast<SelectionMode>(wParam), false);
 		break;
 	case Message::GetSelectionMode:
 		return static_cast<sptr_t>(GetSelectionMode());

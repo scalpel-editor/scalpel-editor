@@ -681,15 +681,15 @@ constexpr Selection::SelTypes SelTypeFromMode(SelectionMode mode) {
 }
 
 // Set stream/rectangle/lines/thin mode; may convert the current selection.
-// When macro recording is on and setMoveExtends is true (SCI_SETSELECTIONMODE),
+// When macro recording is on and setMoveExtends is true (SetSelectionMode path),
 // emits RecordedSetSelectionMode. ChangeSelectionMode (setMoveExtends false) is
 // not recorded, matching the former numeric allowlist.
-// Replay uses setMoveExtends true to match the message path that was recorded.
-void Editor::SetSelectionMode(uptr_t wParam, bool setMoveExtends) {
+// Replay uses setMoveExtends true to match the path that was recorded.
+void Editor::SetSelectionMode(SelectionMode mode, bool setMoveExtends) {
 	if (setMoveExtends) {
-		EmitRecordedAction(RecordedSetSelectionMode{static_cast<SelectionMode>(wParam)});
+		EmitRecordedAction(RecordedSetSelectionMode{mode});
 	}
-	const Selection::SelTypes newSelType = SelTypeFromMode(static_cast<SelectionMode>(wParam));
+	const Selection::SelTypes newSelType = SelTypeFromMode(mode);
 	if (setMoveExtends) {
 		sel.SetMoveExtends(!sel.MoveExtends() || (sel.selType != newSelType));
 	}

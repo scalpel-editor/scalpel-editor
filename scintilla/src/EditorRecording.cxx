@@ -179,18 +179,15 @@ void Editor::ApplyRecordedAction(const RecordedAction &action) {
 		return;
 	}
 	if (const RecordedSearch *search = std::get_if<RecordedSearch>(&action)) {
-		// SearchText expects a temporary NUL-terminated C string in lParam.
 		const EditorCommand command = search->direction == SearchDirection::Next
 			? EditorCommand::SearchNext
 			: EditorCommand::SearchPrev;
-		SearchText(command,
-			static_cast<uptr_t>(search->flags),
-			reinterpret_cast<sptr_t>(search->text.c_str()));
+		SearchText(command, search->flags, search->text.c_str());
 		return;
 	}
 	if (const RecordedSetSelectionMode *mode = std::get_if<RecordedSetSelectionMode>(&action)) {
-		// Match the message path that enables move-extends when mode changes.
-		SetSelectionMode(static_cast<uptr_t>(mode->mode), true);
+		// Match the path that enables move-extends when mode changes.
+		SetSelectionMode(mode->mode, true);
 		return;
 	}
 }

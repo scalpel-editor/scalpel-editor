@@ -150,12 +150,11 @@ struct WrapPending {
 };
 
 struct CaretPolicySlop {
-	Scintilla::CaretPolicy policy;	// Combination from CaretPolicy::Slop, CaretPolicy::Strict, CaretPolicy::Jumps, CaretPolicy::Even
-	int slop;	// Pixels for X, lines for Y
-	CaretPolicySlop(Scintilla::CaretPolicy policy_, intptr_t slop_) noexcept :
-		policy(policy_), slop(static_cast<int>(slop_)) {}
-	CaretPolicySlop(uintptr_t policy_=0, intptr_t slop_=0) noexcept :
-		policy(static_cast<Scintilla::CaretPolicy>(policy_)), slop(static_cast<int>(slop_)) {}
+	Scintilla::CaretPolicy policy = static_cast<Scintilla::CaretPolicy>(0);	// Slop, Strict, Jumps, Even
+	int slop = 0;	// Pixels for X, lines for Y
+	CaretPolicySlop() noexcept = default;
+	CaretPolicySlop(Scintilla::CaretPolicy policy_, int slop_) noexcept :
+		policy(policy_), slop(slop_) {}
 };
 
 struct CaretPolicies {
@@ -164,10 +163,11 @@ struct CaretPolicies {
 };
 
 struct VisiblePolicySlop {
-	Scintilla::VisiblePolicy policy;	// Combination from VisiblePolicy::Slop, VisiblePolicy::Strict
-	int slop;	// Pixels for X, lines for Y
-	VisiblePolicySlop(uintptr_t policy_ = 0, intptr_t slop_ = 0) noexcept :
-		policy(static_cast<Scintilla::VisiblePolicy>(policy_)), slop(static_cast<int>(slop_)) {}
+	Scintilla::VisiblePolicy policy = static_cast<Scintilla::VisiblePolicy>(0);	// Slop, Strict
+	int slop = 0;	// Lines of context
+	VisiblePolicySlop() noexcept = default;
+	VisiblePolicySlop(Scintilla::VisiblePolicy policy_, int slop_) noexcept :
+		policy(policy_), slop(slop_) {}
 };
 
 enum class XYScrollOptions {
@@ -464,8 +464,8 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void SetCaretLineLayer(Scintilla::Layer layer);
 	int GetCaretLineBackAlpha() const noexcept;
 	void SetCaretLineBackAlpha(int alpha);
-	void SetXCaretPolicy(Scintilla::uptr_t policy, Scintilla::sptr_t slop);
-	void SetYCaretPolicy(Scintilla::uptr_t policy, Scintilla::sptr_t slop);
+	void SetXCaretPolicy(Scintilla::CaretPolicy policy, int slop);
+	void SetYCaretPolicy(Scintilla::CaretPolicy policy, int slop);
 	void SetCaretFore(int rgb);
 	int GetCaretFore() const noexcept;
 	void SetCaretStyle(Scintilla::CaretStyle style);
@@ -713,7 +713,7 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void MultiEdgeClearAll();
 	void ReleaseAllExtendedStyles();
 	int AllocateExtendedStyles(int numberStyles);
-	long TextWidth(Scintilla::uptr_t style, const char *text);
+	long TextWidth(int style, const char *text);
 	// Clipboard: definitions and descriptions in EditorClipboard.cxx.
 	// Clipboard cut/copy helpers and options: EditorClipboard.cxx.
 	// Copy and Paste remain pure virtual host hooks.
@@ -833,7 +833,7 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	// Search and replace helpers: EditorSearch.cxx.
 	// Application target/search methods are public below.
 	void SearchAnchor();
-	Sci::Position SearchText(EditorCommand command, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
+	Sci::Position SearchText(EditorCommand command, Scintilla::FindOption flags, const char *text);
 	Sci::Position SearchInTarget(const char *text, Sci::Position length);
 	void SetTargetStartVirtualSpace(Sci::Position space);
 	Sci::Position GetTargetStartVirtualSpace() const noexcept;
@@ -853,11 +853,11 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void SetEndAtLastLine(bool endAtLast);
 	bool GetEndAtLastLine() const noexcept;
 	int TextHeightPixels();
-	void SetVisiblePolicy(Scintilla::uptr_t policy, Scintilla::sptr_t slop);
+	void SetVisiblePolicy(Scintilla::VisiblePolicy policy, int slop);
 	int PointXFromPosition(Sci::Position pos);
 	int PointYFromPosition(Sci::Position pos);
 	// Margins: definitions in EditorMargins.cxx.
-	bool ValidMargin(Scintilla::uptr_t margin) const noexcept;
+	bool ValidMargin(size_t margin) const noexcept;
 	void SetMargins(size_t margins);
 	size_t GetMargins() const noexcept;
 	void SetMarginTypeN(size_t margin, Scintilla::MarginType marginType);
@@ -1111,7 +1111,7 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	Sci::Position GetTextRange(char *buffer, Sci::Position cpMin, Sci::Position cpMax) const;
 
 	virtual Scintilla::sptr_t DefWndProc(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam) = 0;
-	void SetSelectionMode(uptr_t wParam, bool setMoveExtends);
+	void SetSelectionMode(Scintilla::SelectionMode mode, bool setMoveExtends);
 
 	// Coercion functions for transforming WndProc parameters into pointers
 	static void *PtrFromSPtr(Scintilla::sptr_t lParam) noexcept {

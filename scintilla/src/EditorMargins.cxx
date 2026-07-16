@@ -80,7 +80,7 @@ using namespace Scintilla;
 using namespace Scintilla::Internal;
 
 // True when margin indexes a margin slot in the view style.
-bool Editor::ValidMargin(uptr_t margin) const noexcept {
+bool Editor::ValidMargin(size_t margin) const noexcept {
 	return margin < vs.ms.size();
 }
 
@@ -217,13 +217,13 @@ int Editor::GetMarginRight() const noexcept {
 
 // Fold-margin fill and highlight. useSetting false clears the override so the platform default applies again.
 void Editor::SetFoldMarginColour(bool useSetting, int rgb) {
-	vs.foldmarginColour = OptionalColour(useSetting ? 1 : 0, rgb);
+	vs.foldmarginColour = OptionalColour(useSetting, rgb);
 	InvalidateStyleRedraw();
 }
 
 // Highlight colour of the fold margin, or platform default when useSetting is false.
 void Editor::SetFoldMarginHiColour(bool useSetting, int rgb) {
-	vs.foldmarginHighlightColour = OptionalColour(useSetting ? 1 : 0, rgb);
+	vs.foldmarginHighlightColour = OptionalColour(useSetting, rgb);
 	InvalidateStyleRedraw();
 }
 

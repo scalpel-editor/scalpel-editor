@@ -403,7 +403,7 @@ int Editor::GetRepresentationColour(std::string_view charBytes) const {
 
 // Active hotspot foreground. useSetting false clears the override.
 void Editor::SetHotspotActiveFore(bool useSetting, int rgb) {
-	if (vs.SetElementColourOptional(Element::HotSpotActive, useSetting ? 1 : 0, rgb)) {
+	if (vs.SetElementColourOptional(Element::HotSpotActive, useSetting, rgb)) {
 		InvalidateStyleRedraw();
 	}
 }
@@ -415,7 +415,7 @@ int Editor::GetHotspotActiveFore() const {
 
 // Active hotspot background. useSetting false clears the override.
 void Editor::SetHotspotActiveBack(bool useSetting, int rgb) {
-	if (vs.SetElementColourOptional(Element::HotSpotActiveBack, useSetting ? 1 : 0, rgb)) {
+	if (vs.SetElementColourOptional(Element::HotSpotActiveBack, useSetting, rgb)) {
 		InvalidateStyleRedraw();
 	}
 }

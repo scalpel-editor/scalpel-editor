@@ -39,12 +39,11 @@ typedef std::map<FontSpecification, std::unique_ptr<FontRealised>> FontMap;
 
 using ColourOptional = std::optional<ColourRGBA>;
 
-inline ColourOptional OptionalColour(Scintilla::uptr_t wParam, Scintilla::sptr_t lParam) noexcept {
-	if (wParam) {
-		return ColourRGBA::FromIpRGB(lParam);
-	} else {
-		return {};
+inline ColourOptional OptionalColour(bool useSetting, int rgb) noexcept {
+	if (useSetting) {
+		return ColourRGBA::FromIpRGB(rgb);
 	}
+	return {};
 }
 
 struct SelectionAppearance {
@@ -226,7 +225,7 @@ public:
 	bool ElementAllowsTranslucent(Scintilla::Element element) const;
 	bool ResetElement(Scintilla::Element element);
 	bool SetElementColour(Scintilla::Element element, ColourRGBA colour);
-	bool SetElementColourOptional(Scintilla::Element element, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
+	bool SetElementColourOptional(Scintilla::Element element, bool useSetting, int rgb);
 	void SetElementRGB(Scintilla::Element element, int rgb);
 	void SetElementAlpha(Scintilla::Element element, int alpha);
 	bool ElementIsSet(Scintilla::Element element) const;

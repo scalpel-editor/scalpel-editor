@@ -179,35 +179,29 @@ void Editor::SearchAnchor() {
 	searchAnchor = SelectionStart().Position();
 }
 
-// SearchNext or SearchPrev from the search anchor with flags in wParam and C string in lParam.
+// SearchNext or SearchPrev from the search anchor.
 // On success selects the match and returns its start; otherwise invalidPosition.
 // When macro recording is on, emits RecordedSearch with owned needle text.
-Sci::Position Editor::SearchText(
-    EditorCommand command,		///< Accepts both @c EditorCommand::SearchNext and @c EditorCommand::SearchPrev.
-    uptr_t wParam,				///< Search modes : @c FindOption::MatchCase, @c FindOption::WholeWord,
-    ///< @c FindOption::WordStart, @c FindOption::RegExp or @c FindOption::Posix.
-    sptr_t lParam) {			///< The text to search for.
-
-	const char *txt = ConstCharPtrFromSPtr(lParam);
+Sci::Position Editor::SearchText(EditorCommand command, FindOption flags, const char *text) {
 	const SearchDirection direction = command == EditorCommand::SearchNext
 		? SearchDirection::Next
 		: SearchDirection::Prev;
 	// Copy the needle before search so the host owns bytes even if the caller
-	// frees or overwrites lParam after return.
+	// frees or overwrites the buffer after return.
 	EmitRecordedAction(RecordedSearch{
-		direction, static_cast<FindOption>(wParam), txt ? std::string(txt) : std::string{}});
+		direction, flags, text ? std::string(text) : std::string{}});
 	Sci::Position pos = Sci::invalidPosition;
-	Sci::Position lengthFound = txt ? static_cast<Sci::Position>(strlen(txt)) : 0;
+	Sci::Position lengthFound = text ? static_cast<Sci::Position>(strlen(text)) : 0;
 	if (!pdoc->HasCaseFolder())
 		pdoc->SetCaseFolder(std::make_unique<CaseFolderUnicode>());
 	try {
 		if (command == EditorCommand::SearchNext) {
-			pos = pdoc->FindText(searchAnchor, pdoc->Length(), txt,
-					static_cast<FindOption>(wParam),
+			pos = pdoc->FindText(searchAnchor, pdoc->Length(), text,
+					flags,
 					&lengthFound);
 		} else {
-			pos = pdoc->FindText(searchAnchor, 0, txt,
-					static_cast<FindOption>(wParam),
+			pos = pdoc->FindText(searchAnchor, 0, text,
+					flags,
 					&lengthFound);
 		}
 	} catch (RegexError &) {

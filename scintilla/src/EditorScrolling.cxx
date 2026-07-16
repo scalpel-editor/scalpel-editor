@@ -188,7 +188,7 @@ int Editor::TextHeightPixels() {
 }
 
 // Policy used by EnsureVisibleEnforcePolicy: VisiblePolicy::Slop / Strict and a line slop.
-void Editor::SetVisiblePolicy(uptr_t policy, sptr_t slop) {
+void Editor::SetVisiblePolicy(VisiblePolicy policy, int slop) {
 	visiblePolicy = VisiblePolicySlop(policy, slop);
 }
 

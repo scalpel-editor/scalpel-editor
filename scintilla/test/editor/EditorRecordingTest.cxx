@@ -546,7 +546,7 @@ TEST_CASE("Goto and selection mode are captured as typed actions while recording
 
 	editor.GotoLine(2);
 	editor.GotoPos(1);
-	editor.SetSelectionMode(static_cast<uptr_t>(SelectionMode::Rectangle), true);
+	editor.SetSelectionMode(SelectionMode::Rectangle, true);
 
 	REQUIRE(editor.observations.recordedActions.size() == 3);
 	CHECK(As<RecordedGotoLine>(editor.observations.recordedActions[0]).line == 2);
@@ -566,7 +566,7 @@ TEST_CASE("Message path and named methods agree for goto and selection mode reco
 		editor.ClearObservations();
 		editor.GotoLine(1);
 		editor.GotoPos(3);
-		editor.SetSelectionMode(static_cast<uptr_t>(SelectionMode::Lines), true);
+		editor.SetSelectionMode(SelectionMode::Lines, true);
 		viaNamed = editor.observations.recordedActions;
 		REQUIRE(viaNamed.size() == 3);
 	}
@@ -601,13 +601,9 @@ TEST_CASE("Search anchor and parameterized search are captured while recording")
 
 	editor.SearchAnchor();
 	const char needle[] = "one";
-	const Sci::Position found = editor.SearchText(EditorCommand::SearchNext,
-		static_cast<uptr_t>(FindOption::None),
-		reinterpret_cast<sptr_t>(needle));
+	const Sci::Position found = editor.SearchText(EditorCommand::SearchNext, FindOption::None, needle);
 	REQUIRE(found == 0);
-	const Sci::Position prev = editor.SearchText(EditorCommand::SearchPrev,
-		static_cast<uptr_t>(FindOption::MatchCase),
-		reinterpret_cast<sptr_t>(needle));
+	const Sci::Position prev = editor.SearchText(EditorCommand::SearchPrev, FindOption::MatchCase, needle);
 	(void)prev;
 
 	REQUIRE(editor.observations.recordedActions.size() == 3);
@@ -633,7 +629,7 @@ TEST_CASE("Search recording owns the needle after the original buffer is overwri
 
 	char needle[] = "needle";
 	editor.SearchAnchor();
-	editor.SearchText(EditorCommand::SearchNext, 0, reinterpret_cast<sptr_t>(needle));
+	editor.SearchText(EditorCommand::SearchNext, FindOption::None, needle);
 	needle[0] = 'X';
 
 	REQUIRE(editor.observations.recordedActions.size() == 2);
@@ -650,8 +646,7 @@ TEST_CASE("Failed search still records the request") {
 
 	const char missing[] = "zzz";
 	editor.SearchAnchor();
-	const Sci::Position pos = editor.SearchText(EditorCommand::SearchNext, 0,
-		reinterpret_cast<sptr_t>(missing));
+	const Sci::Position pos = editor.SearchText(EditorCommand::SearchNext, FindOption::None, missing);
 	CHECK(pos == Sci::invalidPosition);
 	REQUIRE(editor.observations.recordedActions.size() == 2);
 	CHECK(As<RecordedSearch>(editor.observations.recordedActions[1]).text == "zzz");
@@ -751,9 +746,7 @@ TEST_CASE("Message path and named methods agree for search recording") {
 		editor.ClearObservations();
 		editor.SearchAnchor();
 		const char needle[] = "me";
-		editor.SearchText(EditorCommand::SearchNext,
-			static_cast<uptr_t>(FindOption::WholeWord),
-			reinterpret_cast<sptr_t>(needle));
+		editor.SearchText(EditorCommand::SearchNext, FindOption::WholeWord, needle);
 		viaNamed = editor.observations.recordedActions;
 		REQUIRE(viaNamed.size() == 2);
 	}
@@ -804,8 +797,8 @@ TEST_CASE("Mixed parameterized capture replays on a fresh editor") {
 		editor.RunCommand(EditorCommand::CharRight);
 		editor.SearchAnchor();
 		const char needle[] = "two";
-		editor.SearchText(EditorCommand::SearchNext, 0, reinterpret_cast<sptr_t>(needle));
-		editor.SetSelectionMode(static_cast<uptr_t>(SelectionMode::Stream), true);
+		editor.SearchText(EditorCommand::SearchNext, FindOption::None, needle);
+		editor.SetSelectionMode(SelectionMode::Stream, true);
 		editor.InsertInput("z");
 
 		recorded = editor.observations.recordedActions;
@@ -902,7 +895,7 @@ TEST_CASE("Message path mixed script matches named capture for replay") {
 		editor.AppendText("C");
 		editor.SearchAnchor();
 		const char needle[] = "B";
-		editor.SearchText(EditorCommand::SearchNext, 0, reinterpret_cast<sptr_t>(needle));
+		editor.SearchText(EditorCommand::SearchNext, FindOption::None, needle);
 		editor.ReplaceSel("D");
 		viaNamed = editor.observations.recordedActions;
 		namedText = editor.Text();

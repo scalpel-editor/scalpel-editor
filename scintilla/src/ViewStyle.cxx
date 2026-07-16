@@ -671,9 +671,9 @@ bool ViewStyle::SetElementColour(Element element, ColourRGBA colour) {
 	return SetElementMapColour(elementColours, element, colour);
 }
 
-bool ViewStyle::SetElementColourOptional(Element element, uptr_t wParam, sptr_t lParam) {
-	if (wParam) {
-		return SetElementColour(element, ColourRGBA::FromIpRGB(lParam));
+bool ViewStyle::SetElementColourOptional(Element element, bool useSetting, int rgb) {
+	if (useSetting) {
+		return SetElementColour(element, ColourRGBA::FromIpRGB(rgb));
 	}
 	return ResetElement(element);
 }
