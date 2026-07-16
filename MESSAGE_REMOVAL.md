@@ -121,6 +121,12 @@ Generated from `scintilla/include/Scintilla.iface` on 2026-07-13. It contains al
 
 Run `tools/check-message-inventory.sh` after changing this inventory or `Scintilla.iface`. The check requires every callable entry and notification to appear exactly once.
 
+Run `tools/check-retained-entrypoints.sh` (phase 4 step 17) after changing dispatch cases, named methods, `EditorCommand`, or deletion rows. It requires every retained callable to have a thin temporary `Message::` case and a named method or `EditorCommand` member, and every `Feature to delete` entry to have no `Message::` case. Intentional renames (for example `CopyRange` → `CopyRangeToClipboard`) live in that script’s alias table.
+
+### Step 17 audit (2026-07-16)
+
+Mechanical audit green: 782 retained callables, 41 deleted callables, 32 notifications; 782 thin `Message::` cases; deletions free of dispatch. Application-facing definitions sampled across document, wrap, clipboard, search, lexing, recording, input, selection, printing, and autocomplete keep short reader comments beside the named definitions. Focused suites cover each concern; step 17 added direct-path coverage where application search, selection-N, rectangular-modifier, and scroll ops had been message-only. Deleted notification prose for `Key` and `URIDropped` is gone from the live how-to sections of `ScintillaDoc.html`. Remaining work for steps 18–20: production internal `WndProc` use in `ScintillaBase::Command` / `ContextMenu`, bulk inventory “planned” language cleanup, and the phase gate.
+
 The classification record for each concern appears immediately before its exhaustive entry list. A decision row may cover several entries only when they have the same owner, classification, target file, focused-test plan, documentation action, and deletion reason. “Named operations keep their interface names” means the numeric wrapper is replaced by typed functions with those names; the migration may combine a setter and getter into one small value object when that makes the resulting code clearer.
 
 Every retained concern uses a focused `Editor...Test.cxx` suite unless the row names a narrower existing unit suite. “Add editor tests” means the current suite does not observe enough visible behavior and tests must land before or with the concern move. “Move API prose” means read the matching `ScintillaDoc.html` section, keep its useful behavior description beside the named definition, and remove the old API prose. “Delete API prose” means remove text that only describes the deleted entry.
