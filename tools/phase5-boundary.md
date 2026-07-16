@@ -8,7 +8,7 @@ Run `tools/check-no-message-layer.sh` as the repeatable completion check. Until 
 
 | Header / file | Role today | Disposition |
 | --- | --- | --- |
-| `scintilla/include/ScintillaMessages.h` | `enum class Message` for temporary shells and tests | **Delete** with the shells (roadmap step 6). No retained project type keeps a message number. |
+| `scintilla/include/ScintillaMessages.h` | `enum class Message` for temporary shells and tests | **Deleted** in step 6. No retained project type keeps a message number. |
 | `scintilla/include/ScintillaTypes.h` | Enums, flag operators, `Position`/`Line`/`Colour` aliases, `uptr_t`/`sptr_t`, marker/indicator masks | **Split and re-own** retained definitions in concern-sized headers (step 9). Delete client/message-only enums and the file when empty of consumers. |
 | `scintilla/include/ScintillaStructures.h` | Ranges, find, print, `NotifyHeader`, `NotificationData` | **Replace** with project-owned types (steps 7–8). Delete the file when last include is gone. |
 | `scintilla/include/ScintillaCall.h` | Generated C++ client wrapper over message numbers | **Delete** (step 10). No production consumer. |
@@ -77,25 +77,25 @@ When an enum value was never referenced outside generated headers and deleted me
 - `message`, `wParam`, `lParam` — leftover macro-record and autocomplete packing through the Windows-shaped struct. Autocomplete currently stashes list type and positions in those fields; step 7 must give them typed members (`listType`, `position`, …) instead of reusing macro-record slots.
 - `Notification::MacroRecord` — never emitted; typed recording only.
 
-## Temporary shells and helpers (delete in steps 5–6)
+## Temporary shells and helpers (deleted in steps 5–6)
 
 | Item | Owner | Notes |
 | --- | --- | --- |
-| `ScintillaBase::WndProc` | `ScintillaBase.cxx` | Autocomplete, call tip, lexer forwarders then `Editor::WndProc`. |
-| `Editor::WndProc` | `Editor.cxx` | ~700 thin cases; only unpack + call named code. |
-| `Editor::DefWndProc` | pure virtual; `TestEditor` implements | Test fall-through for deleted messages. |
-| `StringResult` / `BytesResult` | `Editor` | Message string return packing. |
-| `PtrFromSPtr`, `ConstCharPtrFromSPtr`, `ViewFromParams`, `PositionFromUPtr`, … | `Editor.h` | Shell coercion only after named APIs are typed (step 2). |
-| `CommandFromMessage` | `EditorCommands` | Shell + `AssignCmdKey` message path only; named binding already takes `EditorCommand`. |
-| `KeysFromWParam` / `KeyModFromWParam` | `Editor.cxx` | Packed key+modifier in one `uptr_t` for message `AssignCmdKey` / `ClearCmdKey`. |
+| `ScintillaBase::WndProc` | `ScintillaBase.cxx` | **Deleted** in step 5. |
+| `Editor::WndProc` | `Editor.cxx` | **Deleted** in step 6. |
+| `Editor::DefWndProc` | pure virtual; `TestEditor` implements | **Deleted** in step 6. |
+| `StringResult` / `BytesResult` | `Editor` | **Deleted** in step 6. |
+| `PtrFromSPtr`, `ConstCharPtrFromSPtr`, `ViewFromParams`, `PositionFromUPtr`, … | `Editor.h` | **Deleted** in step 6. |
+| `CommandFromMessage` | `EditorCommands` | **Deleted** in step 6. |
+| `KeysFromWParam` / `KeyModFromWParam` | `Editor.cxx` | **Deleted** in step 6. |
 
 ## Phase 4 tools after the shells die
 
 | Tool | After step 6 |
 | --- | --- |
-| `tools/check-message-inventory.sh` | **Historical / retire** — requires `Scintilla.iface` and inventory sync; do not keep as a green gate once `.iface` is deleted. |
-| `tools/check-retained-entrypoints.py` | **Historical / retire** — requires thin `Message::` cases. Callable→named mapping lives in MESSAGE_REMOVAL inventory text. |
-| `tools/discoverability/*` | **Update** query expectations that mention `ScintillaMessages.h` or message paths. |
+| `tools/check-message-inventory.sh` | **Deleted** in step 6 — required `Scintilla.iface` and inventory sync. |
+| `tools/check-retained-entrypoints.py` / `.sh` | **Deleted** in step 6 — required thin `Message::` cases. Callable→named mapping lives in MESSAGE_REMOVAL inventory text. |
+| `tools/discoverability/*` | **Update** query expectations that mention `ScintillaMessages.h` or message paths (step 11). |
 | `tools/check-no-message-layer.sh` | **Live gate** for phase 5 completion (step 11). |
 
 ## External same-spelling terms (allowed after completion)
