@@ -143,7 +143,6 @@ enum class EditorCommand {
 
 // Temporary conversion while WndProc still accepts Message for command keys.
 // Removed with the generated message layer (phase 5).
-Scintilla::Message MessageFromCommand(EditorCommand command) noexcept;
 EditorCommand CommandFromMessage(Scintilla::Message message) noexcept;
 
 }

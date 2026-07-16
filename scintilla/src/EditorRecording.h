@@ -3,11 +3,10 @@
  ** Typed macro recording: owned actions and the host callback contract.
  **
  ** Recording captures user-level edits so a host can store and replay them.
- ** The numeric SCN_MACRORECORD form (message number plus raw parameters) is
- ** replaced by RecordedAction: a variant that owns any text and carries only
- ** typed fields. Lifecycle, zero-argument command capture, and replay live in
- ** EditorRecording.cxx. Parameterized capture (text, goto, search, selection
- ** mode) still uses the temporary numeric path until phase 4 step 16.
+ ** RecordedAction is a variant that owns any text and carries only typed
+ ** fields. Lifecycle, command capture, parameterized capture, the host
+ ** callback, and replay live in EditorRecording.cxx and the named entry
+ ** points that emit actions. There is no numeric SCN_MACRORECORD path.
  **
  ** # Recordable operations
  **
@@ -18,8 +17,8 @@
  **   are not RecordedCommand values. Search anchor and parameterized search use
  **   their dedicated alternatives below.
  ** - ReplaceSelection with owned text (typed characters and ReplaceSel; also
- **   how newline insertion is stored today — one ReplaceSelection per EOL
- **   character after insertion, not a separate NewLine command).
+ **   how newline insertion is stored — one ReplaceSelection per EOL character
+ **   after insertion, not a separate NewLine command).
  ** - AddText, InsertText (position + text), AppendText with owned text.
  ** - ClearAll.
  ** - GotoLine and GotoPos.
@@ -28,9 +27,8 @@
  **
  ** # Ignored operations
  **
- ** - Display-only and style/layout settings that never appear in the
- **   NotifyMacroRecord allowlist (scroll bars, wrap mode, colours, zoom as a
- **   view setting, and other non-editing messages).
+ ** - Display-only and style/layout settings (scroll bars, wrap mode, colours,
+ **   zoom as a view setting, and other non-editing operations).
  ** - NewLine as a command: filtered out because character insert already
  **   records the EOL bytes as ReplaceSelection.
  ** - Tentative IME input (CharacterSource::TentativeInput): not recorded;
@@ -262,7 +260,7 @@ struct RecordedSetSelectionMode {
 
 /**
  * One recorded user-level edit. Owns any text. No message number or raw
- * wParam/lParam. Alternatives match the shapes NotifyMacroRecord allows today.
+ * wParam/lParam.
  */
 using RecordedAction = std::variant<
 	RecordedCommand,

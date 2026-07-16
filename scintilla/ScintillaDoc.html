@@ -1476,14 +1476,15 @@ struct Sci_TextRangeFull {
 
     <h2 id="MacroRecording">Macro recording</h2>
 
-    <p>The typed record format is <code>RecordedAction</code> in
+    <p>The record format is <code>RecordedAction</code> in
     <code>scintilla/src/EditorRecording.h</code>: an owned variant for commands, text
     insert/replace, navigation, search, and selection mode. Lifecycle, zero-argument command
-    capture at <code>ExecuteCommand</code>, the host callback, and replay live in
-    <code>scintilla/src/EditorRecording.cxx</code>. That header documents which operations are
-    recordable, which are ignored, how text is owned, and how replay avoids recording itself.
-    Parameterized capture still uses the temporary numeric <code>SCN_MACRORECORD</code> path
-    until phase 4 step 16 moves it onto named entry points and deletes the numeric form.</p>
+    capture at <code>ExecuteCommand</code>, parameterized capture at named entry points, the
+    host callback, and replay live in <code>scintilla/src/EditorRecording.cxx</code> and the
+    concern files that emit actions. That header documents which operations are recordable,
+    which are ignored, how text is owned, and how replay avoids recording itself. There is no
+    numeric <code>SCN_MACRORECORD</code> path; hosts use the typed
+    <code>RecordingCallback</code>.</p>
 
     <p id="SCI_STARTRECORD"><b>SCI_STARTRECORD</b> / <b id="SCI_STOPRECORD">SCI_STOPRECORD</b>
     are temporary message forwarders to named <code>StartRecording</code> /
@@ -2409,13 +2410,12 @@ struct SCNotification {
     now too late to change the Scintilla codes as clients depend on the current values.</p>
 
     <p><b id="SCN_MACRORECORD">SCN_MACRORECORD</b><br />
-     Temporary numeric recording notification. The lasting host surface is the typed
+     Deleted as a production recording path. Macro recording uses the typed
      <code>RecordedAction</code> callback documented in
      <code>scintilla/src/EditorRecording.h</code> (see also
-     <a class="jump" href="#MacroRecording">Macro recording</a>). Until phase 4 step 16 removes
-     this path, production still emits <code>SCN_MACRORECORD</code> with the former
-     <code>message</code> / <code>wParam</code> / <code>lParam</code> fields for each allowlisted
-     change.</p>
+     <a class="jump" href="#MacroRecording">Macro recording</a>). Generated notification
+     constants may remain until phase 5 removes the message layer; production never emits
+     this code.</p>
 
     <p><b id="SCN_MARGINCLICK">SCN_MARGINCLICK</b><br />
      <b id="SCN_MARGINRIGHTCLICK">SCN_MARGINRIGHTCLICK</b><br />

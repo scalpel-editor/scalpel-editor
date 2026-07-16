@@ -2293,14 +2293,6 @@ void Editor::NotifyDeleted(Document *, void *) noexcept {
 	/* Do nothing */
 }
 
-void Editor::NotifyMacroRecord(Message iMessage, uptr_t wParam, sptr_t lParam) {
-	// Unused: all recordable paths emit typed RecordedAction. Removed in the
-	// step-16 cleanup commit that deletes this function and MessageFromCommand.
-	(void)iMessage;
-	(void)wParam;
-	(void)lParam;
-}
-
 // Something has changed that the container should know about
 void Editor::ContainerNeedsUpdate(Update flags) noexcept {
 	needUpdateUI = needUpdateUI | flags;

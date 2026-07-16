@@ -8,12 +8,12 @@
  **
  ** Zero-argument bindable commands that IsRecordableCommand accepts are
  ** captured at ExecuteCommand as RecordedCommand. Parameterized operations
- ** (text insert/replace, goto, search, selection mode) still use the temporary
- ** numeric NotifyMacroRecord path until phase 4 step 16 moves them here.
+ ** (text insert/replace, goto, search, selection mode, character insert) emit
+ ** typed RecordedAction values at their named entry points.
  **
  ** Replay applies the same named editor operations that produced the actions.
- ** An internal replaying flag suppresses typed and temporary numeric capture
- ** so playback does not record itself even if recording remains on.
+ ** An internal replaying flag suppresses capture so playback does not record
+ ** itself even if recording remains on.
  **/
 // Copyright 1998-2011 by Neil Hodgson <neilh@scintilla.org>
 // The License.txt file describes the conditions under which this software may be distributed.

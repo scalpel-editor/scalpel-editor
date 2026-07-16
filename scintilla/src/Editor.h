@@ -784,8 +784,6 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void NotifyStyleNeeded(Document *doc, void *userData, Sci::Position endStyleNeeded) override;
 	void NotifyErrorOccurred(Document *doc, void *userData, Scintilla::Status status) override;
 	void NotifyGroupCompleted(Document *, void *) noexcept override;
-	// Temporary numeric macro path for parameterized ops until step 16.
-	void NotifyMacroRecord(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
 	// Deliver one owned action to the host when recording and not replaying.
 	void EmitRecordedAction(const RecordedAction &action);
 	// Apply one action through named editor operations (used by replay).
