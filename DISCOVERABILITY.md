@@ -89,6 +89,8 @@ Run the same corpus under these conditions:
 
 Do not require a full wipe-and-re-embed of the index for recorded runs. grepai already reindexes only files whose contents or modtimes changed; that is enough for fair rank comparison. A full rebuild is optional diagnostics if ranks look absurd or the index is known corrupt — not part of the pilot schedule. The phase 4 step 2 baseline did a full wipe once; nothing in that run showed the wipe was necessary, and later measurements should not repeat it by default.
 
+The Phase 4 gate added a project `.grepaiignore` entry for `benchmark-results/`. Earlier result JSON contains query text, expected definitions, and ranked paths; indexing those generated records lets one benchmark run compete with every later run and makes the distortion grow as results accumulate. The records remain checked in and readable, but they are not source-navigation candidates. This is an index-corpus correction rather than a search-ranking or chunking change, and the final gate records the new index identity separately from all earlier runs.
+
 Do not change more than one tool setting in a comparison. Refactor layout and tool configuration answer different questions and need separate results.
 
 Add a boundary-stability check after each pilot. Add or remove about 200 characters before a selected entry point, use `grepai status --wait --steady --indexed ... --after ...` to wait for that exact file version in the durable index, and confirm that the correct concern remains easy to find. Restore the file and perform the same wait again before continuing. This checks that a result does not depend on an accidental fixed-window boundary.

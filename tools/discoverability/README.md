@@ -8,6 +8,8 @@ Each corpus row records the feature, query kind, baseline and target concern fil
 
 The installed grepai build must support `.cxx`, `.hxx`, and `.iface` indexing plus the status wait interface added by `47bba43`. Check the current build with `grepai version`; do not rely on a version written into this guide. The runner records the installed binary hash, source revision, source diff hash, live config hash, index hash, and `grepai status` output so later runs can tell whether the tool or index changed.
 
+The project `.grepaiignore` excludes `benchmark-results/` from the search index. Result JSON repeats query and expectation text, so indexing it would make previous measurements compete with the source being measured.
+
 ## Run
 
 Before a recorded run, make sure the durable index includes every changed file. Leave the watcher running while you edit, then wait for each required file version with its project-relative path and modification time:
