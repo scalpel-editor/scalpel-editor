@@ -472,13 +472,6 @@ bool TestEditor::SetIdle(bool on) {
 	return true;
 }
 
-// Temporary pure-virtual override until phase 5 step 6 deletes DefWndProc.
-// Fall-through messages are no longer observed; no test drives the shell.
-Scintilla::sptr_t TestEditor::DefWndProc(Scintilla::Message, Scintilla::uptr_t,
-	Scintilla::sptr_t) {
-	return 0;
-}
-
 // Load text, clear undo history from the load, and mark the save point.
 void LoadClean(TestEditor &editor, std::string_view text) {
 	editor.SetText(text);

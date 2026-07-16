@@ -1110,61 +1110,7 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	Sci::Position GetStyledText(char *buffer, Sci::Position cpMin, Sci::Position cpMax) const noexcept;
 	Sci::Position GetTextRange(char *buffer, Sci::Position cpMin, Sci::Position cpMax) const;
 
-	virtual Scintilla::sptr_t DefWndProc(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam) = 0;
 	void SetSelectionMode(Scintilla::SelectionMode mode, bool setMoveExtends);
-
-	// Coercion functions for transforming WndProc parameters into pointers
-	static void *PtrFromSPtr(Scintilla::sptr_t lParam) noexcept {
-		return reinterpret_cast<void *>(lParam);
-	}
-	static const char *ConstCharPtrFromSPtr(Scintilla::sptr_t lParam) noexcept {
-		return static_cast<const char *>(PtrFromSPtr(lParam));
-	}
-	static const unsigned char *ConstUCharPtrFromSPtr(Scintilla::sptr_t lParam) noexcept {
-		return static_cast<const unsigned char *>(PtrFromSPtr(lParam));
-	}
-	static char *CharPtrFromSPtr(Scintilla::sptr_t lParam) noexcept {
-		return static_cast<char *>(PtrFromSPtr(lParam));
-	}
-	static unsigned char *UCharPtrFromSPtr(Scintilla::sptr_t lParam) noexcept {
-		return static_cast<unsigned char *>(PtrFromSPtr(lParam));
-	}
-	static std::string_view ViewFromParams(Scintilla::sptr_t lParam, Scintilla::uptr_t wParam) noexcept {
-		if (SPtrFromUPtr(wParam) == -1) {
-			return std::string_view(CharPtrFromSPtr(lParam));
-		}
-		return std::string_view(CharPtrFromSPtr(lParam), wParam);
-	}
-	static void *PtrFromUPtr(Scintilla::uptr_t wParam) noexcept {
-		return reinterpret_cast<void *>(wParam);
-	}
-	static const char *ConstCharPtrFromUPtr(Scintilla::uptr_t wParam) noexcept {
-		return static_cast<const char *>(PtrFromUPtr(wParam));
-	}
-
-	static constexpr Scintilla::sptr_t SPtrFromUPtr(Scintilla::uptr_t wParam) noexcept {
-		return static_cast<Scintilla::sptr_t>(wParam);
-	}
-	static constexpr Sci::Position PositionFromUPtr(Scintilla::uptr_t wParam) noexcept {
-		return SPtrFromUPtr(wParam);
-	}
-	static constexpr Sci::Line LineFromUPtr(Scintilla::uptr_t wParam) noexcept {
-		return SPtrFromUPtr(wParam);
-	}
-	Point PointFromParameters(Scintilla::uptr_t wParam, Scintilla::sptr_t lParam) const noexcept {
-		return Point(static_cast<XYPOSITION>(wParam) - vs.ExternalMarginWidth(), static_cast<XYPOSITION>(lParam));
-	}
-
-	static constexpr std::optional<FoldLevel> OptionalFoldLevel(Scintilla::sptr_t lParam) {
-		if (lParam >= 0) {
-			return static_cast<FoldLevel>(lParam);
-		}
-		return std::nullopt;
-	}
-
-	static Scintilla::sptr_t StringResult(Scintilla::sptr_t lParam, const char *val) noexcept;
-	static Scintilla::sptr_t BytesResult(Scintilla::sptr_t lParam, const unsigned char *val, size_t len) noexcept;
-	static Scintilla::sptr_t BytesResult(Scintilla::sptr_t lParam, std::string_view sv) noexcept;
 
 	// Set a variable controlling appearance to a value and invalidates the display
 	// if a change was made. Avoids extra text and the possibility of mistyping.
@@ -1319,8 +1265,6 @@ public:
 	void ReplayRecordedAction(const RecordedAction &action);
 	void ReplayRecordedActions(const std::vector<RecordedAction> &actions);
 
-	// Public so scintilla_send_message can use it.
-	virtual Scintilla::sptr_t WndProc(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
 	friend class AutoSurface;
 };
 

@@ -1,16 +1,13 @@
 // Scintilla source code edit control
 /** @file EditorCommands.h
  ** Bindable editing actions: the dedicated command type and its dispatcher.
- ** Key maps, keyboard input, and temporary message forwarders use EditorCommand
- ** instead of message numbers for zero-argument editing actions.
+ ** Key maps and keyboard input use EditorCommand for zero-argument editing actions.
  **/
 // Copyright 1998-2003 by Neil Hodgson <neilh@scintilla.org>
 // The License.txt file describes the conditions under which this software may be distributed.
 
 #ifndef EDITORCOMMANDS_H
 #define EDITORCOMMANDS_H
-
-#include "ScintillaMessages.h"
 
 namespace Scintilla::Internal {
 
@@ -140,10 +137,6 @@ enum class EditorCommand {
 	SearchNext,
 	SearchPrev,
 };
-
-// Temporary conversion while WndProc still accepts Message for command keys.
-// Removed with the generated message layer (phase 5).
-EditorCommand CommandFromMessage(Scintilla::Message message) noexcept;
 
 }
 

@@ -6,6 +6,7 @@
 #ifndef TESTEDITOR_H
 #define TESTEDITOR_H
 
+#include "ScintillaMessages.h"
 #include "EditorRecording.h"
 
 namespace Scintilla::Internal {
@@ -16,6 +17,7 @@ struct TestNotification {
 	Sci::Position length = 0;
 	Scintilla::ModificationFlags modificationType = Scintilla::ModificationFlags::None;
 	Scintilla::Update updated = Scintilla::Update::None;
+	// Message-shaped packing until phase 5 step 7 retypes notifications.
 	Scintilla::Message message = Scintilla::Message::Null;
 	Scintilla::uptr_t wParam = 0;
 	Scintilla::sptr_t lParam = 0;
@@ -550,8 +552,6 @@ private:
 	void FineTickerStart(TickReason reason, int millis, int tolerance) override;
 	void FineTickerCancel(TickReason reason) override;
 	bool SetIdle(bool on) override;
-	Scintilla::sptr_t DefWndProc(Scintilla::Message message, Scintilla::uptr_t wParam,
-		Scintilla::sptr_t lParam) override;
 
 	TestHost &host;
 	unsigned int currentTime = 0;

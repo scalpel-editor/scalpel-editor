@@ -1,6 +1,6 @@
 // Scintilla source code edit control
 /** @file EditorCommands.cxx
- ** Bindable editing actions: EditorCommand conversion helpers and ExecuteCommand.
+ ** Bindable editing actions: ExecuteCommand and related key-map operations.
  **/
 // Copyright 1998-2011 by Neil Hodgson <neilh@scintilla.org>
 // The License.txt file describes the conditions under which this software may be distributed.
@@ -32,7 +32,6 @@
 #include <future>
 
 #include "ScintillaTypes.h"
-#include "ScintillaMessages.h"
 #include "ScintillaStructures.h"
 #include "ILoader.h"
 #include "ILexer.h"
@@ -73,132 +72,6 @@
 
 using namespace Scintilla;
 using namespace Scintilla::Internal;
-
-namespace Scintilla::Internal {
-
-EditorCommand CommandFromMessage(Message message) noexcept {
-	switch (message) {
-	case Message::LineDown: return EditorCommand::LineDown;
-	case Message::LineDownExtend: return EditorCommand::LineDownExtend;
-	case Message::LineDownRectExtend: return EditorCommand::LineDownRectExtend;
-	case Message::LineUp: return EditorCommand::LineUp;
-	case Message::LineUpExtend: return EditorCommand::LineUpExtend;
-	case Message::LineUpRectExtend: return EditorCommand::LineUpRectExtend;
-	case Message::LineScrollDown: return EditorCommand::LineScrollDown;
-	case Message::LineScrollUp: return EditorCommand::LineScrollUp;
-	case Message::ParaDown: return EditorCommand::ParaDown;
-	case Message::ParaDownExtend: return EditorCommand::ParaDownExtend;
-	case Message::ParaUp: return EditorCommand::ParaUp;
-	case Message::ParaUpExtend: return EditorCommand::ParaUpExtend;
-	case Message::CharLeft: return EditorCommand::CharLeft;
-	case Message::CharLeftExtend: return EditorCommand::CharLeftExtend;
-	case Message::CharLeftRectExtend: return EditorCommand::CharLeftRectExtend;
-	case Message::CharRight: return EditorCommand::CharRight;
-	case Message::CharRightExtend: return EditorCommand::CharRightExtend;
-	case Message::CharRightRectExtend: return EditorCommand::CharRightRectExtend;
-	case Message::WordLeft: return EditorCommand::WordLeft;
-	case Message::WordLeftExtend: return EditorCommand::WordLeftExtend;
-	case Message::WordRight: return EditorCommand::WordRight;
-	case Message::WordRightExtend: return EditorCommand::WordRightExtend;
-	case Message::WordLeftEnd: return EditorCommand::WordLeftEnd;
-	case Message::WordLeftEndExtend: return EditorCommand::WordLeftEndExtend;
-	case Message::WordRightEnd: return EditorCommand::WordRightEnd;
-	case Message::WordRightEndExtend: return EditorCommand::WordRightEndExtend;
-	case Message::WordPartLeft: return EditorCommand::WordPartLeft;
-	case Message::WordPartLeftExtend: return EditorCommand::WordPartLeftExtend;
-	case Message::WordPartRight: return EditorCommand::WordPartRight;
-	case Message::WordPartRightExtend: return EditorCommand::WordPartRightExtend;
-	case Message::Home: return EditorCommand::Home;
-	case Message::HomeExtend: return EditorCommand::HomeExtend;
-	case Message::HomeRectExtend: return EditorCommand::HomeRectExtend;
-	case Message::HomeDisplay: return EditorCommand::HomeDisplay;
-	case Message::HomeDisplayExtend: return EditorCommand::HomeDisplayExtend;
-	case Message::HomeWrap: return EditorCommand::HomeWrap;
-	case Message::HomeWrapExtend: return EditorCommand::HomeWrapExtend;
-	case Message::VCHome: return EditorCommand::VCHome;
-	case Message::VCHomeExtend: return EditorCommand::VCHomeExtend;
-	case Message::VCHomeRectExtend: return EditorCommand::VCHomeRectExtend;
-	case Message::VCHomeDisplay: return EditorCommand::VCHomeDisplay;
-	case Message::VCHomeDisplayExtend: return EditorCommand::VCHomeDisplayExtend;
-	case Message::VCHomeWrap: return EditorCommand::VCHomeWrap;
-	case Message::VCHomeWrapExtend: return EditorCommand::VCHomeWrapExtend;
-	case Message::LineEnd: return EditorCommand::LineEnd;
-	case Message::LineEndExtend: return EditorCommand::LineEndExtend;
-	case Message::LineEndRectExtend: return EditorCommand::LineEndRectExtend;
-	case Message::LineEndDisplay: return EditorCommand::LineEndDisplay;
-	case Message::LineEndDisplayExtend: return EditorCommand::LineEndDisplayExtend;
-	case Message::LineEndWrap: return EditorCommand::LineEndWrap;
-	case Message::LineEndWrapExtend: return EditorCommand::LineEndWrapExtend;
-	case Message::DocumentStart: return EditorCommand::DocumentStart;
-	case Message::DocumentStartExtend: return EditorCommand::DocumentStartExtend;
-	case Message::DocumentEnd: return EditorCommand::DocumentEnd;
-	case Message::DocumentEndExtend: return EditorCommand::DocumentEndExtend;
-	case Message::PageUp: return EditorCommand::PageUp;
-	case Message::PageUpExtend: return EditorCommand::PageUpExtend;
-	case Message::PageUpRectExtend: return EditorCommand::PageUpRectExtend;
-	case Message::PageDown: return EditorCommand::PageDown;
-	case Message::PageDownExtend: return EditorCommand::PageDownExtend;
-	case Message::PageDownRectExtend: return EditorCommand::PageDownRectExtend;
-	case Message::StutteredPageUp: return EditorCommand::StutteredPageUp;
-	case Message::StutteredPageUpExtend: return EditorCommand::StutteredPageUpExtend;
-	case Message::StutteredPageDown: return EditorCommand::StutteredPageDown;
-	case Message::StutteredPageDownExtend: return EditorCommand::StutteredPageDownExtend;
-	case Message::ScrollToStart: return EditorCommand::ScrollToStart;
-	case Message::ScrollToEnd: return EditorCommand::ScrollToEnd;
-	case Message::EditToggleOvertype: return EditorCommand::EditToggleOvertype;
-	case Message::Cancel: return EditorCommand::Cancel;
-	case Message::DeleteBack: return EditorCommand::DeleteBack;
-	case Message::DeleteBackNotLine: return EditorCommand::DeleteBackNotLine;
-	case Message::Tab: return EditorCommand::Tab;
-	case Message::LineIndent: return EditorCommand::LineIndent;
-	case Message::BackTab: return EditorCommand::BackTab;
-	case Message::LineDedent: return EditorCommand::LineDedent;
-	case Message::NewLine: return EditorCommand::NewLine;
-	case Message::FormFeed: return EditorCommand::FormFeed;
-	case Message::ZoomIn: return EditorCommand::ZoomIn;
-	case Message::ZoomOut: return EditorCommand::ZoomOut;
-	case Message::SetZoom: return EditorCommand::SetZoom;
-	case Message::DelWordLeft: return EditorCommand::DelWordLeft;
-	case Message::DelWordRight: return EditorCommand::DelWordRight;
-	case Message::DelWordRightEnd: return EditorCommand::DelWordRightEnd;
-	case Message::DelLineLeft: return EditorCommand::DelLineLeft;
-	case Message::DelLineRight: return EditorCommand::DelLineRight;
-	case Message::LineCopy: return EditorCommand::LineCopy;
-	case Message::LineCut: return EditorCommand::LineCut;
-	case Message::LineDelete: return EditorCommand::LineDelete;
-	case Message::LineTranspose: return EditorCommand::LineTranspose;
-	case Message::LineReverse: return EditorCommand::LineReverse;
-	case Message::LineDuplicate: return EditorCommand::LineDuplicate;
-	case Message::SelectionDuplicate: return EditorCommand::SelectionDuplicate;
-	case Message::LowerCase: return EditorCommand::LowerCase;
-	case Message::UpperCase: return EditorCommand::UpperCase;
-	case Message::Cut: return EditorCommand::Cut;
-	case Message::Copy: return EditorCommand::Copy;
-	case Message::Paste: return EditorCommand::Paste;
-	case Message::Clear: return EditorCommand::Clear;
-	case Message::CopyAllowLine: return EditorCommand::CopyAllowLine;
-	case Message::CutAllowLine: return EditorCommand::CutAllowLine;
-	case Message::SelectAll: return EditorCommand::SelectAll;
-	case Message::Undo: return EditorCommand::Undo;
-	case Message::Redo: return EditorCommand::Redo;
-	case Message::VerticalCentreCaret: return EditorCommand::VerticalCentreCaret;
-	case Message::MoveSelectedLinesUp: return EditorCommand::MoveSelectedLinesUp;
-	case Message::MoveSelectedLinesDown: return EditorCommand::MoveSelectedLinesDown;
-	case Message::RotateSelection: return EditorCommand::RotateSelection;
-	case Message::SwapMainAnchorCaret: return EditorCommand::SwapMainAnchorCaret;
-	case Message::MultipleSelectAddNext: return EditorCommand::MultipleSelectAddNext;
-	case Message::MultipleSelectAddEach: return EditorCommand::MultipleSelectAddEach;
-	case Message::LinesJoin: return EditorCommand::LinesJoin;
-	case Message::LinesSplit: return EditorCommand::LinesSplit;
-	case Message::SearchAnchor: return EditorCommand::SearchAnchor;
-	case Message::SearchNext: return EditorCommand::SearchNext;
-	case Message::SearchPrev: return EditorCommand::SearchPrev;
-	default:
-		return EditorCommand::None;
-	}
-}
-
-} // namespace Scintilla::Internal
 
 int Editor::ExecuteCommand(EditorCommand command) {
 	// Capture bindable commands as typed RecordedCommand while recording.
@@ -526,7 +399,7 @@ int Editor::ExecuteCommand(EditorCommand command) {
 		// Parameterized search stays on the temporary message path (text + flags).
 		break;
 	case EditorCommand::SetZoom:
-		// Key binding sends no level: reset zoom to 0 (same as WndProc SetZoom with wParam 0).
+		// Key binding sends no level: reset zoom to 0.
 		if (SetAppearance(vs.zoomLevel, 0)) {
 			NotifyZoom();
 		}
