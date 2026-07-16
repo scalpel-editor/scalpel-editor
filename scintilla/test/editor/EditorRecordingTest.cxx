@@ -350,6 +350,42 @@ TEST_CASE("Replay restores command sequence without recursive recording") {
 	CHECK(editor.IsRecording());
 }
 
+TEST_CASE("Replay suppresses temporary numeric character capture") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.StartRecording();
+	editor.ClearObservations();
+
+	editor.ReplayRecordedAction(RecordedCommand{EditorCommand::FormFeed});
+
+	CHECK(editor.Text() == "\f");
+	CHECK(editor.observations.recordedActions.empty());
+	CHECK(std::none_of(editor.observations.notifications.begin(),
+		editor.observations.notifications.end(), [](const TestNotification &notification) {
+			return notification.code == Notification::MacroRecord;
+		}));
+}
+
+TEST_CASE("Nested replay keeps outer capture suppression active") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.SetText("ab");
+	editor.SetSel(0, 0);
+	editor.StartRecording();
+	editor.ClearObservations();
+	editor.observations.replayOnModified =
+		RecordedCommand{EditorCommand::CharRight};
+
+	const std::vector<RecordedAction> actions = {
+		RecordedInsertText{0, "x"},
+		RecordedCommand{EditorCommand::CharRight},
+	};
+	editor.ReplayRecordedActions(actions);
+
+	CHECK(editor.Text() == "xab");
+	CHECK(editor.observations.recordedActions.empty());
+}
+
 TEST_CASE("Replay of a single RecordedCommand moves the caret") {
 	TestHost host;
 	TestEditor editor(host);

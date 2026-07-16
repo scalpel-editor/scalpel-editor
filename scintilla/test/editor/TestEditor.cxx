@@ -388,6 +388,12 @@ void TestEditor::NotifyChange() {
 
 void TestEditor::NotifyParent(Scintilla::NotificationData scn) {
 	if (scn.nmhdr.code == Scintilla::Notification::Modified &&
+		observations.replayOnModified.has_value()) {
+		const RecordedAction nestedAction = std::move(*observations.replayOnModified);
+		observations.replayOnModified.reset();
+		ReplayRecordedAction(nestedAction);
+	}
+	if (scn.nmhdr.code == Scintilla::Notification::Modified &&
 		FlagSet(scn.modificationType, Scintilla::ModificationFlags::InsertCheck) &&
 		observations.changeInsertionOnInsertCheck.has_value()) {
 		ChangeInsertion(*observations.changeInsertionOnInsertCheck);

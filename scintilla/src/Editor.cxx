@@ -1609,7 +1609,7 @@ void Editor::InsertCharacter(std::string_view sv, CharacterSource charSource) {
 	}
 	NotifyChar(ch, charSource);
 
-	if (recording && charSource != CharacterSource::TentativeInput) {
+	if (recording && !replaying && charSource != CharacterSource::TentativeInput) {
 		std::string copy(sv); // ensure NUL-terminated
 		NotifyMacroRecord(Message::ReplaceSel, 0, SPtrFromPtr(copy.data()));
 	}
@@ -2558,7 +2558,7 @@ void Editor::NewLine() {
 	for (size_t i = 0; i < countInsertions; i++) {
 		for (const char ch : eol) {
 			NotifyChar(ch, CharacterSource::DirectInput);
-			if (recording) {
+			if (recording && !replaying) {
 				const char txt[2] = { ch, '\0' };
 				NotifyMacroRecord(Message::ReplaceSel, 0, SPtrFromPtr(txt));
 			}
@@ -4336,7 +4336,7 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 
 	// Optional macro recording hook (parameterized ops until step 16).
 	// Zero-arg commands are captured at ExecuteCommand as typed actions.
-	if (recording)
+	if (recording && !replaying)
 		NotifyMacroRecord(iMessage, wParam, lParam);
 
 	switch (iMessage) {

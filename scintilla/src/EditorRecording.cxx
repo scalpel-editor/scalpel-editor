@@ -12,8 +12,8 @@
  ** numeric NotifyMacroRecord path until phase 4 step 16 moves them here.
  **
  ** Replay applies the same named editor operations that produced the actions.
- ** An internal replaying flag suppresses EmitRecordedAction so playback does
- ** not record itself even if recording remains on.
+ ** An internal replaying flag suppresses typed and temporary numeric capture
+ ** so playback does not record itself even if recording remains on.
  **/
 // Copyright 1998-2011 by Neil Hodgson <neilh@scintilla.org>
 // The License.txt file describes the conditions under which this software may be distributed.
@@ -123,17 +123,18 @@ namespace {
 // RAII guard so nested replay and exceptions leave replaying clear.
 class ReplayingGuard {
 public:
-	explicit ReplayingGuard(bool &flag) noexcept : flag(flag) {
+	explicit ReplayingGuard(bool &flag) noexcept : flag(flag), previous(flag) {
 		flag = true;
 	}
 	~ReplayingGuard() {
-		flag = false;
+		flag = previous;
 	}
 	ReplayingGuard(const ReplayingGuard &) = delete;
 	ReplayingGuard &operator=(const ReplayingGuard &) = delete;
 
 private:
 	bool &flag;
+	const bool previous;
 };
 
 }

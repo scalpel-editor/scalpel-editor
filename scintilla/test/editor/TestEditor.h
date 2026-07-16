@@ -66,6 +66,8 @@ struct TestEditorObservations {
 	std::vector<RecordedAction> recordedActions;
 	// When set, NotifyParent replaces InsertCheck text via ChangeInsertion.
 	std::optional<std::string> changeInsertionOnInsertCheck;
+	// When set, the next Modified notification re-enters replay once.
+	std::optional<RecordedAction> replayOnModified;
 };
 
 class TestEditor final : public ScintillaBase {
