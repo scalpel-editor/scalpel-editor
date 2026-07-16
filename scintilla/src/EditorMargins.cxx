@@ -251,7 +251,7 @@ void Editor::MarginSetStyles(Sci::Line line, const unsigned char *styles) {
 	pdoc->MarginSetStyles(line, styles);
 }
 
-// Copy per-character style bytes into buffer. When the line uses one shared style, there is no style array: returns 0 and, if buffer is non-null and the line has text, writes a single 0 byte so a measure-only call still reports length 1 with a zero style. When per-character styles exist, returns their length and copies that many bytes (no NUL). buffer may be null to measure only.
+// Copy per-character style bytes into buffer. When the line uses one shared style, there is no style array: returns 0 and, if buffer is non-null and the line has text, writes a single 0 byte for compatibility. A null-buffer call cannot measure that byte. When per-character styles exist, returns their length and copies that many bytes (no NUL).
 Sci::Position Editor::MarginGetStyles(Sci::Line line, char *buffer) const {
 	const StyledText st = pdoc->MarginStyledText(line);
 	if (buffer && st.length > 0) {

@@ -396,7 +396,7 @@ int Editor::ExecuteCommand(EditorCommand command) {
 		break;
 	case EditorCommand::SearchNext:
 	case EditorCommand::SearchPrev:
-		// Parameterized search stays on the temporary message path (text + flags).
+		// Parameterized search requires SearchText with direction, flags, and text.
 		break;
 	case EditorCommand::SetZoom:
 		// Key binding sends no level: reset zoom to 0.
