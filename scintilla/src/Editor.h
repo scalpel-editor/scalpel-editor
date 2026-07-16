@@ -362,7 +362,6 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void SetSelection(SelectionPosition currentPos_);
 	void SetEmptySelection(SelectionPosition currentPos_);
 	void SetEmptySelection(Sci::Position currentPos_);
-	void SetSelectionFromSerialized(const char *serialized);
 	void SetStreamSelection(Sci::Position caret, Sci::Position anchor);
 	void AddSelection(Sci::Position caret, Sci::Position anchor);
 	void SetMainSelection(size_t selection);

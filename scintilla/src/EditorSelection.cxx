@@ -328,7 +328,10 @@ UndoSelectionHistoryOption Editor::GetUndoSelectionHistory() const noexcept {
 
 // Restore selection ranges from a serialized string.
 void Editor::SetSelectionSerialized(std::string_view serialized) {
-	SetSelectionFromSerialized(std::string(serialized).c_str());
+	sel = Selection(serialized);
+	sel.Truncate(pdoc->Length());
+	SetRectangularRange();
+	Redraw();
 }
 
 // Serialize all selection ranges to a string.
@@ -514,16 +517,6 @@ void Editor::SetEmptySelection(Sci::Position currentPos_) {
 	SetEmptySelection(SelectionPosition(currentPos_));
 }
 
-// Apply a previously serialized selection string.
-void Editor::SetSelectionFromSerialized(const char *serialized) {
-	if (serialized) {
-		sel = Selection(serialized);
-		sel.Truncate(pdoc->Length());
-		SetRectangularRange();
-		Redraw();
-	}
-}
-
 // Add next or each occurrence of the main selection within the target.
 void Editor::MultipleSelectAdd(AddNumber addNumber) {
 	if (SelectionEmpty() || !multipleSelection) {
@@ -705,4 +698,3 @@ void Editor::SetVirtualSpaceOptions(VirtualSpace options) {
 VirtualSpace Editor::GetVirtualSpaceOptions() const noexcept {
 	return virtualSpaceOptions;
 }
-
