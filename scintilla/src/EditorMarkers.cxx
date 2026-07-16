@@ -81,7 +81,7 @@ using namespace Scintilla::Internal;
 
 namespace {
 
-// Matches the historical uptr_t message check (wParam <= MarkerMax): size_t keeps values above 32 bits from wrapping into a valid index.
+// Reject markers above MarkerMax; size_t keeps values above 32 bits from wrapping into a valid index.
 bool ValidMarkerNumber(size_t markerNumber) noexcept {
 	return markerNumber <= static_cast<size_t>(MarkerMax);
 }

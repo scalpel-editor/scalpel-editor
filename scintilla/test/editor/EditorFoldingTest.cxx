@@ -94,7 +94,7 @@ TEST_CASE("Fold level parent and last-child queries") {
 
 	// SetFoldLevel returns the previous level; margin-only redraw still invalidates.
 	editor.ClearObservations();
-	const sptr_t prev = editor.SetFoldLevel(1, static_cast<FoldLevel>(static_cast<int>(FoldLevel::Base)));
+	const int prev = editor.SetFoldLevel(1, static_cast<FoldLevel>(static_cast<int>(FoldLevel::Base)));
 	CHECK(prev == static_cast<int>(FoldLevel::Base) + 1);
 	const auto afterLevel = editor.Snapshot();
 	const bool sawRedraw = afterLevel.invalidatedRectangles > 0 || afterLevel.invalidateAllCount > 0;

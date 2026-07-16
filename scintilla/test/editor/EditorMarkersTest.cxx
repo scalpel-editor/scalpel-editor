@@ -133,10 +133,10 @@ TEST_CASE("Marker define symbol colour stroke layer and out-of-range") {
 	CHECK(static_cast<int>(editor.MarkerGetLayer(MarkerMax + 1)) == 0);
 
 	// Values above UINT32_MAX must not wrap into marker 0 when cast through int.
-	// 0x1'0000'0000 is 2^32; on 64-bit uptr_t this is a distinct large index.
-	if constexpr (sizeof(uptr_t) > 4) {
-		constexpr uptr_t huge = static_cast<uptr_t>(UINT32_MAX) + 1u;
-		REQUIRE(huge > static_cast<uptr_t>(MarkerMax));
+	// 0x1'0000'0000 is 2^32; on 64-bit size_t this is a distinct large index.
+	if constexpr (sizeof(size_t) > 4) {
+		constexpr size_t huge = static_cast<size_t>(UINT32_MAX) + 1u;
+		REQUIRE(huge > static_cast<size_t>(MarkerMax));
 		// Marker 0 is Arrow from above; a wrapped int cast of huge would be 0.
 		editor.MarkerDefine(0, MarkerSymbol::Arrow);
 		editor.MarkerSetLayer(0, Layer::Base);

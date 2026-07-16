@@ -82,7 +82,7 @@ TEST_CASE("Style definition round-trip and clear redraw") {
 	CHECK(editor.StyleGetSize(1) == 14);
 	editor.StyleSetFont(1, "Courier");
 	char font[32] = {};
-	const sptr_t n = editor.StyleGetFont(1, font);
+	const int n = editor.StyleGetFont(1, font);
 	CHECK(n == 7);
 	CHECK(std::string(font) == "Courier");
 
@@ -257,10 +257,10 @@ TEST_CASE("Zoom edge mode multi-edge highlight guide and extended styles") {
 	CHECK(editor.GetHighlightGuide() == 4);
 	CHECK(editor.Snapshot().invalidatedRectangles > 0);
 
-	const sptr_t first = editor.AllocateExtendedStyles(static_cast<int>(8));
+	const int first = editor.AllocateExtendedStyles(static_cast<int>(8));
 	CHECK(first >= 256);
 	editor.ReleaseAllExtendedStyles();
-	const sptr_t again = editor.AllocateExtendedStyles(static_cast<int>(8));
+	const int again = editor.AllocateExtendedStyles(static_cast<int>(8));
 	CHECK(again == first);
 }
 

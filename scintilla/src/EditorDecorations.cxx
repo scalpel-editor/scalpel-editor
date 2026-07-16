@@ -83,7 +83,7 @@ using namespace Scintilla::Internal;
 
 namespace {
 
-// Matches the historical uptr_t message check (wParam <= IndicatorMax).
+// Reject indicators above IndicatorMax without wrapping a large size_t into a valid index.
 bool ValidIndicator(size_t indicator) noexcept {
 	return indicator <= static_cast<size_t>(IndicatorMax);
 }

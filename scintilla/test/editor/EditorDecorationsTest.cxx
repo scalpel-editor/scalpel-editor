@@ -184,8 +184,8 @@ TEST_CASE("Indicator style colour hover flags under alpha stroke and out-of-rang
 	CHECK(static_cast<int>(editor.IndicGetStyle(bad)) == 0);
 	CHECK(editor.IndicGetFore(bad) == 0);
 
-	if constexpr (sizeof(uptr_t) > 4) {
-		constexpr uptr_t huge = static_cast<uptr_t>(UINT32_MAX) + 1u;
+	if constexpr (sizeof(size_t) > 4) {
+		constexpr size_t huge = static_cast<size_t>(UINT32_MAX) + 1u;
 		editor.IndicSetStyle(0, IndicatorStyle::Squiggle);
 		editor.IndicSetStyle(huge, IndicatorStyle::FullBox);
 		CHECK(static_cast<IndicatorStyle>(editor.IndicGetStyle(0))
@@ -261,7 +261,7 @@ TEST_CASE("Brace highlight match bad light and indicators") {
 	editor.BraceHighlightIndicator(1, 10);
 	editor.BraceBadLightIndicator(1, 11);
 	// Out-of-range indicator ignored (no crash).
-	editor.BraceHighlightIndicator(1, static_cast<sptr_t>(IndicatorMax) + 1);
+	editor.BraceHighlightIndicator(1, static_cast<int>(IndicatorMax) + 1);
 
 	editor.PaintAll();
 	editor.ClearObservations();
