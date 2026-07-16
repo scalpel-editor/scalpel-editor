@@ -24,7 +24,6 @@
 #include <vector>
 
 #include "ScintillaTypes.h"
-#include "ScintillaMessages.h"
 #include "ScintillaStructures.h"
 #include "ILoader.h"
 #include "ILexer.h"
@@ -88,10 +87,6 @@ const TestNotification *FindNotification(const TestEditor &editor, Notification 
 	return nullptr;
 }
 
-sptr_t Send(TestEditor &editor, Message message, uptr_t wParam = 0, sptr_t lParam = 0) {
-	return editor.WndProc(message, wParam, lParam);
-}
-
 }
 
 TEST_CASE("Autocomplete list box show is inspectable") {
@@ -99,10 +94,9 @@ TEST_CASE("Autocomplete list box show is inspectable") {
 	TestEditor editor(host);
 	editor.SetText("");
 
-	const char *list = "alpha beta gamma";
-	Send(editor, Message::AutoCShow, 0, reinterpret_cast<sptr_t>(list));
+	editor.AutoCShow(0, "alpha beta gamma");
 
-	CHECK(Send(editor, Message::AutoCActive) != 0);
+	CHECK(editor.AutoCActive());
 	CHECK(host.listBox.created);
 	CHECK(host.listBox.visible);
 	CHECK(host.listBox.items.size() == 3);
@@ -112,7 +106,7 @@ TEST_CASE("Autocomplete list box show is inspectable") {
 	CHECK(host.listBox.selection == 0);
 	CHECK(host.listBox.rect.Width() > 0);
 	CHECK(host.listBox.rect.Height() > 0);
-	CHECK(Send(editor, Message::AutoCGetCurrent) == 0);
+	CHECK(editor.AutoCGetCurrent() == 0);
 }
 
 TEST_CASE("Autocomplete cancel destroys the list box") {
@@ -120,15 +114,14 @@ TEST_CASE("Autocomplete cancel destroys the list box") {
 	TestEditor editor(host);
 	editor.SetText("");
 
-	const char *list = "one two";
-	Send(editor, Message::AutoCShow, 0, reinterpret_cast<sptr_t>(list));
-	REQUIRE(Send(editor, Message::AutoCActive) != 0);
+	editor.AutoCShow(0, "one two");
+	REQUIRE(editor.AutoCActive());
 
-	// SCI_AUTOC_CANCEL only calls ac.Cancel(); it does not fire AutoCCancelled.
+	// AutoCCancel only calls ac.Cancel(); it does not fire AutoCCancelled.
 	// That notification comes from AutoCompleteCancel (CancelModes, stop chars).
-	Send(editor, Message::AutoCCancel);
+	editor.AutoCCancel();
 
-	CHECK(Send(editor, Message::AutoCActive) == 0);
+	CHECK_FALSE(editor.AutoCActive());
 	CHECK_FALSE(host.listBox.created);
 	CHECK_FALSE(host.listBox.visible);
 }
@@ -138,15 +131,14 @@ TEST_CASE("Autocomplete cancel through CancelModes notifies AutoCCancelled") {
 	TestEditor editor(host);
 	editor.SetText("x");
 
-	const char *list = "one two";
-	Send(editor, Message::AutoCShow, 0, reinterpret_cast<sptr_t>(list));
-	REQUIRE(Send(editor, Message::AutoCActive) != 0);
+	editor.AutoCShow(0, "one two");
+	REQUIRE(editor.AutoCActive());
 	editor.ClearObservations();
 
 	// Mouse down runs CancelModes -> AutoCompleteCancel, which notifies.
 	editor.MouseDown(Point(0, 0), KeyMod::Norm);
 
-	CHECK(Send(editor, Message::AutoCActive) == 0);
+	CHECK_FALSE(editor.AutoCActive());
 	CHECK(HasNotification(editor, Notification::AutoCCancelled));
 	CHECK_FALSE(host.listBox.created);
 }
@@ -156,17 +148,16 @@ TEST_CASE("Autocomplete complete via double-click inserts text and notifies") {
 	TestEditor editor(host);
 	editor.SetText("");
 
-	const char *list = "alpha beta gamma";
-	Send(editor, Message::AutoCShow, 0, reinterpret_cast<sptr_t>(list));
-	REQUIRE(Send(editor, Message::AutoCActive) != 0);
+	editor.AutoCShow(0, "alpha beta gamma");
+	REQUIRE(editor.AutoCActive());
 	// Show selects the first item; move to the second before completing.
-	Send(editor, Message::AutoCSelect, 0, reinterpret_cast<sptr_t>("beta"));
+	editor.AutoCSelect("beta");
 	REQUIRE(host.listBox.selection == 1);
 	editor.ClearObservations();
 
 	host.NotifyListBoxDoubleClick();
 
-	CHECK(Send(editor, Message::AutoCActive) == 0);
+	CHECK_FALSE(editor.AutoCActive());
 	CHECK(editor.Text() == "beta");
 	const TestNotification *selection = FindNotification(editor, Notification::AutoCSelection);
 	REQUIRE(selection != nullptr);
@@ -181,12 +172,11 @@ TEST_CASE("Call tip show and cancel update host window state") {
 	TestHost host;
 	TestEditor editor(host);
 	editor.SetText("fn(");
-	Send(editor, Message::GotoPos, 3, 0);
+	editor.GotoPos(3);
 
-	const char *defn = "fn(int x)";
-	Send(editor, Message::CallTipShow, 3, reinterpret_cast<sptr_t>(defn));
+	editor.CallTipShow(3, "fn(int x)");
 
-	CHECK(Send(editor, Message::CallTipActive) != 0);
+	CHECK(editor.CallTipActive());
 	CHECK(host.callTip.created);
 	CHECK(host.callTip.visible);
 	CHECK(host.callTip.rect.Width() > 0);
@@ -195,9 +185,9 @@ TEST_CASE("Call tip show and cancel update host window state") {
 	REQUIRE(editor.observations.callTipWindows.size() == 1);
 	CHECK(editor.observations.callTipWindows[0].Width() == host.callTip.rect.Width());
 
-	Send(editor, Message::CallTipCancel);
+	editor.CallTipCancel();
 
-	CHECK(Send(editor, Message::CallTipActive) == 0);
+	CHECK_FALSE(editor.CallTipActive());
 	CHECK_FALSE(host.callTip.created);
 	CHECK_FALSE(host.callTip.visible);
 }
@@ -206,28 +196,26 @@ TEST_CASE("Call tip and autocomplete cancel each other") {
 	TestHost host;
 	TestEditor editor(host);
 	editor.SetText("fn");
-	Send(editor, Message::GotoPos, 2, 0);
+	editor.GotoPos(2);
 
-	const char *list = "fn function";
-	Send(editor, Message::AutoCShow, 0, reinterpret_cast<sptr_t>(list));
-	REQUIRE(Send(editor, Message::AutoCActive) != 0);
+	editor.AutoCShow(0, "fn function");
+	REQUIRE(editor.AutoCActive());
 	REQUIRE(host.listBox.created);
 
-	const char *defn = "fn()";
-	Send(editor, Message::CallTipShow, 2, reinterpret_cast<sptr_t>(defn));
+	editor.CallTipShow(2, "fn()");
 
 	// CallTipShow cancels autocomplete first.
-	CHECK(Send(editor, Message::AutoCActive) == 0);
+	CHECK_FALSE(editor.AutoCActive());
 	CHECK_FALSE(host.listBox.created);
-	CHECK(Send(editor, Message::CallTipActive) != 0);
+	CHECK(editor.CallTipActive());
 	CHECK(host.callTip.created);
 	CHECK(host.callTip.visible);
 
 	// AutoCompleteStart cancels an open call tip.
-	Send(editor, Message::AutoCShow, 0, reinterpret_cast<sptr_t>(list));
-	CHECK(Send(editor, Message::CallTipActive) == 0);
+	editor.AutoCShow(0, "fn function");
+	CHECK_FALSE(editor.CallTipActive());
 	CHECK_FALSE(host.callTip.created);
-	CHECK(Send(editor, Message::AutoCActive) != 0);
+	CHECK(editor.AutoCActive());
 	CHECK(host.listBox.created);
 }
 
@@ -237,8 +225,7 @@ TEST_CASE("List box SetList parses type separators") {
 	editor.SetText("");
 
 	// Default type separator is '?'.
-	const char *list = "alpha?1 beta?2";
-	Send(editor, Message::AutoCShow, 0, reinterpret_cast<sptr_t>(list));
+	editor.AutoCShow(0, "alpha?1 beta?2");
 
 	REQUIRE(host.listBox.items.size() == 2);
 	CHECK(host.listBox.items[0].text == "alpha");
