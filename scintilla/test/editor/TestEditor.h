@@ -93,12 +93,17 @@ public:
 	void MouseDown(Point point, Scintilla::KeyMod modifiers);
 	void MouseMove(Point point, Scintilla::KeyMod modifiers);
 	void MouseUp(Point point, Scintilla::KeyMod modifiers);
+	void MouseRightDown(Point point, Scintilla::KeyMod modifiers);
 	void AdvanceTime(unsigned int milliseconds) noexcept;
 	unsigned int CurrentTime() const noexcept;
 	void FlushUpdateNotifications();
 	void PaintAll();
 	void ClearObservations();
 	TestEditorSnapshot Snapshot() const;
+	// Drive fine tickers the host would fire (dwell, caret, …).
+	using Editor::TickFor;
+	// TickReason is protected on Editor; expose the dwell case for host tests.
+	void FireDwellTick() { TickFor(TickReason::dwell); }
 
 	// Typed recording host surface. Appends a full copy of the action so text
 	// remains available after the RecordingCallback returns. The constructor
@@ -379,6 +384,8 @@ public:
 	using Editor::StyleGetSize;
 	using Editor::StyleSetFont;
 	using Editor::StyleGetFont;
+	using Editor::StyleSetHotSpot;
+	using Editor::StyleGetHotSpot;
 	using Editor::SetViewWS;
 	using Editor::GetViewWS;
 	using Editor::SetWhitespaceSize;
@@ -490,6 +497,8 @@ public:
 	using Editor::SetStatus;
 	using ScintillaBase::GetUsePopUp;
 	using ScintillaBase::UsePopUp;
+	// Call-tip click emission (protected on ScintillaBase; host click routing is later).
+	using ScintillaBase::CallTipClick;
 	// Context menu and its command ids (protected on ScintillaBase).
 	using ScintillaBase::Command;
 	using ScintillaBase::ContextMenu;

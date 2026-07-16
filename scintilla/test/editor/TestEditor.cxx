@@ -141,6 +141,10 @@ void TestEditor::MouseUp(Point point, Scintilla::KeyMod modifiers) {
 	ButtonUpWithModifiers(point, currentTime, modifiers);
 }
 
+void TestEditor::MouseRightDown(Point point, Scintilla::KeyMod modifiers) {
+	RightButtonDownWithModifiers(point, currentTime, modifiers);
+}
+
 void TestEditor::AdvanceTime(unsigned int milliseconds) noexcept {
 	currentTime += milliseconds;
 }
