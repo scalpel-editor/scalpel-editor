@@ -1476,18 +1476,17 @@ struct Sci_TextRangeFull {
 
     <h2 id="MacroRecording">Macro recording</h2>
 
-    <p>Start and stop macro recording mode. In macro recording mode, actions are reported to the
-    container through <code><a class="message" href="#SCN_MACRORECORD">SCN_MACRORECORD</a></code>
-    <a class="jump" href="#Notifications">notifications</a>. It is then up to the container to
-    record these actions for future replay.</p>
+    <p>The typed record format is <code>RecordedAction</code> in
+    <code>scintilla/src/EditorRecording.h</code>: an owned variant for commands, text
+    insert/replace, navigation, search, and selection mode. That header documents which
+    operations are recordable, which are ignored, how text is owned, and how replay avoids
+    recording itself. Temporary message start/stop and the numeric
+    <code>SCN_MACRORECORD</code> path remain until phase 4 steps 15 and 16 move lifecycle and
+    capture onto the typed form.</p>
 
-    <code><a class="message" href="#SCI_STARTRECORD">SCI_STARTRECORD</a><br />
-     <a class="message" href="#SCI_STOPRECORD">SCI_STOPRECORD</a><br />
-    </code>
-
-    <p><b id="SCI_STARTRECORD">SCI_STARTRECORD</b><br />
-     <b id="SCI_STOPRECORD">SCI_STOPRECORD</b><br />
-     These two messages turn macro recording on and off.</p>
+    <p id="SCI_STARTRECORD"><b>SCI_STARTRECORD</b> / <b id="SCI_STOPRECORD">SCI_STOPRECORD</b>
+    still turn recording on and off through temporary message forwarders. Named
+    <code>StartRecording</code> / <code>StopRecording</code> land with the lifecycle move.</p>
 
     <h2 id="Printing">Printing</h2>
 
@@ -2409,44 +2408,13 @@ struct SCNotification {
     now too late to change the Scintilla codes as clients depend on the current values.</p>
 
     <p><b id="SCN_MACRORECORD">SCN_MACRORECORD</b><br />
-     The <code><a class="message" href="#SCI_STARTRECORD">SCI_STARTRECORD</a></code> and <a
-    class="message" href="#SCI_STOPRECORD"><code>SCI_STOPRECORD</code></a> messages enable and
-    disable macro recording. When enabled, each time a recordable change occurs, the
-    <code>SCN_MACRORECORD</code> notification is sent to the container. It is up to the container
-    to record the action. To see the complete list of <code>SCI_*</code> messages that are
-    recordable, search the Scintilla source <code>Editor.cxx</code> for
-    <code>Editor::NotifyMacroRecord</code>. The fields of <code>SCNotification</code> set in this
-    notification are:</p>
-
-    <table class="standard" summary="Macro record notification data">
-      <tbody>
-        <tr>
-          <th align="left">Field</th>
-
-          <th align="left">Usage</th>
-        </tr>
-      </tbody>
-
-      <tbody valign="top">
-        <tr>
-          <td align="left"><code>message</code></td>
-
-          <td align="left">The <code>SCI_*</code> message that caused the notification.</td>
-        </tr>
-
-        <tr>
-          <td align="left"><code>wParam</code></td>
-
-          <td align="left">The value of <code>wParam</code> in the <code>SCI_*</code> message.</td>
-        </tr>
-
-        <tr>
-          <td align="left"><code>lParam</code></td>
-
-          <td align="left">The value of <code>lParam</code> in the <code>SCI_*</code> message.</td>
-        </tr>
-      </tbody>
-    </table>
+     Temporary numeric recording notification. The lasting host surface is the typed
+     <code>RecordedAction</code> callback documented in
+     <code>scintilla/src/EditorRecording.h</code> (see also
+     <a class="jump" href="#MacroRecording">Macro recording</a>). Until phase 4 step 16 removes
+     this path, production still emits <code>SCN_MACRORECORD</code> with the former
+     <code>message</code> / <code>wParam</code> / <code>lParam</code> fields for each allowlisted
+     change.</p>
 
     <p><b id="SCN_MARGINCLICK">SCN_MARGINCLICK</b><br />
      <b id="SCN_MARGINRIGHTCLICK">SCN_MARGINRIGHTCLICK</b><br />
