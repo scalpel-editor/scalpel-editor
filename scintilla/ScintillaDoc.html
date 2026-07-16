@@ -450,261 +450,57 @@
     described and the <code>GET</code> routine is left to your imagination.</p>
 
     <h2 id="TextRetrievalAndModification">Text retrieval and modification</h2>
+
     <p>Whole-document text, read-only, insertion, deletion, and range reads:
     <code>scintilla/src/EditorDocument.cxx</code>. Save point:
     <code>scintilla/src/EditorHistory.cxx</code>. Line text and allocate-lines:
     <code>scintilla/src/EditorLines.cxx</code>. Replace selection:
     <code>scintilla/src/EditorSearch.cxx</code>. Clear document style, style-at, and extended styles:
     <code>scintilla/src/EditorStyling.cxx</code>. Drag-drop enablement and change-insertion:
-    <code>scintilla/src/EditorInput.cxx</code>.</p>
+    <code>scintilla/src/EditorInput.cxx</code>. Named operations and their behavior
+    descriptions live beside the definitions. Temporary message forwarders remain until the
+    generated message layer is removed.</p>
+
+    <p>Each document byte has a style byte (together a cell). Style bytes index the style array.
+    Document positions and lengths count UTF-8 bytes. Operations that move by characters step over complete UTF-8 sequences.
+    Positions refer to a character or the gap before it: 0 is before the first character; after the last character is
+    <code>Length</code>. The caret cannot sit inside a valid multi-byte UTF-8 character or between CR and LF of a CRLF line end.
+    <code>INVALID_POSITION</code> (-1) means an invalid position. All lines share one height derived from the largest
+    font in any current style.</p>
+
+    <p><code>SCI_GETTEXTRANGEFULL</code> and <code>SCI_GETSTYLEDTEXTFULL</code> are deleted: the project uses one native
+    position type and the typed <code>GetTextRange</code> / <code>GetStyledText</code> operations. Prefer those typed
+    range methods over packing legacy <code>Sci_TextRange</code> structures.</p>
 
 
-    <p>Each byte in a Scintilla document is associated with a byte of styling
-    information. The combination of a character byte and a style byte is called a cell. Style bytes
-    are interpreted an index into an array of styles.</p>
+<h2 id="Information">Information</h2>
 
-    <p>Document positions and lengths count UTF-8 bytes. Operations that move by characters step over complete UTF-8 sequences.</p>
-
-    <p>Positions within the Scintilla document refer to a character or the gap before that
-    character. The first character in a document is 0, the second 1 and so on. If a document
-    contains <code>nLen</code> characters, the last character is numbered <code>nLen</code>-1.
-    The caret exists between character positions and can be located from before the first character (0)
-    to after the last character (<code>nLen</code>).</p>
-
-    <p>The caret can not go inside a valid multi-byte UTF-8 character or between the carriage return and line feed of a CRLF line end.
-    The <code>INVALID_POSITION</code> constant (-1) represents an invalid position within the
-    document.</p>
-
-    <p>All lines of text in Scintilla are the same height, and this height is calculated from the
-    largest font in any current style. This restriction is for performance; if lines differed in
-    height then calculations involving positioning of text would require the text to be styled
-    first.</p>
-    <p>Whole-document text load, dirty and read-only state, insertion, deletion, and range reads
-    moved to <code>scintilla/src/EditorDocument.cxx</code>. The named operations and their behavior
-    descriptions live beside the definitions there. Temporary message forwarders remain until the
-    generated message layer is removed. <code>SCI_GETTEXTRANGEFULL</code> and
-    <code>SCI_GETSTYLEDTEXTFULL</code> are deleted: the project uses one native position type and
-    the typed <code>GetTextRange</code> / <code>GetStyledText</code> operations.</p>
-
-    <p>Drag-drop enablement and <code>ChangeInsertion</code> (InsertCheck replacement text) moved to
-    <code>scintilla/src/EditorInput.cxx</code>. Named operations and their behavior descriptions live
-    beside the definitions there. Temporary message forwarders remain.</p>
-
-    <p>See also: <code><a class="message" href="#SCI_EMPTYUNDOBUFFER">SCI_EMPTYUNDOBUFFER</a>,
-    <code>Editor::GetModify</code> in <code>EditorDocument.cxx</code></code></p>
-
-    
-
-    <p>See also: <code><a class="seealso" href="#SCI_GETCURLINE">SCI_GETCURLINE</a>,
-    <a class="seealso" href="#SCI_GETSELTEXT">SCI_GETSELTEXT</a></code></p>
-
-    
-
-    <p><b id="SCI_CLEARDOCUMENTSTYLE">SCI_CLEARDOCUMENTSTYLE</b><br />
-     When wanting to completely restyle the document, for example after choosing a lexer, the
-    <code>SCI_CLEARDOCUMENTSTYLE</code> can be used to clear all styling information and reset the
-    folding state.</p>
-
-    <p>
-    <b id="SCI_GETSTYLEAT">SCI_GETSTYLEAT(position pos) &rarr; int</b><br />
-    <b id="SCI_GETSTYLEINDEXAT">SCI_GETSTYLEINDEXAT(position pos) &rarr; int</b><br />
-     This returns the style at <code class="parameter">pos</code> in the document, or 0 if <code class="parameter">pos</code> is
-    negative or past the end of the document.
-    <code>SCI_GETSTYLEAT</code> may return a negative number for styles over 127 whereas <code>SCI_GETSTYLEINDEXAT</code>
-    will only return positive numbers.
-    <code>SCI_GETSTYLEINDEXAT</code> should be preferred as it handles styles more consistently and may avoid problems
-    with lexers that define more than 128 styles.</p>
-
-    <p><b id="SCI_RELEASEALLEXTENDEDSTYLES">SCI_RELEASEALLEXTENDEDSTYLES</b><br />
-    <b id="SCI_ALLOCATEEXTENDEDSTYLES">SCI_ALLOCATEEXTENDEDSTYLES(int numberStyles) &rarr; int</b><br />
-     Extended styles are used for features like textual margins and annotations and autocompletion lists as well as
-     internally by Scintilla.
-     They are outside the range 0..255 used for the styles bytes associated with document bytes.
-     These functions manage the use of extended styles to ensures that components cooperate in defining styles.
-     <code>SCI_RELEASEALLEXTENDEDSTYLES</code> releases any extended styles allocated by the container.
-     <code>SCI_ALLOCATEEXTENDEDSTYLES</code> allocates a range of style numbers after the byte style values and returns
-     the number of the first allocated style.
-     Ranges for margin, annotation, and autocompletion list styles should be allocated before calling
-     <a class="seealso" href="#SCI_MARGINSETSTYLEOFFSET">SCI_MARGINSETSTYLEOFFSET</a> or
-     <a class="seealso" href="#SCI_ANNOTATIONSETSTYLEOFFSET">SCI_ANNOTATIONSETSTYLEOFFSET</a> or
-     <a class="seealso" href="#SCI_AUTOCSETSTYLE">SCI_AUTOCSETSTYLE</a>.</p>
-
-    <p><b id="Sci_TextRange">Sci_TextRange</b> and <b id="Sci_CharacterRange">Sci_CharacterRange</b><br />
-     These structures are defined to be exactly the same shape as the Win32 <code>TEXTRANGE</code>
-    and <code>CHARRANGE</code>, so that older code that treats Scintilla as a RichEdit will
-    work. Prefer the typed range operations on <code>Editor</code> over packing these structures
-    for new code.</p>
-<pre>
-typedef long Sci_PositionCR;
-
-struct Sci_CharacterRange {
-    Sci_PositionCR cpMin;
-    Sci_PositionCR cpMax;
-};
-
-struct Sci_TextRange {
-    struct Sci_CharacterRange chrg;
-    char *lpstrText;
-};
-</pre>
-
-    <p><b id="Sci_TextRangeFull">Sci_TextRangeFull</b> and <b id="Sci_CharacterRangeFull">Sci_CharacterRangeFull</b><br />
-     These structures are the same as <code>Sci_TextRange</code> and <code>Sci_CharacterRange</code> except that positions are
-     always 64-bit in 64-bit builds so will work on documents larger than 2GB.</p>
-<pre>
-typedef ptrdiff_t Sci_Position;
-
-struct Sci_CharacterRangeFull {
-	Sci_Position cpMin;
-	Sci_Position cpMax;
-};
-
-struct Sci_TextRangeFull {
-	struct Sci_CharacterRangeFull chrg;
-	char *lpstrText;
-};
-</pre>
-
-    <h2 id="Information">Information</h2>
     <p>Document length, modify flag, and gap/range pointer helpers:
     <code>scintilla/src/EditorDocument.cxx</code>. Line count, line/position/column mapping,
-    and line length: <code>scintilla/src/EditorLines.cxx</code>. Point-from-position:
-    <code>scintilla/src/EditorScrolling.cxx</code>. Descriptions live beside the named
-    definitions. Remaining hit-test and measurement messages stay here until their concerns move.</p>
-
-
-     <a class="message" href="#SCI_GETTEXTLENGTH">SCI_GETTEXTLENGTH &rarr; position</a><br />
-     <a class="message" href="#SCI_GETLENGTH">SCI_GETLENGTH &rarr; position</a><br />
-     <a class="message" href="#SCI_GETLINECOUNT">SCI_GETLINECOUNT &rarr; line</a><br />
-     <a class="message" href="#SCI_LINESONSCREEN">SCI_LINESONSCREEN &rarr; line</a><br />
-     <a class="message" href="#SCI_GETMODIFY">SCI_GETMODIFY &rarr; bool</a><br />
-     <a class="message" href="#SCI_LINEFROMPOSITION">SCI_LINEFROMPOSITION(position pos) &rarr; line</a><br />
-     <a class="message" href="#SCI_POSITIONFROMLINE">SCI_POSITIONFROMLINE(line line) &rarr; position</a><br />
-     <a class="message" href="#SCI_GETLINEENDPOSITION">SCI_GETLINEENDPOSITION(line line) &rarr; position</a><br />
-     <a class="message" href="#SCI_LINELENGTH">SCI_LINELENGTH(line line) &rarr; position</a><br />
-     <a class="message" href="#SCI_GETCOLUMN">SCI_GETCOLUMN(position pos) &rarr; position</a><br />
-     <a class="message" href="#SCI_FINDCOLUMN">SCI_FINDCOLUMN(line line, position column) &rarr; position</a><br />
-     <a class="message" href="#SCI_POSITIONBEFORE">SCI_POSITIONBEFORE(position pos) &rarr; position</a><br />
-     <a class="message" href="#SCI_POSITIONAFTER">SCI_POSITIONAFTER(position pos) &rarr; position</a><br />
-     <a class="message" href="#SCI_TEXTWIDTH">SCI_TEXTWIDTH(int style, const char *text) &rarr; int</a><br />
-     <a class="message" href="#SCI_TEXTHEIGHT">SCI_TEXTHEIGHT(line line) &rarr; int</a><br />
-     <a class="message" href="#SCI_POSITIONFROMPOINT">SCI_POSITIONFROMPOINT(int x, int y) &rarr; position</a><br />
-     <a class="message" href="#SCI_POSITIONFROMPOINTCLOSE">SCI_POSITIONFROMPOINTCLOSE(int x, int y) &rarr; position</a><br />
-     <a class="message" href="#SCI_CHARPOSITIONFROMPOINT">SCI_CHARPOSITIONFROMPOINT(int x, int y) &rarr; position</a><br />
-     <a class="message" href="#SCI_CHARPOSITIONFROMPOINTCLOSE">SCI_CHARPOSITIONFROMPOINTCLOSE(int x, int y) &rarr; position</a><br />
-     <a class="message" href="#SCI_POINTXFROMPOSITION">SCI_POINTXFROMPOSITION(&lt;unused&gt;, position pos) &rarr; int</a><br />
-     <a class="message" href="#SCI_POINTYFROMPOSITION">SCI_POINTYFROMPOSITION(&lt;unused&gt;, position pos) &rarr; int</a><br />
-
-    
-
-    
-
-    <p><b id="SCI_LINESONSCREEN">SCI_LINESONSCREEN &rarr; line</b><br />
-     This returns the number of complete lines visible on the screen. With a constant line height,
-    this is the vertical space available divided by the line separation. Unless you arrange to size
-    your window to an integral number of lines, there may be a partial line visible at the bottom
-    of the view.</p>
-
-    
-
-    <p>If you need to be notified when the document becomes modified, Scintilla notifies the
-    container that it has entered or left the save point with the <a class="message"
-    href="#SCN_SAVEPOINTREACHED"><code>SCN_SAVEPOINTREACHED</code></a> and <a class="message"
-    href="#SCN_SAVEPOINTLEFT"><code>SCN_SAVEPOINTLEFT</code></a> <a class="jump"
-    href="#Notifications">notification messages</a>.</p>
-    
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    <p>Character and word boundaries (<code>PositionBefore</code> / <code>PositionAfter</code> /
-    <code>PositionRelative</code> / <code>PositionRelativeCodeUnits</code>, word extents,
+    and line length: <code>scintilla/src/EditorLines.cxx</code>. Point-from-position, lines on screen,
+    and text height: <code>scintilla/src/EditorScrolling.cxx</code>. Text width and related
+    measurement: <code>scintilla/src/EditorStyling.cxx</code>. Character and word boundaries
+    (<code>PositionBefore</code> / <code>PositionAfter</code> / relative moves, word extents,
     <code>SetCharsDefault</code>, character-category optimization, <code>GetCharacterPointer</code>,
-    <code>GetCurLine</code>, line character-index mapping) moved to
-    <code>scintilla/src/EditorTextBoundaries.cxx</code>. Virtual-space options moved to
-    <code>scintilla/src/EditorSelection.cxx</code>. Search tags (<code>GetTag</code>) moved to
-    <code>scintilla/src/EditorSearch.cxx</code>. Named operations and their behavior descriptions live
-    beside the definitions there. Temporary message forwarders remain.</p>
-
-    <p><b id="SCI_TEXTWIDTH">SCI_TEXTWIDTH(int style, const char *text) &rarr; int</b><br />
-     This returns the pixel width of a string drawn in the given <code class="parameter">style</code> which can
-    be used, for example, to decide how wide to make the line number margin in order to display a
-    given number of numerals.</p>
-
-    <p><b id="SCI_TEXTHEIGHT">SCI_TEXTHEIGHT(line line) &rarr; int</b><br />
-     This returns the height in pixels of a particular line. Currently all lines are the same
-    height.</p>
-
-    <p><b id="SCI_POSITIONFROMPOINT">SCI_POSITIONFROMPOINT(int x, int y) &rarr; position</b><br />
-     <b id="SCI_POSITIONFROMPOINTCLOSE">SCI_POSITIONFROMPOINTCLOSE(int x, int y) &rarr; position</b><br />
-     <code>SCI_POSITIONFROMPOINT</code> finds the closest character position to a point and
-    <code>SCI_POSITIONFROMPOINTCLOSE</code> is similar but returns -1 if the point is outside the
-    window or not close to any characters.</p>
-
-    <p><b id="SCI_CHARPOSITIONFROMPOINT">SCI_CHARPOSITIONFROMPOINT(int x, int y) &rarr; position</b><br />
-     <b id="SCI_CHARPOSITIONFROMPOINTCLOSE">SCI_CHARPOSITIONFROMPOINTCLOSE(int x, int y) &rarr; position</b><br />
-     <code>SCI_CHARPOSITIONFROMPOINT</code> finds the closest character to a point and
-    <code>SCI_CHARPOSITIONFROMPOINTCLOSE</code> is similar but returns -1 if the point is outside the
-    window or not close to any characters. This is similar to the previous methods but finds characters rather than
-    inter-character positions.</p>
-
-    
-
-    <h2 id="ByCharacterOrCodeUnit">By character or UTF-16 code unit</h2>
-    <p>Character/code-unit counts and line character indexes moved to
-    <code>scintilla/src/EditorLines.cxx</code>. Remaining position-before/after style
-    navigation stays until the text-boundaries concern moves.</p>
+    <code>GetCurLine</code>, line character-index mapping):
+    <code>scintilla/src/EditorTextBoundaries.cxx</code>. Virtual-space options:
+    <code>scintilla/src/EditorSelection.cxx</code>. Search tags (<code>GetTag</code>):
+    <code>scintilla/src/EditorSearch.cxx</code>. Named operations and their behavior descriptions
+    live beside the definitions. Temporary message forwarders remain.</p>
 
 
-    <p>Most Scintilla APIs use byte positions but some applications want to use positions based on counting
-    (UTF-32) characters or (UTF-16) code units
-    or need to communicate with other code written in terms of characters or code units.
-    With only byte positions, this may require examining many bytes to count characters or code units in the document
-    but this may be sped up in some cases by indexing the line starts by character or code unit.</p>
+<h2 id="ByCharacterOrCodeUnit">By character or UTF-16 code unit</h2>
 
-     <a class="message" href="#SCI_POSITIONRELATIVE">SCI_POSITIONRELATIVE(position pos, position relative) &rarr; position</a><br />
-     <a class="message" href="#SCI_POSITIONRELATIVECODEUNITS">SCI_POSITIONRELATIVECODEUNITS(position pos, position relative) &rarr; position</a><br />
-     <a class="message" href="#SCI_COUNTCHARACTERS">SCI_COUNTCHARACTERS(position start, position end) &rarr; position</a><br />
-     <a class="message" href="#SCI_COUNTCODEUNITS">SCI_COUNTCODEUNITS(position start, position end) &rarr; position</a><br />
-     <a class="message" href="#SCI_GETLINECHARACTERINDEX">SCI_GETLINECHARACTERINDEX &rarr; int</a><br />
-     <a class="message" href="#SCI_ALLOCATELINECHARACTERINDEX">SCI_ALLOCATELINECHARACTERINDEX(int lineCharacterIndex)</a><br />
-     <a class="message" href="#SCI_RELEASELINECHARACTERINDEX">SCI_RELEASELINECHARACTERINDEX(int lineCharacterIndex)</a><br />
-     <a class="message" href="#SCI_LINEFROMINDEXPOSITION">SCI_LINEFROMINDEXPOSITION(position pos, int lineCharacterIndex) &rarr; line</a><br />
-     <a class="message" href="#SCI_INDEXPOSITIONFROMLINE">SCI_INDEXPOSITIONFROMLINE(line line, int lineCharacterIndex) &rarr; position</a><br />
+    <p>Character and UTF-16 code-unit counts, and line character-index allocation, live in
+    <code>scintilla/src/EditorLines.cxx</code>. Relative position moves by character or UTF-16 unit,
+    and line/index mapping for allocated indexes, live in
+    <code>scintilla/src/EditorTextBoundaries.cxx</code>. Most editor APIs use UTF-8 byte positions;
+    the character-index helpers exist for interoperability with UTF-16/UTF-32 counting.
+    Named operations and their behavior descriptions live beside the definitions.
+    Temporary message forwarders remain.</p>
 
-    <p><b id="SCI_POSITIONRELATIVE">SCI_POSITIONRELATIVE(position pos, position relative) &rarr; position</b><br />
-     Count a number of whole characters before or after the argument position and return that position.
-     The minimum position returned is 0 and the maximum is the last position in the document.
-     If the position goes past the document end then 0 is returned.
-     </p>
 
-    
-
-    <p><b id="SCI_POSITIONRELATIVECODEUNITS">SCI_POSITIONRELATIVECODEUNITS(position pos, position relative) &rarr; position</b><br />
-    
-     These are the UTF-16 versions of <code>SCI_POSITIONRELATIVE</code> and <code>SCI_COUNTCHARACTERS</code>
-     working in terms of UTF-16 code units.</p>
-
-    
-
-    
-
-    <p><b id="SCI_LINEFROMINDEXPOSITION">SCI_LINEFROMINDEXPOSITION(position pos, int lineCharacterIndex) &rarr; line</b><br />
-    <b id="SCI_INDEXPOSITIONFROMLINE">SCI_INDEXPOSITIONFROMLINE(line line, int lineCharacterIndex) &rarr; position</b><br />
-     The document line of a particular character or code unit may be found by calling <code>SCI_LINEFROMINDEXPOSITION</code> with one of
-     <code>SC_LINECHARACTERINDEX_UTF32</code> (1) or <code>SC_LINECHARACTERINDEX_UTF16</code> (2).
-     The inverse action, finds the starting position of a document line either in characters or code units from the document start by calling
-     <code>SCI_INDEXPOSITIONFROMLINE</code> with the same <code class="parameter">lineCharacterIndex</code> argument.</p>
-
-    <h2 id="ErrorHandling">Error handling</h2>
+<h2 id="ErrorHandling">Error handling</h2>
 
     <p>Status reporting moved to <code>scintilla/src/EditorHost.cxx</code>. The typed
     <code>SetStatus</code> / <code>GetStatus</code> operations and status behavior are documented
@@ -835,193 +631,26 @@ struct Sci_TextRangeFull {
     <code>scintilla/src/EditorLexing.cxx</code>.</p>
 
     <h2 id="Words">Words</h2>
-    <p>Word, whitespace, and punctuation character classes moved to
-    <code>scintilla/src/EditorLines.cxx</code>. Word-boundary queries remain until the text-boundaries
-    concern moves.</p>
+
+    <p>Word, whitespace, and punctuation character classes:
+    <code>scintilla/src/EditorLines.cxx</code> (<code>SetWordChars</code> and related).
+    Word-boundary queries (<code>WordStartPosition</code> / <code>WordEndPosition</code> /
+    <code>IsRangeWord</code>), <code>SetCharsDefault</code>, and character-category optimization:
+    <code>scintilla/src/EditorTextBoundaries.cxx</code>. Word motion, word-part motion, and
+    delete-word actions are keyboard commands in <code>EditorCommands.h</code> /
+    <code>EditorCommands.cxx</code> (<code>EditorCommand</code>). Named operations and their
+    behavior descriptions live beside the definitions. Temporary message forwarders remain.</p>
 
 
-    <p>There is support for selecting, navigating by, and searching for words.</p>
-
-    <p>
-    Words are contiguous sequences of characters from a particular set of characters.
-    4 categories define words: word, whitespace, punctuation, and line ends with each category
-    having a role in word functions.
-    Double clicking selects the word at that point, which may be a sequence of word, punctuation,
-    or whitespace bytes.
-    Line ends are not selected by double clicking but do act as word separators.
-    </p>
-
-    <p>Words are defined in terms of characters and the sets of characters in each category can be customised to an extent.
-    The NUL character (0) is always a space as the APIs to set categories use NUL-terminated strings.
-    A category may be assigned to ASCII characters from 1 to 0x7F.
-    Non-ASCII UTF-8 characters use a category based on their Unicode general category.
-    </p>
-
-    <p>Identifiers in programming languages are often sequences of words with capitalisation
-     (aCamelCaseIdentifier) or underscores (an_under_bar_ident) used to mark word boundaries.
-     The <code>SCI_WORDPART*</code> commands are used for moving between word parts:
-     <a class="message" href="#SCI_WORDPARTLEFT"><code>SCI_WORDPARTLEFT</code></a>,
-     <a class="message" href="#SCI_WORDPARTLEFTEXTEND"><code>SCI_WORDPARTLEFTEXTEND</code></a>,
-     <a class="message" href="#SCI_WORDPARTRIGHT"><code>SCI_WORDPARTRIGHT</code></a>, and
-     <a class="message" href="#SCI_WORDPARTRIGHTEXTEND"><code>SCI_WORDPARTRIGHTEXTEND</code></a>.
-     </p>
-
-     <a class="message" href="#SCI_WORDENDPOSITION">SCI_WORDENDPOSITION(position pos, bool onlyWordCharacters) &rarr; position</a><br />
-     <a class="message" href="#SCI_WORDSTARTPOSITION">SCI_WORDSTARTPOSITION(position pos, bool onlyWordCharacters) &rarr; position</a><br />
-     <a class="message" href="#SCI_ISRANGEWORD">SCI_ISRANGEWORD(position start, position end) &rarr; bool</a><br />
-
-     <a class="message" href="#SCI_SETWORDCHARS">SCI_SETWORDCHARS(&lt;unused&gt;, const char *characters)</a><br />
-     <a class="message" href="#SCI_GETWORDCHARS">SCI_GETWORDCHARS(&lt;unused&gt;, char *characters) &rarr; int</a><br />
-     <a class="message" href="#SCI_SETWHITESPACECHARS">SCI_SETWHITESPACECHARS(&lt;unused&gt;, const char *characters)</a><br />
-     <a class="message" href="#SCI_GETWHITESPACECHARS">SCI_GETWHITESPACECHARS(&lt;unused&gt;, char *characters) &rarr; int</a><br />
-     <a class="message" href="#SCI_SETPUNCTUATIONCHARS">SCI_SETPUNCTUATIONCHARS(&lt;unused&gt;, const char *characters)</a><br />
-     <a class="message" href="#SCI_GETPUNCTUATIONCHARS">SCI_GETPUNCTUATIONCHARS(&lt;unused&gt;, char *characters) &rarr; int</a><br />
-     <a class="message" href="#SCI_SETCHARSDEFAULT">SCI_SETCHARSDEFAULT</a><br />
-     <a class="message" href="#SCI_SETCHARACTERCATEGORYOPTIMIZATION">SCI_SETCHARACTERCATEGORYOPTIMIZATION(int countCharacters)</a><br />
-     <a class="message" href="#SCI_GETCHARACTERCATEGORYOPTIMIZATION">SCI_GETCHARACTERCATEGORYOPTIMIZATION &rarr; int</a><br />
-
-    <p><b id="SCI_WORDENDPOSITION">SCI_WORDENDPOSITION(position pos, bool onlyWordCharacters) &rarr; position</b><br />
-     <b id="SCI_WORDSTARTPOSITION">SCI_WORDSTARTPOSITION(position pos, bool onlyWordCharacters) &rarr; position</b><br />
-     These messages return the start and end of words using the same definition of words as used
-    internally within Scintilla. You can set your own list of characters that count as words with
-    <a class="message" href="#SCI_SETWORDCHARS"><code>SCI_SETWORDCHARS</code></a>. The position
-    sets the start or the search, which is forwards when searching for the end and backwards when
-    searching for the start.</p>
-
-    <p><b id="SCI_ISRANGEWORD">SCI_ISRANGEWORD(position start, position end) &rarr; bool</b><br />
-     Is the range start..end a word or set of words? This message checks that start is at a word start transition and that
-     end is at a word end transition. It does not check whether there are any spaces inside the range.</p>
-
-     <a class="message" href="#SCI_ISRANGEWORD">SCI_ISRANGEWORD(position start, position end) &rarr; bool</a><br />
-
-    <p>Set <code class="parameter">onlyWordCharacters</code> to <code>true</code> (1) to stop searching at the first
-    non-word character in the search direction. If <code class="parameter">onlyWordCharacters</code> is
-    <code>false</code> (0), the first character in the search direction sets the type of the search
-    as word or non-word and the search stops at the first non-matching character. Searches are also
-    terminated by the start or end of the document.</p>
-
-    <p>If "w" represents word characters and "." represents non-word characters and "|" represents
-    the position and <code>true</code> or <code>false</code> is the state of
-    <code class="parameter">onlyWordCharacters</code>:</p>
-
-    <table class="standard" summary="Word start and end positions">
-      <thead align="center">
-        <tr>
-          <th>Initial state</th>
-
-          <th>end, true</th>
-
-          <th>end, false</th>
-
-          <th>start, true</th>
-
-          <th>start, false</th>
-        </tr>
-      </thead>
-
-      <tbody align="center">
-        <tr>
-          <td>..ww..|..ww..</td>
-
-          <td>..ww..|..ww..</td>
-
-          <td>..ww....|ww..</td>
-
-          <td>..ww..|..ww..</td>
-
-          <td>..ww|....ww..</td>
-        </tr>
-
-        <tr>
-          <td>....ww|ww....</td>
-
-          <td>....wwww|....</td>
-
-          <td>....wwww|....</td>
-
-          <td>....|wwww....</td>
-
-          <td>....|wwww....</td>
-        </tr>
-
-        <tr>
-          <td>..ww|....ww..</td>
-
-          <td>..ww|....ww..</td>
-
-          <td>..ww....|ww..</td>
-
-          <td>..|ww....ww..</td>
-
-          <td>..|ww....ww..</td>
-        </tr>
-
-        <tr>
-          <td>..ww....|ww..</td>
-
-          <td>..ww....ww|..</td>
-
-          <td>..ww....ww|..</td>
-
-          <td>..ww....|ww..</td>
-
-          <td>..ww|....ww..</td>
-        </tr>
-      </tbody>
-    </table>
-
-    
-
-    
-
-    <p>This API returns the customizable ASCII set. Non-ASCII UTF-8 characters are categorized from Unicode data and are not enumerated here.</p>
-
-    
-
-    
-
-    <p><b id="SCI_SETCHARSDEFAULT">SCI_SETCHARSDEFAULT</b><br />
-     Use the default sets of word and whitespace characters. This sets whitespace to space, tab and other
-     characters with codes less than 0x20, with word characters set to alphanumeric and '_'.
-    </p>
-
-    <p><b id="SCI_SETCHARACTERCATEGORYOPTIMIZATION">SCI_SETCHARACTERCATEGORYOPTIMIZATION(int countCharacters)</b><br />
-    <b id="SCI_GETCHARACTERCATEGORYOPTIMIZATION">SCI_GETCHARACTERCATEGORYOPTIMIZATION &rarr; int</b><br />
-      Optimize speed of character category features like determining whether a character is a space or number at the expense of memory.
-      Mostly used for Unicode documents.
-      The <code class="parameter">countCharacters</code> parameter determines how many character starting from 0 are added to a look-up table with one byte used for each character.
-      It is reasonable to cover the set of characters likely to be used in a document so 0x100 for simple Roman text,
-      0x1000 to cover most simple alphabets, 0x10000 to cover most of East Asian languages, and 0x110000 to cover all possible characters.
-    </p>
-
-    <p>Word keyboard commands are:</p>
-    <ul>
-    <li class="message" id="SCI_WORDLEFT">SCI_WORDLEFT</li>
-    <li class="message" id="SCI_WORDLEFTEXTEND">SCI_WORDLEFTEXTEND</li>
-    <li class="message" id="SCI_WORDRIGHT">SCI_WORDRIGHT</li>
-    <li class="message" id="SCI_WORDRIGHTEXTEND">SCI_WORDRIGHTEXTEND</li>
-    <li class="message" id="SCI_WORDLEFTEND">SCI_WORDLEFTEND</li>
-    <li class="message" id="SCI_WORDLEFTENDEXTEND">SCI_WORDLEFTENDEXTEND</li>
-    <li class="message" id="SCI_WORDRIGHTEND">SCI_WORDRIGHTEND</li>
-    <li class="message" id="SCI_WORDRIGHTENDEXTEND">SCI_WORDRIGHTENDEXTEND</li>
-    <li class="message" id="SCI_WORDPARTLEFT">SCI_WORDPARTLEFT</li>
-    <li class="message" id="SCI_WORDPARTLEFTEXTEND">SCI_WORDPARTLEFTEXTEND</li>
-    <li class="message" id="SCI_WORDPARTRIGHT">SCI_WORDPARTRIGHT</li>
-    <li class="message" id="SCI_WORDPARTRIGHTEXTEND">SCI_WORDPARTRIGHTEXTEND</li>
-    <li class="message" id="SCI_DELWORDLEFT">SCI_DELWORDLEFT</li>
-    <li class="message" id="SCI_DELWORDRIGHT">SCI_DELWORDRIGHT</li>
-    <li class="message" id="SCI_DELWORDRIGHTEND">SCI_DELWORDRIGHTEND</li>
-    </ul>
-
-    <h2 id="Styling">Styling</h2>
+<h2 id="Styling">Styling</h2>
 
     <p>End-styled, start/set styling, idle styling, and clear-document-style moved to
-    <code>scintilla/src/EditorStyling.cxx</code>. Named operations and their behavior
-    descriptions live beside the definitions there. Temporary message forwarders remain.
-    Line-state messages remain until the lexing concern moves.</p>
+    <code>scintilla/src/EditorStyling.cxx</code>. Line state and lexer attachment live in
+    <code>scintilla/src/EditorLexing.cxx</code>. Named operations and their behavior
+    descriptions live beside the definitions there. Temporary message forwarders remain.</p>
 
-    
-    <h2 id="StyleDefinition">Style definition</h2>
+
+<h2 id="StyleDefinition">Style definition</h2>
 
     <p>Moved to <code>scintilla/src/EditorStyling.cxx</code>. Named operations and their behavior
     descriptions live beside the definitions there. Temporary message forwarders remain until
@@ -1086,62 +715,12 @@ struct Sci_TextRangeFull {
 
     <p>Tab width, indent size, use-tabs, tab/backspace indent behavior, per-line indentation,
     tab stops, tab draw mode, and indentation guides moved to
-    <code>scintilla/src/EditorLines.cxx</code>. Named operations and their behavior descriptions live
-    beside the definitions there. Temporary message forwarders remain.
-    Highlight-guide column remains here until the styling concern move.</p>
-    <code>
-     <a class="message" href="#SCI_SETHIGHLIGHTGUIDE">SCI_SETHIGHLIGHTGUIDE(position column)</a><br />
-     <a class="message" href="#SCI_GETHIGHLIGHTGUIDE">SCI_GETHIGHLIGHTGUIDE &rarr; position</a><br />
-    </code>
+    <code>scintilla/src/EditorLines.cxx</code>. Highlight-guide column moved to
+    <code>scintilla/src/EditorStyling.cxx</code>. Named operations and their behavior descriptions live
+    beside the definitions. Temporary message forwarders remain.</p>
 
-    <p>Indentation guides are dotted vertical lines that appear within indentation white space every
-    indent size columns. They make it easy to see which constructs line up especially when they
-    extend over multiple pages. Style <a class="message"
-    href="#StyleDefinition"><code>STYLE_INDENTGUIDE</code></a> (37) is used to specify the
-    foreground and background colour of the indentation guides. Guide visibility itself is set
-    through the named operations in <code>EditorLines.cxx</code>.</p>
 
-    <p>There are 4 indentation guide views.
-    SC_IV_NONE turns the feature off but the other 3 states determine how far the guides appear on
-    empty lines. </p>
-    <table class="standard" summary="Search flags">
-      <tbody>
-        <tr>
-          <td><code>SC_IV_NONE</code></td>
-          <td>No indentation guides are shown.</td>
-        </tr>
-
-        <tr>
-          <td><code>SC_IV_REAL</code></td>
-          <td>Indentation guides are shown inside real indentation white space.</td>
-        </tr>
-
-        <tr>
-          <td><code>SC_IV_LOOKFORWARD</code></td>
-          <td>Indentation guides are shown beyond the actual indentation up to the level of the
-          next non-empty line.
-          If the previous non-empty line was a fold header then indentation guides are shown for
-          one more level of indent than that line. This setting is good for Python.</td>
-        </tr>
-
-        <tr>
-          <td><code>SC_IV_LOOKBOTH</code></td>
-          <td>Indentation guides are shown beyond the actual indentation up to the level of the
-          next non-empty line or previous non-empty line whichever is the greater.
-          This setting is good for most languages.</td>
-        </tr>
-
-      </tbody>
-    </table>
-
-    <p><b id="SCI_SETHIGHLIGHTGUIDE">SCI_SETHIGHLIGHTGUIDE(position column)</b><br />
-     <b id="SCI_GETHIGHLIGHTGUIDE">SCI_GETHIGHLIGHTGUIDE &rarr; position</b><br />
-     When brace highlighting occurs, the indentation guide corresponding to the braces may be
-    highlighted with the brace highlighting style, <a class="message"
-    href="#StyleDefinition"><code>STYLE_BRACELIGHT</code></a> (34). Set <code class="parameter">column</code> to 0 to
-    cancel this highlight.</p>
-
-    <h2 id="Markers">Markers</h2>
+<h2 id="Markers">Markers</h2>
 
     <p>Marker definitions, colours, images, layers, and per-line placement moved to <code>scintilla/src/EditorMarkers.cxx</code>. The named operations and their behavior descriptions live beside the definitions there. Temporary message forwarders remain until the generated message layer is removed. Shared RGBA image width, height, and scale live with styling. Margin paint helpers remain with the editor drawing path.</p>
 
@@ -1164,301 +743,17 @@ struct Sci_TextRangeFull {
 
     <h2 id="KeyboardCommands">Keyboard commands</h2>
 
-    <p>To allow the container application to perform any of the actions available to the user with
-    keyboard, all the keyboard actions are messages. They do not take any parameters. These
-    commands are also used when redefining the key bindings with the <a class="message"
-    href="#SCI_ASSIGNCMDKEY"><code>SCI_ASSIGNCMDKEY</code></a> message.</p>
-
-    <table border="0" summary="Keyboard commands">
-      <tbody>
-        <tr>
-          <td><code>SCI_LINEDOWN</code></td>
-
-          <td><code>SCI_LINEDOWNEXTEND</code></td>
-
-          <td><code>SCI_LINEDOWNRECTEXTEND</code></td>
-
-          <td><code>SCI_LINESCROLLDOWN</code></td>
-        </tr>
-
-        <tr>
-          <td><code>SCI_LINEUP</code></td>
-
-          <td><code>SCI_LINEUPEXTEND</code></td>
-
-          <td><code>SCI_LINEUPRECTEXTEND</code></td>
-
-          <td><code>SCI_LINESCROLLUP</code></td>
-        </tr>
-
-        <tr>
-          <td><code>SCI_PARADOWN</code></td>
-
-          <td><code>SCI_PARADOWNEXTEND</code></td>
-
-          <td><code>SCI_PARAUP</code></td>
-
-          <td><code>SCI_PARAUPEXTEND</code></td>
-        </tr>
-
-        <tr>
-          <td><code>SCI_CHARLEFT</code></td>
-
-          <td><code>SCI_CHARLEFTEXTEND</code></td>
-
-          <td><code>SCI_CHARLEFTRECTEXTEND</code></td>
-        </tr>
-
-        <tr>
-          <td><code>SCI_CHARRIGHT</code></td>
-
-          <td><code>SCI_CHARRIGHTEXTEND</code></td>
-
-          <td><code>SCI_CHARRIGHTRECTEXTEND</code></td>
-        </tr>
-
-        <tr>
-          <td><code>SCI_WORDLEFT</code></td>
-
-          <td><code>SCI_WORDLEFTEXTEND</code></td>
-
-          <td><code>SCI_WORDRIGHT</code></td>
-
-          <td><code>SCI_WORDRIGHTEXTEND</code></td>
-        </tr>
-
-        <tr>
-          <td><code>SCI_WORDLEFTEND</code></td>
-
-          <td><code>SCI_WORDLEFTENDEXTEND</code></td>
-
-          <td><code>SCI_WORDRIGHTEND</code></td>
-
-          <td><code>SCI_WORDRIGHTENDEXTEND</code></td>
-        </tr>
-
-        <tr>
-          <td><code>SCI_WORDPARTLEFT</code></td>
-
-          <td><code>SCI_WORDPARTLEFTEXTEND</code></td>
-
-          <td><code>SCI_WORDPARTRIGHT</code></td>
-
-          <td><code>SCI_WORDPARTRIGHTEXTEND</code></td>
-        </tr>
-
-        <tr>
-          <td><code>SCI_HOME</code></td>
-
-          <td><code>SCI_HOMEEXTEND</code></td>
-
-          <td><code>SCI_HOMERECTEXTEND</code></td>
-        </tr>
-
-        <tr>
-          <td><code>SCI_HOMEDISPLAY</code></td>
-
-          <td><code>SCI_HOMEDISPLAYEXTEND</code></td>
-
-          <td><code>SCI_HOMEWRAP</code></td>
-
-          <td><code>SCI_HOMEWRAPEXTEND</code></td>
-        </tr>
-
-        <tr>
-          <td><code>SCI_VCHOME</code></td>
-
-          <td><code>SCI_VCHOMEEXTEND</code></td>
-
-          <td><code>SCI_VCHOMERECTEXTEND</code></td>
-        </tr>
-
-        <tr>
-          <td><code>SCI_VCHOMEWRAP</code></td>
-
-          <td><code>SCI_VCHOMEWRAPEXTEND</code></td>
-
-          <td><code>SCI_VCHOMEDISPLAY</code></td>
-
-          <td><code>SCI_VCHOMEDISPLAYEXTEND</code></td>
-        </tr>
-
-        <tr>
-          <td><code>SCI_LINEEND</code></td>
-
-          <td><code>SCI_LINEENDEXTEND</code></td>
-
-          <td><code>SCI_LINEENDRECTEXTEND</code></td>
-        </tr>
-
-        <tr>
-          <td><code>SCI_LINEENDDISPLAY</code></td>
-
-          <td><code>SCI_LINEENDDISPLAYEXTEND</code></td>
-
-          <td><code>SCI_LINEENDWRAP</code></td>
-
-          <td><code>SCI_LINEENDWRAPEXTEND</code></td>
-        </tr>
-
-        <tr>
-          <td><code>SCI_DOCUMENTSTART</code></td>
-
-          <td><code>SCI_DOCUMENTSTARTEXTEND</code></td>
-
-          <td><code>SCI_DOCUMENTEND</code></td>
-
-          <td><code>SCI_DOCUMENTENDEXTEND</code></td>
-        </tr>
-
-        <tr>
-          <td><code>SCI_PAGEUP</code></td>
-
-          <td><code>SCI_PAGEUPEXTEND</code></td>
-
-          <td><code>SCI_PAGEUPRECTEXTEND</code></td>
-        </tr>
-
-        <tr>
-          <td><code>SCI_PAGEDOWN</code></td>
-
-          <td><code>SCI_PAGEDOWNEXTEND</code></td>
-
-          <td><code>SCI_PAGEDOWNRECTEXTEND</code></td>
-        </tr>
-
-
-        <tr>
-          <td><code>SCI_STUTTEREDPAGEUP</code></td>
-
-          <td><code>SCI_STUTTEREDPAGEUPEXTEND</code></td>
-        </tr>
-
-        <tr>
-          <td><code>SCI_STUTTEREDPAGEDOWN</code></td>
-
-          <td><code>SCI_STUTTEREDPAGEDOWNEXTEND</code></td>
-        </tr>
-
-        <tr>
-          <td><code>SCI_DELETEBACK</code></td>
-
-          <td><code>SCI_DELETEBACKNOTLINE</code></td>
-        </tr>
-
-        <tr>
-          <td><code>SCI_DELWORDLEFT</code></td>
-
-          <td><code>SCI_DELWORDRIGHT</code></td>
-
-          <td><code>SCI_DELWORDRIGHTEND</code></td>
-        </tr>
-
-        <tr>
-          <td><code>SCI_DELLINELEFT</code></td>
-
-          <td><code>SCI_DELLINERIGHT</code></td>
-
-          <td><code>SCI_LINEDELETE</code></td>
-
-          <td><code>SCI_LINECUT</code></td>
-        </tr>
-
-        <tr>
-
-          <td><code>SCI_LINECOPY</code></td>
-
-          <td><code>SCI_LINETRANSPOSE</code></td>
-
-          <td><code>SCI_LINEREVERSE</code></td>
-
-          <td><code>SCI_LINEDUPLICATE</code></td>
-        </tr>
-
-        <tr>
-          <td><code>SCI_LOWERCASE</code></td>
-
-          <td><code>SCI_UPPERCASE</code></td>
-
-          <td><code>SCI_CANCEL</code></td>
-
-          <td><code>SCI_EDITTOGGLEOVERTYPE</code></td>
-        </tr>
-
-        <tr>
-          <td><code>SCI_NEWLINE</code></td>
-
-          <td><code>SCI_FORMFEED</code></td>
-
-          <td><code>SCI_TAB</code></td>
-
-          <td><code>SCI_BACKTAB</code></td>
-        </tr>
-
-        <tr>
-          <td><code>SCI_SELECTIONDUPLICATE</code></td>
-
-          <td><code>SCI_VERTICALCENTRECARET</code></td>
-
-          <td><code>SCI_LINEINDENT</code></td>
-
-          <td><code>SCI_LINEDEDENT</code></td>
-        </tr>
-
-        <tr>
-          <td><code>SCI_MOVESELECTEDLINESUP</code></td>
-
-          <td><code>SCI_MOVESELECTEDLINESDOWN</code></td>
-        </tr>
-
-        <tr>
-          <td><code>SCI_SCROLLTOSTART</code></td>
-
-          <td><code>SCI_SCROLLTOEND</code></td>
-        </tr>
-     </tbody>
-    </table>
-
-    <p>The <code>SCI_*EXTEND</code> messages extend the selection.</p>
-
-    <p>The <code>SCI_*RECTEXTEND</code> messages extend the rectangular selection
-    (and convert regular selection to rectangular one, if any).</p>
-
-    <p>The <code>SCI_WORDPART*</code> commands are used to move between word segments marked by
-    capitalisation (aCamelCaseIdentifier) or underscores (an_under_bar_ident).</p>
-
-    <p>The <code>SCI_WORD[LEFT|RIGHT]END*</code> commands are
-    similar to <code>SCI_WORD[LEFT|RIGHT]*</code> but move between word ends instead of word starts.</p>
-
-    <p>The <code>SCI_HOME*</code> commands move the caret to the start of the line, while the
-    <code>SCI_VCHOME*</code> commands move the caret to the first non-blank character of the line
-    (ie. just after the indentation) unless it is already there; in this case, it acts as SCI_HOME*.</p>
-
-    <p>The <code>SCI_[HOME|LINEEND]DISPLAY*</code> commands are used when in line wrap mode to
-    allow movement to the start or end of display lines as opposed to the normal
-    <code>SCI_[HOME|LINEEND]</code> commands which move to the start or end of document lines.</p>
-
-    <p>The <code>SCI_[[VC]HOME|LINEEND]WRAP*</code> commands are like their namesakes
-    <code>SCI_[[VC]HOME|LINEEND]*</code> except they behave differently when word-wrap is enabled:
-     They go first to the start / end of the display line, like <code>SCI_[HOME|LINEEND]DISPLAY*</code>,
-     but if the cursor is already at the point, it goes on to the start or end of the document line,
-     as appropriate for <code>SCI_[[VC]HOME|LINEEND]*</code>.
-     </p>
-
-    <p>The <code>SCI_LINE[INDENT|DEDENT]</code> commands are like <code>SCI_[BACK]TAB</code> but force the
-    multiline behaviour of the second.</p>
-
-    <p>The <code>SCI_SCROLLTO[START|END]</code> commands scroll the document to the start
-    or end without changing the selection. These commands match macOS platform conventions for the behaviour of the
-    <code>home</code> and <code>end</code> keys. Scintilla can be made to match macOS applications
-    by binding the <code>home</code> and <code>end</code> keys to these commands.
-     </p>
-
-    <p class="message" id="SCI_CANCEL">The <code>SCI_CANCEL</code> command cancels autocompletion and
-    calltip display and drops any additional selections.
-     </p>
-
-    <h2 id="KeyBindings">Key bindings</h2>
+    <p>Zero-argument editing actions are <code>EditorCommand</code> values, not messages.
+    The enum and dispatcher live in <code>scintilla/src/EditorCommands.h</code> and
+    <code>scintilla/src/EditorCommands.cxx</code> (<code>ExecuteCommand</code>). Default key
+    bindings map chords to those commands in <code>KeyMap.cxx</code>. Rebind with
+    <code>AssignCmdKey</code> / <code>ClearCmdKey</code> / <code>ClearAllCmdKeys</code> in
+    <code>EditorCommands.cxx</code>. Temporary message forwarders still accept recognized message
+    numbers for assignment until the generated layer is removed. Unbound keys use
+    <code>EditorCommand::None</code>.</p>
+
+
+<h2 id="KeyBindings">Key bindings</h2>
 
     <p>Default bindings live in <code>KeyMap.cxx</code> as <code>KeyMap::MapDefault[]</code>, mapping
     key chords to <code>EditorCommand</code>. Named reconfiguration
