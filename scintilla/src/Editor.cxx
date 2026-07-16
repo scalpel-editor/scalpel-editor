@@ -3204,34 +3204,6 @@ void Editor::Indent(bool forwards, bool lineIndent) {
 	ContainerNeedsUpdate(Update::Selection);
 }
 
-/**
- * Search of a text in the document, in the given range.
- * @return The position of the found text, -1 if not found.
- */
-
-/**
- * Search of a text in the document, in the given range.
- * @return The position of the found text, -1 if not found.
- */
-
-/**
- * Relocatable search support : Searches relative to current selection
- * point and sets the selection to the found text range with
- * each search.
- */
-/**
- * Anchor following searches at current selection start: This allows
- * multiple incremental interactive searches to be macro recorded
- * while still setting the selection to found text so the find/select
- * operation is self-contained.
- */
-
-/**
- * Find text from current search anchor: Must call @c SearchAnchor first.
- * Used for next text and previous text requests.
- * @return The position of the found text, -1 if not found.
- */
-
 // UTF-8 Unicode case mapping (not locale-sensitive). Invalid UTF-8 bytes are left unchanged.
 std::string Editor::CaseMapString(const std::string &s, CaseMapping caseMapping) {
 	if (s.empty() || caseMapping == CaseMapping::same) {
@@ -3242,11 +3214,6 @@ std::string Editor::CaseMapString(const std::string &s, CaseMapping caseMapping)
 		: CaseConversion::lower;
 	return CaseConvertString(s, conversion);
 }
-
-/**
- * Search for text in the target range of the document.
- * @return The position of the found text, -1 if not found.
- */
 
 namespace {
 
@@ -4275,5 +4242,4 @@ std::unique_ptr<Surface> Editor::CreateDrawingSurface(SurfaceID sid, std::option
 	surf->SetMode(CurrentSurfaceMode());
 	return surf;
 }
-
 
