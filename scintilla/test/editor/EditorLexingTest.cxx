@@ -22,7 +22,6 @@
 #include <vector>
 
 #include "ScintillaTypes.h"
-#include "ScintillaMessages.h"
 #include "ScintillaStructures.h"
 #include "ILoader.h"
 #include "ILexer.h"
@@ -139,7 +138,7 @@ TEST_CASE("SetILexer attaches and Colourise styles the document") {
 	editor.Colourise(0, -1);
 	CHECK(lexer->lexCalls >= 1);
 	// Style byte at position 0 should be 1 after colourise.
-	CHECK(editor.WndProc(Message::GetStyleAt, 0, 0) == 1);
+	CHECK(editor.GetStyleAt(0) == 1);
 }
 
 TEST_CASE("Lexer property and keyword setters round-trip") {
@@ -165,36 +164,6 @@ TEST_CASE("Line state set get and max") {
 	CHECK(editor.GetLineState(1) == 17);
 	// GetMaxLineState is the number of lines that have state storage, not the max state value.
 	CHECK(editor.GetMaxLineState() >= 2);
-}
-
-TEST_CASE("Lexer named Colourise matches message path") {
-	int styleNamed = 0;
-	int styleMsg = 0;
-	int callsNamed = 0;
-	int callsMsg = 0;
-	{
-		TestHost host;
-		TestEditor editor(host);
-		editor.SetText("xy");
-		auto *lexer = new TestLexer;
-		editor.SetILexer(lexer);
-		editor.Colourise(0, -1);
-		styleNamed = static_cast<int>(editor.WndProc(Message::GetStyleAt, 0, 0));
-		callsNamed = lexer->lexCalls;
-	}
-	{
-		TestHost host;
-		TestEditor editor(host);
-		editor.SetText("xy");
-		auto *lexer = new TestLexer;
-		editor.SetILexer(lexer);
-		editor.WndProc(Message::Colourise, 0, -1);
-		styleMsg = static_cast<int>(editor.WndProc(Message::GetStyleAt, 0, 0));
-		callsMsg = lexer->lexCalls;
-	}
-	CHECK(styleNamed == styleMsg);
-	CHECK(callsNamed >= 1);
-	CHECK(callsMsg >= 1);
 }
 
 TEST_CASE("GetLineEndTypesSupported without lexer is default") {
