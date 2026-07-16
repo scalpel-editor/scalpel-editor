@@ -10,7 +10,7 @@ Run `tools/check-no-message-layer.sh` as the repeatable completion check. Until 
 | --- | --- | --- |
 | `scintilla/include/ScintillaMessages.h` | `enum class Message` for temporary shells and tests | **Deleted** in step 6. No retained project type keeps a message number. |
 | `scintilla/include/ScintillaTypes.h` | Enums, flag operators, `Position`/`Line`/`Colour` aliases, `uptr_t`/`sptr_t`, marker/indicator masks | **Split and re-own** retained definitions in concern-sized headers (step 9). Delete client/message-only enums and the file when empty of consumers. |
-| `scintilla/include/ScintillaStructures.h` | Ranges, find, print, `NotifyHeader`, `NotificationData` | **Replace** with project-owned types (steps 7–8). Delete the file when last include is gone. |
+| `scintilla/include/ScintillaStructures.h` | Ranges, find, print; notifications removed in step 7 | **Replace** remaining range/print types (step 8). Delete the file when last include is gone. `NotifyHeader` / `NotificationData` live in `EditorNotifications.h` (step 7 done). |
 | `scintilla/include/ScintillaCall.h` | Generated C++ client wrapper over message numbers | **Delete** (step 10). No production consumer. |
 | `scintilla/include/Scintilla.h` | C client constants (`SCI_*` / `SCN_*`) and parallel structs | **Delete** after any last retained constant moves (step 10). No production consumer. |
 | `scintilla/include/Scintilla.iface` | Generator input and phase 4 inventory source | **Delete** (step 10). Phase 4 inventory text is the historical record. |
@@ -60,8 +60,8 @@ When an enum value was never referenced outside generated headers and deleted me
 | `Rectangle` (in this header) | Prefer project `PRectangle` / geometry types; delete the duplicate client `Rectangle` when print path no longer needs it. |
 | `RangeToFormat` | **Delete** — narrow client form; WndProc only widens it today. |
 | `RangeToFormatFull` | **Retain shape** with `Sci::Position` ranges beside printing. |
-| `NotifyHeader` | **Delete** Windows-shaped header (`hwndFrom`, `idFrom`). |
-| `NotificationData` | **Replace** (step 7) with project-owned notification kind + fields the core actually fills. |
+| `NotifyHeader` | **Deleted** (step 7) — Windows-shaped header (`hwndFrom`, `idFrom`). |
+| `NotificationData` | **Replaced** (step 7) in `scintilla/src/EditorNotifications.h` with project-owned kinds and fields the core fills. |
 
 ### Notification kinds emitted by production core (retain)
 
@@ -73,9 +73,9 @@ When an enum value was never referenced outside generated headers and deleted me
 
 ### Notification fields that must leave with the message layer
 
-- `nmhdr` / `NotifyHeader` shape.
-- `message`, `wParam`, `lParam` — leftover macro-record and autocomplete packing through the Windows-shaped struct. Autocomplete currently stashes list type and positions in those fields; step 7 must give them typed members (`listType`, `position`, …) instead of reusing macro-record slots.
-- `Notification::MacroRecord` — never emitted; typed recording only.
+- `nmhdr` / `NotifyHeader` shape — **gone** (step 7).
+- `message`, `wParam`, `lParam` — **gone** (step 7); autocomplete uses typed `listType` / `position` and related members.
+- `Notification::MacroRecord` — **gone** (step 7); typed recording only.
 
 ## Temporary shells and helpers (deleted in steps 5–6)
 
