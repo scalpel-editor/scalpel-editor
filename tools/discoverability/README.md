@@ -4,6 +4,8 @@ This directory contains the fixed Phase 4 search corpus and the runner that reco
 
 Each corpus row records the feature, query kind, baseline and target concern files, text that identifies the authoritative definition, expected focused test, obsolete locations, and whether the feature is retained, converted to a command, or deleted. Target file names are part of the fixed benchmark. Change a corpus row after the baseline only when `DISCOVERABILITY.md` records the reason and the old and new evidence.
 
+`check-corpus.sh` verifies that every row has a final target and evidence file, that its definition marker occurs in that target, and that query IDs are unique. `run-searches.sh` runs this check before it snapshots the grepai index.
+
 The installed grepai build must support `.cxx`, `.hxx`, and `.iface` indexing plus the status wait interface added by `47bba43`. Check the current build with `grepai version`; do not rely on a version written into this guide. The runner records the installed binary hash, source revision, source diff hash, live config hash, index hash, and `grepai status` output so later runs can tell whether the tool or index changed.
 
 ## Run

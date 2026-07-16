@@ -104,6 +104,8 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 config_file=$project_root/.grepai/config.yaml
 index_file=$project_root/.grepai/index.gob
 
+"$script_dir/check-corpus.sh"
+
 [[ -f $config_file ]] || fail "missing grepai config: $config_file"
 [[ -f $index_file ]] || fail "missing grepai index: $index_file"
 [[ ! -e $output ]] || fail "output already exists: $output"
@@ -126,27 +128,6 @@ for attempt in {1..5}; do
 	((attempt < 5)) || fail "grepai index did not stay unchanged while taking a snapshot"
 	sleep 1
 done
-
-validate_corpus() {
-	local corpus=$1
-	awk -F '\t' '
-		NR == 1 {
-			if (NF != 11 || $1 != "id" || $11 != "disposition")
-				exit 1
-			next
-		}
-		NF != 11 || $1 == "" || $2 == "" || $3 == "" || $4 == "" { exit 1 }
-	' "$corpus" || fail "invalid corpus row in $corpus"
-}
-
-validate_corpus "$script_dir/queries.tsv"
-validate_corpus "$script_dir/held-out-queries.tsv"
-
-duplicate_ids=$(
-	{ tail -n +2 "$script_dir/queries.tsv"; tail -n +2 "$script_dir/held-out-queries.tsv"; } |
-		cut -f1 | sort | uniq -d
-)
-[[ -z $duplicate_ids ]] || fail "duplicate query ids: $duplicate_ids"
 
 mkdir -p "$output"
 results_file=$output/search-results.jsonl
