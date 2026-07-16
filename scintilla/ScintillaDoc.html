@@ -330,8 +330,9 @@
     font in any current style.</p>
 
     <p><code>SCI_GETTEXTRANGEFULL</code> and <code>SCI_GETSTYLEDTEXTFULL</code> are deleted: the project uses one native
-    position type and the typed <code>GetTextRange</code> / <code>GetStyledText</code> operations. Prefer those typed
-    range methods over packing legacy <code>Sci_TextRange</code> structures.</p>
+    position type and the typed <code>GetTextRange</code> / <code>GetStyledText</code> operations (buffer plus start and
+    end positions). Packed text-range client structures are gone from the core; residual C client headers remain only
+    until phase 5 step 10.</p>
 
 
 <h2 id="Information">Information</h2>
@@ -633,10 +634,10 @@
 
     <h2 id="Printing">Printing</h2>
 
-    <p>Print magnification, colour mode, wrap mode, and <code>FormatRange</code> moved to
+    <p>Print magnification, colour mode, wrap mode, and <code>FormatRange</code> live in
     <code>scintilla/src/EditorPrinting.cxx</code>. Named operations and their behavior descriptions live
-    beside the definitions there.
-    <code>FormatRangeFull</code> is deleted: use the typed <code>FormatRange</code> with native positions.</p>
+    beside the definitions there. <code>FormatRange</code> takes document positions, a
+    <code>PRectangle</code>, and platform surface handles; packed print/range client structures are gone.</p>
 
     <h2 id="DirectAccess">Direct access</h2>
     <p><code>SCI_GETDIRECTFUNCTION</code>, <code>SCI_GETDIRECTSTATUSFUNCTION</code>, and

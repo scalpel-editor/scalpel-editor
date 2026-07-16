@@ -381,12 +381,12 @@ Moved (2026-07-15): the eight boundary operations plus word extents, `GetCurLine
 
 ### Printing (8)
 
-Moved (2026-07-15): print settings and typed `FormatRange` live in `EditorPrinting.cxx` with temporary `WndProc` forwarders; focused coverage in `EditorPrintingTest.cxx`. Deleted from dispatch: `FormatRangeFull` (use `FormatRange` with `RangeToFormatFull` / native positions). The temporary `FormatRange` message still accepts the narrow `RangeToFormat` structure and widens positions.
+Moved (2026-07-15): print settings and typed `FormatRange` live in `EditorPrinting.cxx`; focused coverage in `EditorPrintingTest.cxx`. Deleted from dispatch: `FormatRangeFull`. Phase 5 step 8 (2026-07-16): packed `RangeToFormat` / `RangeToFormatFull` / `CharacterRangeFull` are gone; `FormatRange` takes `Sci::Position` bounds, `PRectangle`, and platform `SurfaceID` handles. `ScintillaStructures.h` is deleted.
 
 | Entries | Owner | Classification | Target and named entry point | Focused test | Documentation | Deletion reason |
 | --- | --- | --- | --- | --- | --- | --- |
-| `SetPrintMagnification`, `GetPrintMagnification`, `SetPrintColourMode`, `GetPrintColourMode`, `FormatRange`, `SetPrintWrapMode`, `GetPrintWrapMode` | `Editor` layout and drawing | Private editor operation | `EditorPrinting.cxx`; typed print settings and `FormatRange(bool, RangeToFormatFull)` | `EditorPrintingTest.cxx`: settings round-trip, no-draw measurement, direct-versus-message | API prose beside definitions in `EditorPrinting.cxx` | Not deleted: the roadmap explicitly retains printing even without an initial consumer |
-| `FormatRangeFull` | Generated client structure alias | Feature to delete | Use the typed `FormatRange` operation with the project position type | Deleted message falls through in `EditorPrintingTest.cxx` | Deleted alias prose | The `Full` variant only selects a wider generated client structure |
+| `SetPrintMagnification`, `GetPrintMagnification`, `SetPrintColourMode`, `GetPrintColourMode`, `FormatRange`, `SetPrintWrapMode`, `GetPrintWrapMode` | `Editor` layout and drawing | Private editor operation | `EditorPrinting.cxx`; typed print settings and `FormatRange(bool, Sci::Position, Sci::Position, PRectangle, SurfaceID, SurfaceID)` | `EditorPrintingTest.cxx`: settings round-trip, no-draw measurement | API prose beside definitions in `EditorPrinting.cxx` | Not deleted: the roadmap explicitly retains printing even without an initial consumer |
+| `FormatRangeFull` | Generated client structure alias | Feature to delete | Use the typed `FormatRange` operation with direct positions and surfaces | Covered by retained `FormatRange` tests in `EditorPrintingTest.cxx` | Deleted alias prose | The `Full` variant only selected a wider generated client structure |
 
 `set SetPrintMagnification=2146`, `get GetPrintMagnification=2147`, `set SetPrintColourMode=2148`, `get GetPrintColourMode=2149`, `fun FormatRange=2151`, `fun FormatRangeFull=2777`, `set SetPrintWrapMode=2406`, `get GetPrintWrapMode=2407`
 
