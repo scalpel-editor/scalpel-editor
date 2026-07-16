@@ -116,6 +116,7 @@ TEST_CASE("WordStart WordEnd and IsRangeWord") {
 	CHECK(editor.WordStartPosition(3, true) == 0);
 	CHECK(editor.WordEndPosition(3, true) == 5);
 	CHECK(editor.IsRangeWord(0, 5));
+	CHECK(editor.IsRangeWord(0, 11));  // Boundary check allows multiple words.
 	CHECK_FALSE(editor.IsRangeWord(0, 4));
 	CHECK(editor.WordStartPosition(7, true) == 6);
 	CHECK(editor.WordEndPosition(7, true) == 11);
@@ -124,6 +125,8 @@ TEST_CASE("WordStart WordEnd and IsRangeWord") {
 TEST_CASE("SetCharsDefault and character category optimization round-trip") {
 	TestHost host;
 	TestEditor editor(host);
+	editor.SetCharacterCategoryOptimization(0);
+	CHECK(editor.GetCharacterCategoryOptimization() == 0x100);
 	editor.SetCharacterCategoryOptimization(0x1000);
 	CHECK(editor.GetCharacterCategoryOptimization() == 0x1000);
 	editor.SetCharsDefault();

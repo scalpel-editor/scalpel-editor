@@ -120,7 +120,8 @@ void Editor::SetCharsDefault() {
 	pdoc->SetDefaultCharClasses(true);
 }
 
-// How many characters the category map precomputes for classification (0 disables).
+// How many characters the category map precomputes for classification. Values
+// below 256 use the minimum 256-entry map.
 void Editor::SetCharacterCategoryOptimization(int countCharacters) {
 	pdoc->SetCharacterCategoryOptimization(countCharacters);
 }
@@ -130,8 +131,9 @@ int Editor::GetCharacterCategoryOptimization() const noexcept {
 	return pdoc->CharacterCategoryOptimization();
 }
 
-// Contiguous pointer to the whole document buffer. May move the gap; do not retain
-// across modifications.
+// Contiguous pointer to the whole document buffer with a trailing NUL. May move
+// the gap. Any editor or UI call may invalidate the pointer, so reacquire it after
+// every such call.
 const char *Editor::GetCharacterPointer() const {
 	return pdoc->BufferPointer();
 }
@@ -147,7 +149,8 @@ Sci::Position Editor::WordEndPosition(Sci::Position pos, bool onlyWordCharacters
 	return pdoc->ExtendWordSelect(pos, 1, onlyWordCharacters);
 }
 
-// True when [start, end) is a whole word under current character classes.
+// True when start is a word-start transition and end is a word-end transition.
+// The range may contain spaces and multiple words.
 bool Editor::IsRangeWord(Sci::Position start, Sci::Position end) const {
 	return pdoc->IsWordAt(start, end);
 }
