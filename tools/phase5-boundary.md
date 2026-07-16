@@ -11,14 +11,14 @@ Run `tools/check-no-message-layer.sh` as the repeatable completion check. Until 
 | `scintilla/include/ScintillaMessages.h` | `enum class Message` for temporary shells and tests | **Deleted** in step 6. No retained project type keeps a message number. |
 | `scintilla/include/ScintillaTypes.h` | Enums, flag operators, `Position`/`Line`/`Colour` aliases, `uptr_t`/`sptr_t`, marker/indicator masks | **Deleted** (step 9). Retained definitions live in `scintilla/src/EditorBasicTypes.h`, `EditorDocumentTypes.h`, `EditorStyleTypes.h`, `EditorInputTypes.h`, and `EditorLayoutTypes.h`. `Accessibility` and `ScaleTechnique` were not re-homed. |
 | `scintilla/include/ScintillaStructures.h` | Ranges, find, print; notifications removed in step 7 | **Deleted** in step 8. Notifications live in `EditorNotifications.h`; print formatting uses direct `Sci::Position` / `PRectangle` / `SurfaceID` parameters; text range and search use named buffer and target APIs. |
-| `scintilla/include/ScintillaCall.h` | Generated C++ client wrapper over message numbers; `*Full` methods removed with their deleted parameter types | **Delete** (step 10). No production consumer. |
-| `scintilla/include/Scintilla.h` | C client constants (`SCI_*` / `SCN_*`) and parallel structs | **Delete** after any last retained constant moves (step 10). No production consumer. |
-| `scintilla/include/Scintilla.iface` | Generator input and phase 4 inventory source | **Delete** (step 10). Phase 4 inventory text is the historical record. |
-| `scintilla/include/ScintillaWidget.h` | GTK widget embedding | **Delete** (step 10). No consumer in this tree. |
+| `scintilla/include/ScintillaCall.h` | Generated C++ client wrapper over message numbers; `*Full` methods removed with their deleted parameter types | **Deleted** (step 10). No production consumer. |
+| `scintilla/include/Scintilla.h` | C client constants (`SCI_*` / `SCN_*`) and parallel structs | **Deleted** (step 10). No retained constants needed moving; no production consumer. |
+| `scintilla/include/Scintilla.iface` | Generator input and phase 4 inventory source | **Deleted** (step 10). Phase 4 inventory text is the historical record. |
+| `scintilla/include/ScintillaWidget.h` | GTK widget embedding | **Deleted** (step 10). No consumer in this tree. |
 | `scintilla/include/Sci_Position.h` | `Sci_Position`, `Sci_PositionU`, `SCI_METHOD` | **Retain** as Lexilla / external position contract. |
 | `scintilla/include/ILexer.h` | Lexilla lexer and document attachment | **Retain**. Uses `SCI_METHOD` and `Sci_Position` only; does not include `ScintillaTypes.h`. |
 | `scintilla/include/ILoader.h` | Incremental load interface | **Retain** for Lexilla-facing loader shape; multi-document *editor* API already deleted from dispatch. |
-| `scintilla/ScintillaDoc.html` | Residual pointers and deletion notes | **Delete** when every retained feature has comments beside implementation (step 10). |
+| `scintilla/ScintillaDoc.html` | Residual pointers and deletion notes | **Deleted** (step 10). Retained feature prose lives beside named implementations; residual HTML was pointer-only. |
 
 ## `ScintillaTypes.h` — retained vs client/message-only
 

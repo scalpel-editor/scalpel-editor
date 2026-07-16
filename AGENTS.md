@@ -26,7 +26,7 @@ The editor itself is personal utility — SciTE already gives Wayland users the 
 
 - Keep `scintilla/test/unit` green through every refactoring step. These upstream tests cover the platform-free document and container code; they are not evidence that `Editor` behavior is unchanged.
 - Before dissolving a message, classify it as an application-facing method, private editor operation, keyboard command, retained type or notification, or feature to delete. Deletion is reserved for platform-only material and the message layer itself. Do not automatically turn messages into public methods.
-- When a retained message becomes a named method, find its entry in `scintilla/ScintillaDoc.html`, condense the useful prose into a doc comment near the method, and remove the old prose. When a feature is deleted, delete its documentation in the same change. The goal state is that `ScintillaDoc.html` has no live content and is deleted.
+- Keep a short authoritative description beside each named operation's definition. The former `ScintillaDoc.html` catalog was deleted in phase 5 step 10 after that move. When a feature is deleted, delete its documentation in the same change.
 - Add a focused editor test before moving behavior that the current tests do not exercise. Prefer assertions on visible effects such as document state, selection, invalidation, notifications, and scrollbar changes over relying on a mechanical-looking diff.
 - The "concrete test editor" is the test-only `ScintillaBase` subclass and deterministic host described in roadmap phase 2. Keep its callbacks observable, keep its clock and external state under test control, and do not make it depend on the seed code or the real Wayland and rendering stack.
 
@@ -85,6 +85,6 @@ In Markdown files, do not hard-wrap prose. Write each paragraph and each list it
 
 ## Tooling notes
 
-- grepai (semantic search): make sure the index includes `.cxx` and `.iface` files — a missing extension silently returns no results for most of the Scintilla core.
+- grepai (semantic search): make sure the index includes `.cxx` files — a missing extension silently returns no results for most of the Scintilla core.
 - Use `grepai status --wait` instead of sleeps or watcher-log scraping. After changing a file that must be present in the durable index, run `grepai status --wait --steady --indexed path/to/file.cxx --after "$(stat -c %Y path/to/file.cxx)" --timeout 2m`; repeat for each changed file that matters to the next search or snapshot. `--indexed` polls the persisted store, while `--steady` also requires an idle watcher. Indexed mtimes have one-second resolution, so make sure the final edit has a different Unix-second mtime from the previously indexed version; otherwise an older version can satisfy `--after`. Plain `grepai status --no-ui` and `grepai status --json` report watcher state, pending work, durable save time and generation, effective configuration and match checks, project and index paths, and the last failure. Sandboxed status can read the host watcher's recorded state.
 - Do not add a `.*/` pattern to `.gitignore`. grepai's ignore matcher mis-reads it as "every directory" and indexes nothing. The checked-in `.gitignore` avoids it deliberately; keep it that way or list hidden directories explicitly.

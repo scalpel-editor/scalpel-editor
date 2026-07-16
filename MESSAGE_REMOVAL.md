@@ -117,15 +117,17 @@ Parameterized capture and numeric-path deletion (2026-07-15, phase 4 step 16): d
 
 ## Phase 5 removal boundary
 
-Frozen 2026-07-16 before deleting the generated message layer. Classification of generated headers, enums, structures, notifications, temporary shells, phase 4 tools, Lexilla allowlist terms, and the step 2 typed-parameter targets lives in [tools/phase5-boundary.md](tools/phase5-boundary.md). The completion check is `tools/check-no-message-layer.sh` (expected to fail until phase 5 finishes). The callable inventory below remains the historical phase 4 record and is not re-derived after `Scintilla.iface` is deleted.
+Frozen 2026-07-16 before deleting the generated message layer. Classification of generated headers, enums, structures, notifications, temporary shells, phase 4 tools, Lexilla allowlist terms, and the step 2 typed-parameter targets lives in [tools/phase5-boundary.md](tools/phase5-boundary.md). The completion check is `tools/check-no-message-layer.sh` (expected to fail until phase 5 finishes). The callable inventory below remains the historical phase 4 record and is not re-derived after `Scintilla.iface` was deleted.
+
+### Step 10 (2026-07-16)
+
+Deleted the remaining generated client and documentation surface: `ScintillaCall.h`, `Scintilla.h`, `ScintillaWidget.h`, `Scintilla.iface`, and `ScintillaDoc.html`. No constants from those headers needed re-homing beyond the step 9 project-owned type headers. Default key-map modifier aliases that still spelled `SCI_*` were rewritten to `KeyMod` in `KeyMap`. Discoverability corpus `obsolete_locations` no longer list the deleted files. Step 11 still runs repository-wide completion searches and the three-tree phase gate.
 
 ## Interface Inventory
 
-Generated from `scintilla/include/Scintilla.iface` on 2026-07-13. It contains all 821 `fun`, `get`, and `set` entries and all 32 `evt` entries, grouped for phase 4. It does not assign a removal classification without tracing the code. Constants, aliases, and enum declarations are type definitions rather than dispatch cases; phase 5 replaces them using the freeze in [tools/phase5-boundary.md](tools/phase5-boundary.md).
+Generated from `scintilla/include/Scintilla.iface` on 2026-07-13 (that file is gone after phase 5 step 10). It contains all 821 `fun`, `get`, and `set` entries and all 32 `evt` entries, grouped for phase 4. It does not assign a removal classification without tracing the code. Constants, aliases, and enum declarations are type definitions rather than dispatch cases; phase 5 replaced them using the freeze in [tools/phase5-boundary.md](tools/phase5-boundary.md).
 
-Run `tools/check-message-inventory.sh` after changing this inventory or `Scintilla.iface`. The check requires every callable entry and notification to appear exactly once.
-
-Run `tools/check-retained-entrypoints.sh` (phase 4 step 17) after changing dispatch cases, named methods, `EditorCommand`, or deletion rows. It requires every retained callable to have a thin temporary `Message::` case and a named method or `EditorCommand` member, and every `Feature to delete` entry to have no `Message::` case. Intentional renames (for example `CopyRange` → `CopyRangeToClipboard`) live in that script’s alias table.
+The phase 4 scripts `tools/check-message-inventory.sh` and `tools/check-retained-entrypoints.sh` were deleted in step 6 with the temporary dispatch shells. The inventory text below is the retained historical record.
 
 ### Step 17 audit (2026-07-16)
 

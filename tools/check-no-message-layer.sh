@@ -145,7 +145,7 @@ check 'WndProc coercion helpers' 'PtrFromSPtr|ConstCharPtrFromSPtr|CharPtrFromSP
 # Affirmative "call through SCI_/WndProc" instructions in live docs (not historical freeze text).
 tmp=${TMPDIR:-/tmp}/phase5-msg-docs.$$
 rg -n -e 'send the SCI_|SendMessage|call WndProc|through the message (number|layer|interface)' \
-	DISCOVERABILITY.md scintilla/ScintillaDoc.html >"$tmp" 2>/dev/null || true
+	DISCOVERABILITY.md >"$tmp" 2>/dev/null || true
 count=0
 shown=0
 while IFS= read -r line || [ -n "$line" ]; do
