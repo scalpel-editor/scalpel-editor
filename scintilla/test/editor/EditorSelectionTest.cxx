@@ -95,6 +95,33 @@ TEST_CASE("SetSel and getters track stream selection") {
 	CHECK(editor.WndProc(Message::GetSelectionEmpty, 0, 0) == 0);
 }
 
+TEST_CASE("SetSelectionSerialized round-trips and ignores a null argument") {
+	TestHost host;
+	TestEditor editor(host);
+	LoadClean(editor, "abcdef");
+
+	editor.WndProc(Message::SetSel, 1, 4);
+
+	// Serialize the current selection (result carries no NUL terminator).
+	std::string buffer(64, '\0');
+	const sptr_t length = editor.WndProc(Message::GetSelectionSerialized, 0,
+		reinterpret_cast<sptr_t>(buffer.data()));
+	REQUIRE(length > 0);
+	const std::string serialized(buffer.data(), static_cast<size_t>(length));
+
+	// Clear the selection, then restore it from the serialized form.
+	editor.WndProc(Message::SetSel, 0, 0);
+	editor.WndProc(Message::SetSelectionSerialized, 0,
+		reinterpret_cast<sptr_t>(serialized.c_str()));
+	CHECK(editor.GetSelectionStart() == 1);
+	CHECK(editor.GetSelectionEnd() == 4);
+
+	// A null lParam is a no-op, not a crash, and leaves the selection intact.
+	editor.WndProc(Message::SetSelectionSerialized, 0, 0);
+	CHECK(editor.GetSelectionStart() == 1);
+	CHECK(editor.GetSelectionEnd() == 4);
+}
+
 TEST_CASE("Empty selection and position setters") {
 	TestHost host;
 	TestEditor editor(host);

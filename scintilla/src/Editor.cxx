@@ -6348,7 +6348,9 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		return static_cast<sptr_t>(GetUndoSelectionHistory());
 
 	case Message::SetSelectionSerialized:
-		SetSelectionSerialized(ConstCharPtrFromSPtr(lParam));
+		if (const char *serialized = ConstCharPtrFromSPtr(lParam)) {
+			SetSelectionSerialized(serialized);
+		}
 		break;
 
 	case Message::GetSelectionSerialized: {
