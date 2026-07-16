@@ -4307,9 +4307,13 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 	case Message::GetText: {
 			if (lParam == 0)
 				return GetTextLength();
+			const std::string text = GetText();
 			const Sci_Position len = std::min<Sci_Position>(
-				static_cast<Sci_Position>(wParam), GetTextLength());
-			return GetTextRange(CharPtrFromSPtr(lParam), 0, len);
+				static_cast<Sci_Position>(wParam), text.length());
+			char *buffer = CharPtrFromSPtr(lParam);
+			memcpy(buffer, text.data(), len);
+			buffer[len] = '\0';
+			return len;
 		}
 
 	case Message::SetText: {
@@ -4328,8 +4332,10 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 	case Message::CutAllowLine:
 		return ExecuteCommand(CommandFromMessage(iMessage));
 
-	case Message::GetCopySeparator:
-		return StringResult(lParam, copySeparator.c_str());
+	case Message::GetCopySeparator: {
+			const std::string separator = GetCopySeparator();
+			return StringResult(lParam, separator.c_str());
+		}
 
 	case Message::SetCopySeparator:
 		SetCopySeparator(ConstCharPtrFromSPtr(lParam));
@@ -4393,14 +4399,13 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		break;
 
 	case Message::GetSelText: {
-			SelectionText selectedText;
-			CopySelectionRange(&selectedText);
+			const std::string selectedText = GetSelText();
 			if (lParam) {
 				char *ptr = CharPtrFromSPtr(lParam);
-				memcpy(ptr, selectedText.Data(), selectedText.Length());
-				ptr[selectedText.Length()] = '\0';
+				memcpy(ptr, selectedText.data(), selectedText.length());
+				ptr[selectedText.length()] = '\0';
 			}
-			return selectedText.Length();
+			return selectedText.length();
 	}
 
 	case Message::LineFromPosition:

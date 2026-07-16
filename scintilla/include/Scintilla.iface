@@ -3030,10 +3030,8 @@ set void SetVirtualSpaceOptions=2596(VirtualSpace virtualSpaceOptions,)
 # Return options for virtual space behaviour.
 get VirtualSpace GetVirtualSpaceOptions=2597(,)
 
-# On GTK, allow selecting the modifier key to use for mouse-based
-# rectangular selection. Often the window manager requires Alt+Mouse Drag
-# for moving windows.
-# Valid values are SCMOD_CTRL(default), SCMOD_ALT, or SCMOD_SUPER.
+# Select the modifier key used for mouse-based rectangular selection.
+# Valid values are SCMOD_CTRL, SCMOD_ALT (default), or SCMOD_SUPER.
 
 set void SetRectangularSelectionModifier=2598(int modifier,)
 

@@ -23,6 +23,7 @@ GUIDE = ROOT / "MESSAGE_REMOVAL.md"
 SRC = ROOT / "scintilla" / "src"
 COMMANDS_H = SRC / "EditorCommands.h"
 COMMANDS_CXX = SRC / "EditorCommands.cxx"
+DISPATCH_FILES = (SRC / "Editor.cxx", SRC / "ScintillaBase.cxx")
 
 # Message names whose typed operation uses a different spelling after migration.
 # The harness accepts any of the listed definition names.
@@ -45,6 +46,8 @@ METHOD_ALIASES: dict[str, tuple[str, ...]] = {
     "CopyRange": ("CopyRangeToClipboard",),
     # Multi-selection drop uses DropSelection(size_t).
     "DropSelectionN": ("DropSelection",),
+    # SetSelection replaces the whole selection model with one stream range.
+    "SetSelection": ("SetStreamSelection",),
     # Property expanded form is not separately implemented.
     "GetPropertyExpanded": ("GetProperty",),
     # Pattern/minimal replace share ReplaceTarget(ReplaceType, ...).
@@ -109,7 +112,7 @@ def deleted_names() -> set[str]:
 
 def message_cases() -> set[str]:
     cases: set[str] = set()
-    for path in SRC.glob("*.cxx"):
+    for path in DISPATCH_FILES:
         text = path.read_text()
         for m in re.finditer(r"case\s+Message::(\w+)", text):
             cases.add(m.group(1))
@@ -151,13 +154,17 @@ def named_method_index() -> dict[str, list[str]]:
     return index
 
 
-def case_bodies() -> dict[str, str]:
-    """Rough Message case body text for thin-forwarder checks (Editor + ScintillaBase)."""
-    bodies: dict[str, str] = {}
-    for path in (SRC / "Editor.cxx", SRC / "ScintillaBase.cxx", *SRC.glob("Editor*.cxx")):
+def case_bodies() -> dict[str, list[str]]:
+    """Map each Message name to its effective WndProc case bodies.
+
+    Consecutive labels share the first non-empty body after them. Keep every body
+    when Editor and ScintillaBase both handle a message so both paths are checked.
+    """
+    bodies: dict[str, list[str]] = {}
+    for path in DISPATCH_FILES:
         text = path.read_text()
-        # Split on case Message::; keep only switch-case fragments
         parts = re.split(r"\n\tcase Message::", text)
+        parsed: list[tuple[str, str]] = []
         for part in parts[1:]:
             name = part.split(":", 1)[0].strip()
             lines: list[str] = []
@@ -168,9 +175,13 @@ def case_bodies() -> dict[str, str]:
                 if line.startswith("}") and not line.startswith("\t"):
                     break
                 lines.append(line)
-            body = "\n".join(lines)
-            # Prefer the first body if a case is fall-through grouped later
-            bodies.setdefault(name, body)
+            parsed.append((name, "\n".join(lines)))
+
+        effective_body = ""
+        for name, body in reversed(parsed):
+            if body.strip():
+                effective_body = body
+            bodies.setdefault(name, []).append(effective_body)
     return bodies
 
 
@@ -203,6 +214,25 @@ def is_thin_forwarder(body: str) -> bool:
         stripped,
     )
     return callish is not None
+
+
+def forwards_to_named_operation(
+    body: str,
+    candidates: tuple[str, ...],
+    has_command: bool,
+    has_cmd_map: bool,
+) -> bool:
+    """Whether a case reaches its matching method or EditorCommand."""
+    if any(re.search(rf"\b{re.escape(candidate)}\s*\(", body) for candidate in candidates):
+        return True
+    if not has_command:
+        return False
+    if has_cmd_map and re.search(r"\bCommandFromMessage\s*\(\s*iMessage\s*\)", body):
+        return True
+    return any(
+        re.search(rf"\bEditorCommand::{re.escape(candidate)}\b", body)
+        for candidate in candidates
+    )
 
 
 def main() -> int:
@@ -248,29 +278,35 @@ def main() -> int:
                 errors.append(f"deleted entry still has case Message::{name}")
             continue
 
+        candidates = METHOD_ALIASES.get(name, (name,))
+        has_command = name in commands or any(a in commands for a in candidates)
+        has_cmd_map = name in cmd_from_msg
+        has_method = any(a in methods for a in candidates)
+
         # Retained callable
         if name not in cases:
             if name not in ALLOW_MISSING_CASE:
                 errors.append(f"retained entry missing case Message::{name}")
             # Still require a named operation even when the case is absent.
         else:
-            body = bodies.get(name, "")
-            if body and not is_thin_forwarder(body):
-                errors.append(
-                    f"case Message::{name} does not look like a thin forwarder"
-                )
+            entry_bodies = bodies.get(name, [])
+            if not entry_bodies:
+                errors.append(f"case Message::{name} body was not found in WndProc")
+            for body in entry_bodies:
+                if not is_thin_forwarder(body):
+                    errors.append(
+                        f"case Message::{name} does not look like a thin forwarder"
+                    )
+                elif not forwards_to_named_operation(
+                    body, candidates, has_command, has_cmd_map
+                ):
+                    wanted = " / ".join(candidates)
+                    errors.append(
+                        f"case Message::{name} does not forward to {wanted}"
+                    )
 
         if name in SKIP_NAMED_CHECK:
             continue
-
-        aliases = METHOD_ALIASES.get(name, (name,))
-        method_names = (name,) if name not in METHOD_ALIASES else aliases
-        # Always also try the iface name itself.
-        candidates = tuple(dict.fromkeys((*method_names, name)))
-
-        has_command = name in commands or any(a in commands for a in candidates)
-        has_cmd_map = name in cmd_from_msg
-        has_method = any(a in methods for a in candidates)
 
         # Keyboard-command path: either mapped command or method (some dual-role ops).
         if not has_method and not has_command:
@@ -280,8 +316,11 @@ def main() -> int:
                 f"and no EditorCommand::{name}"
             )
         elif has_command and name in cases:
-            body = bodies.get(name, "")
-            if ("ExecuteCommand" in body or "CommandFromMessage" in body) and not has_cmd_map:
+            entry_bodies = bodies.get(name, [])
+            uses_message_map = any(
+                "CommandFromMessage" in body for body in entry_bodies
+            )
+            if uses_message_map and not has_cmd_map:
                 errors.append(
                     f"command entry {name}: ExecuteCommand path without "
                     f"CommandFromMessage mapping"

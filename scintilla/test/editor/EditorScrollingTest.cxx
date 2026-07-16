@@ -68,8 +68,11 @@ using namespace Scintilla::Internal;
 
 TEST_CASE("X offset and first-visible-line message path round-trip") {
 	TestHost host;
-	TestEditor editor(host);
-	// Default first visible line is 0; ScrollTo clamps when the document fits on screen.
+	TestEditor editor(host, PRectangle(0, 0, 160, 40));
+	LoadClean(editor,
+		"line 00\nline 01\nline 02\nline 03\nline 04\nline 05\n"
+		"line 06\nline 07\nline 08\nline 09\nline 10\nline 11\n"
+		"line 12\nline 13\nline 14\nline 15\nline 16\nline 17\n");
 	CHECK(editor.GetFirstVisibleLine() == 0);
 	CHECK(editor.WndProc(Message::GetFirstVisibleLine, 0, 0) == 0);
 
@@ -79,12 +82,14 @@ TEST_CASE("X offset and first-visible-line message path round-trip") {
 	editor.WndProc(Message::SetXOffset, 0, 0);
 	CHECK(editor.GetXOffset() == 0);
 
-	// Named setters for application scroll ops (clamped when the buffer fits on screen).
-	editor.SetFirstVisibleLine(0);
-	CHECK(editor.GetFirstVisibleLine() == 0);
-	editor.LineScroll(0, 0);
-	editor.ScrollVertical(0, 0);
-	CHECK(editor.GetFirstVisibleLine() == 0);
+	// Named application scroll operations move an observable view origin.
+	editor.SetFirstVisibleLine(3);
+	CHECK(editor.GetFirstVisibleLine() == 3);
+	editor.LineScroll(2, 2);
+	CHECK(editor.GetFirstVisibleLine() == 5);
+	CHECK(editor.GetXOffset() > 0);
+	editor.ScrollVertical(8, 0);
+	CHECK(editor.GetFirstVisibleLine() == 8);
 }
 
 TEST_CASE("Scroll width and end-at-last-line options") {
