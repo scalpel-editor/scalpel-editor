@@ -59,6 +59,8 @@ The fixed corpus, runner, and result format live in [`tools/discoverability/`](t
 
 The current-tree baseline is recorded under [`benchmark-results/baseline/`](benchmark-results/baseline/observations.md) (phase 4 step 2). After that baseline the corpus is frozen: do not edit `queries.tsv` or `held-out-queries.tsv` while choosing pilot names, file boundaries, or comments. Change a corpus row only when this guide records the reason and the old and new evidence.
 
+Pilot measures are under [`benchmark-results/wrapping-pilot/`](benchmark-results/wrapping-pilot/observations.md) and [`benchmark-results/autocomplete-calltip-pilot/`](benchmark-results/autocomplete-calltip-pilot/observations.md). Phase 4 step 19 recorded a post-concern-move cleanup measure under [`benchmark-results/phase4-step19/`](benchmark-results/phase4-step19/observations.md) without changing the fixed corpus; that write-up notes remaining full-corpus gaps (including the frozen SetModEventMask target path) for the step 20 phase gate.
+
 The initial corpus should cover at least these different shapes:
 
 - Wrapping and view settings: `SetWrapMode`, `WrapCount`, and `SetScrollWidth`.
