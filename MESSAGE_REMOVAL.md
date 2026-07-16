@@ -127,6 +127,42 @@ Run `tools/check-retained-entrypoints.sh` (phase 4 step 17) after changing dispa
 
 Mechanical audit green: 782 retained callables, 41 deleted callables, 32 notifications; 782 thin `Message::` cases; deletions free of dispatch. Application-facing definitions sampled across document, wrap, clipboard, search, lexing, recording, input, selection, printing, and autocomplete keep short reader comments beside the named definitions. Focused suites cover each concern; step 17 added direct-path coverage where application search, selection-N, rectangular-modifier, and scroll ops had been message-only. Deleted notification prose for `Key` and `URIDropped` is gone from the live how-to sections of `ScintillaDoc.html`. Remaining work for steps 18–20: production internal `WndProc` use in `ScintillaBase::Command` / `ContextMenu`, bulk inventory “planned” language cleanup, and the phase gate.
 
+### Step 18 remaining layout (audit)
+
+Phase 4 step 18 reviews what is still defined in `Editor.cxx` and `ScintillaBase.cxx` after the concern moves. Named API and private concern operations already live in `Editor*.cxx` files listed in the inventory. What remains in the two mixed files is either shared machinery the roadmap keeps for later phases, or a small shell that step 18 rewires away from `WndProc`.
+
+**Stay in `Editor.cxx` (shared infrastructure, not a missed feature concern):**
+
+| Group | Examples | Why it stays |
+| --- | --- | --- |
+| Construction and teardown | ctor, dtor, `Finalise`, `DropGraphics`, `SetDocPointer` | Owns the single document and graphics lifetime for every concern |
+| Style invalidation | `InvalidateStyleData`, `InvalidateStyleRedraw`, `RefreshStyleData` | Shared by styling, wrapping, margins, and paint |
+| Geometry and hit-test | client rectangles, `LocationFromPosition`, `SPositionFromLocation`, `PositionFromLineX`, `LineFromLocation` | Used by selection, mouse, scrolling, autocomplete placement, and paint |
+| Scroll infrastructure | `ScrollTo`, `HorizontalScrollTo`, `XYScrollToMakeVisible`, `EnsureCaretVisible`, `SetScrollBars`, `ChangeSize` | Shared by view, caret policy, and host scrollbars; named scroll *options* already live in `EditorScrolling.cxx` |
+| Paint | `Paint`, `PaintSelMargin`, `Redraw*`, `InvalidateRange`, `AbandonPaint` | Phase 6 replaces the surface; keep one paint entry until then |
+| Selection primitives | `MovePositionTo`, `InvalidateSelection`, `CurrentPosition`, rectangular thin/set helpers | Called from commands, mouse, clipboard, and recording; public selection API is in `EditorSelection.cxx` |
+| Core edit primitives | `InsertCharacter`, `ClearSelection`, paste shapes, `DelCharBack`, `NewLine`, `Indent`, line transforms used by commands | Shared by input, clipboard, commands, and IME; not a separate public surface |
+| Movement helpers | `PositionMove`, `HorizontalMove`, `CursorUpOrDown`, `PageMove`, wrap-home helpers | Owned by `ExecuteCommand` / key bindings; stay next to the shared caret model |
+| Notification and document watch | `NotifyModified`, `NotifyParent` path helpers, style-needed, save-point, hotspot, margin, dwell, zoom | Shared emission; typed notification cleanup is later work, not a concern split |
+| Mouse and idle | `ButtonDown/Move/UpWithModifiers`, dwell, drag-drop helpers, `Idle`, tickers | Settings for input live in `EditorInput.cxx`; event machinery stays shared |
+| Temporary dispatch shell | `WndProc` cases that only unpack parameters and call named methods; `StringResult` / `BytesResult` | Phase 5 deletes the shell and generated constants |
+
+**Stay in `ScintillaBase.cxx` (subclass shell, not a missed concern move):**
+
+| Group | Examples | Why it stays |
+| --- | --- | --- |
+| Lifecycle | ctor, dtor, `Finalise` | Owns popup menu lifetime over `Editor` |
+| Character insert override | `InsertCharacter` | Routes fill-up through autocomplete then base insert |
+| Command and context menu | `Command`, `ContextMenu`, `ShouldDisplayPopup`, `AddToPopUp` virtual | Host popup surface; phase 6 stubs real menus. Step 18 makes these call named methods / `ExecuteCommand` instead of `WndProc` |
+| Popup command interception | `ExecuteCommand` override | Cancels or steers autocomplete and call tips; stays with popup ownership |
+| IME helpers | `MoveImeCarets`, `DrawImeIndicator` | Small helpers for phase 7 IME; not a complete public concern yet |
+| Cancel / button overrides | `CancelModes`, `ButtonDownWithModifiers`, `RightButtonDownWithModifiers` | Cancel popups then forward to `Editor` |
+| Temporary `WndProc` | Autocomplete, call tip, lexer, recording forwarders then `Editor::WndProc` | Phase 5 |
+
+**No further concern files in step 18.** Autocomplete, call tips, and lexing already have named files. Context menu and IME helpers are too small and host-dependent to justify new concern files before real Wayland popups and IME exist. Line-move helpers (`MoveSelectedLines*`) remain shared command support inside `Editor.cxx`.
+
+**Production `WndProc` call sites to remove in step 18:** `ScintillaBase::Command` (seven menu actions) and `ScintillaBase::ContextMenu` (`GetReadOnly`, `CanPaste`). After those edits, the only `WndProc` uses under `scintilla/src` must be the temporary dispatch definitions themselves.
+
 The classification record for each concern appears immediately before its exhaustive entry list. A decision row may cover several entries only when they have the same owner, classification, target file, focused-test plan, documentation action, and deletion reason. “Named operations keep their interface names” means the numeric wrapper is replaced by typed functions with those names; the migration may combine a setter and getter into one small value object when that makes the resulting code clearer.
 
 Every retained concern uses a focused `Editor...Test.cxx` suite unless the row names a narrower existing unit suite. “Add editor tests” means the current suite does not observe enough visible behavior and tests must land before or with the concern move. “Move API prose” means read the matching `ScintillaDoc.html` section, keep its useful behavior description beside the named definition, and remove the old API prose. “Delete API prose” means remove text that only describes the deleted entry.
