@@ -448,6 +448,8 @@ void ScintillaBase::AutoCompleteMoveToCurrentWord() {
 	ac.Select(wordCurrent.c_str());
 }
 
+// Report the highlighted item without inserting it. text is the item value,
+// position is the list start, and listType distinguishes user lists from autocomplete.
 void ScintillaBase::AutoCompleteSelection() {
 	const int item = ac.GetSelection();
 	std::string selected;
@@ -477,6 +479,7 @@ void ScintillaBase::AutoCompleteCharacterAdded(char ch) {
 	}
 }
 
+// AutoCCharDeleted has no payload beyond its notification code.
 void ScintillaBase::AutoCompleteCharacterDeleted() {
 	if (sel.MainCaret() < ac.posStart - ac.startLen) {
 		AutoCompleteCancel();
@@ -492,6 +495,8 @@ void ScintillaBase::AutoCompleteCharacterDeleted() {
 	NotifyParent(scn);
 }
 
+// Report an insertion after it completes. text and position identify the selected
+// item and list start; ch and listCompletionMethod describe how it was accepted.
 void ScintillaBase::AutoCompleteNotifyCompleted(char ch, CompletionMethods completionMethod, Sci::Position firstPos, const char *text) {
 	NotificationData scn = {};
 	scn.nmhdr.code = Notification::AutoCCompleted;
@@ -506,6 +511,8 @@ void ScintillaBase::AutoCompleteNotifyCompleted(char ch, CompletionMethods compl
 	NotifyParent(scn);
 }
 
+// Report a selection before insertion so the host may cancel it. User lists use
+// UserListSelection and do not insert; the fields match AutoCCompleted otherwise.
 void ScintillaBase::AutoCompleteCompleted(char ch, CompletionMethods completionMethod) {
 	const int item = ac.GetSelection();
 	if (item == -1) {

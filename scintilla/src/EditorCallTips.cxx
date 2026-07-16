@@ -116,6 +116,8 @@ void ScintillaBase::CallTipShow(Point pt, const char *defn) {
 	ct.wCallTip.InvalidateAll();
 }
 
+// Report which call-tip region was clicked: 1 is the up arrow, 2 is the down
+// arrow, and 0 is the body. The host may use arrows to choose another overload.
 void ScintillaBase::CallTipClick() {
 	NotificationData scn = {};
 	scn.nmhdr.code = Notification::CallTipClick;
