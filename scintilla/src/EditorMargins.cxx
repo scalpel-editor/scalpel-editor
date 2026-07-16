@@ -38,7 +38,6 @@
 #include <future>
 
 #include "ScintillaTypes.h"
-#include "ScintillaStructures.h"
 #include "ILoader.h"
 #include "ILexer.h"
 
