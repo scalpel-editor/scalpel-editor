@@ -96,8 +96,19 @@ TEST_CASE("FormatRange measures without drawing and returns a position") {
 
 	const Sci::Position next = editor.FormatRange(false, fr);
 	// Measurement should advance past some or all of the document.
-	CHECK(next >= 0);
+	CHECK(next > 0);
 	CHECK(next <= editor.GetTextLength());
+
+	RangeToFormat narrow{};
+	narrow.hdc = fr.hdc;
+	narrow.hdcTarget = fr.hdcTarget;
+	narrow.rc = fr.rc;
+	narrow.rcPage = fr.rcPage;
+	narrow.chrg.cpMin = static_cast<PositionCR>(fr.chrg.cpMin);
+	narrow.chrg.cpMax = static_cast<PositionCR>(fr.chrg.cpMax);
+	const Sci::Position messageNext = editor.WndProc(
+		Message::FormatRange, 0, reinterpret_cast<sptr_t>(&narrow));
+	CHECK(messageNext == next);
 }
 
 TEST_CASE("Print settings named path matches message path") {

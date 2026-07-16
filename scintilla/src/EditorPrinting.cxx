@@ -112,8 +112,8 @@ Wrap Editor::GetPrintWrapMode() const noexcept {
 // Measure or draw a character range into fr.rc on fr.hdc / fr.hdcTarget.
 // Returns the next document position after the formatted area. When draw is
 // false, only measurement is performed (for pagination).
-// This is mostly copied from the Paint path but omits margin markers, line
-// numbers, selection, and caret.
+// This is mostly copied from the Paint path but omits margin markers,
+// selection, and caret. An enabled line-number margin is printed.
 Sci::Position Editor::FormatRange(bool draw, const RangeToFormatFull &fr) {
 	AutoSurface surface(fr.hdc, this, Technology::Default);
 	AutoSurface surfaceMeasure(fr.hdcTarget, this, Technology::Default);
@@ -122,4 +122,3 @@ Sci::Position Editor::FormatRange(bool draw, const RangeToFormatFull &fr) {
 	}
 	return view.FormatRange(draw, fr.chrg, fr.rc, surface, surfaceMeasure, *this, vs);
 }
-
