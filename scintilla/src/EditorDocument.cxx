@@ -116,7 +116,9 @@ bool Editor::GetReadOnly() const noexcept {
 
 // Inserts text at the main caret and places an empty selection after the insert.
 // length is the byte count of text; embedded NULs are allowed.
+// When macro recording is on, emits RecordedAddText (including empty text).
 void Editor::AddText(std::string_view text) {
+	EmitRecordedAction(RecordedAddText{std::string(text)});
 	if (text.empty()) {
 		return;
 	}
@@ -126,7 +128,10 @@ void Editor::AddText(std::string_view text) {
 
 // Inserts text at pos, or at the main caret when pos is negative. If the caret
 // was after the insertion point it is moved with the surrounding text.
+// When macro recording is on, emits RecordedInsertText with the position as
+// passed (negative means caret at replay time via InsertText).
 void Editor::InsertText(Sci::Position pos, std::string_view text) {
+	EmitRecordedAction(RecordedInsertText{pos, std::string(text)});
 	if (text.empty()) {
 		return;
 	}
@@ -144,7 +149,9 @@ void Editor::InsertText(Sci::Position pos, std::string_view text) {
 }
 
 // Appends text at the end of the document. Selection and scroll position are unchanged.
+// When macro recording is on, emits RecordedAppendText (including empty text).
 void Editor::AppendText(std::string_view text) {
+	EmitRecordedAction(RecordedAppendText{std::string(text)});
 	if (text.empty()) {
 		return;
 	}
@@ -154,7 +161,9 @@ void Editor::AppendText(std::string_view text) {
 // Deletes every character and, when writable, clears fold, annotation, EOL
 // annotation, and margin text state. Resets selection and vertical scroll, then
 // redraws. Tabstops in the view are also cleared.
+// When macro recording is on, emits RecordedClearAll.
 void Editor::ClearAll() {
+	EmitRecordedAction(RecordedClearAll{});
 	{
 		UndoGroup ug(pdoc);
 		if (0 != pdoc->Length()) {

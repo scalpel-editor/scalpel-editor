@@ -109,6 +109,17 @@ public:
 	using Editor::ReplayRecordedAction;
 	using Editor::ReplayRecordedActions;
 
+	// Parameterized recording entry points (protected on Editor).
+	using Editor::AddText;
+	using Editor::AppendText;
+	using Editor::ClearAll;
+	using Editor::InsertText;
+	using Editor::ReplaceSel;
+	using Editor::SearchAnchor;
+	using Editor::SearchText;
+	using Editor::SetSelectionMode;
+	using Editor::InsertCharacter;
+
 	// Expose private input operations only to the focused editor tests.
 	using Editor::AssignCmdKey;
 	using Editor::ClearAllCmdKeys;

@@ -145,7 +145,9 @@ FindOption Editor::GetSearchFlags() const noexcept {
 
 // Replace the main selection with text. One undo action. Moves the caret after
 // the insert and ensures it is visible.
+// When macro recording is on, emits RecordedReplaceSelection with owned text.
 void Editor::ReplaceSel(std::string_view text) {
+	EmitRecordedAction(RecordedReplaceSelection{std::string(text)});
 	UndoGroup ug(pdoc);
 	ClearSelection();
 	const Sci::Position lengthInserted = pdoc->InsertString(sel.MainCaret(), text);

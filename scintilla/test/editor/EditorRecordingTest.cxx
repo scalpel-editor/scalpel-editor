@@ -411,3 +411,122 @@ TEST_CASE("Stop recording ends further command capture") {
 
 	CHECK(editor.observations.recordedActions.empty());
 }
+
+namespace {
+
+bool HasMacroRecord(const TestEditor &editor) {
+	return std::any_of(editor.observations.notifications.begin(),
+		editor.observations.notifications.end(),
+		[](const TestNotification &n) { return n.code == Notification::MacroRecord; });
+}
+
+}
+
+TEST_CASE("Document text mutations are captured as typed actions while recording") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.SetText("ab");
+	editor.SetSel(1, 1);
+	editor.StartRecording();
+	editor.ClearObservations();
+
+	editor.AddText("X");
+	editor.InsertText(0, "Y");
+	editor.AppendText("Z");
+	editor.ReplaceSel("Q");
+	editor.ClearAll();
+
+	REQUIRE(editor.observations.recordedActions.size() == 5);
+	CHECK(As<RecordedAddText>(editor.observations.recordedActions[0]).text == "X");
+	CHECK(As<RecordedInsertText>(editor.observations.recordedActions[1]).position == 0);
+	CHECK(As<RecordedInsertText>(editor.observations.recordedActions[1]).text == "Y");
+	CHECK(As<RecordedAppendText>(editor.observations.recordedActions[2]).text == "Z");
+	CHECK(As<RecordedReplaceSelection>(editor.observations.recordedActions[3]).text == "Q");
+	CHECK(std::holds_alternative<RecordedClearAll>(editor.observations.recordedActions[4]));
+	CHECK_FALSE(HasMacroRecord(editor));
+}
+
+TEST_CASE("Empty document text mutations still record the request") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.SetText("keep");
+	editor.StartRecording();
+	editor.ClearObservations();
+
+	editor.AddText("");
+	editor.InsertText(1, "");
+	editor.AppendText("");
+
+	REQUIRE(editor.observations.recordedActions.size() == 3);
+	CHECK(As<RecordedAddText>(editor.observations.recordedActions[0]).text.empty());
+	CHECK(As<RecordedInsertText>(editor.observations.recordedActions[1]).position == 1);
+	CHECK(As<RecordedInsertText>(editor.observations.recordedActions[1]).text.empty());
+	CHECK(As<RecordedAppendText>(editor.observations.recordedActions[2]).text.empty());
+	CHECK(editor.Text() == "keep");
+}
+
+TEST_CASE("Message path and named methods agree for document text recording") {
+	std::vector<RecordedAction> viaNamed;
+	{
+		TestHost host;
+		TestEditor editor(host);
+		editor.SetText("base");
+		editor.SetSel(0, 0);
+		editor.StartRecording();
+		editor.ClearObservations();
+		editor.AddText("A");
+		editor.InsertText(2, "B");
+		editor.AppendText("C");
+		editor.ReplaceSel("D");
+		viaNamed = editor.observations.recordedActions;
+		REQUIRE(viaNamed.size() == 4);
+	}
+	{
+		TestHost host;
+		TestEditor editor(host);
+		editor.SetText("base");
+		editor.SetSel(0, 0);
+		editor.StartRecording();
+		editor.ClearObservations();
+		const char add[] = "A";
+		editor.WndProc(Message::AddText, 1, reinterpret_cast<sptr_t>(add));
+		const char ins[] = "B";
+		editor.WndProc(Message::InsertText, 2, reinterpret_cast<sptr_t>(ins));
+		const char app[] = "C";
+		editor.WndProc(Message::AppendText, 1, reinterpret_cast<sptr_t>(app));
+		const char rep[] = "D";
+		editor.WndProc(Message::ReplaceSel, 0, reinterpret_cast<sptr_t>(rep));
+		REQUIRE(editor.observations.recordedActions.size() == 4);
+		CHECK(As<RecordedAddText>(editor.observations.recordedActions[0]).text ==
+			As<RecordedAddText>(viaNamed[0]).text);
+		CHECK(As<RecordedInsertText>(editor.observations.recordedActions[1]).position ==
+			As<RecordedInsertText>(viaNamed[1]).position);
+		CHECK(As<RecordedInsertText>(editor.observations.recordedActions[1]).text ==
+			As<RecordedInsertText>(viaNamed[1]).text);
+		CHECK(As<RecordedAppendText>(editor.observations.recordedActions[2]).text ==
+			As<RecordedAppendText>(viaNamed[2]).text);
+		CHECK(As<RecordedReplaceSelection>(editor.observations.recordedActions[3]).text ==
+			As<RecordedReplaceSelection>(viaNamed[3]).text);
+		CHECK_FALSE(HasMacroRecord(editor));
+	}
+}
+
+TEST_CASE("Document text recording owns multi-byte and invalid UTF-8 after source is gone") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.StartRecording();
+	editor.ClearObservations();
+
+	{
+		std::string multiByte = "\xC3\xA9";
+		std::string invalidUtf8 = "a\x80z";
+		editor.AddText(multiByte);
+		editor.AppendText(invalidUtf8);
+		multiByte[0] = 'X';
+		invalidUtf8[0] = 'Y';
+	}
+
+	REQUIRE(editor.observations.recordedActions.size() == 2);
+	CHECK(As<RecordedAddText>(editor.observations.recordedActions[0]).text == "\xC3\xA9");
+	CHECK(As<RecordedAppendText>(editor.observations.recordedActions[1]).text == "a\x80z");
+}
