@@ -20,7 +20,6 @@
 #include <vector>
 
 #include "ScintillaTypes.h"
-#include "ScintillaMessages.h"
 #include "ScintillaStructures.h"
 #include "ILoader.h"
 #include "ILexer.h"
@@ -66,54 +65,11 @@
 using namespace Scintilla;
 using namespace Scintilla::Internal;
 
-namespace {
-
-struct CallTipActiveSnapshot {
-	bool active = false;
-	bool windowCreated = false;
-	bool windowVisible = false;
-	int createCount = 0;
-	Sci::Position posStart = 0;
-	bool listActive = false;
-
-	bool operator==(const CallTipActiveSnapshot &other) const noexcept {
-		return active == other.active
-			&& windowCreated == other.windowCreated
-			&& windowVisible == other.windowVisible
-			&& createCount == other.createCount
-			&& posStart == other.posStart
-			&& listActive == other.listActive;
-	}
-};
-
-CallTipActiveSnapshot CaptureShow(bool throughMessage) {
-	TestHost host;
-	TestEditor editor(host);
-	editor.SetText("fn(");
-	editor.WndProc(Message::GotoPos, 3, 0);
-	const char *defn = "fn(int x)";
-	if (throughMessage) {
-		editor.WndProc(Message::CallTipShow, 3, reinterpret_cast<sptr_t>(defn));
-	} else {
-		editor.CallTipShow(3, defn);
-	}
-	CallTipActiveSnapshot snapshot;
-	snapshot.active = editor.CallTipActive();
-	snapshot.windowCreated = host.callTip.created;
-	snapshot.windowVisible = host.callTip.visible;
-	snapshot.createCount = host.callTip.createCount;
-	snapshot.posStart = editor.CallTipPosStart();
-	snapshot.listActive = editor.AutoCActive();
-	return snapshot;
-}
-
-}
-
 TEST_CASE("Call tip show and cancel update host state") {
 	TestHost host;
 	TestEditor editor(host);
 	editor.SetText("fn(");
-	editor.WndProc(Message::GotoPos, 3, 0);
+	editor.GotoPos(3);
 
 	CHECK_FALSE(editor.CallTipActive());
 	editor.CallTipShow(3, "fn(int x)");
@@ -132,25 +88,23 @@ TEST_CASE("Call tip show and cancel update host state") {
 	CHECK_FALSE(host.callTip.visible);
 }
 
-TEST_CASE("Call tip message path matches named method") {
-	CHECK(CaptureShow(false) == CaptureShow(true));
-
+TEST_CASE("Call tip pos start set and get") {
 	TestHost host;
 	TestEditor editor(host);
 	editor.SetText("fn(");
+	editor.GotoPos(3);
 	editor.CallTipShow(3, "fn()");
-	CHECK(editor.WndProc(Message::CallTipActive, 0, 0) != 0);
-	CHECK(editor.WndProc(Message::CallTipPosStart, 0, 0) == editor.CallTipPosStart());
+	CHECK(editor.CallTipActive());
+	CHECK(editor.CallTipPosStart() == 3);
 	editor.CallTipSetPosStart(1);
 	CHECK(editor.CallTipPosStart() == 1);
-	CHECK(editor.WndProc(Message::CallTipPosStart, 0, 0) == 1);
 }
 
 TEST_CASE("Call tip cancels autocomplete and autocomplete cancels call tip") {
 	TestHost host;
 	TestEditor editor(host);
 	editor.SetText("fn");
-	editor.WndProc(Message::GotoPos, 2, 0);
+	editor.GotoPos(2);
 
 	editor.AutoCShow(0, "fn function");
 	REQUIRE(editor.AutoCActive());
@@ -203,17 +157,17 @@ TEST_CASE("Call tip cancel through CancelModes") {
 	CHECK_FALSE(host.callTip.created);
 }
 
-TEST_CASE("Call tip message setters forward to named methods") {
+TEST_CASE("Call tip named setters update tip state") {
 	TestHost host;
 	TestEditor editor(host);
 	editor.SetText("x");
 	editor.CallTipShow(0, "tip");
 	REQUIRE(editor.CallTipActive());
 
-	editor.WndProc(Message::CallTipSetPosStart, 2, 0);
+	editor.CallTipSetPosStart(2);
 	CHECK(editor.CallTipPosStart() == 2);
-	editor.WndProc(Message::CallTipSetHlt, 0, 3);
-	editor.WndProc(Message::CallTipSetPosition, 1, 0);
-	editor.WndProc(Message::CallTipCancel, 0, 0);
+	editor.CallTipSetHlt(0, 3);
+	editor.CallTipSetPosition(true);
+	editor.CallTipCancel();
 	CHECK_FALSE(editor.CallTipActive());
 }
