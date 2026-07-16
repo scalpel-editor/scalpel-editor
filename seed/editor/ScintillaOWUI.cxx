@@ -28,7 +28,11 @@
 
 // Scintilla's internal headers depend on this order and are not self-contained.
 // clang-format off
-#include "ScintillaTypes.h"
+#include "EditorBasicTypes.h"
+#include "EditorDocumentTypes.h"
+#include "EditorStyleTypes.h"
+#include "EditorInputTypes.h"
+#include "EditorLayoutTypes.h"
 #include "ScintillaMessages.h"
 #include "ScintillaStructures.h"
 #include "ILoader.h"

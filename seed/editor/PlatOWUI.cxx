@@ -21,7 +21,11 @@
 #include <string_view>
 #include <vector>
 
-#include "ScintillaTypes.h"
+#include "EditorBasicTypes.h"
+#include "EditorDocumentTypes.h"
+#include "EditorStyleTypes.h"
+#include "EditorInputTypes.h"
+#include "EditorLayoutTypes.h"
 #include "Geometry.h"
 #include "Platform.h"
 

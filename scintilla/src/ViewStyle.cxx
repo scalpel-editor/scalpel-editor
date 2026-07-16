@@ -24,7 +24,11 @@
 #include <memory>
 #include <numeric>
 
-#include "ScintillaTypes.h"
+#include "EditorBasicTypes.h"
+#include "EditorDocumentTypes.h"
+#include "EditorStyleTypes.h"
+#include "EditorInputTypes.h"
+#include "EditorLayoutTypes.h"
 
 #include "Debugging.h"
 #include "Geometry.h"

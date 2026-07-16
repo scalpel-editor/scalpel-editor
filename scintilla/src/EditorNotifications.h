@@ -16,7 +16,9 @@
 #ifndef EDITOR_NOTIFICATIONS_H
 #define EDITOR_NOTIFICATIONS_H
 
-#include "ScintillaTypes.h"
+#include "EditorBasicTypes.h"
+#include "EditorInputTypes.h"
+#include "EditorLayoutTypes.h"
 
 namespace Scintilla {
 

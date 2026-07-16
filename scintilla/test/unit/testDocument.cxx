@@ -24,7 +24,11 @@
 #include <iomanip>
 #include <locale>
 
-#include "ScintillaTypes.h"
+#include "EditorBasicTypes.h"
+#include "EditorDocumentTypes.h"
+#include "EditorStyleTypes.h"
+#include "EditorInputTypes.h"
+#include "EditorLayoutTypes.h"
 
 #include "ILoader.h"
 #include "ILexer.h"

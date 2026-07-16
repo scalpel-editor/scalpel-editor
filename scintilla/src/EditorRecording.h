@@ -64,7 +64,8 @@
 #include <string>
 #include <variant>
 
-#include "ScintillaTypes.h"
+#include "EditorDocumentTypes.h"
+#include "EditorInputTypes.h"
 #include "Position.h"
 #include "EditorCommands.h"
 
