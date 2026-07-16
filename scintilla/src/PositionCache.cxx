@@ -25,7 +25,6 @@
 #include <mutex>
 
 #include "ScintillaTypes.h"
-#include "ScintillaMessages.h"
 #include "ILoader.h"
 #include "ILexer.h"
 

@@ -22,7 +22,6 @@
 #include <memory>
 
 #include "ScintillaTypes.h"
-#include "ScintillaMessages.h"
 
 #include "Debugging.h"
 #include "Geometry.h"
