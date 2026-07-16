@@ -165,11 +165,9 @@ bool Editor::GetSelectionEmpty() const noexcept {
 	return sel.Empty();
 }
 
-// Moves an empty selection to the start of lineNo (clamped) and scrolls it into view.
-// When macro recording is on, emits RecordedGotoLine with the requested line
-// (before clamping) so replay applies the same call.
-void Editor::GotoLine(Sci::Line lineNo) {
-	EmitRecordedAction(RecordedGotoLine{lineNo});
+// Move the caret without recording. Internal editing and folding operations use
+// this so only the application-facing GotoLine request is recorded.
+void Editor::MoveCaretToLine(Sci::Line lineNo) {
 	if (lineNo > pdoc->LinesTotal())
 		lineNo = pdoc->LinesTotal();
 	if (lineNo < 0)
@@ -177,6 +175,14 @@ void Editor::GotoLine(Sci::Line lineNo) {
 	SetEmptySelection(pdoc->LineStart(lineNo));
 	ShowCaretAtCurrentPosition();
 	EnsureCaretVisible();
+}
+
+// Moves an empty selection to the start of lineNo (clamped) and scrolls it into view.
+// When macro recording is on, emits RecordedGotoLine with the requested line
+// (before clamping) so replay applies the same call.
+void Editor::GotoLine(Sci::Line lineNo) {
+	EmitRecordedAction(RecordedGotoLine{lineNo});
+	MoveCaretToLine(lineNo);
 }
 
 // Places an empty selection at pos and ensures the caret is visible.

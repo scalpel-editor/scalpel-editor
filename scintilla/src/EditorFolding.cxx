@@ -263,7 +263,7 @@ void Editor::FoldLine(Sci::Line line, FoldAction action) {
 		} else {
 			if (!(pcs->GetVisible(line))) {
 				EnsureLineVisible(line, false);
-				GotoLine(line);
+				MoveCaretToLine(line);
 			}
 			pcs->SetExpanded(line, true);
 			ExpandLine(line);

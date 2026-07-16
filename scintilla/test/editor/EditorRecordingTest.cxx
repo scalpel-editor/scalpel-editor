@@ -959,3 +959,64 @@ TEST_CASE("Message path mixed script matches named capture for replay") {
 		CHECK(namedReplayPos == messageReplay.CurrentPos());
 	}
 }
+
+TEST_CASE("Moving selected lines records one command and replays the selection") {
+	constexpr std::string_view initialText = "one\ntwo\nthree\n";
+	std::vector<RecordedAction> recorded;
+	std::string afterText;
+	Sci::Position afterCaret = 0;
+	Sci::Position afterAnchor = 0;
+
+	{
+		TestHost host;
+		TestEditor editor(host);
+		editor.SetText(initialText);
+		editor.SetSel(4, 7);
+		editor.StartRecording();
+		editor.ClearObservations();
+
+		editor.RunCommand(EditorCommand::MoveSelectedLinesDown);
+
+		REQUIRE(editor.observations.recordedActions.size() == 1);
+		CHECK(As<RecordedCommand>(editor.observations.recordedActions[0]).Command() ==
+			EditorCommand::MoveSelectedLinesDown);
+		recorded = editor.observations.recordedActions;
+		afterText = editor.Text();
+		afterCaret = editor.WndProc(Message::GetCurrentPos, 0, 0);
+		afterAnchor = editor.WndProc(Message::GetAnchor, 0, 0);
+	}
+
+	TestHost host;
+	TestEditor replay(host);
+	replay.SetText(initialText);
+	replay.SetSel(4, 7);
+	replay.ReplayRecordedActions(recorded);
+
+	CHECK(replay.Text() == afterText);
+	CHECK(replay.WndProc(Message::GetCurrentPos, 0, 0) == afterCaret);
+	CHECK(replay.WndProc(Message::GetAnchor, 0, 0) == afterAnchor);
+}
+
+TEST_CASE("Internal fold caret movement is not recorded as GotoLine") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.SetText("outer\ninner\nchild\nlast\n");
+	const int outer = static_cast<int>(FoldLevel::Base) |
+		static_cast<int>(FoldLevel::HeaderFlag);
+	const int inner = static_cast<int>(FoldLevel::Base) + 1 |
+		static_cast<int>(FoldLevel::HeaderFlag);
+	const int child = static_cast<int>(FoldLevel::Base) + 2;
+	editor.WndProc(Message::SetFoldLevel, 0, outer);
+	editor.WndProc(Message::SetFoldLevel, 1, inner);
+	editor.WndProc(Message::SetFoldLevel, 2, child);
+	editor.WndProc(Message::SetFoldLevel, 3, static_cast<int>(FoldLevel::Base));
+	editor.WndProc(Message::FoldLine, 0, static_cast<sptr_t>(FoldAction::Contract));
+	REQUIRE(editor.WndProc(Message::GetLineVisible, 1, 0) == 0);
+
+	editor.StartRecording();
+	editor.ClearObservations();
+	editor.WndProc(Message::FoldLine, 1, static_cast<sptr_t>(FoldAction::Expand));
+
+	CHECK(editor.WndProc(Message::GetLineVisible, 1, 0) != 0);
+	CHECK(editor.observations.recordedActions.empty());
+}
