@@ -68,12 +68,6 @@ using namespace Scintilla::Internal;
 
 namespace {
 
-void LoadClean(TestEditor &editor, std::string_view text) {
-	editor.SetText(text);
-	editor.WndProc(Message::EmptyUndoBuffer, 0, 0);
-	editor.SetSavePoint();
-}
-
 void SetTargetWholeDocument(TestEditor &editor) {
 	editor.WndProc(Message::TargetWholeDocument, 0, 0);
 }

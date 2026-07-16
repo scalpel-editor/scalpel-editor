@@ -165,8 +165,7 @@ bool Editor::GetSelectionEmpty() const noexcept {
 	return sel.Empty();
 }
 
-// Moves an empty selection to the start of lineNo (clamped) and scrolls it into
-// view. Same implementation as the historical GoToLine helper.
+// Moves an empty selection to the start of lineNo (clamped) and scrolls it into view.
 void Editor::GotoLine(Sci::Line lineNo) {
 	if (lineNo > pdoc->LinesTotal())
 		lineNo = pdoc->LinesTotal();
@@ -175,11 +174,6 @@ void Editor::GotoLine(Sci::Line lineNo) {
 	SetEmptySelection(pdoc->LineStart(lineNo));
 	ShowCaretAtCurrentPosition();
 	EnsureCaretVisible();
-}
-
-// Move the caret to the start of line (0-based), clear other selections, and ensure visible.
-void Editor::GoToLine(Sci::Line lineNo) {
-	GotoLine(lineNo);
 }
 
 // Places an empty selection at pos and ensures the caret is visible.

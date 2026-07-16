@@ -818,7 +818,6 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	Sci::Position GetTargetEndVirtualSpace() const noexcept;
 	void ReplaceSel(std::string_view text);
 	void ReplaceRectangular(std::string_view text);
-	void GoToLine(Sci::Line lineNo);
 	// Scrolling options and hit testing: EditorScrolling.cxx.
 	void SetHScrollBar(bool visible);
 	bool GetHScrollBar() const noexcept;

@@ -71,7 +71,6 @@
 #include "ElapsedPeriod.h"
 
 using namespace Scintilla;
-using namespace Scintilla;
 using namespace Scintilla::Internal;
 
 

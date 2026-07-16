@@ -937,7 +937,7 @@ void Editor::MoveSelectedLines(int lineDelta) {
 	const std::string_view eol = pdoc->EOLString();
 	if (currentLine + lineDelta >= pdoc->LinesTotal())
 		pdoc->InsertString(pdoc->Length(), eol);
-	GoToLine(currentLine + lineDelta);
+	GotoLine(currentLine + lineDelta);
 
 	Sci::Position selectionLength = pdoc->InsertString(CurrentPosition(), selectedText);
 	if (appendEol) {

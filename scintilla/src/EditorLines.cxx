@@ -218,16 +218,25 @@ bool Editor::GetSelEOLFilled() const noexcept {
 	return vs.selection.eolFilled;
 }
 
+namespace {
+
+// Marks characters as belonging to characterClass. Leaves classes unchanged when characters is empty.
+void SetCharsOfClass(Document *pdoc, std::string_view characters, CharacterClass characterClass) {
+	if (characters.empty()) {
+		return;
+	}
+	const std::string copy(characters);
+	pdoc->SetCharClasses(reinterpret_cast<const unsigned char *>(copy.c_str()), characterClass);
+}
+
+}
+
 // Replaces the word character set used for word motion and search word options.
 // Resets all character classes to defaults first, then marks characters as word.
 // An empty characters string leaves only the default reset (no extra word chars).
 void Editor::SetWordChars(std::string_view characters) {
 	pdoc->SetDefaultCharClasses(false);
-	if (characters.empty()) {
-		return;
-	}
-	const std::string copy(characters);
-	pdoc->SetCharClasses(reinterpret_cast<const unsigned char *>(copy.c_str()), CharacterClass::word);
+	SetCharsOfClass(pdoc, characters, CharacterClass::word);
 }
 
 // Writes the current word characters into buffer when non-null. Returns how
@@ -442,11 +451,7 @@ Sci::Position Editor::GetLineSelEndPosition(Sci::Line line) const noexcept {
 
 // Characters treated as whitespace for word motion and drawing options.
 void Editor::SetWhitespaceChars(std::string_view characters) {
-	if (characters.empty()) {
-		return;
-	}
-	const std::string copy(characters);
-	pdoc->SetCharClasses(reinterpret_cast<const unsigned char *>(copy.c_str()), CharacterClass::space);
+	SetCharsOfClass(pdoc, characters, CharacterClass::space);
 }
 
 // Characters currently classified as white space for word motion.
@@ -456,11 +461,7 @@ int Editor::GetWhitespaceChars(unsigned char *buffer) const {
 
 // Characters treated as punctuation for word motion.
 void Editor::SetPunctuationChars(std::string_view characters) {
-	if (characters.empty()) {
-		return;
-	}
-	const std::string copy(characters);
-	pdoc->SetCharClasses(reinterpret_cast<const unsigned char *>(copy.c_str()), CharacterClass::punctuation);
+	SetCharsOfClass(pdoc, characters, CharacterClass::punctuation);
 }
 
 // Characters currently classified as punctuation for word motion.

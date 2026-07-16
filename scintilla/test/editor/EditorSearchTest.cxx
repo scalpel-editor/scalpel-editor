@@ -66,16 +66,6 @@
 using namespace Scintilla;
 using namespace Scintilla::Internal;
 
-namespace {
-
-void LoadClean(TestEditor &editor, std::string_view text) {
-	editor.SetText(text);
-	editor.WndProc(Message::EmptyUndoBuffer, 0, 0);
-	editor.SetSavePoint();
-}
-
-}
-
 TEST_CASE("Target range and SearchInTarget find text") {
 	TestHost host;
 	TestEditor editor(host);

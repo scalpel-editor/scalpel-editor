@@ -74,13 +74,6 @@ bool HasNotification(const TestEditor &editor, Notification code) {
 		[code](const TestNotification &n) { return n.code == code; });
 }
 
-// Load text, clear undo history from the load, and mark the save point.
-void LoadClean(TestEditor &editor, std::string_view text) {
-	editor.SetText(text);
-	editor.WndProc(Message::EmptyUndoBuffer, 0, 0);
-	editor.SetSavePoint();
-}
-
 void TypeAtEnd(TestEditor &editor, std::string_view text) {
 	editor.WndProc(Message::GotoPos, static_cast<uptr_t>(editor.GetTextLength()), 0);
 	editor.InsertInput(text);

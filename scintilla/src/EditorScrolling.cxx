@@ -71,8 +71,6 @@
 #include "ElapsedPeriod.h"
 
 using namespace Scintilla;
-
-using namespace Scintilla;
 using namespace Scintilla::Internal;
 
 // First document line shown at the top of the view.

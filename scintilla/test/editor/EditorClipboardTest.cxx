@@ -72,12 +72,6 @@ void SelectAll(TestEditor &editor) {
 	editor.WndProc(Message::SelectAll, 0, 0);
 }
 
-void LoadClean(TestEditor &editor, std::string_view text) {
-	editor.SetText(text);
-	editor.WndProc(Message::EmptyUndoBuffer, 0, 0);
-	editor.SetSavePoint();
-}
-
 }
 
 TEST_CASE("CanPaste is false when read-only") {
