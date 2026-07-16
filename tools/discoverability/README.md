@@ -49,7 +49,7 @@ grepai has no command-line hybrid switch in this build. The runner takes a hash-
 
 Phase 4 step 2 recorded the pre-pilot tree in [`benchmark-results/baseline/`](../../benchmark-results/baseline/). That directory holds the frozen-index search matrix, `summary.json` roll-ups, and `observations.md` (exact-name `rg`, boundary-stability, cold navigation, and acceptance snapshot). The corpus is fixed after that baseline; do not edit the TSV files while piloting.
 
-The completed pilot records are [`benchmark-results/wrapping-pilot/`](../../benchmark-results/wrapping-pilot/observations.md) and [`benchmark-results/autocomplete-calltip-pilot/`](../../benchmark-results/autocomplete-calltip-pilot/observations.md). Each contains the full matrix, boundary checks, exact-source observations, cold navigation, and its acceptance decision.
+The completed pilot records are [`benchmark-results/wrapping-pilot/`](../../benchmark-results/wrapping-pilot/observations.md) and [`benchmark-results/autocomplete-calltip-pilot/`](../../benchmark-results/autocomplete-calltip-pilot/observations.md). Each contains the full matrix, boundary checks, exact-source observations, cold navigation, and its acceptance decision. Phase 4 step 19’s post-move cleanup measure is [`benchmark-results/phase4-step19/`](../../benchmark-results/phase4-step19/observations.md).
 
 ## Results
 
