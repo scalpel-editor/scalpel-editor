@@ -13,7 +13,7 @@
 
 namespace Scintilla {
 
-enum class Message;	// Declare in case ScintillaMessages.h not included
+enum class Message;	// Incomplete: client header deleted in phase 5 step 10
 
 // Declare in case ScintillaStructures.h not included
 struct TextRangeFull;

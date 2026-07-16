@@ -82,8 +82,6 @@ struct NotifyHeader {
 	Notification code;
 };
 
-enum class Message;	// Declare in case ScintillaMessages.h not included
-
 struct NotificationData {
 	NotifyHeader nmhdr;
 	Position position;
@@ -110,9 +108,10 @@ struct NotificationData {
 
 	Position length;		/* SCN_MODIFIED */
 	Position linesAdded;	/* SCN_MODIFIED */
-	Message message;	/* SCN_MACRORECORD */
-	uptr_t wParam;	/* SCN_MACRORECORD */
-	sptr_t lParam;	/* SCN_MACRORECORD */
+	// Former Message macro-record field; integer until phase 5 step 7 retypes notifications.
+	uptr_t message;
+	uptr_t wParam;	/* SCN_MACRORECORD / autocomplete packing */
+	sptr_t lParam;	/* SCN_MACRORECORD / autocomplete packing */
 	Position line;		/* SCN_MODIFIED */
 	FoldLevel foldLevelNow;	/* SCN_MODIFIED */
 	FoldLevel foldLevelPrev;	/* SCN_MODIFIED */

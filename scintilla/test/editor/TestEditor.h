@@ -6,7 +6,6 @@
 #ifndef TESTEDITOR_H
 #define TESTEDITOR_H
 
-#include "ScintillaMessages.h"
 #include "EditorRecording.h"
 
 namespace Scintilla::Internal {
@@ -17,8 +16,8 @@ struct TestNotification {
 	Sci::Position length = 0;
 	Scintilla::ModificationFlags modificationType = Scintilla::ModificationFlags::None;
 	Scintilla::Update updated = Scintilla::Update::None;
-	// Message-shaped packing until phase 5 step 7 retypes notifications.
-	Scintilla::Message message = Scintilla::Message::Null;
+	// Residual packing fields until phase 5 step 7 retypes notifications.
+	Scintilla::uptr_t message = 0;
 	Scintilla::uptr_t wParam = 0;
 	Scintilla::sptr_t lParam = 0;
 	std::string text;

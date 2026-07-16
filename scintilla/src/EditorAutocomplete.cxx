@@ -24,7 +24,6 @@
 #include <memory>
 
 #include "ScintillaTypes.h"
-#include "ScintillaMessages.h"
 #include "ScintillaStructures.h"
 #include "ILoader.h"
 #include "ILexer.h"
@@ -459,7 +458,7 @@ void ScintillaBase::AutoCompleteSelection() {
 
 	NotificationData scn = {};
 	scn.nmhdr.code = Notification::AutoCSelectionChange;
-	scn.message = static_cast<Message>(0);
+	scn.message = 0;
 	scn.wParam = listType;
 	scn.listType = listType;
 	const Sci::Position firstPos = ac.posStart - ac.startLen;
@@ -500,7 +499,7 @@ void ScintillaBase::AutoCompleteCharacterDeleted() {
 void ScintillaBase::AutoCompleteNotifyCompleted(char ch, CompletionMethods completionMethod, Sci::Position firstPos, const char *text) {
 	NotificationData scn = {};
 	scn.nmhdr.code = Notification::AutoCCompleted;
-	scn.message = static_cast<Message>(0);
+	scn.message = 0;
 	scn.ch = ch;
 	scn.listCompletionMethod = completionMethod;
 	scn.wParam = listType;
@@ -525,7 +524,7 @@ void ScintillaBase::AutoCompleteCompleted(char ch, CompletionMethods completionM
 
 	NotificationData scn = {};
 	scn.nmhdr.code = listType > 0 ? Notification::UserListSelection : Notification::AutoCSelection;
-	scn.message = static_cast<Message>(0);
+	scn.message = 0;
 	scn.ch = ch;
 	scn.listCompletionMethod = completionMethod;
 	scn.wParam = listType;
