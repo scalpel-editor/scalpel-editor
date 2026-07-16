@@ -115,9 +115,13 @@ Lifecycle and command capture (2026-07-15, phase 4 step 15): `EditorRecording.cx
 
 Parameterized capture and numeric-path deletion (2026-07-15, phase 4 step 16): document text mutations emit typed actions in `EditorDocument.cxx` and `EditorSearch.cxx` (`AddText`, `InsertText`, `AppendText`, `ClearAll`, `ReplaceSel`); goto and selection mode emit in `EditorSelection.cxx`; search anchor and parameterized search emit in `EditorSearch.cxx`; character insert and newline emit `RecordedReplaceSelection` from `InsertCharacter` / `NewLine` (tentative IME input is skipped). `NotifyMacroRecord`, the `WndProc` front-hook, and `MessageFromCommand` are deleted. Production never emits `SCN_MACRORECORD`; generated notification constants remain until phase 5. `EditorRecordingTest.cxx` covers every alternative via production capture, ownership, tentative ignore, newline, mixed and constructed replay on a fresh editor, and message-versus-named parity.
 
+## Phase 5 removal boundary
+
+Frozen 2026-07-16 before deleting the generated message layer. Classification of generated headers, enums, structures, notifications, temporary shells, phase 4 tools, Lexilla allowlist terms, and the step 2 typed-parameter targets lives in [tools/phase5-boundary.md](tools/phase5-boundary.md). The completion check is `tools/check-no-message-layer.sh` (expected to fail until phase 5 finishes). The callable inventory below remains the historical phase 4 record and is not re-derived after `Scintilla.iface` is deleted.
+
 ## Interface Inventory
 
-Generated from `scintilla/include/Scintilla.iface` on 2026-07-13. It contains all 821 `fun`, `get`, and `set` entries and all 32 `evt` entries, grouped for phase 4. It does not assign a removal classification without tracing the code. Constants, aliases, and enum declarations are type definitions rather than dispatch cases; phase 5 handles them when it replaces generated client headers.
+Generated from `scintilla/include/Scintilla.iface` on 2026-07-13. It contains all 821 `fun`, `get`, and `set` entries and all 32 `evt` entries, grouped for phase 4. It does not assign a removal classification without tracing the code. Constants, aliases, and enum declarations are type definitions rather than dispatch cases; phase 5 replaces them using the freeze in [tools/phase5-boundary.md](tools/phase5-boundary.md).
 
 Run `tools/check-message-inventory.sh` after changing this inventory or `Scintilla.iface`. The check requires every callable entry and notification to appear exactly once.
 
