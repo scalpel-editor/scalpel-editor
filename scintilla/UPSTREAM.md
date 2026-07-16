@@ -25,7 +25,7 @@ On 2026-07-12 every imported file was verified byte-identical against a fresh do
 - `include/`
 - `src/`
 - `test/unit/` — upstream's platform-free unit tests, kept as the safety net for refactoring
-- `ScintillaDoc.html` — from the archive's `doc/ScintillaDoc.html`, relocated to the top of this directory; source material for moving per-message documentation onto named methods
+- `ScintillaDoc.html` — from the archive's `doc/ScintillaDoc.html`, relocated to the top of this directory at import; used as source material while moving per-message documentation onto named methods, then deleted in phase 5 step 10 once retained prose lived beside the implementations
 
 ## Excluded paths
 
@@ -33,9 +33,9 @@ This project keeps the platform-independent Scintilla core and builds its own Wa
 
 - Platform ports and their build files: `cocoa/`, `gtk/`, `qt/`, and `win32/`
 - Platform-driven tests: everything under `test/` except `test/unit/` (the rest is Python-driven and needs a platform binary)
-- Documentation and project files other than `ScintillaDoc.html`: the rest of `doc/`, `.editorconfig`, `.hgeol`, `.hgignore`, `.hgtags`, `CONTRIBUTING`, `README`, and `cppcheck.suppress`
+- Documentation and project files other than the temporary import of `ScintillaDoc.html` (see above): the rest of `doc/`, `.editorconfig`, `.hgeol`, `.hgignore`, `.hgtags`, `CONTRIBUTING`, `README`, and `cppcheck.suppress`
 - Generated-call source, release scripts, and packaging helpers: `bin/`, `call/`, `scripts/`, `delbin.bat`, `tgzsrc`, and `zipsrc.bat`
 
 ## Local patches
 
-None. All imported upstream files are unchanged. This `UPSTREAM.md` file is an audit record for this project and is not part of the source archive.
+At import, every upstream file was unchanged. This tree has since diverged under the project roadmap; git history from the import commit is the record. This `UPSTREAM.md` file is an audit record for the import identity and is not part of the source archive.
