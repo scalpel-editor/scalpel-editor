@@ -166,7 +166,10 @@ bool Editor::GetSelectionEmpty() const noexcept {
 }
 
 // Moves an empty selection to the start of lineNo (clamped) and scrolls it into view.
+// When macro recording is on, emits RecordedGotoLine with the requested line
+// (before clamping) so replay applies the same call.
 void Editor::GotoLine(Sci::Line lineNo) {
+	EmitRecordedAction(RecordedGotoLine{lineNo});
 	if (lineNo > pdoc->LinesTotal())
 		lineNo = pdoc->LinesTotal();
 	if (lineNo < 0)
@@ -177,7 +180,9 @@ void Editor::GotoLine(Sci::Line lineNo) {
 }
 
 // Places an empty selection at pos and ensures the caret is visible.
+// When macro recording is on, emits RecordedGotoPos.
 void Editor::GotoPos(Sci::Position pos) {
+	EmitRecordedAction(RecordedGotoPos{pos});
 	SetEmptySelection(pos);
 	EnsureCaretVisible();
 }
@@ -639,7 +644,14 @@ constexpr Selection::SelTypes SelTypeFromMode(SelectionMode mode) {
 }
 
 // Set stream/rectangle/lines/thin mode; may convert the current selection.
+// When macro recording is on and setMoveExtends is true (SCI_SETSELECTIONMODE),
+// emits RecordedSetSelectionMode. ChangeSelectionMode (setMoveExtends false) is
+// not recorded, matching the former numeric allowlist.
+// Replay uses setMoveExtends true to match the message path that was recorded.
 void Editor::SetSelectionMode(uptr_t wParam, bool setMoveExtends) {
+	if (setMoveExtends) {
+		EmitRecordedAction(RecordedSetSelectionMode{static_cast<SelectionMode>(wParam)});
+	}
 	const Selection::SelTypes newSelType = SelTypeFromMode(static_cast<SelectionMode>(wParam));
 	if (setMoveExtends) {
 		sel.SetMoveExtends(!sel.MoveExtends() || (sel.selType != newSelType));

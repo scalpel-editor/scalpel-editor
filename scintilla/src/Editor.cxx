@@ -2296,25 +2296,24 @@ void Editor::NotifyDeleted(Document *, void *) noexcept {
 void Editor::NotifyMacroRecord(Message iMessage, uptr_t wParam, sptr_t lParam) {
 
 	// Temporary numeric path for parameterized ops not yet on named entry points.
-	// Document text mutations (ReplaceSel, Add/Insert/AppendText, ClearAll) are
-	// captured as typed RecordedAction at their named methods. Remaining cases
-	// move in later step-16 commits; then this function is deleted.
+	// Document text, goto, and selection mode are typed at named methods.
+	// Search remains here until the next step-16 commit; then this is deleted.
 	switch (iMessage) {
-	case Message::GotoLine:
-	case Message::GotoPos:
 	case Message::SearchAnchor:
 	case Message::SearchNext:
 	case Message::SearchPrev:
-	case Message::SetSelectionMode:
 		break;
 
-		// Filter out commands (typed path), document text (typed path), display
-		// changes, and newlines (redundant with char insert as ReplaceSel).
+		// Filter out commands, document text, navigation, selection mode (typed),
+		// display changes, and newlines (redundant with char insert as ReplaceSel).
 	case Message::ReplaceSel:
 	case Message::AddText:
 	case Message::InsertText:
 	case Message::AppendText:
 	case Message::ClearAll:
+	case Message::GotoLine:
+	case Message::GotoPos:
+	case Message::SetSelectionMode:
 	case Message::NewLine:
 	default:
 		return;

@@ -530,3 +530,57 @@ TEST_CASE("Document text recording owns multi-byte and invalid UTF-8 after sourc
 	CHECK(As<RecordedAddText>(editor.observations.recordedActions[0]).text == "\xC3\xA9");
 	CHECK(As<RecordedAppendText>(editor.observations.recordedActions[1]).text == "a\x80z");
 }
+
+TEST_CASE("Goto and selection mode are captured as typed actions while recording") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.SetText("a\nb\nc\n");
+	editor.StartRecording();
+	editor.ClearObservations();
+
+	editor.GotoLine(2);
+	editor.GotoPos(1);
+	editor.SetSelectionMode(static_cast<uptr_t>(SelectionMode::Rectangle), true);
+
+	REQUIRE(editor.observations.recordedActions.size() == 3);
+	CHECK(As<RecordedGotoLine>(editor.observations.recordedActions[0]).line == 2);
+	CHECK(As<RecordedGotoPos>(editor.observations.recordedActions[1]).position == 1);
+	CHECK(As<RecordedSetSelectionMode>(editor.observations.recordedActions[2]).mode ==
+		SelectionMode::Rectangle);
+	CHECK_FALSE(HasMacroRecord(editor));
+}
+
+TEST_CASE("Message path and named methods agree for goto and selection mode recording") {
+	std::vector<RecordedAction> viaNamed;
+	{
+		TestHost host;
+		TestEditor editor(host);
+		editor.SetText("line0\nline1\n");
+		editor.StartRecording();
+		editor.ClearObservations();
+		editor.GotoLine(1);
+		editor.GotoPos(3);
+		editor.SetSelectionMode(static_cast<uptr_t>(SelectionMode::Lines), true);
+		viaNamed = editor.observations.recordedActions;
+		REQUIRE(viaNamed.size() == 3);
+	}
+	{
+		TestHost host;
+		TestEditor editor(host);
+		editor.SetText("line0\nline1\n");
+		editor.StartRecording();
+		editor.ClearObservations();
+		editor.WndProc(Message::GotoLine, 1, 0);
+		editor.WndProc(Message::GotoPos, 3, 0);
+		editor.WndProc(Message::SetSelectionMode,
+			static_cast<uptr_t>(SelectionMode::Lines), 0);
+		REQUIRE(editor.observations.recordedActions.size() == 3);
+		CHECK(As<RecordedGotoLine>(editor.observations.recordedActions[0]).line ==
+			As<RecordedGotoLine>(viaNamed[0]).line);
+		CHECK(As<RecordedGotoPos>(editor.observations.recordedActions[1]).position ==
+			As<RecordedGotoPos>(viaNamed[1]).position);
+		CHECK(As<RecordedSetSelectionMode>(editor.observations.recordedActions[2]).mode ==
+			As<RecordedSetSelectionMode>(viaNamed[2]).mode);
+		CHECK_FALSE(HasMacroRecord(editor));
+	}
+}
