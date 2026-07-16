@@ -3,7 +3,6 @@
  ** Focused behavior tests for target search and replace.
  **/
 
-#include <array>
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
@@ -20,7 +19,6 @@
 #include <vector>
 
 #include "ScintillaTypes.h"
-#include "ScintillaMessages.h"
 #include "ScintillaStructures.h"
 #include "ILoader.h"
 #include "ILexer.h"
@@ -83,18 +81,15 @@ TEST_CASE("Target range and SearchInTarget find text") {
 	CHECK(editor.GetTargetText() == "world");
 }
 
-TEST_CASE("SearchInTarget message path matches named method") {
+TEST_CASE("SearchInTarget finds the needle after TargetWholeDocument") {
 	TestHost host;
 	TestEditor editor(host);
 	LoadClean(editor, "abc def abc");
 	editor.TargetWholeDocument();
-	const char *needle = "def";
-	const Sci::Position viaMessage = static_cast<Sci::Position>(
-		editor.WndProc(Message::SearchInTarget, 3, reinterpret_cast<sptr_t>(needle)));
-	editor.TargetWholeDocument();
-	const Sci::Position viaMethod = editor.SearchInTarget("def");
-	CHECK(viaMessage == viaMethod);
-	CHECK(viaMethod == 4);
+	const Sci::Position pos = editor.SearchInTarget("def");
+	CHECK(pos == 4);
+	CHECK(editor.GetTargetStart() == 4);
+	CHECK(editor.GetTargetEnd() == 7);
 }
 
 TEST_CASE("ReplaceTarget replaces the target range") {
@@ -105,9 +100,8 @@ TEST_CASE("ReplaceTarget replaces the target range") {
 	CHECK(editor.GetTargetText() == "two");
 	CHECK(editor.ReplaceTargetBasic("2") == 1);
 	CHECK(editor.GetText() == "one 2 three");
-	// Temporary message path matches the named operation.
 	editor.SetTargetRange(4, 5);
-	editor.WndProc(Message::ReplaceTarget, 3, reinterpret_cast<sptr_t>("two"));
+	CHECK(editor.ReplaceTargetBasic("two") == 3);
 	CHECK(editor.GetText() == "one two three");
 }
 
@@ -116,8 +110,8 @@ TEST_CASE("Search flags round-trip") {
 	TestEditor editor(host);
 	editor.SetSearchFlags(FindOption::MatchCase);
 	CHECK(editor.GetSearchFlags() == FindOption::MatchCase);
-	CHECK(static_cast<FindOption>(editor.WndProc(Message::GetSearchFlags, 0, 0))
-		== FindOption::MatchCase);
+	editor.SetSearchFlags(FindOption::None);
+	CHECK(editor.GetSearchFlags() == FindOption::None);
 }
 
 TEST_CASE("ReplaceSel replaces the selection") {
@@ -127,19 +121,7 @@ TEST_CASE("ReplaceSel replaces the selection") {
 	editor.SetSel(2, 4);
 	editor.ReplaceSel("ZZ");
 	CHECK(editor.GetText() == "abZZef");
-	// Temporary message path matches the named operation.
 	editor.SetSel(2, 4);
-	const char *rep = "cd";
-	editor.WndProc(Message::ReplaceSel, 0, reinterpret_cast<sptr_t>(rep));
+	editor.ReplaceSel("cd");
 	CHECK(editor.GetText() == "abcdef");
-}
-
-TEST_CASE("FindText messages are no longer dispatched") {
-	TestHost host;
-	TestEditor editor(host);
-	LoadClean(editor, "text");
-	// Deleted structure-unpacking search messages fall through DefWndProc.
-	const sptr_t r = editor.WndProc(Message::FindText, 0, 0);
-	// DefWndProc returns 0 for unknown handling in the test host path.
-	CHECK(r == 0);
 }

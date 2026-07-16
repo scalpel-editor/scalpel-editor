@@ -136,6 +136,323 @@ public:
 	using Editor::TextWidth;
 	using Editor::TextHeightPixels;
 
+	// Wrapping concern (protected on Editor); test-only access for focused suites.
+	using Editor::WrapCount;
+	using Editor::SetWrapVisualFlags;
+	using Editor::GetWrapVisualFlags;
+	using Editor::SetWrapVisualFlagsLocation;
+	using Editor::GetWrapVisualFlagsLocation;
+	using Editor::SetWrapStartIndent;
+	using Editor::GetWrapStartIndent;
+	using Editor::SetWrapIndentMode;
+	using Editor::GetWrapIndentMode;
+
+	// Line / index helpers used by focused command and text-boundary suites.
+	using Editor::SetUseTabs;
+	using Editor::SetTabWidth;
+	using Editor::AllocateLineCharacterIndex;
+	using Editor::ReleaseLineCharacterIndex;
+
+	// Document mutators and queries (protected on Editor).
+	using Editor::GetLength;
+	using Editor::GetCharAt;
+	using Editor::DeleteRange;
+	using Editor::Allocate;
+	using Editor::GetRangePointer;
+	using Editor::GetGapPosition;
+	using Editor::GetTextRange;
+	using Editor::GetStyledText;
+
+	// History (protected on Editor).
+	using Editor::EmptyUndoBuffer;
+	using Editor::SetUndoCollection;
+	using Editor::GetUndoCollection;
+	using Editor::GetUndoSequence;
+	using Editor::SetChangeHistory;
+	using Editor::GetChangeHistory;
+
+	// Clipboard options and helpers (protected on Editor).
+	using Editor::SelectAll;
+	using Editor::CopyRangeToClipboard;
+	using Editor::CopyText;
+	using Editor::SetPasteConvertEndings;
+	using Editor::GetPasteConvertEndings;
+	using Editor::SetMultiPaste;
+	using Editor::GetMultiPaste;
+	using Editor::SetCopySeparator;
+	using Editor::GetCopySeparator;
+
+	// Scrolling options (protected on Editor).
+	using Editor::SetHScrollBar;
+	using Editor::GetHScrollBar;
+	using Editor::SetVScrollBar;
+	using Editor::GetVScrollBar;
+	using Editor::SetScrollWidth;
+	using Editor::GetScrollWidth;
+	using Editor::SetScrollWidthTracking;
+	using Editor::GetScrollWidthTracking;
+	using Editor::SetEndAtLastLine;
+	using Editor::GetEndAtLastLine;
+
+	// Selection options and helpers (protected on Editor).
+	// SetMultipleSelection is already exposed with the recording entry points above.
+	using Editor::GetMultipleSelection;
+	using Editor::GetSelections;
+	using Editor::HideSelection;
+	using Editor::GetSelectionHidden;
+	using Editor::TargetFromSelection;
+	using Editor::SetSelectionSerialized;
+	using Editor::GetSelectionSerialized;
+
+	// Caret appearance (protected on Editor).
+	using Editor::SetCaretPeriod;
+	using Editor::GetCaretPeriod;
+	using Editor::SetCaretSticky;
+	using Editor::GetCaretSticky;
+	using Editor::ToggleCaretSticky;
+	using Editor::SetCaretStyle;
+	using Editor::GetCaretStyle;
+	using Editor::SetCaretWidth;
+	using Editor::GetCaretWidth;
+	using Editor::SetCaretLineVisible;
+	using Editor::GetCaretLineVisible;
+	using Editor::SetCaretLineVisibleAlways;
+	using Editor::GetCaretLineVisibleAlways;
+	using Editor::SetCaretLineFrame;
+	using Editor::GetCaretLineFrame;
+	using Editor::SetCaretLineHighlightSubLine;
+	using Editor::GetCaretLineHighlightSubLine;
+	using Editor::SetAdditionalCaretsBlink;
+	using Editor::GetAdditionalCaretsBlink;
+	using Editor::SetAdditionalCaretsVisible;
+	using Editor::GetAdditionalCaretsVisible;
+
+	// Lines / indentation / character classes (protected on Editor).
+	using Editor::GetTabWidth;
+	using Editor::GetUseTabs;
+	using Editor::SetIndent;
+	using Editor::GetIndent;
+	using Editor::SetTabIndents;
+	using Editor::GetTabIndents;
+	using Editor::SetBackSpaceUnIndents;
+	using Editor::GetBackSpaceUnIndents;
+	using Editor::SetLineIndentation;
+	using Editor::GetLineIndentation;
+	using Editor::GetLineIndentPosition;
+	using Editor::GetLine;
+	using Editor::GetLineCount;
+	using Editor::LineFromPosition;
+	using Editor::PositionFromLine;
+	using Editor::LineLength;
+	using Editor::GetLineEndPosition;
+	using Editor::GetColumn;
+	using Editor::CountCharacters;
+	using Editor::CountCodeUnits;
+	using Editor::FindColumn;
+	using Editor::SetViewEOL;
+	using Editor::GetViewEOL;
+	using Editor::SetSelEOLFilled;
+	using Editor::GetSelEOLFilled;
+	using Editor::SetWordChars;
+	using Editor::GetWordChars;
+	using Editor::GetLineCharacterIndex;
+	using Editor::SetEdgeColumn;
+	using Editor::GetEdgeColumn;
+
+	// Margins (protected on Editor).
+	using Editor::SetMargins;
+	using Editor::GetMargins;
+	using Editor::SetMarginTypeN;
+	using Editor::GetMarginTypeN;
+	using Editor::SetMarginWidthN;
+	using Editor::GetMarginWidthN;
+	using Editor::SetMarginMaskN;
+	using Editor::GetMarginMaskN;
+	using Editor::SetMarginSensitiveN;
+	using Editor::GetMarginSensitiveN;
+	using Editor::SetMarginCursorN;
+	using Editor::GetMarginCursorN;
+	using Editor::SetMarginBackN;
+	using Editor::GetMarginBackN;
+	using Editor::SetMarginLeft;
+	using Editor::GetMarginLeft;
+	using Editor::SetMarginRight;
+	using Editor::GetMarginRight;
+	using Editor::MarginSetText;
+	using Editor::MarginGetText;
+	using Editor::MarginSetStyle;
+	using Editor::MarginGetStyle;
+	using Editor::MarginSetStyles;
+	using Editor::MarginGetStyles;
+	using Editor::MarginTextClearAll;
+	using Editor::MarginSetStyleOffset;
+	using Editor::MarginGetStyleOffset;
+	using Editor::SetMarginOptions;
+	using Editor::GetMarginOptions;
+	using Editor::SetFoldMarginColour;
+	using Editor::SetFoldMarginHiColour;
+
+	// Markers (protected on Editor).
+	using Editor::MarkerDefine;
+	using Editor::MarkerSymbolDefined;
+	using Editor::MarkerSetFore;
+	using Editor::MarkerSetBack;
+	using Editor::MarkerSetBackSelected;
+	using Editor::MarkerSetForeTranslucent;
+	using Editor::MarkerSetBackTranslucent;
+	using Editor::MarkerSetBackSelectedTranslucent;
+	using Editor::MarkerSetStrokeWidth;
+	using Editor::MarkerEnableHighlight;
+	using Editor::MarkerSetAlpha;
+	using Editor::MarkerSetLayer;
+	using Editor::MarkerGetLayer;
+	using Editor::MarkerAdd;
+	using Editor::MarkerAddSet;
+	using Editor::MarkerDelete;
+	using Editor::MarkerDeleteAll;
+	using Editor::MarkerGet;
+	using Editor::MarkerNext;
+	using Editor::MarkerPrevious;
+	using Editor::MarkerLineFromHandle;
+	using Editor::MarkerDeleteHandle;
+	using Editor::MarkerHandleFromLine;
+	using Editor::MarkerNumberFromLine;
+	using Editor::MarkerDefinePixmap;
+	using Editor::MarkerDefineRGBAImage;
+	using Editor::RGBAImageSetWidth;
+	using Editor::RGBAImageSetHeight;
+	using Editor::RGBAImageSetScale;
+
+	// Folding / visibility (protected on Editor).
+	using Editor::SetFoldLevel;
+	using Editor::GetFoldLevel;
+	using Editor::GetLastChild;
+	using Editor::GetFoldParent;
+	using Editor::GetLineVisible;
+	using Editor::GetAllLinesVisible;
+	using Editor::ShowLines;
+	using Editor::HideLines;
+	using Editor::GetFoldExpanded;
+	using Editor::SetFoldExpanded;
+	using Editor::ContractedFoldNext;
+	using Editor::EnsureVisible;
+	using Editor::EnsureVisibleEnforcePolicy;
+	using Editor::FoldLine;
+	using Editor::FoldChildren;
+	using Editor::ExpandChildren;
+	using Editor::FoldAll;
+	using Editor::ToggleFold;
+	using Editor::ToggleFoldShowText;
+	using Editor::SetFoldFlags;
+	using Editor::SetAutomaticFold;
+	using Editor::GetAutomaticFold;
+	using Editor::FoldDisplayTextSetStyle;
+	using Editor::FoldDisplayTextGetStyle;
+	using Editor::SetDefaultFoldDisplayText;
+	using Editor::VisibleFromDocLine;
+	using Editor::DocLineFromVisible;
+	using EditModel::GetDefaultFoldDisplayText;
+
+	// Styling / view appearance (protected on Editor).
+	using Editor::ClearDocumentStyle;
+	using Editor::GetStyleAt;
+	using Editor::GetStyleIndexAt;
+	using Editor::GetEndStyled;
+	using Editor::StartStyling;
+	using Editor::SetStyling;
+	using Editor::SetStylingEx;
+	using Editor::SetIdleStyling;
+	using Editor::GetIdleStyling;
+	using Editor::StyleClearAll;
+	using Editor::StyleSetFore;
+	using Editor::StyleGetFore;
+	using Editor::StyleSetBack;
+	using Editor::StyleGetBack;
+	using Editor::StyleSetBold;
+	using Editor::StyleGetBold;
+	using Editor::StyleSetSize;
+	using Editor::StyleGetSize;
+	using Editor::StyleSetFont;
+	using Editor::StyleGetFont;
+	using Editor::SetViewWS;
+	using Editor::GetViewWS;
+	using Editor::SetWhitespaceSize;
+	using Editor::GetWhitespaceSize;
+	using Editor::SetSelFore;
+	using Editor::SetSelBack;
+	using Editor::SetSelAlpha;
+	using Editor::GetSelAlpha;
+	using Editor::SetElementColour;
+	using Editor::ResetElementColour;
+	using Editor::GetElementIsSet;
+	using Editor::SetLayoutCache;
+	using Editor::GetLayoutCache;
+	using Editor::SetPositionCache;
+	using Editor::GetPositionCache;
+	using Editor::SetPhasesDraw;
+	using Editor::GetPhasesDraw;
+	using Editor::SetExtraAscent;
+	using Editor::GetExtraAscent;
+	using Editor::SetExtraDescent;
+	using Editor::GetExtraDescent;
+	using Editor::SetEdgeMode;
+	using Editor::GetEdgeMode;
+	using Editor::SetEdgeColour;
+	using Editor::GetEdgeColour;
+	using Editor::MultiEdgeAddLine;
+	using Editor::MultiEdgeClearAll;
+	using Editor::GetMultiEdgeColumn;
+	using Editor::SetHighlightGuide;
+	using Editor::GetHighlightGuide;
+	using Editor::AllocateExtendedStyles;
+	using Editor::ReleaseAllExtendedStyles;
+	using Editor::SetBidirectional;
+	using Editor::GetBidirectional;
+
+	// Extra decoration / indicator operations beyond the thin wrappers below.
+	using Editor::IndicSetHoverStyle;
+	using Editor::IndicGetHoverStyle;
+	using Editor::IndicSetHoverFore;
+	using Editor::IndicGetHoverFore;
+	using Editor::IndicSetFlags;
+	using Editor::IndicGetFlags;
+	using Editor::IndicSetUnder;
+	using Editor::IndicGetUnder;
+	using Editor::IndicSetAlpha;
+	using Editor::IndicGetAlpha;
+	using Editor::IndicSetOutlineAlpha;
+	using Editor::IndicGetOutlineAlpha;
+	using Editor::IndicSetStrokeWidth;
+	using Editor::IndicGetStrokeWidth;
+	using Editor::IndicatorAllOnFor;
+	using Editor::BraceBadLight;
+	using Editor::BraceBadLightIndicator;
+	using Editor::BraceHighlightIndicator;
+	using Editor::BraceMatchNext;
+	using Editor::ClearAllRepresentations;
+	using Editor::SetRepresentationAppearance;
+	using Editor::GetRepresentationAppearance;
+	using Editor::SetRepresentationColour;
+	using Editor::GetRepresentationColour;
+	using Editor::SetHotspotActiveBack;
+	using Editor::GetHotspotActiveBack;
+	using Editor::SetHotspotActiveUnderline;
+	using Editor::GetHotspotActiveUnderline;
+	using Editor::SetHotspotSingleLine;
+	using Editor::GetHotspotSingleLine;
+	using Editor::AnnotationGetLines;
+	using Editor::AnnotationSetStyles;
+	using Editor::AnnotationGetStyles;
+	using Editor::AnnotationSetStyleOffset;
+	using Editor::AnnotationGetStyleOffset;
+	using Editor::EOLAnnotationSetStyle;
+	using Editor::EOLAnnotationGetStyle;
+	using Editor::EOLAnnotationSetStyleOffset;
+	using Editor::EOLAnnotationGetStyleOffset;
+	using Editor::EOLAnnotationGetVisible;
+	using Editor::SetEOLAnnotationVisible;
+	using Editor::GetSelectionMode;
+
 	// ReplaceTarget and its enum stay protected on Editor; thin public wrapper for tests.
 	Sci::Position ReplaceTargetBasic(std::string_view text) {
 		return Editor::ReplaceTarget(Editor::ReplaceType::basic, text);
@@ -179,8 +496,7 @@ public:
 	static constexpr int IdCmdDelete = idcmdDelete;
 	static constexpr int IdCmdSelectAll = idcmdSelectAll;
 
-	// Thin public forwards of protected Editor decoration operations so free-function
-	// tests can compare the named path with temporary message forwarders.
+	// Thin public forwards of protected Editor decoration operations for free-function tests.
 	void IndicSetStyle(size_t indicator, Scintilla::IndicatorStyle style);
 	Scintilla::IndicatorStyle IndicGetStyle(size_t indicator) const noexcept;
 	void IndicSetFore(size_t indicator, int rgb);

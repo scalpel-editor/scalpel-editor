@@ -3,7 +3,6 @@
  ** Focused behavior tests for selection ranges and navigation.
  **/
 
-#include <array>
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
@@ -20,7 +19,6 @@
 #include <vector>
 
 #include "ScintillaTypes.h"
-#include "ScintillaMessages.h"
 #include "ScintillaStructures.h"
 #include "ILoader.h"
 #include "ILexer.h"
@@ -79,10 +77,9 @@ TEST_CASE("SetSel and getters track stream selection") {
 	CHECK_FALSE(editor.GetSelectionEmpty());
 	CHECK(editor.GetSelText() == "bcd");
 
-	// Message path matches.
-	editor.WndProc(Message::SetSel, 2, 5);
+	editor.SetSel(2, 5);
 	CHECK(editor.GetSelText() == "cde");
-	CHECK(editor.WndProc(Message::GetSelectionEmpty, 0, 0) == 0);
+	CHECK_FALSE(editor.GetSelectionEmpty());
 }
 
 TEST_CASE("SetSelectionSerialized round-trips and ignores a null argument") {
@@ -90,24 +87,14 @@ TEST_CASE("SetSelectionSerialized round-trips and ignores a null argument") {
 	TestEditor editor(host);
 	LoadClean(editor, "abcdef");
 
-	editor.WndProc(Message::SetSel, 1, 4);
+	editor.SetSel(1, 4);
 
-	// Serialize the current selection (result carries no NUL terminator).
-	std::string buffer(64, '\0');
-	const sptr_t length = editor.WndProc(Message::GetSelectionSerialized, 0,
-		reinterpret_cast<sptr_t>(buffer.data()));
-	REQUIRE(length > 0);
-	const std::string serialized(buffer.data(), static_cast<size_t>(length));
+	const std::string serialized = editor.GetSelectionSerialized();
+	REQUIRE_FALSE(serialized.empty());
 
 	// Clear the selection, then restore it from the serialized form.
-	editor.WndProc(Message::SetSel, 0, 0);
-	editor.WndProc(Message::SetSelectionSerialized, 0,
-		reinterpret_cast<sptr_t>(serialized.c_str()));
-	CHECK(editor.GetSelectionStart() == 1);
-	CHECK(editor.GetSelectionEnd() == 4);
-
-	// A null lParam is a no-op, not a crash, and leaves the selection intact.
-	editor.WndProc(Message::SetSelectionSerialized, 0, 0);
+	editor.SetSel(0, 0);
+	editor.SetSelectionSerialized(serialized);
 	CHECK(editor.GetSelectionStart() == 1);
 	CHECK(editor.GetSelectionEnd() == 4);
 }
@@ -165,15 +152,15 @@ TEST_CASE("Multiple selection options and counts round-trip") {
 	TestEditor editor(host);
 	LoadClean(editor, "one two one");
 
-	CHECK(editor.WndProc(Message::GetMultipleSelection, 0, 0) == 0);
-	editor.WndProc(Message::SetMultipleSelection, 1, 0);
-	CHECK(editor.WndProc(Message::GetMultipleSelection, 0, 0) != 0);
-	CHECK(editor.WndProc(Message::GetSelections, 0, 0) == 1);
+	CHECK_FALSE(editor.GetMultipleSelection());
+	editor.SetMultipleSelection(true);
+	CHECK(editor.GetMultipleSelection());
+	CHECK(editor.GetSelections() == 1);
 
-	editor.WndProc(Message::TargetWholeDocument, 0, 0);
+	editor.TargetWholeDocument();
 	editor.SetSel(0, 3);
 	editor.RunCommand(EditorCommand::MultipleSelectAddNext);
-	CHECK(editor.WndProc(Message::GetSelections, 0, 0) >= 2);
+	CHECK(editor.GetSelections() >= 2);
 }
 
 TEST_CASE("SetSelectionN endpoints update one range by index") {
@@ -193,10 +180,8 @@ TEST_CASE("SetSelectionN endpoints update one range by index") {
 	CHECK(editor.GetSelectionNStart(0) == 1);
 	CHECK(editor.GetSelectionNEnd(0) == 3);
 
-	// Temporary message path matches the named setters.
-	editor.WndProc(Message::SetSelectionNCaret, 1, 5);
+	editor.SetSelectionNCaret(1, 5);
 	CHECK(editor.GetSelectionNCaret(1) == 5);
-	CHECK(editor.WndProc(Message::GetSelectionNCaret, 1, 0) == 5);
 }
 
 TEST_CASE("RectangularSelectionModifier defaults to Alt and round-trips") {
@@ -205,21 +190,18 @@ TEST_CASE("RectangularSelectionModifier defaults to Alt and round-trips") {
 	CHECK(editor.GetRectangularSelectionModifier() == KeyMod::Alt);
 	editor.SetRectangularSelectionModifier(KeyMod::Ctrl);
 	CHECK(editor.GetRectangularSelectionModifier() == KeyMod::Ctrl);
-	CHECK(editor.WndProc(Message::GetRectangularSelectionModifier, 0, 0)
-		== static_cast<sptr_t>(KeyMod::Ctrl));
-	editor.WndProc(Message::SetRectangularSelectionModifier,
-		static_cast<uptr_t>(KeyMod::Alt), 0);
+	editor.SetRectangularSelectionModifier(KeyMod::Alt);
 	CHECK(editor.GetRectangularSelectionModifier() == KeyMod::Alt);
 }
 
 TEST_CASE("HideSelection toggles visibility flag") {
 	TestHost host;
 	TestEditor editor(host);
-	CHECK(editor.WndProc(Message::GetSelectionHidden, 0, 0) == 0);
-	editor.WndProc(Message::HideSelection, 1, 0);
-	CHECK(editor.WndProc(Message::GetSelectionHidden, 0, 0) != 0);
-	editor.WndProc(Message::HideSelection, 0, 0);
-	CHECK(editor.WndProc(Message::GetSelectionHidden, 0, 0) == 0);
+	CHECK_FALSE(editor.GetSelectionHidden());
+	editor.HideSelection(true);
+	CHECK(editor.GetSelectionHidden());
+	editor.HideSelection(false);
+	CHECK_FALSE(editor.GetSelectionHidden());
 }
 
 TEST_CASE("TargetFromSelection copies main selection into target") {
@@ -227,9 +209,9 @@ TEST_CASE("TargetFromSelection copies main selection into target") {
 	TestEditor editor(host);
 	LoadClean(editor, "abcdef");
 	editor.SetSel(2, 5);
-	editor.WndProc(Message::TargetFromSelection, 0, 0);
-	CHECK(editor.WndProc(Message::GetTargetStart, 0, 0) == 2);
-	CHECK(editor.WndProc(Message::GetTargetEnd, 0, 0) == 5);
+	editor.TargetFromSelection();
+	CHECK(editor.GetTargetStart() == 2);
+	CHECK(editor.GetTargetEnd() == 5);
 }
 
 TEST_CASE("SwapMainAnchorCaret and RotateSelection commands run") {

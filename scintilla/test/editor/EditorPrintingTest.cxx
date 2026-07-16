@@ -3,7 +3,6 @@
  ** Focused tests for print settings and FormatRange measurement/draw.
  **/
 
-#include <array>
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
@@ -20,7 +19,6 @@
 #include <vector>
 
 #include "ScintillaTypes.h"
-#include "ScintillaMessages.h"
 #include "ScintillaStructures.h"
 #include "ILoader.h"
 #include "ILexer.h"
@@ -78,6 +76,11 @@ TEST_CASE("Print magnification colour mode and wrap round-trip") {
 	CHECK(editor.GetPrintWrapMode() == Wrap::Word);
 	editor.SetPrintWrapMode(Wrap::Char);  // collapses to None
 	CHECK(editor.GetPrintWrapMode() == Wrap::None);
+
+	editor.SetPrintMagnification(3);
+	CHECK(editor.GetPrintMagnification() == 3);
+	editor.SetPrintColourMode(PrintOption::BlackOnWhite);
+	CHECK(editor.GetPrintColourMode() == PrintOption::BlackOnWhite);
 }
 
 TEST_CASE("FormatRange measures without drawing and returns a position") {
@@ -98,36 +101,4 @@ TEST_CASE("FormatRange measures without drawing and returns a position") {
 	// Measurement should advance past some or all of the document.
 	CHECK(next > 0);
 	CHECK(next <= editor.GetTextLength());
-
-	RangeToFormat narrow{};
-	narrow.hdc = fr.hdc;
-	narrow.hdcTarget = fr.hdcTarget;
-	narrow.rc = fr.rc;
-	narrow.rcPage = fr.rcPage;
-	narrow.chrg.cpMin = static_cast<PositionCR>(fr.chrg.cpMin);
-	narrow.chrg.cpMax = static_cast<PositionCR>(fr.chrg.cpMax);
-	const Sci::Position messageNext = editor.WndProc(
-		Message::FormatRange, 0, reinterpret_cast<sptr_t>(&narrow));
-	CHECK(messageNext == next);
-}
-
-TEST_CASE("Print settings named path matches message path") {
-	TestHost host;
-	TestEditor editor(host);
-	editor.SetPrintMagnification(3);
-	CHECK(editor.WndProc(Message::GetPrintMagnification, 0, 0) == 3);
-	editor.WndProc(Message::SetPrintColourMode, static_cast<uptr_t>(PrintOption::BlackOnWhite), 0);
-	CHECK(editor.GetPrintColourMode() == PrintOption::BlackOnWhite);
-	editor.WndProc(Message::SetPrintWrapMode, static_cast<uptr_t>(Wrap::Word), 0);
-	CHECK(editor.GetPrintWrapMode() == Wrap::Word);
-}
-
-TEST_CASE("FormatRangeFull message is deleted from dispatch") {
-	TestHost host;
-	TestEditor editor(host);
-	editor.ClearObservations();
-	editor.WndProc(Message::FormatRangeFull, 0, 0);
-	CHECK(std::find(editor.observations.defaultWindowCalls.begin(),
-		editor.observations.defaultWindowCalls.end(),
-		Message::FormatRangeFull) != editor.observations.defaultWindowCalls.end());
 }

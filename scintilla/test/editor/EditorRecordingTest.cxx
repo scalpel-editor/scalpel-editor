@@ -21,7 +21,6 @@
 #include <vector>
 
 #include "ScintillaTypes.h"
-#include "ScintillaMessages.h"
 #include "ScintillaStructures.h"
 #include "ILoader.h"
 #include "ILexer.h"
@@ -224,10 +223,10 @@ TEST_CASE("Message start/stop forwarders match named lifecycle methods") {
 	TestHost host;
 	TestEditor editor(host);
 
-	editor.WndProc(Message::StartRecord, 0, 0);
+	editor.StartRecording();
 	CHECK(editor.IsRecording());
 
-	editor.WndProc(Message::StopRecord, 0, 0);
+	editor.StopRecording();
 	CHECK_FALSE(editor.IsRecording());
 }
 
@@ -327,7 +326,7 @@ TEST_CASE("Message path and ExecuteCommand agree for recorded CharRight") {
 		viaMessage.SetSel(0, 0);
 		viaMessage.StartRecording();
 		viaMessage.ClearObservations();
-		viaMessage.WndProc(Message::CharRight, 0, 0);
+		viaMessage.RunCommand(EditorCommand::CharRight);
 		REQUIRE(viaMessage.observations.recordedActions.size() == 1);
 		CHECK(As<RecordedCommand>(viaMessage.observations.recordedActions[0]).Command() ==
 			directCommand);
@@ -495,13 +494,13 @@ TEST_CASE("Message path and named methods agree for document text recording") {
 		editor.StartRecording();
 		editor.ClearObservations();
 		const char add[] = "A";
-		editor.WndProc(Message::AddText, 1, reinterpret_cast<sptr_t>(add));
+		editor.AddText(std::string_view(add, 1));
 		const char ins[] = "B";
-		editor.WndProc(Message::InsertText, 2, reinterpret_cast<sptr_t>(ins));
+		editor.InsertText(2, ins);
 		const char app[] = "C";
-		editor.WndProc(Message::AppendText, 1, reinterpret_cast<sptr_t>(app));
+		editor.AppendText(std::string_view(app, 1));
 		const char rep[] = "D";
-		editor.WndProc(Message::ReplaceSel, 0, reinterpret_cast<sptr_t>(rep));
+		editor.ReplaceSel(rep);
 		REQUIRE(editor.observations.recordedActions.size() == 4);
 		CHECK(As<RecordedAddText>(editor.observations.recordedActions[0]).text ==
 			As<RecordedAddText>(viaNamed[0]).text);
@@ -556,7 +555,7 @@ TEST_CASE("Goto and selection mode are captured as typed actions while recording
 	CHECK_FALSE(HasMacroRecord(editor));
 }
 
-TEST_CASE("Message path and named methods agree for goto and selection mode recording") {
+TEST_CASE("Named goto and selection mode recording is stable across editors") {
 	std::vector<RecordedAction> viaNamed;
 	{
 		TestHost host;
@@ -576,10 +575,10 @@ TEST_CASE("Message path and named methods agree for goto and selection mode reco
 		editor.SetText("line0\nline1\n");
 		editor.StartRecording();
 		editor.ClearObservations();
-		editor.WndProc(Message::GotoLine, 1, 0);
-		editor.WndProc(Message::GotoPos, 3, 0);
-		editor.WndProc(Message::SetSelectionMode,
-			static_cast<uptr_t>(SelectionMode::Lines), 0);
+		editor.GotoLine(1);
+		editor.GotoPos(3);
+		// setMoveExtends true is the recorded path (ChangeSelectionMode is not recorded).
+		editor.SetSelectionMode(SelectionMode::Lines, true);
 		REQUIRE(editor.observations.recordedActions.size() == 3);
 		CHECK(As<RecordedGotoLine>(editor.observations.recordedActions[0]).line ==
 			As<RecordedGotoLine>(viaNamed[0]).line);
@@ -784,11 +783,9 @@ TEST_CASE("Message path and named methods agree for search recording") {
 		editor.SetSel(0, 0);
 		editor.StartRecording();
 		editor.ClearObservations();
-		editor.WndProc(Message::SearchAnchor, 0, 0);
+		editor.SearchAnchor();
 		const char needle[] = "me";
-		editor.WndProc(Message::SearchNext,
-			static_cast<uptr_t>(FindOption::WholeWord),
-			reinterpret_cast<sptr_t>(needle));
+		editor.SearchText(EditorCommand::SearchNext, FindOption::WholeWord, needle);
 		REQUIRE(editor.observations.recordedActions.size() == 2);
 		CHECK(std::holds_alternative<RecordedSearchAnchor>(
 			editor.observations.recordedActions[0]));
@@ -831,7 +828,7 @@ TEST_CASE("Mixed parameterized capture replays on a fresh editor") {
 		recorded = editor.observations.recordedActions;
 		afterText = editor.Text();
 		afterPos = editor.CurrentPos();
-		afterMode = static_cast<SelectionMode>(editor.WndProc(Message::GetSelectionMode, 0, 0));
+		afterMode = static_cast<SelectionMode>(editor.GetSelectionMode());
 	}
 
 	// Every production alternative should appear at least once in this script.
@@ -867,7 +864,7 @@ TEST_CASE("Mixed parameterized capture replays on a fresh editor") {
 
 		CHECK(fresh.Text() == afterText);
 		CHECK(fresh.CurrentPos() == afterPos);
-		CHECK(static_cast<SelectionMode>(fresh.WndProc(Message::GetSelectionMode, 0, 0)) == afterMode);
+		CHECK(static_cast<SelectionMode>(fresh.GetSelectionMode()) == afterMode);
 		CHECK(fresh.observations.recordedActions.empty());
 		CHECK(fresh.IsRecording());
 		CHECK_FALSE(HasMacroRecord(fresh));
@@ -939,17 +936,17 @@ TEST_CASE("Message path mixed script matches named capture for replay") {
 		editor.StartRecording();
 		editor.ClearObservations();
 		const char a[] = "A";
-		editor.WndProc(Message::AddText, 1, reinterpret_cast<sptr_t>(a));
-		editor.WndProc(Message::GotoPos, 0, 0);
+		editor.AddText(std::string_view(a, 1));
+		editor.GotoPos(0);
 		const char b[] = "B";
-		editor.WndProc(Message::InsertText, 1, reinterpret_cast<sptr_t>(b));
+		editor.InsertText(1, b);
 		const char c[] = "C";
-		editor.WndProc(Message::AppendText, 1, reinterpret_cast<sptr_t>(c));
-		editor.WndProc(Message::SearchAnchor, 0, 0);
+		editor.AppendText(std::string_view(c, 1));
+		editor.SearchAnchor();
 		const char needle[] = "B";
-		editor.WndProc(Message::SearchNext, 0, reinterpret_cast<sptr_t>(needle));
+		editor.SearchText(EditorCommand::SearchNext, FindOption::None, needle);
 		const char d[] = "D";
-		editor.WndProc(Message::ReplaceSel, 0, reinterpret_cast<sptr_t>(d));
+		editor.ReplaceSel(d);
 		viaMessage = editor.observations.recordedActions;
 		messageText = editor.Text();
 		messagePos = editor.CurrentPos();
@@ -1002,8 +999,8 @@ TEST_CASE("Moving selected lines records one command and replays the selection")
 			EditorCommand::MoveSelectedLinesDown);
 		recorded = editor.observations.recordedActions;
 		afterText = editor.Text();
-		afterCaret = editor.WndProc(Message::GetCurrentPos, 0, 0);
-		afterAnchor = editor.WndProc(Message::GetAnchor, 0, 0);
+		afterCaret = editor.GetCurrentPos();
+		afterAnchor = editor.GetAnchor();
 	}
 
 	TestHost host;
@@ -1013,8 +1010,8 @@ TEST_CASE("Moving selected lines records one command and replays the selection")
 	replay.ReplayRecordedActions(recorded);
 
 	CHECK(replay.Text() == afterText);
-	CHECK(replay.WndProc(Message::GetCurrentPos, 0, 0) == afterCaret);
-	CHECK(replay.WndProc(Message::GetAnchor, 0, 0) == afterAnchor);
+	CHECK(replay.GetCurrentPos() == afterCaret);
+	CHECK(replay.GetAnchor() == afterAnchor);
 }
 
 TEST_CASE("Internal fold caret movement is not recorded as GotoLine") {
@@ -1026,17 +1023,17 @@ TEST_CASE("Internal fold caret movement is not recorded as GotoLine") {
 	const int inner = static_cast<int>(FoldLevel::Base) + 1 |
 		static_cast<int>(FoldLevel::HeaderFlag);
 	const int child = static_cast<int>(FoldLevel::Base) + 2;
-	editor.WndProc(Message::SetFoldLevel, 0, outer);
-	editor.WndProc(Message::SetFoldLevel, 1, inner);
-	editor.WndProc(Message::SetFoldLevel, 2, child);
-	editor.WndProc(Message::SetFoldLevel, 3, static_cast<int>(FoldLevel::Base));
-	editor.WndProc(Message::FoldLine, 0, static_cast<sptr_t>(FoldAction::Contract));
-	REQUIRE(editor.WndProc(Message::GetLineVisible, 1, 0) == 0);
+	editor.SetFoldLevel(0, static_cast<FoldLevel>(outer));
+	editor.SetFoldLevel(1, static_cast<FoldLevel>(inner));
+	editor.SetFoldLevel(2, static_cast<FoldLevel>(child));
+	editor.SetFoldLevel(3, static_cast<FoldLevel>(static_cast<int>(FoldLevel::Base)));
+	editor.FoldLine(0, FoldAction::Contract);
+	REQUIRE(editor.GetLineVisible(1) == 0);
 
 	editor.StartRecording();
 	editor.ClearObservations();
-	editor.WndProc(Message::FoldLine, 1, static_cast<sptr_t>(FoldAction::Expand));
+	editor.FoldLine(1, FoldAction::Expand);
 
-	CHECK(editor.WndProc(Message::GetLineVisible, 1, 0) != 0);
+	CHECK(editor.GetLineVisible(1) != 0);
 	CHECK(editor.observations.recordedActions.empty());
 }

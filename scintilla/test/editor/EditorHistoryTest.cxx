@@ -3,7 +3,6 @@
  ** Focused behavior tests for undo, redo, save point, and undo groups.
  **/
 
-#include <array>
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
@@ -20,7 +19,6 @@
 #include <vector>
 
 #include "ScintillaTypes.h"
-#include "ScintillaMessages.h"
 #include "ScintillaStructures.h"
 #include "ILoader.h"
 #include "ILexer.h"
@@ -75,7 +73,7 @@ bool HasNotification(const TestEditor &editor, Notification code) {
 }
 
 void TypeAtEnd(TestEditor &editor, std::string_view text) {
-	editor.WndProc(Message::GotoPos, static_cast<uptr_t>(editor.GetTextLength()), 0);
+	editor.GotoPos(editor.GetTextLength());
 	editor.InsertInput(text);
 }
 
@@ -106,7 +104,7 @@ TEST_CASE("CanUndo and CanRedo follow edits and history") {
 	CHECK_FALSE(editor.CanRedo());
 }
 
-TEST_CASE("Undo and Redo commands match named methods") {
+TEST_CASE("Undo and Redo commands restore text") {
 	TestHost host;
 	TestEditor editor(host);
 	LoadClean(editor, "z");
@@ -118,8 +116,8 @@ TEST_CASE("Undo and Redo commands match named methods") {
 	editor.RunCommand(EditorCommand::Redo);
 	CHECK(editor.GetText() == "z!");
 
-	CHECK(editor.WndProc(Message::CanUndo, 0, 0) == (editor.CanUndo() ? 1 : 0));
-	CHECK(editor.WndProc(Message::CanRedo, 0, 0) == (editor.CanRedo() ? 1 : 0));
+	CHECK(editor.CanUndo());
+	CHECK_FALSE(editor.CanRedo());
 }
 
 TEST_CASE("SetSavePoint clears dirty and notifies") {
@@ -148,7 +146,7 @@ TEST_CASE("BeginUndoAction groups edits into one undo step") {
 	TypeAtEnd(editor, "b");
 	editor.EndUndoAction();
 	CHECK(editor.GetText() == "ab");
-	CHECK(editor.WndProc(Message::GetUndoSequence, 0, 0) == 0);
+	CHECK(editor.GetUndoSequence() == 0);
 
 	editor.RunCommand(EditorCommand::Undo);
 	CHECK(editor.GetText().empty());
@@ -163,7 +161,7 @@ TEST_CASE("EmptyUndoBuffer drops history without SavePointReached") {
 	REQUIRE(editor.CanUndo());
 	editor.ClearObservations();
 
-	editor.WndProc(Message::EmptyUndoBuffer, 0, 0);
+	editor.EmptyUndoBuffer();
 	CHECK_FALSE(editor.CanUndo());
 	CHECK_FALSE(editor.CanRedo());
 	CHECK_FALSE(HasNotification(editor, Notification::SavePointReached));
@@ -184,43 +182,40 @@ TEST_CASE("Undo collection can be turned off") {
 	TestHost host;
 	TestEditor editor(host);
 	LoadClean(editor, "base");
-	editor.WndProc(Message::SetUndoCollection, 0, 0);
-	editor.WndProc(Message::EmptyUndoBuffer, 0, 0);
+	editor.SetUndoCollection(false);
+	editor.EmptyUndoBuffer();
 	TypeAtEnd(editor, "!");
 	CHECK(editor.GetText() == "base!");
 	CHECK_FALSE(editor.CanUndo());
-	CHECK(editor.WndProc(Message::GetUndoCollection, 0, 0) == 0);
+	CHECK_FALSE(editor.GetUndoCollection());
 
-	editor.WndProc(Message::SetUndoCollection, 1, 0);
-	CHECK(editor.WndProc(Message::GetUndoCollection, 0, 0) != 0);
+	editor.SetUndoCollection(true);
+	CHECK(editor.GetUndoCollection());
 }
 
-TEST_CASE("Message path matches named history methods") {
+TEST_CASE("Named history methods group and undo edits") {
 	TestHost host;
 	TestEditor editor(host);
 	LoadClean(editor, "m");
-	editor.WndProc(Message::SetSavePoint, 0, 0);
+	editor.SetSavePoint();
 	CHECK_FALSE(editor.GetModify());
 
-	editor.WndProc(Message::BeginUndoAction, 0, 0);
+	editor.BeginUndoAction();
 	TypeAtEnd(editor, "1");
 	TypeAtEnd(editor, "2");
-	editor.WndProc(Message::EndUndoAction, 0, 0);
+	editor.EndUndoAction();
 	CHECK(editor.GetText() == "m12");
 
-	editor.WndProc(Message::Undo, 0, 0);
+	editor.RunCommand(EditorCommand::Undo);
 	CHECK(editor.GetText() == "m");
-	editor.WndProc(Message::Redo, 0, 0);
+	editor.RunCommand(EditorCommand::Redo);
 	CHECK(editor.GetText() == "m12");
 }
 
 TEST_CASE("Change history option round trips") {
 	TestHost host;
 	TestEditor editor(host);
-	CHECK(static_cast<ChangeHistoryOption>(
-		editor.WndProc(Message::GetChangeHistory, 0, 0)) == ChangeHistoryOption::Disabled);
-	editor.WndProc(Message::SetChangeHistory,
-		static_cast<uptr_t>(ChangeHistoryOption::Enabled), 0);
-	CHECK(static_cast<ChangeHistoryOption>(
-		editor.WndProc(Message::GetChangeHistory, 0, 0)) == ChangeHistoryOption::Enabled);
+	CHECK(editor.GetChangeHistory() == ChangeHistoryOption::Disabled);
+	editor.SetChangeHistory(ChangeHistoryOption::Enabled);
+	CHECK(editor.GetChangeHistory() == ChangeHistoryOption::Enabled);
 }

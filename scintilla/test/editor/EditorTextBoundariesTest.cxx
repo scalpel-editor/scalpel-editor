@@ -4,7 +4,6 @@
  ** buffer pointer, current line, virtual space options, and line index mapping.
  **/
 
-#include <array>
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
@@ -21,7 +20,6 @@
 #include <vector>
 
 #include "ScintillaTypes.h"
-#include "ScintillaMessages.h"
 #include "ScintillaStructures.h"
 #include "ILoader.h"
 #include "ILexer.h"
@@ -162,39 +160,17 @@ TEST_CASE("Virtual space options round-trip") {
 	CHECK(editor.GetVirtualSpaceOptions() == VirtualSpace::None);
 	editor.SetVirtualSpaceOptions(VirtualSpace::UserAccessible);
 	CHECK(editor.GetVirtualSpaceOptions() == VirtualSpace::UserAccessible);
+	editor.SetVirtualSpaceOptions(VirtualSpace::RectangularSelection);
+	CHECK(editor.GetVirtualSpaceOptions() == VirtualSpace::RectangularSelection);
 }
 
 TEST_CASE("Line index position mapping when UTF16 index allocated") {
 	TestHost host;
 	TestEditor editor(host);
 	editor.SetText("a\xC3\xA9" "b\nc");
-	editor.WndProc(Message::AllocateLineCharacterIndex,
-		static_cast<uptr_t>(LineCharacterIndexType::Utf16), 0);
+	editor.AllocateLineCharacterIndex(LineCharacterIndexType::Utf16);
 	// Index of start of line 1 should map back.
 	const Sci::Position idx = editor.IndexPositionFromLine(1, LineCharacterIndexType::Utf16);
 	CHECK(editor.LineFromIndexPosition(idx, LineCharacterIndexType::Utf16) == 1);
-	editor.WndProc(Message::ReleaseLineCharacterIndex,
-		static_cast<uptr_t>(LineCharacterIndexType::Utf16), 0);
-}
-
-TEST_CASE("Text boundary named path matches message path") {
-	TestHost host;
-	TestEditor editor(host);
-	editor.SetText("a\xC3\xA9" " word");
-
-	const Sci::Position pos = 1;
-	CHECK(editor.PositionBefore(pos) ==
-		static_cast<Sci::Position>(editor.WndProc(Message::PositionBefore, static_cast<uptr_t>(pos), 0)));
-	CHECK(editor.PositionAfter(pos) ==
-		static_cast<Sci::Position>(editor.WndProc(Message::PositionAfter, static_cast<uptr_t>(pos), 0)));
-	CHECK(editor.PositionRelative(0, 2) ==
-		static_cast<Sci::Position>(editor.WndProc(Message::PositionRelative, 0, 2)));
-	CHECK(editor.WordStartPosition(3, true) ==
-		static_cast<Sci::Position>(editor.WndProc(Message::WordStartPosition, 3, 1)));
-	CHECK(editor.WordEndPosition(3, true) ==
-		static_cast<Sci::Position>(editor.WndProc(Message::WordEndPosition, 3, 1)));
-
-	editor.SetVirtualSpaceOptions(VirtualSpace::RectangularSelection);
-	CHECK(static_cast<VirtualSpace>(editor.WndProc(Message::GetVirtualSpaceOptions, 0, 0)) ==
-		VirtualSpace::RectangularSelection);
+	editor.ReleaseLineCharacterIndex(LineCharacterIndexType::Utf16);
 }

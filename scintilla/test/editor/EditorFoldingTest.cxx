@@ -20,7 +20,6 @@
 #include <vector>
 
 #include "ScintillaTypes.h"
-#include "ScintillaMessages.h"
 #include "ScintillaStructures.h"
 #include "ILoader.h"
 #include "ILexer.h"
@@ -74,9 +73,9 @@ void InstallSimpleFold(TestEditor &editor) {
 	editor.SetText("header\nchild\nlast\n");
 	const int header = static_cast<int>(FoldLevel::Base) | static_cast<int>(FoldLevel::HeaderFlag);
 	const int child = static_cast<int>(FoldLevel::Base) + 1;
-	editor.WndProc(Message::SetFoldLevel, 0, header);
-	editor.WndProc(Message::SetFoldLevel, 1, child);
-	editor.WndProc(Message::SetFoldLevel, 2, child);
+	editor.SetFoldLevel(0, static_cast<FoldLevel>(header));
+	editor.SetFoldLevel(1, static_cast<FoldLevel>(child));
+	editor.SetFoldLevel(2, static_cast<FoldLevel>(child));
 	editor.PaintAll();
 	editor.ClearObservations();
 }
@@ -89,14 +88,14 @@ TEST_CASE("Fold level parent last-child and message path") {
 	InstallSimpleFold(editor);
 
 	const int header = static_cast<int>(FoldLevel::Base) | static_cast<int>(FoldLevel::HeaderFlag);
-	CHECK(editor.WndProc(Message::GetFoldLevel, 0, 0) == header);
-	CHECK(editor.WndProc(Message::GetLastChild, 0, -1) == 2);
-	CHECK(editor.WndProc(Message::GetFoldParent, 1, 0) == 0);
-	CHECK(editor.WndProc(Message::GetFoldParent, 0, 0) == -1);
+	CHECK(static_cast<int>(editor.GetFoldLevel(0)) == header);
+	CHECK(editor.GetLastChild(0) == 2);
+	CHECK(editor.GetFoldParent(1) == 0);
+	CHECK(editor.GetFoldParent(0) == -1);
 
 	// SetFoldLevel returns the previous level; margin-only redraw still invalidates.
 	editor.ClearObservations();
-	const sptr_t prev = editor.WndProc(Message::SetFoldLevel, 1, static_cast<int>(FoldLevel::Base));
+	const sptr_t prev = editor.SetFoldLevel(1, static_cast<FoldLevel>(static_cast<int>(FoldLevel::Base)));
 	CHECK(prev == static_cast<int>(FoldLevel::Base) + 1);
 	const auto afterLevel = editor.Snapshot();
 	const bool sawRedraw = afterLevel.invalidatedRectangles > 0 || afterLevel.invalidateAllCount > 0;
@@ -108,26 +107,26 @@ TEST_CASE("Doc and display line map after hide and show") {
 	TestEditor editor(host);
 	InstallSimpleFold(editor);
 
-	CHECK(editor.WndProc(Message::GetAllLinesVisible, 0, 0) != 0);
-	CHECK(editor.WndProc(Message::VisibleFromDocLine, 0, 0) == 0);
-	CHECK(editor.WndProc(Message::VisibleFromDocLine, 2, 0) == 2);
-	CHECK(editor.WndProc(Message::DocLineFromVisible, 2, 0) == 2);
+	CHECK(editor.GetAllLinesVisible() != 0);
+	CHECK(editor.VisibleFromDocLine(0) == 0);
+	CHECK(editor.VisibleFromDocLine(2) == 2);
+	CHECK(editor.DocLineFromVisible(2) == 2);
 
 	editor.ClearObservations();
-	editor.WndProc(Message::HideLines, 1, 1);
-	CHECK(editor.WndProc(Message::GetLineVisible, 1, 0) == 0);
-	CHECK(editor.WndProc(Message::GetAllLinesVisible, 0, 0) == 0);
+	editor.HideLines(1, 1);
+	CHECK(editor.GetLineVisible(1) == 0);
+	CHECK(editor.GetAllLinesVisible() == 0);
 	// Hiding the middle line compresses the display map: doc line 2 moves up.
-	CHECK(editor.WndProc(Message::VisibleFromDocLine, 2, 0) == 1);
-	CHECK(editor.WndProc(Message::DocLineFromVisible, 1, 0) == 2);
+	CHECK(editor.VisibleFromDocLine(2) == 1);
+	CHECK(editor.DocLineFromVisible(1) == 2);
 	CHECK(editor.Snapshot().invalidatedRectangles > 0);
 	CHECK(editor.Snapshot().scrollbarChanges > 0);
 
-	editor.WndProc(Message::ShowLines, 1, 1);
-	CHECK(editor.WndProc(Message::GetLineVisible, 1, 0) != 0);
-	CHECK(editor.WndProc(Message::GetAllLinesVisible, 0, 0) != 0);
-	CHECK(editor.WndProc(Message::VisibleFromDocLine, 2, 0) == 2);
-	CHECK(editor.WndProc(Message::DocLineFromVisible, 1, 0) == 1);
+	editor.ShowLines(1, 1);
+	CHECK(editor.GetLineVisible(1) != 0);
+	CHECK(editor.GetAllLinesVisible() != 0);
+	CHECK(editor.VisibleFromDocLine(2) == 2);
+	CHECK(editor.DocLineFromVisible(1) == 1);
 }
 
 TEST_CASE("Toggle fold contracts and expands children with redraw") {
@@ -135,25 +134,25 @@ TEST_CASE("Toggle fold contracts and expands children with redraw") {
 	TestEditor editor(host);
 	InstallSimpleFold(editor);
 
-	CHECK(editor.WndProc(Message::GetFoldExpanded, 0, 0) != 0);
+	CHECK(editor.GetFoldExpanded(0) != 0);
 	editor.ClearObservations();
-	editor.WndProc(Message::ToggleFold, 0, 0);
-	CHECK(editor.WndProc(Message::GetFoldExpanded, 0, 0) == 0);
-	CHECK(editor.WndProc(Message::GetLineVisible, 1, 0) == 0);
-	CHECK(editor.WndProc(Message::GetLineVisible, 2, 0) == 0);
+	editor.ToggleFold(0);
+	CHECK(editor.GetFoldExpanded(0) == 0);
+	CHECK(editor.GetLineVisible(1) == 0);
+	CHECK(editor.GetLineVisible(2) == 0);
 	CHECK(editor.Snapshot().invalidatedRectangles > 0);
 
 	editor.ClearObservations();
-	editor.WndProc(Message::ToggleFold, 0, 0);
-	CHECK(editor.WndProc(Message::GetFoldExpanded, 0, 0) != 0);
-	CHECK(editor.WndProc(Message::GetLineVisible, 1, 0) != 0);
-	CHECK(editor.WndProc(Message::GetLineVisible, 2, 0) != 0);
+	editor.ToggleFold(0);
+	CHECK(editor.GetFoldExpanded(0) != 0);
+	CHECK(editor.GetLineVisible(1) != 0);
+	CHECK(editor.GetLineVisible(2) != 0);
 
 	// FoldLine Contract / Expand match Toggle around the same header.
-	editor.WndProc(Message::FoldLine, 0, static_cast<sptr_t>(FoldAction::Contract));
-	CHECK(editor.WndProc(Message::GetFoldExpanded, 0, 0) == 0);
-	editor.WndProc(Message::FoldLine, 0, static_cast<sptr_t>(FoldAction::Expand));
-	CHECK(editor.WndProc(Message::GetFoldExpanded, 0, 0) != 0);
+	editor.FoldLine(0, FoldAction::Contract);
+	CHECK(editor.GetFoldExpanded(0) == 0);
+	editor.FoldLine(0, FoldAction::Expand);
+	CHECK(editor.GetFoldExpanded(0) != 0);
 }
 
 TEST_CASE("Fold children fold all contracted-next and expand children") {
@@ -164,31 +163,31 @@ TEST_CASE("Fold children fold all contracted-next and expand children") {
 	const int h0 = static_cast<int>(FoldLevel::Base) | static_cast<int>(FoldLevel::HeaderFlag);
 	const int h1 = (static_cast<int>(FoldLevel::Base) + 1) | static_cast<int>(FoldLevel::HeaderFlag);
 	const int c2 = static_cast<int>(FoldLevel::Base) + 2;
-	editor.WndProc(Message::SetFoldLevel, 0, h0);
-	editor.WndProc(Message::SetFoldLevel, 1, h1);
-	editor.WndProc(Message::SetFoldLevel, 2, c2);
-	editor.WndProc(Message::SetFoldLevel, 3, c2);
-	editor.WndProc(Message::SetFoldLevel, 4, static_cast<int>(FoldLevel::Base) + 1);
+	editor.SetFoldLevel(0, static_cast<FoldLevel>(h0));
+	editor.SetFoldLevel(1, static_cast<FoldLevel>(h1));
+	editor.SetFoldLevel(2, static_cast<FoldLevel>(c2));
+	editor.SetFoldLevel(3, static_cast<FoldLevel>(c2));
+	editor.SetFoldLevel(4, static_cast<FoldLevel>(static_cast<int>(FoldLevel::Base) + 1));
 
-	editor.WndProc(Message::FoldChildren, 1, static_cast<sptr_t>(FoldAction::Contract));
-	CHECK(editor.WndProc(Message::GetFoldExpanded, 1, 0) == 0);
-	CHECK(editor.WndProc(Message::GetLineVisible, 2, 0) == 0);
-	CHECK(editor.WndProc(Message::GetLineVisible, 3, 0) == 0);
-	CHECK(editor.WndProc(Message::GetLineVisible, 4, 0) != 0);
+	editor.FoldChildren(1, FoldAction::Contract);
+	CHECK(editor.GetFoldExpanded(1) == 0);
+	CHECK(editor.GetLineVisible(2) == 0);
+	CHECK(editor.GetLineVisible(3) == 0);
+	CHECK(editor.GetLineVisible(4) != 0);
 
-	CHECK(editor.WndProc(Message::ContractedFoldNext, 0, 0) == 1);
+	CHECK(editor.ContractedFoldNext(0) == 1);
 
-	editor.WndProc(Message::ExpandChildren, 1, h1);
-	CHECK(editor.WndProc(Message::GetFoldExpanded, 1, 0) != 0);
-	CHECK(editor.WndProc(Message::GetLineVisible, 2, 0) != 0);
+	editor.ExpandChildren(1, static_cast<FoldLevel>(h1));
+	CHECK(editor.GetFoldExpanded(1) != 0);
+	CHECK(editor.GetLineVisible(2) != 0);
 
-	editor.WndProc(Message::FoldAll, static_cast<uptr_t>(FoldAction::Contract), 0);
-	CHECK(editor.WndProc(Message::GetFoldExpanded, 0, 0) == 0);
-	CHECK(editor.WndProc(Message::GetLineVisible, 1, 0) == 0);
+	editor.FoldAll(FoldAction::Contract);
+	CHECK(editor.GetFoldExpanded(0) == 0);
+	CHECK(editor.GetLineVisible(1) == 0);
 
-	editor.WndProc(Message::FoldAll, static_cast<uptr_t>(FoldAction::Expand), 0);
-	CHECK(editor.WndProc(Message::GetFoldExpanded, 0, 0) != 0);
-	CHECK(editor.WndProc(Message::GetAllLinesVisible, 0, 0) != 0);
+	editor.FoldAll(FoldAction::Expand);
+	CHECK(editor.GetFoldExpanded(0) != 0);
+	CHECK(editor.GetAllLinesVisible() != 0);
 }
 
 TEST_CASE("EnsureVisible expands parents; automatic and display options round-trip") {
@@ -196,44 +195,42 @@ TEST_CASE("EnsureVisible expands parents; automatic and display options round-tr
 	TestEditor editor(host);
 	InstallSimpleFold(editor);
 
-	editor.WndProc(Message::ToggleFold, 0, 0);
-	CHECK(editor.WndProc(Message::GetLineVisible, 2, 0) == 0);
+	editor.ToggleFold(0);
+	CHECK(editor.GetLineVisible(2) == 0);
 
 	editor.ClearObservations();
-	editor.WndProc(Message::EnsureVisible, 2, 0);
-	CHECK(editor.WndProc(Message::GetLineVisible, 2, 0) != 0);
-	CHECK(editor.WndProc(Message::GetFoldExpanded, 0, 0) != 0);
+	editor.EnsureVisible(2);
+	CHECK(editor.GetLineVisible(2) != 0);
+	CHECK(editor.GetFoldExpanded(0) != 0);
 
 	const int autoFlags = static_cast<int>(AutomaticFold::Show) | static_cast<int>(AutomaticFold::Click);
-	editor.WndProc(Message::SetAutomaticFold, static_cast<uptr_t>(autoFlags), 0);
-	CHECK(editor.WndProc(Message::GetAutomaticFold, 0, 0) == autoFlags);
+	editor.SetAutomaticFold(static_cast<AutomaticFold>(autoFlags));
+	CHECK(static_cast<int>(editor.GetAutomaticFold()) == autoFlags);
 
 	// Clear pending redraw so the next Redraw is observed.
 	editor.PaintAll();
 	editor.ClearObservations();
-	editor.WndProc(Message::SetFoldFlags, static_cast<uptr_t>(FoldFlag::LineAfterContracted), 0);
+	editor.SetFoldFlags(FoldFlag::LineAfterContracted);
 	CHECK(editor.Snapshot().invalidatedRectangles > 0);
 
-	editor.WndProc(Message::FoldDisplayTextSetStyle, static_cast<uptr_t>(FoldDisplayTextStyle::Boxed), 0);
-	CHECK(static_cast<FoldDisplayTextStyle>(
-		editor.WndProc(Message::FoldDisplayTextGetStyle, 0, 0)) == FoldDisplayTextStyle::Boxed);
+	editor.FoldDisplayTextSetStyle(FoldDisplayTextStyle::Boxed);
+	CHECK(static_cast<FoldDisplayTextStyle>(editor.FoldDisplayTextGetStyle()) == FoldDisplayTextStyle::Boxed);
 
 	const char *tag = "...";
 	editor.PaintAll();
 	editor.ClearObservations();
-	editor.WndProc(Message::SetDefaultFoldDisplayText, 0, reinterpret_cast<sptr_t>(tag));
+	editor.SetDefaultFoldDisplayText(tag);
 	CHECK(editor.Snapshot().invalidatedRectangles > 0);
 
-	char buf[8] = {};
-	const sptr_t n = editor.WndProc(Message::GetDefaultFoldDisplayText, 0, reinterpret_cast<sptr_t>(buf));
-	CHECK(n == 3);
-	CHECK(std::string(buf, static_cast<size_t>(n)) == tag);
+	const char *got = editor.GetDefaultFoldDisplayText();
+	REQUIRE(got != nullptr);
+	CHECK(std::string(got) == tag);
 
 	// ToggleFoldShowText contracts and attaches per-line display text.
-	editor.WndProc(Message::FoldAll, static_cast<uptr_t>(FoldAction::Expand), 0);
+	editor.FoldAll(FoldAction::Expand);
 	const char *hidden = "hidden";
-	editor.WndProc(Message::ToggleFoldShowText, 0, reinterpret_cast<sptr_t>(hidden));
-	CHECK(editor.WndProc(Message::GetFoldExpanded, 0, 0) == 0);
+	editor.ToggleFoldShowText(0, hidden);
+	CHECK(editor.GetFoldExpanded(0) == 0);
 }
 
 TEST_CASE("EnsureVisibleEnforcePolicy scrolls toward the target line") {
@@ -249,8 +246,8 @@ TEST_CASE("EnsureVisibleEnforcePolicy scrolls toward the target line") {
 	editor.PaintAll();
 
 	CHECK(editor.GetFirstVisibleLine() == 0);
-	editor.WndProc(Message::EnsureVisibleEnforcePolicy, 30, 0);
+	editor.EnsureVisibleEnforcePolicy(30);
 	// With a short client height the policy should scroll toward line 30.
 	CHECK(editor.GetFirstVisibleLine() > 0);
-	CHECK(editor.WndProc(Message::VisibleFromDocLine, 30, 0) >= 0);
+	CHECK(editor.VisibleFromDocLine(30) >= 0);
 }

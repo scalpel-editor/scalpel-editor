@@ -20,7 +20,6 @@
 #include <vector>
 
 #include "ScintillaTypes.h"
-#include "ScintillaMessages.h"
 #include "ScintillaStructures.h"
 #include "ILoader.h"
 #include "ILexer.h"
@@ -75,7 +74,7 @@ TEST_CASE("Test editor contract") {
 	editor.SetText("one\ntwo \xE2\x82\xAC");
 	CHECK(editor.Text() == "one\ntwo \xE2\x82\xAC");
 	// SetText leaves an empty selection at position 0; move to the end before typing.
-	editor.WndProc(Message::GotoPos, static_cast<uptr_t>(editor.GetTextLength()), 0);
+	editor.GotoPos(editor.GetTextLength());
 	editor.InsertInput("!");
 	CHECK(editor.Text() == "one\ntwo \xE2\x82\xAC!");
 
@@ -93,16 +92,16 @@ TEST_CASE("Invalid UTF-8 passes through the editor unchanged") {
 	CHECK(editor.Text() == "a\x80\xc2z");
 
 	// Caret movement crosses each invalid byte as one character
-	editor.WndProc(Message::GotoPos, 0, 0);
+	editor.GotoPos(0);
 	bool consumed = false;
 	for (Sci::Position expected = 1; expected <= 4; expected++) {
 		editor.KeyDown(Keys::Right, KeyMod::Norm, &consumed);
-		CHECK(static_cast<Sci::Position>(editor.WndProc(Message::GetCurrentPos, 0, 0)) == expected);
+		CHECK(editor.GetCurrentPos() == expected);
 	}
 
 	// Case conversion changes letters and leaves invalid bytes unchanged
-	editor.WndProc(Message::SelectAll, 0, 0);
-	editor.WndProc(Message::UpperCase, 0, 0);
+	editor.SelectAll();
+	editor.RunCommand(EditorCommand::UpperCase);
 	CHECK(editor.Text() == "A\x80\xc2Z");
 }
 
@@ -112,12 +111,12 @@ TEST_CASE("UpperCase maps Unicode letters through CaseConvertString") {
 	TestHost host;
 	TestEditor editor(host);
 	editor.SetText("café ß");
-	editor.WndProc(Message::SelectAll, 0, 0);
-	editor.WndProc(Message::UpperCase, 0, 0);
+	editor.SelectAll();
+	editor.RunCommand(EditorCommand::UpperCase);
 	CHECK(editor.Text() == "CAFÉ SS");
 
-	editor.WndProc(Message::SelectAll, 0, 0);
-	editor.WndProc(Message::LowerCase, 0, 0);
+	editor.SelectAll();
+	editor.RunCommand(EditorCommand::LowerCase);
 	// "SS" does not round-trip to "ß"; lowercasing yields "ss".
 	CHECK(editor.Text() == "café ss");
 }

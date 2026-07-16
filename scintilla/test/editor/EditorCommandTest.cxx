@@ -23,7 +23,6 @@
 
 #include "ScintillaTypes.h"
 #include "EditorRecording.h"
-#include "ScintillaMessages.h"
 #include "ScintillaStructures.h"
 #include "ILoader.h"
 #include "ILexer.h"
@@ -133,8 +132,8 @@ TEST_CASE("Tab inserts indentation into an empty selection") {
 	TestEditor editor(host);
 	editor.SetText("x");
 	Goto(editor, 0);
-	editor.WndProc(Message::SetUseTabs, 1, 0);
-	editor.WndProc(Message::SetTabWidth, 4, 0);
+	editor.SetUseTabs(true);
+	editor.SetTabWidth(4);
 
 	editor.RunCommand(EditorCommand::Tab);
 	CHECK(editor.Text() == "\tx");
@@ -240,30 +239,12 @@ TEST_CASE("AssignCmdKey rebinds a key to another command") {
 	Goto(editor, 0);
 
 	// Rebind Right to LineEnd instead of CharRight.
-	const uptr_t keyWithMods = static_cast<uptr_t>(Keys::Right);
-	editor.WndProc(Message::AssignCmdKey, keyWithMods,
-		static_cast<sptr_t>(Message::LineEnd));
+	editor.AssignCmdKey(Keys::Right, KeyMod::Norm, EditorCommand::LineEnd);
 
 	bool consumed = false;
 	editor.KeyDown(Keys::Right, KeyMod::Norm, &consumed);
 	CHECK(consumed);
 	CHECK(editor.CurrentPos() == 2);
-}
-
-TEST_CASE("AssignCmdKey ignores operations outside EditorCommand") {
-	TestHost host;
-	TestEditor editor(host);
-	editor.SetText("ab");
-	Goto(editor, 0);
-
-	const uptr_t keyWithMods = static_cast<uptr_t>(Keys::Right);
-	editor.WndProc(Message::AssignCmdKey, keyWithMods,
-		static_cast<sptr_t>(Message::ToggleCaretSticky));
-
-	bool consumed = false;
-	editor.KeyDown(Keys::Right, KeyMod::Norm, &consumed);
-	CHECK(consumed);
-	CHECK(editor.CurrentPos() == 1);
 }
 
 TEST_CASE("ClearCmdKey removes a binding") {
@@ -272,8 +253,7 @@ TEST_CASE("ClearCmdKey removes a binding") {
 	editor.SetText("ab");
 	Goto(editor, 0);
 
-	const uptr_t keyWithMods = static_cast<uptr_t>(Keys::Right);
-	editor.WndProc(Message::ClearCmdKey, keyWithMods, 0);
+	editor.ClearCmdKey(Keys::Right, KeyMod::Norm);
 
 	bool consumed = true;
 	editor.KeyDown(Keys::Right, KeyMod::Norm, &consumed);
@@ -281,25 +261,15 @@ TEST_CASE("ClearCmdKey removes a binding") {
 	CHECK(editor.CurrentPos() == 0);
 }
 
-TEST_CASE("Message path and ExecuteCommand match for LineDown") {
-	Sci::Position commandPos = 0;
-	{
-		TestHost host;
-		TestEditor viaCommand(host);
-		viaCommand.SetText("one\ntwo\nthree");
-		Goto(viaCommand, 0);
-		viaCommand.RunCommand(EditorCommand::LineDown);
-		commandPos = viaCommand.CurrentPos();
-	}
-	{
-		TestHost host;
-		TestEditor viaMessage(host);
-		viaMessage.SetText("one\ntwo\nthree");
-		Goto(viaMessage, 0);
-		viaMessage.WndProc(Message::LineDown, 0, 0);
-		CHECK(viaMessage.CurrentPos() == commandPos);
-		CHECK(commandPos > 0);
-	}
+TEST_CASE("LineDown command moves the caret to the next line") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.SetText("one\ntwo\nthree");
+	Goto(editor, 0);
+	editor.RunCommand(EditorCommand::LineDown);
+	CHECK(editor.CurrentPos() > 0);
+	// "one\n" is 4 bytes; caret should land on the second line.
+	CHECK(editor.CurrentPos() == 4);
 }
 
 TEST_CASE("Bound keyboard commands remain observable to macro recording") {

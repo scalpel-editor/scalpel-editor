@@ -21,7 +21,6 @@
 #include <vector>
 
 #include "ScintillaTypes.h"
-#include "ScintillaMessages.h"
 #include "ScintillaStructures.h"
 #include "ILoader.h"
 #include "ILexer.h"
@@ -69,17 +68,7 @@ using namespace Scintilla::Internal;
 
 namespace {
 
-std::string MessageStringGet(TestEditor &editor, Message msg, uptr_t wParam) {
-	const sptr_t len = editor.WndProc(msg, wParam, 0);
-	if (len <= 0)
-		return {};
-	std::string buf(static_cast<size_t>(len) + 1, '\0');
-	editor.WndProc(msg, wParam, reinterpret_cast<sptr_t>(buf.data()));
-	buf.resize(static_cast<size_t>(len));
-	return buf;
-}
-
-// Observable decoration state for named-path versus message-path parity.
+// Apply a fixed decoration sequence through named TestEditor wrappers.
 struct DecorationsSnapshot {
 	IndicatorStyle indicatorStyle = IndicatorStyle::Plain;
 	int indicatorFore = 0;
@@ -98,30 +87,9 @@ struct DecorationsSnapshot {
 	AnnotationVisible annotationVisible = AnnotationVisible::Hidden;
 	std::string eolAnnotationText;
 	size_t invalidatedRectangles = 0;
-
-	bool operator==(const DecorationsSnapshot &other) const noexcept {
-		return indicatorStyle == other.indicatorStyle
-			&& indicatorFore == other.indicatorFore
-			&& currentIndicator == other.currentIndicator
-			&& currentValue == other.currentValue
-			&& valueAt1 == other.valueAt1
-			&& valueAt2 == other.valueAt2
-			&& rangeStart == other.rangeStart
-			&& rangeEnd == other.rangeEnd
-			&& braceMatch == other.braceMatch
-			&& controlCharSymbol == other.controlCharSymbol
-			&& representation == other.representation
-			&& hotspotFore == other.hotspotFore
-			&& annotationText == other.annotationText
-			&& annotationStyle == other.annotationStyle
-			&& annotationVisible == other.annotationVisible
-			&& eolAnnotationText == other.eolAnnotationText
-			&& invalidatedRectangles == other.invalidatedRectangles;
-	}
 };
 
-// Apply a fixed sequence through named TestEditor wrappers or temporary message forwarders.
-DecorationsSnapshot CaptureDecorations(bool throughMessage) {
+DecorationsSnapshot CaptureDecorations() {
 	TestHost host;
 	TestEditor editor(host);
 	editor.SetText("(ab)");
@@ -131,37 +99,19 @@ DecorationsSnapshot CaptureDecorations(bool throughMessage) {
 	const char *ohm = "\xe2\x84\xa6";
 	const char *label = "OHM";
 
-	if (throughMessage) {
-		editor.WndProc(Message::IndicSetStyle, 8, static_cast<sptr_t>(IndicatorStyle::Squiggle));
-		editor.WndProc(Message::IndicSetFore, 8, 0x0000FF);
-		editor.WndProc(Message::SetIndicatorCurrent, 8, 0);
-		editor.WndProc(Message::SetIndicatorValue, 3, 0);
-		editor.WndProc(Message::IndicatorFillRange, 1, 2);
-		editor.WndProc(Message::BraceHighlight, 0, 3);
-		editor.WndProc(Message::SetControlCharSymbol, 42, 0);
-		editor.WndProc(Message::SetRepresentation, reinterpret_cast<uptr_t>(ohm),
-			reinterpret_cast<sptr_t>(label));
-		editor.WndProc(Message::SetHotspotActiveFore, 1, 0x00FF00);
-		editor.WndProc(Message::AnnotationSetText, 0, reinterpret_cast<sptr_t>("note"));
-		editor.WndProc(Message::AnnotationSetStyle, 0, 7);
-		editor.WndProc(Message::AnnotationSetVisible,
-			static_cast<uptr_t>(AnnotationVisible::Standard), 0);
-		editor.WndProc(Message::EOLAnnotationSetText, 0, reinterpret_cast<sptr_t>("eol"));
-	} else {
-		editor.IndicSetStyle(8, IndicatorStyle::Squiggle);
-		editor.IndicSetFore(8, 0x0000FF);
-		editor.SetIndicatorCurrent(8);
-		editor.SetIndicatorValue(3);
-		editor.IndicatorFillRange(1, 2);
-		editor.BraceHighlight(0, 3);
-		editor.SetControlCharSymbol(42);
-		editor.SetRepresentation(ohm, label);
-		editor.SetHotspotActiveFore(true, 0x00FF00);
-		editor.AnnotationSetText(0, "note");
-		editor.AnnotationSetStyle(0, 7);
-		editor.SetAnnotationVisible(AnnotationVisible::Standard);
-		editor.EOLAnnotationSetText(0, "eol");
-	}
+	editor.IndicSetStyle(8, IndicatorStyle::Squiggle);
+	editor.IndicSetFore(8, 0x0000FF);
+	editor.SetIndicatorCurrent(8);
+	editor.SetIndicatorValue(3);
+	editor.IndicatorFillRange(1, 2);
+	editor.BraceHighlight(0, 3);
+	editor.SetControlCharSymbol(42);
+	editor.SetRepresentation(ohm, label);
+	editor.SetHotspotActiveFore(true, 0x00FF00);
+	editor.AnnotationSetText(0, "note");
+	editor.AnnotationSetStyle(0, 7);
+	editor.SetAnnotationVisible(AnnotationVisible::Standard);
+	editor.EOLAnnotationSetText(0, "eol");
 
 	DecorationsSnapshot s;
 	s.indicatorStyle = editor.IndicGetStyle(8);
@@ -194,54 +144,54 @@ TEST_CASE("Indicator style colour hover flags under alpha stroke and out-of-rang
 
 	editor.PaintAll();
 	editor.ClearObservations();
-	editor.WndProc(Message::IndicSetStyle, 0, static_cast<sptr_t>(IndicatorStyle::Squiggle));
-	CHECK(static_cast<IndicatorStyle>(editor.WndProc(Message::IndicGetStyle, 0, 0))
+	editor.IndicSetStyle(0, IndicatorStyle::Squiggle);
+	CHECK(static_cast<IndicatorStyle>(editor.IndicGetStyle(0))
 		== IndicatorStyle::Squiggle);
 	CHECK(editor.Snapshot().invalidatedRectangles > 0);
 
-	editor.WndProc(Message::IndicSetFore, 0, 0x0000FF);
-	CHECK(editor.WndProc(Message::IndicGetFore, 0, 0) == 0x0000FF);
+	editor.IndicSetFore(0, 0x0000FF);
+	CHECK(editor.IndicGetFore(0) == 0x0000FF);
 
-	editor.WndProc(Message::IndicSetHoverStyle, 1, static_cast<sptr_t>(IndicatorStyle::Box));
-	CHECK(static_cast<IndicatorStyle>(editor.WndProc(Message::IndicGetHoverStyle, 1, 0))
+	editor.IndicSetHoverStyle(1, IndicatorStyle::Box);
+	CHECK(static_cast<IndicatorStyle>(editor.IndicGetHoverStyle(1))
 		== IndicatorStyle::Box);
-	editor.WndProc(Message::IndicSetHoverFore, 1, 0x00FF00);
-	CHECK(editor.WndProc(Message::IndicGetHoverFore, 1, 0) == 0x00FF00);
+	editor.IndicSetHoverFore(1, 0x00FF00);
+	CHECK(editor.IndicGetHoverFore(1) == 0x00FF00);
 
-	editor.WndProc(Message::IndicSetFlags, 2, static_cast<sptr_t>(IndicFlag::ValueFore));
-	CHECK(static_cast<IndicFlag>(editor.WndProc(Message::IndicGetFlags, 2, 0)) == IndicFlag::ValueFore);
+	editor.IndicSetFlags(2, IndicFlag::ValueFore);
+	CHECK(static_cast<IndicFlag>(editor.IndicGetFlags(2)) == IndicFlag::ValueFore);
 
-	editor.WndProc(Message::IndicSetUnder, 3, 1);
-	CHECK(editor.WndProc(Message::IndicGetUnder, 3, 0) != 0);
-	editor.WndProc(Message::IndicSetUnder, 3, 0);
-	CHECK(editor.WndProc(Message::IndicGetUnder, 3, 0) == 0);
+	editor.IndicSetUnder(3, true);
+	CHECK(editor.IndicGetUnder(3) != 0);
+	editor.IndicSetUnder(3, false);
+	CHECK(editor.IndicGetUnder(3) == 0);
 
-	editor.WndProc(Message::IndicSetAlpha, 0, 128);
-	CHECK(editor.WndProc(Message::IndicGetAlpha, 0, 0) == 128);
-	editor.WndProc(Message::IndicSetOutlineAlpha, 0, 64);
-	CHECK(editor.WndProc(Message::IndicGetOutlineAlpha, 0, 0) == 64);
+	editor.IndicSetAlpha(0, 128);
+	CHECK(editor.IndicGetAlpha(0) == 128);
+	editor.IndicSetOutlineAlpha(0, 64);
+	CHECK(editor.IndicGetOutlineAlpha(0) == 64);
 	// Out of 0..255 ignored.
-	editor.WndProc(Message::IndicSetAlpha, 0, 300);
-	CHECK(editor.WndProc(Message::IndicGetAlpha, 0, 0) == 128);
+	editor.IndicSetAlpha(0, 300);
+	CHECK(editor.IndicGetAlpha(0) == 128);
 
-	editor.WndProc(Message::IndicSetStrokeWidth, 0, 250);
-	CHECK(editor.WndProc(Message::IndicGetStrokeWidth, 0, 0) == 250);
+	editor.IndicSetStrokeWidth(0, 250);
+	CHECK(editor.IndicGetStrokeWidth(0) == 250);
 
 	// Out-of-range: no assignment, zero gets.
 	const size_t bad = static_cast<size_t>(IndicatorMax) + 1;
 	editor.PaintAll();
 	editor.ClearObservations();
-	editor.WndProc(Message::IndicSetStyle, bad, static_cast<sptr_t>(IndicatorStyle::FullBox));
-	CHECK(editor.WndProc(Message::IndicGetStyle, bad, 0) == 0);
-	CHECK(editor.WndProc(Message::IndicGetFore, bad, 0) == 0);
+	editor.IndicSetStyle(bad, IndicatorStyle::FullBox);
+	CHECK(static_cast<int>(editor.IndicGetStyle(bad)) == 0);
+	CHECK(editor.IndicGetFore(bad) == 0);
 
 	if constexpr (sizeof(uptr_t) > 4) {
 		constexpr uptr_t huge = static_cast<uptr_t>(UINT32_MAX) + 1u;
-		editor.WndProc(Message::IndicSetStyle, 0, static_cast<sptr_t>(IndicatorStyle::Squiggle));
-		editor.WndProc(Message::IndicSetStyle, huge, static_cast<sptr_t>(IndicatorStyle::FullBox));
-		CHECK(static_cast<IndicatorStyle>(editor.WndProc(Message::IndicGetStyle, 0, 0))
+		editor.IndicSetStyle(0, IndicatorStyle::Squiggle);
+		editor.IndicSetStyle(huge, IndicatorStyle::FullBox);
+		CHECK(static_cast<IndicatorStyle>(editor.IndicGetStyle(0))
 			== IndicatorStyle::Squiggle);
-		CHECK(editor.WndProc(Message::IndicGetStyle, huge, 0) == 0);
+		CHECK(static_cast<int>(editor.IndicGetStyle(huge)) == 0);
 	}
 }
 
@@ -250,38 +200,38 @@ TEST_CASE("Indicator fill clear query current value") {
 	TestEditor editor(host);
 	editor.SetText("abcdef");
 
-	editor.WndProc(Message::SetIndicatorCurrent, 8, 0);
-	CHECK(editor.WndProc(Message::GetIndicatorCurrent, 0, 0) == 8);
-	editor.WndProc(Message::SetIndicatorValue, 3, 0);
-	CHECK(editor.WndProc(Message::GetIndicatorValue, 0, 0) == 3);
+	editor.SetIndicatorCurrent(static_cast<int>(8));
+	CHECK(editor.GetIndicatorCurrent() == 8);
+	editor.SetIndicatorValue(static_cast<int>(3));
+	CHECK(editor.GetIndicatorValue() == 3);
 
-	editor.WndProc(Message::IndicatorFillRange, 1, 3);
-	CHECK(editor.WndProc(Message::IndicatorValueAt, 8, 1) == 3);
-	CHECK(editor.WndProc(Message::IndicatorValueAt, 8, 2) == 3);
-	CHECK(editor.WndProc(Message::IndicatorValueAt, 8, 3) == 3);
-	CHECK(editor.WndProc(Message::IndicatorValueAt, 8, 0) == 0);
-	CHECK(editor.WndProc(Message::IndicatorValueAt, 8, 4) == 0);
-	CHECK(editor.WndProc(Message::IndicatorStart, 8, 2) == 1);
-	CHECK(editor.WndProc(Message::IndicatorEnd, 8, 2) == 4);
-	CHECK((editor.WndProc(Message::IndicatorAllOnFor, 2, 0) & (1 << 8)) != 0);
-	CHECK((editor.WndProc(Message::IndicatorAllOnFor, 0, 0) & (1 << 8)) == 0);
+	editor.IndicatorFillRange(1, 3);
+	CHECK(editor.IndicatorValueAt(static_cast<int>(8), 1) == 3);
+	CHECK(editor.IndicatorValueAt(static_cast<int>(8), 2) == 3);
+	CHECK(editor.IndicatorValueAt(static_cast<int>(8), 3) == 3);
+	CHECK(editor.IndicatorValueAt(static_cast<int>(8), 0) == 0);
+	CHECK(editor.IndicatorValueAt(static_cast<int>(8), 4) == 0);
+	CHECK(editor.IndicatorStart(static_cast<int>(8), 2) == 1);
+	CHECK(editor.IndicatorEnd(static_cast<int>(8), 2) == 4);
+	CHECK((editor.IndicatorAllOnFor(2) & (1 << 8)) != 0);
+	CHECK((editor.IndicatorAllOnFor(0) & (1 << 8)) == 0);
 
-	editor.WndProc(Message::SetIndicatorCurrent, 9, 0);
-	editor.WndProc(Message::SetIndicatorValue, 5, 0);
-	editor.WndProc(Message::IndicatorFillRange, 4, 2);
-	CHECK(editor.WndProc(Message::IndicatorValueAt, 9, 4) == 5);
-	CHECK(editor.WndProc(Message::IndicatorValueAt, 9, 5) == 5);
-	CHECK(editor.WndProc(Message::IndicatorStart, 9, 5) == 4);
-	CHECK(editor.WndProc(Message::IndicatorEnd, 9, 5) == 6);
+	editor.SetIndicatorCurrent(static_cast<int>(9));
+	editor.SetIndicatorValue(static_cast<int>(5));
+	editor.IndicatorFillRange(4, 2);
+	CHECK(editor.IndicatorValueAt(static_cast<int>(9), 4) == 5);
+	CHECK(editor.IndicatorValueAt(static_cast<int>(9), 5) == 5);
+	CHECK(editor.IndicatorStart(static_cast<int>(9), 5) == 4);
+	CHECK(editor.IndicatorEnd(static_cast<int>(9), 5) == 6);
 
-	editor.WndProc(Message::SetIndicatorCurrent, 8, 0);
-	editor.WndProc(Message::IndicatorClearRange, 1, 3);
-	CHECK(editor.WndProc(Message::IndicatorValueAt, 8, 1) == 0);
-	CHECK(editor.WndProc(Message::IndicatorValueAt, 8, 2) == 0);
+	editor.SetIndicatorCurrent(static_cast<int>(8));
+	editor.IndicatorClearRange(1, 3);
+	CHECK(editor.IndicatorValueAt(static_cast<int>(8), 1) == 0);
+	CHECK(editor.IndicatorValueAt(static_cast<int>(8), 2) == 0);
 
-	editor.WndProc(Message::SetIndicatorCurrent, 9, 0);
-	editor.WndProc(Message::IndicatorClearRange, 4, 2);
-	CHECK(editor.WndProc(Message::IndicatorValueAt, 9, 4) == 0);
+	editor.SetIndicatorCurrent(static_cast<int>(9));
+	editor.IndicatorClearRange(4, 2);
+	CHECK(editor.IndicatorValueAt(static_cast<int>(9), 4) == 0);
 }
 
 TEST_CASE("Brace highlight match bad light and indicators") {
@@ -294,29 +244,29 @@ TEST_CASE("Brace highlight match bad light and indicators") {
 	const Sci::Position openBracket = 2;
 	const Sci::Position closeBracket = 4;
 
-	CHECK(editor.WndProc(Message::BraceMatch, openParen, 0) == closeParen);
-	CHECK(editor.WndProc(Message::BraceMatch, closeParen, 0) == openParen);
-	CHECK(editor.WndProc(Message::BraceMatch, openBracket, 0) == closeBracket);
-	CHECK(editor.WndProc(Message::BraceMatch, 1, 0) == -1);
+	CHECK(editor.BraceMatch(openParen, 0) == closeParen);
+	CHECK(editor.BraceMatch(closeParen, 0) == openParen);
+	CHECK(editor.BraceMatch(openBracket, 0) == closeBracket);
+	CHECK(editor.BraceMatch(1, 0) == -1);
 
-	CHECK(editor.WndProc(Message::BraceMatchNext, openParen, openParen + 1) == closeParen);
+	CHECK(editor.BraceMatchNext(openParen, openParen + 1) == closeParen);
 
 	editor.PaintAll();
 	editor.ClearObservations();
-	editor.WndProc(Message::BraceHighlight, openParen, closeParen);
+	editor.BraceHighlight(openParen, closeParen);
 	CHECK(editor.Snapshot().invalidatedRectangles > 0);
 
-	editor.WndProc(Message::BraceBadLight, openParen, 0);
-	editor.WndProc(Message::BraceBadLight, static_cast<uptr_t>(-1), 0);
+	editor.BraceBadLight(openParen);
+	editor.BraceBadLight(-1);
 
-	editor.WndProc(Message::BraceHighlightIndicator, 1, 10);
-	editor.WndProc(Message::BraceBadLightIndicator, 1, 11);
+	editor.BraceHighlightIndicator(1, 10);
+	editor.BraceBadLightIndicator(1, 11);
 	// Out-of-range indicator ignored (no crash).
-	editor.WndProc(Message::BraceHighlightIndicator, 1, static_cast<sptr_t>(IndicatorMax) + 1);
+	editor.BraceHighlightIndicator(1, static_cast<sptr_t>(IndicatorMax) + 1);
 
 	editor.PaintAll();
 	editor.ClearObservations();
-	editor.WndProc(Message::BraceHighlight, openBracket, closeBracket);
+	editor.BraceHighlight(openBracket, closeBracket);
 	CHECK(editor.Snapshot().invalidatedRectangles > 0);
 }
 
@@ -326,26 +276,26 @@ TEST_CASE("Hotspot active colours underline single-line") {
 
 	editor.PaintAll();
 	editor.ClearObservations();
-	editor.WndProc(Message::SetHotspotActiveFore, 1, 0x0000FF);
-	CHECK(editor.WndProc(Message::GetHotspotActiveFore, 0, 0) == 0x0000FF);
+	editor.SetHotspotActiveFore(true, 0x0000FF);
+	CHECK(editor.GetHotspotActiveFore() == 0x0000FF);
 	CHECK(editor.Snapshot().invalidatedRectangles > 0);
 
-	editor.WndProc(Message::SetHotspotActiveBack, 1, 0x00FF00);
-	CHECK(editor.WndProc(Message::GetHotspotActiveBack, 0, 0) == 0x00FF00);
+	editor.SetHotspotActiveBack(true, 0x00FF00);
+	CHECK(editor.GetHotspotActiveBack() == 0x00FF00);
 
-	editor.WndProc(Message::SetHotspotActiveUnderline, 1, 0);
-	CHECK(editor.WndProc(Message::GetHotspotActiveUnderline, 0, 0) != 0);
-	editor.WndProc(Message::SetHotspotActiveUnderline, 0, 0);
-	CHECK(editor.WndProc(Message::GetHotspotActiveUnderline, 0, 0) == 0);
+	editor.SetHotspotActiveUnderline(true);
+	CHECK(editor.GetHotspotActiveUnderline());
+	editor.SetHotspotActiveUnderline(false);
+	CHECK_FALSE(editor.GetHotspotActiveUnderline());
 
-	editor.WndProc(Message::SetHotspotSingleLine, 1, 0);
-	CHECK(editor.WndProc(Message::GetHotspotSingleLine, 0, 0) != 0);
-	editor.WndProc(Message::SetHotspotSingleLine, 0, 0);
-	CHECK(editor.WndProc(Message::GetHotspotSingleLine, 0, 0) == 0);
+	editor.SetHotspotSingleLine(true);
+	CHECK(editor.GetHotspotSingleLine());
+	editor.SetHotspotSingleLine(false);
+	CHECK_FALSE(editor.GetHotspotSingleLine());
 
 	// Clear optional colours.
-	editor.WndProc(Message::SetHotspotActiveFore, 0, 0);
-	editor.WndProc(Message::SetHotspotActiveBack, 0, 0);
+	editor.SetHotspotActiveFore(false, 0);
+	editor.SetHotspotActiveBack(false, 0);
 }
 
 TEST_CASE("Representation set get clear appearance colour control-char") {
@@ -355,45 +305,38 @@ TEST_CASE("Representation set get clear appearance colour control-char") {
 	const char *ohm = "\xe2\x84\xa6";  // U+2126
 	const char *label = "OHM";
 
-	editor.WndProc(Message::SetRepresentation, reinterpret_cast<uptr_t>(ohm),
-		reinterpret_cast<sptr_t>(label));
-	CHECK(MessageStringGet(editor, Message::GetRepresentation, reinterpret_cast<uptr_t>(ohm)) == label);
+	editor.SetRepresentation(ohm, label);
+	CHECK(([&](){ char b[64]={}; editor.GetRepresentation(ohm, b); return std::string(b);}()) == label);
 
-	editor.WndProc(Message::SetRepresentationAppearance, reinterpret_cast<uptr_t>(ohm),
-		static_cast<sptr_t>(RepresentationAppearance::Plain));
-	CHECK(static_cast<RepresentationAppearance>(
-		editor.WndProc(Message::GetRepresentationAppearance, reinterpret_cast<uptr_t>(ohm), 0))
+	editor.SetRepresentationAppearance(ohm, RepresentationAppearance::Plain);
+	CHECK(static_cast<RepresentationAppearance>(editor.GetRepresentationAppearance(ohm))
 		== RepresentationAppearance::Plain);
 
-	editor.WndProc(Message::SetRepresentationAppearance, reinterpret_cast<uptr_t>(ohm),
-		static_cast<sptr_t>(RepresentationAppearance::Blob));
-	CHECK(static_cast<RepresentationAppearance>(
-		editor.WndProc(Message::GetRepresentationAppearance, reinterpret_cast<uptr_t>(ohm), 0))
+	editor.SetRepresentationAppearance(ohm, RepresentationAppearance::Blob);
+	CHECK(static_cast<RepresentationAppearance>(editor.GetRepresentationAppearance(ohm))
 		== RepresentationAppearance::Blob);
 
 	// Packed colouralpha as int: compare as unsigned so the alpha high bit is not sign-extended.
-	editor.WndProc(Message::SetRepresentationColour, reinterpret_cast<uptr_t>(ohm), 0x800000FF);
-	CHECK(static_cast<uint32_t>(editor.WndProc(Message::GetRepresentationColour,
-		reinterpret_cast<uptr_t>(ohm), 0)) == 0x800000FFu);
+	editor.SetRepresentationColour(ohm, 0x800000FF);
+	CHECK(static_cast<uint32_t>(editor.GetRepresentationColour(ohm)) == 0x800000FFu);
 
-	editor.WndProc(Message::ClearRepresentation, reinterpret_cast<uptr_t>(ohm), 0);
-	CHECK(editor.WndProc(Message::GetRepresentation, reinterpret_cast<uptr_t>(ohm), 0) == 0);
+	editor.ClearRepresentation(ohm);
+	CHECK(editor.GetRepresentation(ohm, nullptr) == 0);
 
 	// Control char symbol.
 	editor.PaintAll();
 	editor.ClearObservations();
-	editor.WndProc(Message::SetControlCharSymbol, 42, 0);
-	CHECK(editor.WndProc(Message::GetControlCharSymbol, 0, 0) == 42);
+	editor.SetControlCharSymbol(static_cast<int>(42));
+	CHECK(editor.GetControlCharSymbol() == 42);
 	CHECK(editor.Snapshot().invalidatedRectangles > 0);
-	editor.WndProc(Message::SetControlCharSymbol, 0, 0);
-	CHECK(editor.WndProc(Message::GetControlCharSymbol, 0, 0) == 0);
+	editor.SetControlCharSymbol(static_cast<int>(0));
+	CHECK(editor.GetControlCharSymbol() == 0);
 
 	// Clear all restores defaults.
 	const char *letterA = "A";
-	editor.WndProc(Message::SetRepresentation, reinterpret_cast<uptr_t>(letterA),
-		reinterpret_cast<sptr_t>("AY"));
-	editor.WndProc(Message::ClearAllRepresentations, 0, 0);
-	CHECK(editor.WndProc(Message::GetRepresentation, reinterpret_cast<uptr_t>(letterA), 0) == 0);
+	editor.SetRepresentation(letterA, "AY");
+	editor.ClearAllRepresentations();
+	CHECK(editor.GetRepresentation(letterA, nullptr) == 0);
 }
 
 TEST_CASE("Annotation text style styles lines visible offset clear") {
@@ -401,44 +344,44 @@ TEST_CASE("Annotation text style styles lines visible offset clear") {
 	TestEditor editor(host);
 	editor.SetText("one\ntwo\nthree\n");
 
-	editor.WndProc(Message::AnnotationSetText, 1, reinterpret_cast<sptr_t>("note"));
-	CHECK(MessageStringGet(editor, Message::AnnotationGetText, 1) == "note");
+	editor.AnnotationSetText(1, "note");
+	CHECK(editor.AnnotationGetText(1) == "note");
 
-	editor.WndProc(Message::AnnotationSetStyle, 1, 7);
-	CHECK(editor.WndProc(Message::AnnotationGetStyle, 1, 0) == 7);
+	editor.AnnotationSetStyle(1, 7);
+	CHECK(editor.AnnotationGetStyle(1) == 7);
 
 	// Multi-line annotation counts as display lines when visible.
-	editor.WndProc(Message::AnnotationSetText, 0, reinterpret_cast<sptr_t>("a\nb"));
-	CHECK(editor.WndProc(Message::AnnotationGetLines, 0, 0) == 2);
+	editor.AnnotationSetText(0, "a\nb");
+	CHECK(editor.AnnotationGetLines(0) == 2);
 
 	editor.PaintAll();
 	editor.ClearObservations();
-	editor.WndProc(Message::AnnotationSetVisible, static_cast<uptr_t>(AnnotationVisible::Standard), 0);
-	CHECK(static_cast<AnnotationVisible>(editor.WndProc(Message::AnnotationGetVisible, 0, 0))
+	editor.SetAnnotationVisible(AnnotationVisible::Standard);
+	CHECK(static_cast<AnnotationVisible>(editor.AnnotationGetVisible())
 		== AnnotationVisible::Standard);
 	CHECK(editor.Snapshot().invalidatedRectangles > 0);
 
-	editor.WndProc(Message::AnnotationSetStyleOffset, 256, 0);
-	CHECK(editor.WndProc(Message::AnnotationGetStyleOffset, 0, 0) == 256);
+	editor.AnnotationSetStyleOffset(256);
+	CHECK(editor.AnnotationGetStyleOffset() == 256);
 
 	// Per-character styles.
 	const unsigned char styles[] = {1, 2, 3, 4};
-	editor.WndProc(Message::AnnotationSetText, 2, reinterpret_cast<sptr_t>("abcd"));
-	editor.WndProc(Message::AnnotationSetStyles, 2, reinterpret_cast<sptr_t>(styles));
+	editor.AnnotationSetText(2, "abcd");
+	editor.AnnotationSetStyles(2, styles);
 	char styleBuf[8]{};
-	CHECK(editor.WndProc(Message::AnnotationGetStyles, 2, reinterpret_cast<sptr_t>(styleBuf)) == 4);
+	CHECK(editor.AnnotationGetStyles(2, styleBuf) == 4);
 	CHECK(std::memcmp(styleBuf, styles, 4) == 0);
 
-	editor.WndProc(Message::AnnotationClearAll, 0, 0);
-	CHECK(editor.WndProc(Message::AnnotationGetText, 1, 0) == 0);
-	CHECK(editor.WndProc(Message::AnnotationGetLines, 0, 0) == 0);
+	editor.AnnotationClearAll();
+	CHECK(editor.AnnotationGetText(1).empty());
+	CHECK(editor.AnnotationGetLines(0) == 0);
 
-	editor.WndProc(Message::AnnotationSetText, 0, reinterpret_cast<sptr_t>("via-msg"));
-	CHECK(MessageStringGet(editor, Message::AnnotationGetText, 0) == "via-msg");
-	editor.WndProc(Message::AnnotationSetVisible, static_cast<uptr_t>(AnnotationVisible::Boxed), 0);
-	CHECK(static_cast<AnnotationVisible>(editor.WndProc(Message::AnnotationGetVisible, 0, 0))
+	editor.AnnotationSetText(0, "via-msg");
+	CHECK(editor.AnnotationGetText(0) == "via-msg");
+	editor.SetAnnotationVisible(AnnotationVisible::Boxed);
+	CHECK(static_cast<AnnotationVisible>(editor.AnnotationGetVisible())
 		== AnnotationVisible::Boxed);
-	editor.WndProc(Message::AnnotationClearAll, 0, 0);
+	editor.AnnotationClearAll();
 }
 
 TEST_CASE("EOL annotation text style visible offset clear") {
@@ -446,40 +389,45 @@ TEST_CASE("EOL annotation text style visible offset clear") {
 	TestEditor editor(host);
 	editor.SetText("alpha\nbeta\n");
 
-	editor.WndProc(Message::EOLAnnotationSetText, 0, reinterpret_cast<sptr_t>("asm"));
-	CHECK(MessageStringGet(editor, Message::EOLAnnotationGetText, 0) == "asm");
+	editor.EOLAnnotationSetText(0, "asm");
+	CHECK(editor.EOLAnnotationGetText(0) == "asm");
 
-	editor.WndProc(Message::EOLAnnotationSetStyle, 0, 5);
-	CHECK(editor.WndProc(Message::EOLAnnotationGetStyle, 0, 0) == 5);
+	editor.EOLAnnotationSetStyle(0, 5);
+	CHECK(editor.EOLAnnotationGetStyle(0) == 5);
 
 	editor.PaintAll();
 	editor.ClearObservations();
-	editor.WndProc(Message::EOLAnnotationSetVisible,
-		static_cast<uptr_t>(EOLAnnotationVisible::Standard), 0);
-	CHECK(static_cast<EOLAnnotationVisible>(
-		editor.WndProc(Message::EOLAnnotationGetVisible, 0, 0)) == EOLAnnotationVisible::Standard);
+	editor.SetEOLAnnotationVisible(EOLAnnotationVisible::Standard);
+	CHECK(static_cast<EOLAnnotationVisible>(editor.EOLAnnotationGetVisible()) == EOLAnnotationVisible::Standard);
 	CHECK(editor.Snapshot().invalidatedRectangles > 0);
 
-	editor.WndProc(Message::EOLAnnotationSetStyleOffset, 512, 0);
-	CHECK(editor.WndProc(Message::EOLAnnotationGetStyleOffset, 0, 0) == 512);
+	editor.EOLAnnotationSetStyleOffset(512);
+	CHECK(editor.EOLAnnotationGetStyleOffset() == 512);
 
-	editor.WndProc(Message::EOLAnnotationClearAll, 0, 0);
-	CHECK(editor.WndProc(Message::EOLAnnotationGetText, 0, 0) == 0);
+	editor.EOLAnnotationClearAll();
+	CHECK(editor.EOLAnnotationGetText(0).empty());
 
-	editor.WndProc(Message::EOLAnnotationSetText, 1, reinterpret_cast<sptr_t>("end"));
-	CHECK(MessageStringGet(editor, Message::EOLAnnotationGetText, 1) == "end");
-	editor.WndProc(Message::EOLAnnotationSetStyle, 1, 9);
-	CHECK(editor.WndProc(Message::EOLAnnotationGetStyle, 1, 0) == 9);
-	editor.WndProc(Message::EOLAnnotationSetVisible,
-		static_cast<uptr_t>(EOLAnnotationVisible::Boxed), 0);
-	CHECK(static_cast<EOLAnnotationVisible>(
-		editor.WndProc(Message::EOLAnnotationGetVisible, 0, 0)) == EOLAnnotationVisible::Boxed);
-	editor.WndProc(Message::EOLAnnotationClearAll, 0, 0);
-	CHECK(editor.WndProc(Message::EOLAnnotationGetText, 1, 0) == 0);
+	editor.EOLAnnotationSetText(1, "end");
+	CHECK(editor.EOLAnnotationGetText(1) == "end");
+	editor.EOLAnnotationSetStyle(1, 9);
+	CHECK(editor.EOLAnnotationGetStyle(1) == 9);
+	editor.SetEOLAnnotationVisible(EOLAnnotationVisible::Boxed);
+	CHECK(static_cast<EOLAnnotationVisible>(editor.EOLAnnotationGetVisible()) == EOLAnnotationVisible::Boxed);
+	editor.EOLAnnotationClearAll();
+	CHECK(editor.EOLAnnotationGetText(1).empty());
 }
 
-TEST_CASE("Decoration message path matches named methods") {
-	// Representative set of forwarders: indicator style/value/range, brace match,
-	// control char, representation, hotspot, annotation, and EOL annotation.
-	CHECK(CaptureDecorations(false) == CaptureDecorations(true));
+TEST_CASE("Decoration named path captures indicator brace annotation and representation state") {
+	const DecorationsSnapshot s = CaptureDecorations();
+	CHECK(s.indicatorStyle == IndicatorStyle::Squiggle);
+	CHECK(s.indicatorFore == 0x0000FF);
+	CHECK(s.currentIndicator == 8);
+	CHECK(s.currentValue == 3);
+	CHECK(s.valueAt1 == 3);
+	CHECK(s.controlCharSymbol == 42);
+	CHECK(s.representation == "OHM");
+	CHECK(s.annotationText == "note");
+	CHECK(s.annotationStyle == 7);
+	CHECK(s.annotationVisible == AnnotationVisible::Standard);
+	CHECK(s.eolAnnotationText == "eol");
 }

@@ -3,7 +3,6 @@
  ** Focused behavior tests for margin widths, sensitivity, text, and fold colours.
  **/
 
-#include <array>
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
@@ -20,7 +19,6 @@
 #include <vector>
 
 #include "ScintillaTypes.h"
-#include "ScintillaMessages.h"
 #include "ScintillaStructures.h"
 #include "ILoader.h"
 #include "ILexer.h"
@@ -70,66 +68,66 @@ TEST_CASE("Margin width type mask and left gap round-trip with redraw") {
 	TestHost host;
 	TestEditor editor(host);
 
-	const int defaultLeft = static_cast<int>(editor.WndProc(Message::GetMarginLeft, 0, 0));
+	const int defaultLeft = editor.GetMarginLeft();
 	CHECK(defaultLeft >= 0);
 
 	editor.ClearObservations();
-	editor.WndProc(Message::SetMarginWidthN, 1, 24);
-	CHECK(editor.WndProc(Message::GetMarginWidthN, 1, 0) == 24);
+	editor.SetMarginWidthN(1, 24);
+	CHECK(editor.GetMarginWidthN(1) == 24);
 	CHECK(editor.Snapshot().invalidatedRectangles > 0);
 	editor.PaintAll();
 
 	// Same width must not request another full style redraw.
 	editor.ClearObservations();
-	editor.WndProc(Message::SetMarginWidthN, 1, 24);
+	editor.SetMarginWidthN(1, 24);
 	CHECK(editor.Snapshot().invalidatedRectangles == 0);
 
-	editor.WndProc(Message::SetMarginTypeN, 1, static_cast<sptr_t>(MarginType::Number));
-	CHECK(static_cast<MarginType>(editor.WndProc(Message::GetMarginTypeN, 1, 0)) == MarginType::Number);
+	editor.SetMarginTypeN(1, MarginType::Number);
+	CHECK(editor.GetMarginTypeN(1) == MarginType::Number);
 
-	editor.WndProc(Message::SetMarginMaskN, 1, MaskFolders);
-	CHECK(editor.WndProc(Message::GetMarginMaskN, 1, 0) == MaskFolders);
+	editor.SetMarginMaskN(1, MaskFolders);
+	CHECK(editor.GetMarginMaskN(1) == MaskFolders);
 
 	editor.PaintAll();
 	editor.ClearObservations();
-	editor.WndProc(Message::SetMarginLeft, 0, 8);
-	CHECK(editor.WndProc(Message::GetMarginLeft, 0, 0) == 8);
+	editor.SetMarginLeft(8);
+	CHECK(editor.GetMarginLeft() == 8);
 	CHECK(editor.Snapshot().invalidatedRectangles > 0);
 
-	editor.WndProc(Message::SetMarginRight, 0, 6);
-	CHECK(editor.WndProc(Message::GetMarginRight, 0, 0) == 6);
+	editor.SetMarginRight(6);
+	CHECK(editor.GetMarginRight() == 6);
 }
 
 TEST_CASE("Margin sensitivity cursor back and count options") {
 	TestHost host;
 	TestEditor editor(host);
 
-	CHECK(editor.WndProc(Message::GetMarginSensitiveN, 1, 0) == 0);
-	editor.WndProc(Message::SetMarginSensitiveN, 1, 1);
-	CHECK(editor.WndProc(Message::GetMarginSensitiveN, 1, 0) != 0);
+	CHECK_FALSE(editor.GetMarginSensitiveN(1));
+	editor.SetMarginSensitiveN(1, true);
+	CHECK(editor.GetMarginSensitiveN(1));
 
-	editor.WndProc(Message::SetMarginCursorN, 1, static_cast<sptr_t>(CursorShape::Arrow));
-	CHECK(static_cast<CursorShape>(editor.WndProc(Message::GetMarginCursorN, 1, 0)) == CursorShape::Arrow);
+	editor.SetMarginCursorN(1, CursorShape::Arrow);
+	CHECK(editor.GetMarginCursorN(1) == CursorShape::Arrow);
 
 	const int colour = 0x00FF00;
-	editor.WndProc(Message::SetMarginTypeN, 1, static_cast<sptr_t>(MarginType::Colour));
-	editor.WndProc(Message::SetMarginBackN, 1, colour);
-	CHECK(editor.WndProc(Message::GetMarginBackN, 1, 0) == colour);
+	editor.SetMarginTypeN(1, MarginType::Colour);
+	editor.SetMarginBackN(1, colour);
+	CHECK(editor.GetMarginBackN(1) == colour);
 
-	const size_t before = static_cast<size_t>(editor.WndProc(Message::GetMargins, 0, 0));
+	const size_t before = editor.GetMargins();
 	CHECK(before >= 1);
-	editor.WndProc(Message::SetMargins, before + 1, 0);
-	CHECK(static_cast<size_t>(editor.WndProc(Message::GetMargins, 0, 0)) == before + 1);
+	editor.SetMargins(before + 1);
+	CHECK(editor.GetMargins() == before + 1);
 
-	editor.WndProc(Message::SetMarginOptions, static_cast<uptr_t>(MarginOption::SubLineSelect), 0);
-	CHECK(static_cast<MarginOption>(editor.WndProc(Message::GetMarginOptions, 0, 0)) == MarginOption::SubLineSelect);
-	editor.WndProc(Message::SetMarginOptions, static_cast<uptr_t>(MarginOption::None), 0);
-	CHECK(static_cast<MarginOption>(editor.WndProc(Message::GetMarginOptions, 0, 0)) == MarginOption::None);
+	editor.SetMarginOptions(MarginOption::SubLineSelect);
+	CHECK(editor.GetMarginOptions() == MarginOption::SubLineSelect);
+	editor.SetMarginOptions(MarginOption::None);
+	CHECK(editor.GetMarginOptions() == MarginOption::None);
 
 	// Out-of-range margin index: no effect on set, zero get.
-	const uptr_t bad = static_cast<uptr_t>(before + 5);
-	editor.WndProc(Message::SetMarginWidthN, bad, 99);
-	CHECK(editor.WndProc(Message::GetMarginWidthN, bad, 0) == 0);
+	const size_t bad = before + 5;
+	editor.SetMarginWidthN(bad, 99);
+	CHECK(editor.GetMarginWidthN(bad) == 0);
 }
 
 TEST_CASE("Margin text style offset clear and change notification") {
@@ -137,17 +135,14 @@ TEST_CASE("Margin text style offset clear and change notification") {
 	TestEditor editor(host);
 	editor.SetText("alpha\nbeta\ngamma\n");
 
-	editor.WndProc(Message::SetMarginTypeN, 0, static_cast<sptr_t>(MarginType::Text));
-	editor.WndProc(Message::SetMarginWidthN, 0, 40);
+	editor.SetMarginTypeN(0, MarginType::Text);
+	editor.SetMarginWidthN(0, 40);
 
 	editor.ClearObservations();
-	const char *rev = "rev";
-	editor.WndProc(Message::MarginSetText, 1, reinterpret_cast<sptr_t>(rev));
+	editor.MarginSetText(1, "rev");
 
-	char textBuf[16] = {};
-	const sptr_t textLen = editor.WndProc(Message::MarginGetText, 1, reinterpret_cast<sptr_t>(textBuf));
-	CHECK(textLen == 3);
-	CHECK(std::string(textBuf, static_cast<size_t>(textLen)) == "rev");
+	const std::string marginText = editor.MarginGetText(1);
+	CHECK(marginText == "rev");
 
 	const bool sawMarginChange = std::any_of(
 		editor.observations.notifications.begin(),
@@ -158,54 +153,53 @@ TEST_CASE("Margin text style offset clear and change notification") {
 		});
 	CHECK(sawMarginChange);
 
-	editor.WndProc(Message::MarginSetStyle, 1, 5);
-	CHECK(editor.WndProc(Message::MarginGetStyle, 1, 0) == 5);
+	editor.MarginSetStyle(1, 5);
+	CHECK(editor.MarginGetStyle(1) == 5);
 
-	editor.WndProc(Message::MarginSetStyleOffset, 256, 0);
-	CHECK(editor.WndProc(Message::MarginGetStyleOffset, 0, 0) == 256);
+	editor.MarginSetStyleOffset(256);
+	CHECK(editor.MarginGetStyleOffset() == 256);
 
 	const unsigned char styles[] = {1, 2, 3};
-	editor.WndProc(Message::MarginSetStyles, 1, reinterpret_cast<sptr_t>(styles));
+	editor.MarginSetStyles(1, styles);
 	char styleBuf[8] = {};
-	const sptr_t styleLen = editor.WndProc(Message::MarginGetStyles, 1, reinterpret_cast<sptr_t>(styleBuf));
+	const Sci::Position styleLen = editor.MarginGetStyles(1, styleBuf);
 	REQUIRE(styleLen >= 3);
 	CHECK(static_cast<unsigned char>(styleBuf[0]) == 1);
 	CHECK(static_cast<unsigned char>(styleBuf[1]) == 2);
 	CHECK(static_cast<unsigned char>(styleBuf[2]) == 3);
 
 	// Single shared style (no per-character array): return 0 and clear the first output byte.
-	editor.WndProc(Message::MarginSetStyle, 1, 7);
+	editor.MarginSetStyle(1, 7);
 	styleBuf[0] = static_cast<char>(0x5A);
 	styleBuf[1] = static_cast<char>(0x5A);
-	const sptr_t singleLen = editor.WndProc(Message::MarginGetStyles, 1, reinterpret_cast<sptr_t>(styleBuf));
+	const Sci::Position singleLen = editor.MarginGetStyles(1, styleBuf);
 	CHECK(singleLen == 0);
 	CHECK(styleBuf[0] == 0);
 	CHECK(styleBuf[1] == static_cast<char>(0x5A));
 
-	editor.WndProc(Message::MarginTextClearAll, 0, 0);
-	const sptr_t clearedLen = editor.WndProc(Message::MarginGetText, 1, 0);
-	CHECK(clearedLen == 0);
+	editor.MarginTextClearAll();
+	CHECK(editor.MarginGetText(1).empty());
 }
 
 TEST_CASE("SetMargins shrink of a visible margin invalidates layout") {
 	TestHost host;
 	TestEditor editor(host);
 
-	const size_t count = static_cast<size_t>(editor.WndProc(Message::GetMargins, 0, 0));
+	const size_t count = editor.GetMargins();
 	REQUIRE(count >= 2);
 	// Make the last allocated margin visible so shrinking drops real width.
-	editor.WndProc(Message::SetMarginWidthN, count - 1, 20);
+	editor.SetMarginWidthN(count - 1, 20);
 	editor.PaintAll();
 	editor.ClearObservations();
 
-	editor.WndProc(Message::SetMargins, count - 1, 0);
-	CHECK(static_cast<size_t>(editor.WndProc(Message::GetMargins, 0, 0)) == count - 1);
+	editor.SetMargins(count - 1);
+	CHECK(editor.GetMargins() == count - 1);
 	CHECK(editor.Snapshot().invalidatedRectangles > 0);
 
 	// Same count is a no-op for layout.
 	editor.PaintAll();
 	editor.ClearObservations();
-	editor.WndProc(Message::SetMargins, count - 1, 0);
+	editor.SetMargins(count - 1);
 	CHECK(editor.Snapshot().invalidatedRectangles == 0);
 }
 
@@ -214,17 +208,17 @@ TEST_CASE("Fold margin colours request style redraw") {
 	TestEditor editor(host);
 
 	editor.ClearObservations();
-	editor.WndProc(Message::SetFoldMarginColour, 1, 0x112233);
+	editor.SetFoldMarginColour(true, 0x112233);
 	CHECK(editor.Snapshot().invalidatedRectangles > 0);
 	editor.PaintAll();
 
 	editor.ClearObservations();
-	editor.WndProc(Message::SetFoldMarginHiColour, 1, 0x445566);
+	editor.SetFoldMarginHiColour(true, 0x445566);
 	CHECK(editor.Snapshot().invalidatedRectangles > 0);
 	editor.PaintAll();
 
 	// Clearing the override still invalidates so the platform default returns.
 	editor.ClearObservations();
-	editor.WndProc(Message::SetFoldMarginColour, 0, 0);
+	editor.SetFoldMarginColour(false, 0);
 	CHECK(editor.Snapshot().invalidatedRectangles > 0);
 }

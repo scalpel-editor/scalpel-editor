@@ -20,7 +20,6 @@
 #include <vector>
 
 #include "ScintillaTypes.h"
-#include "ScintillaMessages.h"
 #include "ScintillaStructures.h"
 #include "ILoader.h"
 #include "ILexer.h"
@@ -93,15 +92,9 @@ TEST_CASE("Host notification policy defaults and round-trips") {
 	CHECK_FALSE(editor.GetCommandEvents());
 	CHECK(editor.GetStatus() == Status::RegEx);
 
-	CHECK(editor.WndProc(Message::GetModEventMask, 0, 0) ==
-		static_cast<sptr_t>(editor.GetModEventMask()));
-	CHECK(editor.WndProc(Message::GetCommandEvents, 0, 0) == 0);
-	CHECK(editor.WndProc(Message::GetStatus, 0, 0) == static_cast<sptr_t>(Status::RegEx));
-
-	editor.WndProc(Message::SetModEventMask,
-		static_cast<uptr_t>(ModificationFlags::EventMaskAll), 0);
-	editor.WndProc(Message::SetCommandEvents, 1, 0);
-	editor.WndProc(Message::SetStatus, static_cast<uptr_t>(Status::Ok), 0);
+	editor.SetModEventMask(ModificationFlags::EventMaskAll);
+	editor.SetCommandEvents(true);
+	editor.SetStatus(Status::Ok);
 	CHECK(editor.GetModEventMask() == ModificationFlags::EventMaskAll);
 	CHECK(editor.GetCommandEvents());
 	CHECK(editor.GetStatus() == Status::Ok);
@@ -153,55 +146,29 @@ TEST_CASE("Fixed test surface reports every feature as unsupported") {
 	for (const Supports feature : features) {
 		CAPTURE(feature);
 		CHECK(editor.SupportsFeature(feature) == 0);
-		CHECK(editor.WndProc(Message::SupportsFeature, static_cast<uptr_t>(feature), 0) == 0);
 	}
 }
 
-TEST_CASE("Deleted widget identifier messages fall through without affecting notifications") {
+TEST_CASE("Named whole-buffer access works without widget identifier messages") {
 	TestHost host;
 	TestEditor editor(host);
 	LoadClean(editor, "solo");
-	editor.ClearObservations();
 
-	// SetIdentifier / GetIdentifier are removed from dispatch; they fall through to DefWndProc.
-	CHECK(editor.WndProc(Message::SetIdentifier, 99, 0) == 0);
-	CHECK(editor.WndProc(Message::GetIdentifier, 0, 0) == 0);
-	CHECK(std::find(editor.observations.defaultWindowCalls.begin(),
-		editor.observations.defaultWindowCalls.end(),
-		Message::SetIdentifier) != editor.observations.defaultWindowCalls.end());
-	CHECK(std::find(editor.observations.defaultWindowCalls.begin(),
-		editor.observations.defaultWindowCalls.end(),
-		Message::GetIdentifier) != editor.observations.defaultWindowCalls.end());
-	CHECK(editor.Text() == "solo");
-
-	// The single test host still receives notifications without a widget identifier.
+	// Positive path: notifications still reach the single test host without a
+	// platform widget identifier (those messages were deleted from dispatch).
 	editor.ClearObservations();
 	editor.InsertInput("x");
 	CHECK(ModifiedNotifications(editor) >= 1);
 	CHECK(editor.Text().size() == 5);
 	CHECK(editor.Text().find('x') != std::string::npos);
+	CHECK(editor.GetTextLength() == 5);
 }
 
-TEST_CASE("Deleted direct-call accessor messages fall through") {
+TEST_CASE("Named buffer length remains available without direct-call accessors") {
 	TestHost host;
 	TestEditor editor(host);
 	LoadClean(editor, "direct");
-	editor.ClearObservations();
-
-	// These never had core Editor dispatch; they only existed as platform direct-call glue.
-	CHECK(editor.WndProc(Message::GetDirectFunction, 0, 0) == 0);
-	CHECK(editor.WndProc(Message::GetDirectStatusFunction, 0, 0) == 0);
-	CHECK(editor.WndProc(Message::GetDirectPointer, 0, 0) == 0);
-	CHECK(std::find(editor.observations.defaultWindowCalls.begin(),
-		editor.observations.defaultWindowCalls.end(),
-		Message::GetDirectFunction) != editor.observations.defaultWindowCalls.end());
-	CHECK(std::find(editor.observations.defaultWindowCalls.begin(),
-		editor.observations.defaultWindowCalls.end(),
-		Message::GetDirectStatusFunction) != editor.observations.defaultWindowCalls.end());
-	CHECK(std::find(editor.observations.defaultWindowCalls.begin(),
-		editor.observations.defaultWindowCalls.end(),
-		Message::GetDirectPointer) != editor.observations.defaultWindowCalls.end());
-	CHECK(editor.Text() == "direct");
-	// Named whole-buffer and range access remain the positive path.
+	// Platform direct-call glue messages are gone; length is still named.
 	CHECK(editor.GetTextLength() == 6);
+	CHECK(editor.GetText() == "direct");
 }

@@ -3,7 +3,6 @@
  ** Focused behavior tests for caret appearance, sticky state, and period.
  **/
 
-#include <array>
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
@@ -20,7 +19,6 @@
 #include <vector>
 
 #include "ScintillaTypes.h"
-#include "ScintillaMessages.h"
 #include "ScintillaStructures.h"
 #include "ILoader.h"
 #include "ILexer.h"
@@ -70,37 +68,37 @@ TEST_CASE("Caret period sticky style and width round-trip") {
 	TestHost host;
 	TestEditor editor(host);
 
-	editor.WndProc(Message::SetCaretPeriod, 250, 0);
-	CHECK(editor.WndProc(Message::GetCaretPeriod, 0, 0) == 250);
+	editor.SetCaretPeriod(250);
+	CHECK(editor.GetCaretPeriod() == 250);
 
-	editor.WndProc(Message::SetCaretSticky, static_cast<uptr_t>(CaretSticky::On), 0);
-	CHECK(static_cast<CaretSticky>(editor.WndProc(Message::GetCaretSticky, 0, 0)) == CaretSticky::On);
-	editor.WndProc(Message::ToggleCaretSticky, 0, 0);
-	CHECK(static_cast<CaretSticky>(editor.WndProc(Message::GetCaretSticky, 0, 0)) == CaretSticky::Off);
+	editor.SetCaretSticky(CaretSticky::On);
+	CHECK(editor.GetCaretSticky() == CaretSticky::On);
+	editor.ToggleCaretSticky();
+	CHECK(editor.GetCaretSticky() == CaretSticky::Off);
 
-	editor.WndProc(Message::SetCaretStyle, static_cast<uptr_t>(CaretStyle::Block), 0);
-	CHECK(static_cast<CaretStyle>(editor.WndProc(Message::GetCaretStyle, 0, 0)) == CaretStyle::Block);
+	editor.SetCaretStyle(CaretStyle::Block);
+	CHECK(editor.GetCaretStyle() == CaretStyle::Block);
 
-	editor.WndProc(Message::SetCaretWidth, 3, 0);
-	CHECK(editor.WndProc(Message::GetCaretWidth, 0, 0) == 3);
+	editor.SetCaretWidth(3);
+	CHECK(editor.GetCaretWidth() == 3);
 }
 
 TEST_CASE("Caret line visibility and frame options round-trip") {
 	TestHost host;
 	TestEditor editor(host);
 
-	CHECK(editor.WndProc(Message::GetCaretLineVisible, 0, 0) == 0);
-	editor.WndProc(Message::SetCaretLineVisible, 1, 0);
-	CHECK(editor.WndProc(Message::GetCaretLineVisible, 0, 0) != 0);
+	CHECK_FALSE(editor.GetCaretLineVisible());
+	editor.SetCaretLineVisible(true);
+	CHECK(editor.GetCaretLineVisible());
 
-	editor.WndProc(Message::SetCaretLineVisibleAlways, 1, 0);
-	CHECK(editor.WndProc(Message::GetCaretLineVisibleAlways, 0, 0) != 0);
+	editor.SetCaretLineVisibleAlways(true);
+	CHECK(editor.GetCaretLineVisibleAlways());
 
-	editor.WndProc(Message::SetCaretLineFrame, 2, 0);
-	CHECK(editor.WndProc(Message::GetCaretLineFrame, 0, 0) == 2);
+	editor.SetCaretLineFrame(2);
+	CHECK(editor.GetCaretLineFrame() == 2);
 
-	editor.WndProc(Message::SetCaretLineHighlightSubLine, 1, 0);
-	CHECK(editor.WndProc(Message::GetCaretLineHighlightSubLine, 0, 0) != 0);
+	editor.SetCaretLineHighlightSubLine(true);
+	CHECK(editor.GetCaretLineHighlightSubLine());
 }
 
 TEST_CASE("VerticalCentreCaret command runs without error") {
@@ -116,8 +114,8 @@ TEST_CASE("VerticalCentreCaret command runs without error") {
 TEST_CASE("Additional carets blink and visibility options") {
 	TestHost host;
 	TestEditor editor(host);
-	editor.WndProc(Message::SetAdditionalCaretsBlink, 0, 0);
-	CHECK(editor.WndProc(Message::GetAdditionalCaretsBlink, 0, 0) == 0);
-	editor.WndProc(Message::SetAdditionalCaretsVisible, 0, 0);
-	CHECK(editor.WndProc(Message::GetAdditionalCaretsVisible, 0, 0) == 0);
+	editor.SetAdditionalCaretsBlink(false);
+	CHECK_FALSE(editor.GetAdditionalCaretsBlink());
+	editor.SetAdditionalCaretsVisible(false);
+	CHECK_FALSE(editor.GetAdditionalCaretsVisible());
 }

@@ -3,7 +3,6 @@
  ** Focused behavior tests for line wrapping.
  **/
 
-#include <array>
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
@@ -20,7 +19,6 @@
 #include <vector>
 
 #include "ScintillaTypes.h"
-#include "ScintillaMessages.h"
 #include "ScintillaStructures.h"
 #include "ILoader.h"
 #include "ILexer.h"
@@ -68,7 +66,7 @@ using namespace Scintilla::Internal;
 
 namespace {
 
-TestEditorSnapshot WrapSnapshot(bool throughMessage) {
+TestEditorSnapshot WrapSnapshot() {
 	TestHost host;
 	TestEditor editor(host, PRectangle(0, 0, 320, 200));
 	editor.SetText("a line long enough to wrap in the test window");
@@ -76,42 +74,15 @@ TestEditorSnapshot WrapSnapshot(bool throughMessage) {
 	editor.PaintAll();
 	editor.ClearObservations();
 
-	if (throughMessage) {
-		editor.WndProc(Message::SetWrapMode, static_cast<uptr_t>(Wrap::Word), 0);
-	} else {
-		editor.SetWrapMode(Wrap::Word);
-	}
+	editor.SetWrapMode(Wrap::Word);
 	editor.FlushUpdateNotifications();
 	return editor.Snapshot();
 }
 
-Sci::Line WrapCount(TestEditor &editor, Sci::Line line) {
-	return static_cast<Sci::Line>(editor.WndProc(Message::WrapCount, static_cast<uptr_t>(line), 0));
-}
-
-struct WrapSetting {
-	Message setter;
-	Message getter;
-	uptr_t value;
-	bool reconfiguresScrollbars;
-	const char *name;
-};
-
-constexpr std::array wrapSettings {
-	WrapSetting { Message::SetWrapVisualFlags, Message::GetWrapVisualFlags,
-		static_cast<uptr_t>(WrapVisualFlag::End), true, "visual flags" },
-	WrapSetting { Message::SetWrapVisualFlagsLocation, Message::GetWrapVisualFlagsLocation,
-		static_cast<uptr_t>(WrapVisualLocation::EndByText), false, "visual flag location" },
-	WrapSetting { Message::SetWrapStartIndent, Message::GetWrapStartIndent,
-		3, true, "start indent" },
-	WrapSetting { Message::SetWrapIndentMode, Message::GetWrapIndentMode,
-		static_cast<uptr_t>(WrapIndentMode::Indent), true, "indent mode" },
-};
-
 }
 
 TEST_CASE("Wrap mode changes editor and host state") {
-	const TestEditorSnapshot snapshot = WrapSnapshot(false);
+	const TestEditorSnapshot snapshot = WrapSnapshot();
 
 	CHECK(snapshot.wrapMode == Wrap::Word);
 	CHECK(snapshot.horizontalOffset == 0);
@@ -140,37 +111,86 @@ TEST_CASE("Setting the current wrap mode has no change effects") {
 	CHECK(snapshot.updateNotifications.empty());
 }
 
-TEST_CASE("Wrap message forwards to the named method") {
-	CHECK(WrapSnapshot(true) == WrapSnapshot(false));
-
-	TestHost host;
-	TestEditor editor(host);
-	editor.SetWrapMode(Wrap::Char);
-	CHECK(static_cast<Wrap>(editor.WndProc(Message::GetWrapMode, 0, 0)) == editor.GetWrapMode());
-}
-
 TEST_CASE("Wrap display settings redraw only when changed") {
-	for (const WrapSetting &setting : wrapSettings) {
-		DYNAMIC_SECTION(setting.name) {
-			TestHost host;
-			TestEditor editor(host);
-			CHECK(editor.WndProc(setting.getter, 0, 0) == 0);
-			editor.PaintAll();
-			editor.ClearObservations();
+	SECTION("visual flags") {
+		TestHost host;
+		TestEditor editor(host);
+		CHECK(editor.GetWrapVisualFlags() == WrapVisualFlag::None);
+		editor.PaintAll();
+		editor.ClearObservations();
 
-			editor.WndProc(setting.setter, setting.value, 0);
+		editor.SetWrapVisualFlags(WrapVisualFlag::End);
 
-			CHECK(static_cast<uptr_t>(editor.WndProc(setting.getter, 0, 0)) == setting.value);
-			CHECK(editor.Snapshot().invalidatedRectangles == 1);
-			CHECK(editor.Snapshot().scrollbarReconfigurations == (setting.reconfiguresScrollbars ? 1 : 0));
+		CHECK(editor.GetWrapVisualFlags() == WrapVisualFlag::End);
+		CHECK(editor.Snapshot().invalidatedRectangles == 1);
+		CHECK(editor.Snapshot().scrollbarReconfigurations == 1);
 
-			editor.PaintAll();
-			editor.ClearObservations();
-			editor.WndProc(setting.setter, setting.value, 0);
+		editor.PaintAll();
+		editor.ClearObservations();
+		editor.SetWrapVisualFlags(WrapVisualFlag::End);
 
-			CHECK(editor.Snapshot().invalidatedRectangles == 0);
-			CHECK(editor.Snapshot().scrollbarReconfigurations == 0);
-		}
+		CHECK(editor.Snapshot().invalidatedRectangles == 0);
+		CHECK(editor.Snapshot().scrollbarReconfigurations == 0);
+	}
+	SECTION("visual flag location") {
+		TestHost host;
+		TestEditor editor(host);
+		CHECK(editor.GetWrapVisualFlagsLocation() == WrapVisualLocation::Default);
+		editor.PaintAll();
+		editor.ClearObservations();
+
+		editor.SetWrapVisualFlagsLocation(WrapVisualLocation::EndByText);
+
+		CHECK(editor.GetWrapVisualFlagsLocation() == WrapVisualLocation::EndByText);
+		CHECK(editor.Snapshot().invalidatedRectangles == 1);
+		CHECK(editor.Snapshot().scrollbarReconfigurations == 0);
+
+		editor.PaintAll();
+		editor.ClearObservations();
+		editor.SetWrapVisualFlagsLocation(WrapVisualLocation::EndByText);
+
+		CHECK(editor.Snapshot().invalidatedRectangles == 0);
+		CHECK(editor.Snapshot().scrollbarReconfigurations == 0);
+	}
+	SECTION("start indent") {
+		TestHost host;
+		TestEditor editor(host);
+		CHECK(editor.GetWrapStartIndent() == 0);
+		editor.PaintAll();
+		editor.ClearObservations();
+
+		editor.SetWrapStartIndent(3);
+
+		CHECK(editor.GetWrapStartIndent() == 3);
+		CHECK(editor.Snapshot().invalidatedRectangles == 1);
+		CHECK(editor.Snapshot().scrollbarReconfigurations == 1);
+
+		editor.PaintAll();
+		editor.ClearObservations();
+		editor.SetWrapStartIndent(3);
+
+		CHECK(editor.Snapshot().invalidatedRectangles == 0);
+		CHECK(editor.Snapshot().scrollbarReconfigurations == 0);
+	}
+	SECTION("indent mode") {
+		TestHost host;
+		TestEditor editor(host);
+		CHECK(editor.GetWrapIndentMode() == WrapIndentMode::Fixed);
+		editor.PaintAll();
+		editor.ClearObservations();
+
+		editor.SetWrapIndentMode(WrapIndentMode::Indent);
+
+		CHECK(editor.GetWrapIndentMode() == WrapIndentMode::Indent);
+		CHECK(editor.Snapshot().invalidatedRectangles == 1);
+		CHECK(editor.Snapshot().scrollbarReconfigurations == 1);
+
+		editor.PaintAll();
+		editor.ClearObservations();
+		editor.SetWrapIndentMode(WrapIndentMode::Indent);
+
+		CHECK(editor.Snapshot().invalidatedRectangles == 0);
+		CHECK(editor.Snapshot().scrollbarReconfigurations == 0);
 	}
 }
 
@@ -178,15 +198,15 @@ TEST_CASE("Wrap count reports display rows and disabling wrap restores one row")
 	TestHost host;
 	TestEditor editor(host, PRectangle(0, 0, 100, 100));
 	editor.SetText("one two three four five six");
-	CHECK(WrapCount(editor, 0) == 1);
+	CHECK(editor.WrapCount(0) == 1);
 
 	editor.SetWrapMode(Wrap::Word);
 	editor.PaintAll();
-	CHECK(WrapCount(editor, 0) > 1);
+	CHECK(editor.WrapCount(0) > 1);
 
 	editor.SetWrapMode(Wrap::None);
 	editor.PaintAll();
-	CHECK(WrapCount(editor, 0) == 1);
+	CHECK(editor.WrapCount(0) == 1);
 }
 
 TEST_CASE("Wrapping recalculates display rows after resize and edit") {
@@ -195,16 +215,16 @@ TEST_CASE("Wrapping recalculates display rows after resize and edit") {
 	editor.SetText("one two three four five six");
 	editor.SetWrapMode(Wrap::Word);
 	editor.PaintAll();
-	const Sci::Line narrowCount = WrapCount(editor, 0);
+	const Sci::Line narrowCount = editor.WrapCount(0);
 	REQUIRE(narrowCount > 1);
 
 	editor.SetClientRectangle(PRectangle(0, 0, 300, 100));
 	editor.PaintAll();
-	const Sci::Line wideCount = WrapCount(editor, 0);
+	const Sci::Line wideCount = editor.WrapCount(0);
 	CHECK(wideCount < narrowCount);
 
 	editor.InsertInput(" seven eight nine ten eleven twelve");
 	CHECK(editor.observations.idleRequested);
 	editor.PaintAll();
-	CHECK(WrapCount(editor, 0) > wideCount);
+	CHECK(editor.WrapCount(0) > wideCount);
 }

@@ -3,7 +3,6 @@
  ** Focused behavior tests for EOL policy, lines, indentation, and line queries.
  **/
 
-#include <array>
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
@@ -20,7 +19,6 @@
 #include <vector>
 
 #include "ScintillaTypes.h"
-#include "ScintillaMessages.h"
 #include "ScintillaStructures.h"
 #include "ILoader.h"
 #include "ILexer.h"
@@ -68,32 +66,25 @@ using namespace Scintilla::Internal;
 
 namespace {
 
-void SetTargetWholeDocument(TestEditor &editor) {
-	editor.WndProc(Message::TargetWholeDocument, 0, 0);
-}
-
 std::string LineText(TestEditor &editor, Sci::Line line) {
-	const Sci::Position len = static_cast<Sci::Position>(
-		editor.WndProc(Message::GetLine, static_cast<uptr_t>(line), 0));
+	const Sci::Position len = editor.GetLine(line, nullptr);
 	std::string buffer(static_cast<size_t>(len), '\0');
-	editor.WndProc(Message::GetLine, static_cast<uptr_t>(line),
-		reinterpret_cast<sptr_t>(buffer.data()));
+	editor.GetLine(line, buffer.data());
 	return buffer;
 }
 
 }
 
-TEST_CASE("EOL mode defaults round-trip through named methods and messages") {
+TEST_CASE("EOL mode defaults and round-trips") {
 	TestHost host;
 	TestEditor editor(host);
 	const EndOfLine initial = editor.GetEOLMode();
-	CHECK(static_cast<EndOfLine>(editor.WndProc(Message::GetEOLMode, 0, 0)) == initial);
+	CHECK(initial == editor.GetEOLMode());
 
 	editor.SetEOLMode(EndOfLine::Cr);
 	CHECK(editor.GetEOLMode() == EndOfLine::Cr);
-	CHECK(static_cast<EndOfLine>(editor.WndProc(Message::GetEOLMode, 0, 0)) == EndOfLine::Cr);
 
-	editor.WndProc(Message::SetEOLMode, static_cast<uptr_t>(EndOfLine::Lf), 0);
+	editor.SetEOLMode(EndOfLine::Lf);
 	CHECK(editor.GetEOLMode() == EndOfLine::Lf);
 }
 
@@ -106,11 +97,10 @@ TEST_CASE("ConvertEOLs rewrites mixed endings and marks modified") {
 	editor.ConvertEOLs(EndOfLine::Lf);
 	CHECK(editor.GetText() == "a\nb\nc\n");
 	CHECK(editor.GetModify());
-	CHECK(editor.WndProc(Message::GetLineCount, 0, 0) == 4);
+	CHECK(editor.GetLineCount() == 4);
 
-	// Message path matches the named method.
 	LoadClean(editor, "x\r\ny\r");
-	editor.WndProc(Message::ConvertEOLs, static_cast<uptr_t>(EndOfLine::CrLf), 0);
+	editor.ConvertEOLs(EndOfLine::CrLf);
 	CHECK(editor.GetText() == "x\r\ny\r\n");
 }
 
@@ -119,16 +109,16 @@ TEST_CASE("Line queries report counts, positions, and line text") {
 	TestEditor editor(host);
 	LoadClean(editor, "ab\ncde\n");
 
-	CHECK(editor.WndProc(Message::GetLineCount, 0, 0) == 3);
-	CHECK(editor.WndProc(Message::LineFromPosition, 0, 0) == 0);
-	CHECK(editor.WndProc(Message::LineFromPosition, 3, 0) == 1);
-	CHECK(editor.WndProc(Message::PositionFromLine, 1, 0) == 3);
-	CHECK(editor.WndProc(Message::LineLength, 0, 0) == 3);
-	CHECK(editor.WndProc(Message::GetLineEndPosition, 0, 0) == 2);
-	CHECK(editor.WndProc(Message::GetColumn, 4, 0) == 1);
+	CHECK(editor.GetLineCount() == 3);
+	CHECK(editor.LineFromPosition(0) == 0);
+	CHECK(editor.LineFromPosition(3) == 1);
+	CHECK(editor.PositionFromLine(1) == 3);
+	CHECK(editor.LineLength(0) == 3);
+	CHECK(editor.GetLineEndPosition(0) == 2);
+	CHECK(editor.GetColumn(4) == 1);
 	CHECK(LineText(editor, 1) == "cde\n");
-	CHECK(editor.WndProc(Message::CountCharacters, 0, 3) == 3);
-	CHECK(editor.WndProc(Message::CountCodeUnits, 0, 3) == 3);
+	CHECK(editor.CountCharacters(0, 3) == 3);
+	CHECK(editor.CountCodeUnits(0, 3) == 3);
 }
 
 TEST_CASE("Indent and tab settings round-trip and change indentation") {
@@ -136,54 +126,52 @@ TEST_CASE("Indent and tab settings round-trip and change indentation") {
 	TestEditor editor(host);
 	LoadClean(editor, "hello");
 
-	editor.WndProc(Message::SetTabWidth, 4, 0);
-	CHECK(editor.WndProc(Message::GetTabWidth, 0, 0) == 4);
+	editor.SetTabWidth(4);
+	CHECK(editor.GetTabWidth() == 4);
 
-	editor.WndProc(Message::SetIndent, 2, 0);
-	CHECK(editor.WndProc(Message::GetIndent, 0, 0) == 2);
-	editor.WndProc(Message::SetUseTabs, 0, 0);
-	CHECK(editor.WndProc(Message::GetUseTabs, 0, 0) == 0);
+	editor.SetIndent(2);
+	CHECK(editor.GetIndent() == 2);
+	editor.SetUseTabs(false);
+	CHECK_FALSE(editor.GetUseTabs());
 
-	editor.WndProc(Message::SetLineIndentation, 0, 4);
-	CHECK(editor.WndProc(Message::GetLineIndentation, 0, 0) == 4);
+	editor.SetLineIndentation(0, 4);
+	CHECK(editor.GetLineIndentation(0) == 4);
 	CHECK(editor.GetText().substr(0, 4) == "    ");
-	CHECK(editor.WndProc(Message::GetLineIndentPosition, 0, 0) == 4);
+	CHECK(editor.GetLineIndentPosition(0) == 4);
 
-	editor.WndProc(Message::SetTabIndents, 1, 0);
-	CHECK(editor.WndProc(Message::GetTabIndents, 0, 0) != 0);
-	editor.WndProc(Message::SetBackSpaceUnIndents, 1, 0);
-	CHECK(editor.WndProc(Message::GetBackSpaceUnIndents, 0, 0) != 0);
+	editor.SetTabIndents(true);
+	CHECK(editor.GetTabIndents());
+	editor.SetBackSpaceUnIndents(true);
+	CHECK(editor.GetBackSpaceUnIndents());
 }
 
 TEST_CASE("ViewEOL and SelEOLFilled options round-trip") {
 	TestHost host;
 	TestEditor editor(host);
-	CHECK(editor.WndProc(Message::GetViewEOL, 0, 0) == 0);
-	editor.WndProc(Message::SetViewEOL, 1, 0);
-	CHECK(editor.WndProc(Message::GetViewEOL, 0, 0) != 0);
+	CHECK_FALSE(editor.GetViewEOL());
+	editor.SetViewEOL(true);
+	CHECK(editor.GetViewEOL());
 
-	editor.WndProc(Message::SetSelEOLFilled, 1, 0);
-	CHECK(editor.WndProc(Message::GetSelEOLFilled, 0, 0) != 0);
+	editor.SetSelEOLFilled(true);
+	CHECK(editor.GetSelEOLFilled());
 }
 
 TEST_CASE("LinesJoin merges target lines with a separating space") {
 	TestHost host;
 	TestEditor editor(host);
 	LoadClean(editor, "one\ntwo\nthree\n");
-	SetTargetWholeDocument(editor);
+	editor.TargetWholeDocument();
 	editor.RunCommand(EditorCommand::LinesJoin);
 	// Joining also removes a trailing line end inside the target, inserting a space.
 	CHECK(editor.GetText() == "one two three ");
 }
 
-TEST_CASE("Word character classes are configurable through messages") {
+TEST_CASE("Word character classes are configurable") {
 	TestHost host;
 	TestEditor editor(host);
-	const char *wordChars = "ab";
-	editor.WndProc(Message::SetWordChars, 0, reinterpret_cast<sptr_t>(wordChars));
+	editor.SetWordChars("ab");
 	unsigned char wordBuf[16] = {};
-	const Sci::Position nWord = static_cast<Sci::Position>(
-		editor.WndProc(Message::GetWordChars, 0, reinterpret_cast<sptr_t>(wordBuf)));
+	const Sci::Position nWord = editor.GetWordChars(wordBuf);
 	CHECK(nWord >= 2);
 	const std::string words(reinterpret_cast<char *>(wordBuf), static_cast<size_t>(nWord));
 	CHECK(words.find('a') != std::string::npos);
@@ -194,27 +182,22 @@ TEST_CASE("Line character index can be allocated and released") {
 	TestHost host;
 	TestEditor editor(host);
 	LoadClean(editor, "hi\n");
-	CHECK(static_cast<LineCharacterIndexType>(
-		editor.WndProc(Message::GetLineCharacterIndex, 0, 0)) == LineCharacterIndexType::None);
-	editor.WndProc(Message::AllocateLineCharacterIndex,
-		static_cast<uptr_t>(LineCharacterIndexType::Utf16), 0);
-	CHECK(FlagSet(static_cast<LineCharacterIndexType>(
-		editor.WndProc(Message::GetLineCharacterIndex, 0, 0)), LineCharacterIndexType::Utf16));
-	editor.WndProc(Message::ReleaseLineCharacterIndex,
-		static_cast<uptr_t>(LineCharacterIndexType::Utf16), 0);
-	CHECK(static_cast<LineCharacterIndexType>(
-		editor.WndProc(Message::GetLineCharacterIndex, 0, 0)) == LineCharacterIndexType::None);
+	CHECK(editor.GetLineCharacterIndex() == LineCharacterIndexType::None);
+	editor.AllocateLineCharacterIndex(LineCharacterIndexType::Utf16);
+	CHECK(FlagSet(editor.GetLineCharacterIndex(), LineCharacterIndexType::Utf16));
+	editor.ReleaseLineCharacterIndex(LineCharacterIndexType::Utf16);
+	CHECK(editor.GetLineCharacterIndex() == LineCharacterIndexType::None);
 }
 
 TEST_CASE("FindColumn and edge column round-trip") {
 	TestHost host;
 	TestEditor editor(host);
 	LoadClean(editor, "\thello");
-	editor.WndProc(Message::SetTabWidth, 4, 0);
+	editor.SetTabWidth(4);
 	// Column of 'h' after one tab of width 4 is 4.
-	CHECK(editor.WndProc(Message::GetColumn, 1, 0) == 4);
-	CHECK(editor.WndProc(Message::FindColumn, 0, 4) == 1);
+	CHECK(editor.GetColumn(1) == 4);
+	CHECK(editor.FindColumn(0, 4) == 1);
 
-	editor.WndProc(Message::SetEdgeColumn, 80, 0);
-	CHECK(editor.WndProc(Message::GetEdgeColumn, 0, 0) == 80);
+	editor.SetEdgeColumn(80);
+	CHECK(editor.GetEdgeColumn() == 80);
 }

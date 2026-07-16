@@ -4,7 +4,6 @@
  ** ChangeInsertion, overtype, context-menu policy, and key-map configuration.
  **/
 
-#include <array>
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
@@ -21,7 +20,6 @@
 #include <vector>
 
 #include "ScintillaTypes.h"
-#include "ScintillaMessages.h"
 #include "ScintillaStructures.h"
 #include "ILoader.h"
 #include "ILexer.h"
@@ -83,92 +81,6 @@ bool HasCaretTickerStarted(const TestEditor &editor) {
 		[](const TestTickerRequest &t) {
 			return t.reason == caretReason && t.started;
 		});
-}
-
-struct InputSnapshot {
-	bool focus = false;
-	IMEInteraction ime = IMEInteraction::Windowed;
-	int dwell = 0;
-	bool mouseDownCaptures = true;
-	bool mouseWheelCaptures = true;
-	CursorShape cursor = CursorShape::Normal;
-	bool dragDrop = true;
-	bool overtype = false;
-	PopUp popUp = PopUp::All;
-	size_t invalidatedRectangles = 0;
-	bool focusIn = false;
-	bool focusOut = false;
-
-	bool operator==(const InputSnapshot &other) const noexcept {
-		return focus == other.focus
-			&& ime == other.ime
-			&& dwell == other.dwell
-			&& mouseDownCaptures == other.mouseDownCaptures
-			&& mouseWheelCaptures == other.mouseWheelCaptures
-			&& cursor == other.cursor
-			&& dragDrop == other.dragDrop
-			&& overtype == other.overtype
-			&& popUp == other.popUp
-			&& invalidatedRectangles == other.invalidatedRectangles
-			&& focusIn == other.focusIn
-			&& focusOut == other.focusOut;
-	}
-};
-
-InputSnapshot CaptureNamed(TestEditor &editor) {
-	editor.ClearObservations();
-	editor.SetFocus(true);
-	editor.SetIMEInteraction(IMEInteraction::Inline);
-	editor.SetMouseDwellTime(400);
-	editor.SetMouseDownCaptures(false);
-	editor.SetMouseWheelCaptures(false);
-	editor.SetCursor(CursorShape::Wait);
-	editor.SetDragDropEnabled(false);
-	editor.SetOvertype(true);
-	editor.UsePopUp(PopUp::Never);
-
-	InputSnapshot s;
-	s.focus = editor.HasFocus();
-	s.ime = editor.GetIMEInteraction();
-	s.dwell = editor.GetMouseDwellTime();
-	s.mouseDownCaptures = editor.GetMouseDownCaptures();
-	s.mouseWheelCaptures = editor.GetMouseWheelCaptures();
-	s.cursor = editor.GetCursor();
-	s.dragDrop = editor.GetDragDropEnabled();
-	s.overtype = editor.GetOvertype();
-	s.popUp = editor.GetUsePopUp();
-	s.invalidatedRectangles = editor.Snapshot().invalidatedRectangles;
-	s.focusIn = HasNotification(editor, Notification::FocusIn);
-	s.focusOut = HasNotification(editor, Notification::FocusOut);
-	return s;
-}
-
-InputSnapshot CaptureMessage(TestEditor &editor) {
-	editor.ClearObservations();
-	editor.WndProc(Message::SetFocus, 1, 0);
-	editor.WndProc(Message::SetIMEInteraction, static_cast<uptr_t>(IMEInteraction::Inline), 0);
-	editor.WndProc(Message::SetMouseDwellTime, 400, 0);
-	editor.WndProc(Message::SetMouseDownCaptures, 0, 0);
-	editor.WndProc(Message::SetMouseWheelCaptures, 0, 0);
-	editor.WndProc(Message::SetCursor, static_cast<uptr_t>(CursorShape::Wait), 0);
-	editor.WndProc(Message::SetDragDropEnabled, 0, 0);
-	editor.WndProc(Message::SetOvertype, 1, 0);
-	editor.WndProc(Message::UsePopUp, static_cast<uptr_t>(PopUp::Never), 0);
-
-	InputSnapshot s;
-	s.focus = editor.WndProc(Message::GetFocus, 0, 0) != 0;
-	s.ime = static_cast<IMEInteraction>(editor.WndProc(Message::GetIMEInteraction, 0, 0));
-	s.dwell = static_cast<int>(editor.WndProc(Message::GetMouseDwellTime, 0, 0));
-	s.mouseDownCaptures = editor.WndProc(Message::GetMouseDownCaptures, 0, 0) != 0;
-	s.mouseWheelCaptures = editor.WndProc(Message::GetMouseWheelCaptures, 0, 0) != 0;
-	s.cursor = static_cast<CursorShape>(editor.WndProc(Message::GetCursor, 0, 0));
-	s.dragDrop = editor.WndProc(Message::GetDragDropEnabled, 0, 0) != 0;
-	s.overtype = editor.WndProc(Message::GetOvertype, 0, 0) != 0;
-	s.popUp = editor.GetUsePopUp();
-	s.invalidatedRectangles = editor.Snapshot().invalidatedRectangles;
-	s.focusIn = HasNotification(editor, Notification::FocusIn);
-	s.focusOut = HasNotification(editor, Notification::FocusOut);
-	return s;
 }
 
 }
@@ -286,36 +198,12 @@ TEST_CASE("AssignCmdKey ClearCmdKey and ClearAllCmdKeys") {
 	CHECK_FALSE(consumed);
 }
 
-TEST_CASE("Input named path matches message path") {
-	InputSnapshot named;
-	InputSnapshot message;
-	{
-		TestHost host;
-		TestEditor editor(host);
-		named = CaptureNamed(editor);
-	}
-	{
-		TestHost host;
-		TestEditor editor(host);
-		message = CaptureMessage(editor);
-	}
-	CHECK(named == message);
-}
-
-TEST_CASE("Deleted accessibility and GrabFocus messages fall through without changing focus") {
+TEST_CASE("Focus set invalidates and notifies FocusIn") {
 	TestHost host;
 	TestEditor editor(host);
-
-	// Accessibility messages are removed from dispatch; they fall through to DefWndProc.
-	editor.WndProc(Message::GetAccessibility, 0, 0);
-	editor.WndProc(Message::SetAccessibility, 1, 0);
-	CHECK(editor.observations.defaultWindowCalls.size() >= 1);
-
 	editor.ClearObservations();
-	editor.WndProc(Message::GrabFocus, 0, 0);
-	CHECK(std::find(editor.observations.defaultWindowCalls.begin(),
-		editor.observations.defaultWindowCalls.end(),
-		Message::GrabFocus) != editor.observations.defaultWindowCalls.end());
-	CHECK_FALSE(editor.HasFocus());
-	// KeysUnicode was already removed from the Message enum in phase 3.
+	editor.SetFocus(true);
+	CHECK(editor.HasFocus());
+	CHECK(HasNotification(editor, Notification::FocusIn));
+	CHECK(editor.Snapshot().invalidatedRectangles >= 1);
 }

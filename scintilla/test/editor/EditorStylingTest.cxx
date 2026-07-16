@@ -20,7 +20,6 @@
 #include <vector>
 
 #include "ScintillaTypes.h"
-#include "ScintillaMessages.h"
 #include "ScintillaStructures.h"
 #include "ILoader.h"
 #include "ILexer.h"
@@ -72,25 +71,25 @@ TEST_CASE("Style definition round-trip and clear redraw") {
 
 	editor.PaintAll();
 	editor.ClearObservations();
-	editor.WndProc(Message::StyleSetFore, 1, 0x0000FF);
-	CHECK(editor.WndProc(Message::StyleGetFore, 1, 0) == 0x0000FF);
+	editor.StyleSetFore(1, 0x0000FF);
+	CHECK(editor.StyleGetFore(1) == 0x0000FF);
 	CHECK(editor.Snapshot().invalidatedRectangles > 0);
 
-	editor.WndProc(Message::StyleSetBack, 1, 0x00FF00);
-	CHECK(editor.WndProc(Message::StyleGetBack, 1, 0) == 0x00FF00);
-	editor.WndProc(Message::StyleSetBold, 1, 1);
-	CHECK(editor.WndProc(Message::StyleGetBold, 1, 0) != 0);
-	editor.WndProc(Message::StyleSetSize, 1, 14);
-	CHECK(editor.WndProc(Message::StyleGetSize, 1, 0) == 14);
-	editor.WndProc(Message::StyleSetFont, 1, reinterpret_cast<sptr_t>("Courier"));
+	editor.StyleSetBack(1, 0x00FF00);
+	CHECK(editor.StyleGetBack(1) == 0x00FF00);
+	editor.StyleSetBold(1, true);
+	CHECK(editor.StyleGetBold(1) != 0);
+	editor.StyleSetSize(1, 14);
+	CHECK(editor.StyleGetSize(1) == 14);
+	editor.StyleSetFont(1, "Courier");
 	char font[32] = {};
-	const sptr_t n = editor.WndProc(Message::StyleGetFont, 1, reinterpret_cast<sptr_t>(font));
+	const sptr_t n = editor.StyleGetFont(1, font);
 	CHECK(n == 7);
 	CHECK(std::string(font) == "Courier");
 
 	editor.PaintAll();
 	editor.ClearObservations();
-	editor.WndProc(Message::StyleClearAll, 0, 0);
+	editor.StyleClearAll();
 	CHECK(editor.Snapshot().invalidatedRectangles > 0);
 }
 
@@ -99,32 +98,32 @@ TEST_CASE("Start styling SetStyling GetStyleAt end-styled and failure") {
 	TestEditor editor(host);
 	editor.SetText("abcdef");
 
-	editor.WndProc(Message::StartStyling, 0, 0);
-	editor.WndProc(Message::SetStyling, 3, 5);
-	CHECK(editor.WndProc(Message::GetStyleAt, 0, 0) == 5);
-	CHECK(editor.WndProc(Message::GetStyleAt, 2, 0) == 5);
-	CHECK(editor.WndProc(Message::GetStyleIndexAt, 1, 0) == 5);
-	CHECK(editor.WndProc(Message::GetEndStyled, 0, 0) >= 3);
+	editor.StartStyling(0);
+	editor.SetStyling(3, 5);
+	CHECK(editor.GetStyleAt(0) == 5);
+	CHECK(editor.GetStyleAt(2) == 5);
+	CHECK(editor.GetStyleIndexAt(1) == 5);
+	CHECK(editor.GetEndStyled() >= 3);
 
 	// Negative length is rejected.
-	editor.WndProc(Message::SetStyling, static_cast<uptr_t>(-1), 1);
+	editor.SetStyling(-1, 1);
 	// Past-end style query returns 0.
-	CHECK(editor.WndProc(Message::GetStyleAt, 100, 0) == 0);
+	CHECK(editor.GetStyleAt(100) == 0);
 
 	const char styles[] = {7, 7, 7};
-	editor.WndProc(Message::StartStyling, 3, 0);
-	editor.WndProc(Message::SetStylingEx, 3, reinterpret_cast<sptr_t>(styles));
-	CHECK(editor.WndProc(Message::GetStyleAt, 3, 0) == 7);
-	CHECK(editor.WndProc(Message::GetStyleAt, 5, 0) == 7);
+	editor.StartStyling(3);
+	editor.SetStylingEx(3, styles);
+	CHECK(editor.GetStyleAt(3) == 7);
+	CHECK(editor.GetStyleAt(5) == 7);
 
 	// Full style bytes: values above the old 5-bit style partition (0..31) still store and read back.
 	constexpr int styleAboveOldBits = 40;
-	editor.WndProc(Message::StartStyling, 0, 0);
-	editor.WndProc(Message::SetStyling, 2, styleAboveOldBits);
-	CHECK(editor.WndProc(Message::GetStyleAt, 0, 0) == styleAboveOldBits);
-	CHECK(editor.WndProc(Message::GetStyleIndexAt, 1, 0) == styleAboveOldBits);
-	editor.WndProc(Message::StyleSetFore, styleAboveOldBits, 0x00C0FF);
-	CHECK(editor.WndProc(Message::StyleGetFore, styleAboveOldBits, 0) == 0x00C0FF);
+	editor.StartStyling(0);
+	editor.SetStyling(2, styleAboveOldBits);
+	CHECK(editor.GetStyleAt(0) == styleAboveOldBits);
+	CHECK(editor.GetStyleIndexAt(1) == styleAboveOldBits);
+	editor.StyleSetFore(styleAboveOldBits, 0x00C0FF);
+	CHECK(editor.StyleGetFore(styleAboveOldBits) == 0x00C0FF);
 }
 
 TEST_CASE("SetBidirectional stores mode and GetBidirectional reports it") {
@@ -133,37 +132,37 @@ TEST_CASE("SetBidirectional stores mode and GetBidirectional reports it") {
 
 	// Default off. Do not paint while bidi is enabled: the test surface has no
 	// screen-line layout implementation, and full bidi layout is out of roadmap scope.
-	CHECK(static_cast<Bidirectional>(editor.WndProc(Message::GetBidirectional, 0, 0)) == Bidirectional::Disabled);
+	CHECK(static_cast<Bidirectional>(editor.GetBidirectional()) == Bidirectional::Disabled);
 
 	editor.ClearObservations();
-	editor.WndProc(Message::SetBidirectional, static_cast<uptr_t>(Bidirectional::L2R), 0);
-	CHECK(static_cast<Bidirectional>(editor.WndProc(Message::GetBidirectional, 0, 0)) == Bidirectional::L2R);
+	editor.SetBidirectional(Bidirectional::L2R);
+	CHECK(static_cast<Bidirectional>(editor.GetBidirectional()) == Bidirectional::L2R);
 	CHECK(editor.Snapshot().invalidatedRectangles > 0);
 
-	editor.WndProc(Message::SetBidirectional, static_cast<uptr_t>(Bidirectional::R2L), 0);
-	CHECK(static_cast<Bidirectional>(editor.WndProc(Message::GetBidirectional, 0, 0)) == Bidirectional::R2L);
+	editor.SetBidirectional(Bidirectional::R2L);
+	CHECK(static_cast<Bidirectional>(editor.GetBidirectional()) == Bidirectional::R2L);
 
 	// Unchanged mode skips invalidation.
 	editor.ClearObservations();
-	editor.WndProc(Message::SetBidirectional, static_cast<uptr_t>(Bidirectional::R2L), 0);
+	editor.SetBidirectional(Bidirectional::R2L);
 	CHECK(editor.Snapshot().invalidatedRectangles == 0);
 
-	editor.WndProc(Message::SetBidirectional, static_cast<uptr_t>(Bidirectional::Disabled), 0);
-	CHECK(static_cast<Bidirectional>(editor.WndProc(Message::GetBidirectional, 0, 0)) == Bidirectional::Disabled);
+	editor.SetBidirectional(Bidirectional::Disabled);
+	CHECK(static_cast<Bidirectional>(editor.GetBidirectional()) == Bidirectional::Disabled);
 }
 
 TEST_CASE("ClearDocumentStyle resets styles without clearing text") {
 	TestHost host;
 	TestEditor editor(host);
 	editor.SetText("xyz");
-	editor.WndProc(Message::StartStyling, 0, 0);
-	editor.WndProc(Message::SetStyling, 3, 4);
-	CHECK(editor.WndProc(Message::GetStyleAt, 0, 0) == 4);
+	editor.StartStyling(0);
+	editor.SetStyling(3, 4);
+	CHECK(editor.GetStyleAt(0) == 4);
 
-	editor.WndProc(Message::ClearDocumentStyle, 0, 0);
+	editor.ClearDocumentStyle();
 	CHECK(editor.GetText() == "xyz");
-	CHECK(editor.WndProc(Message::GetStyleAt, 0, 0) == 0);
-	CHECK(editor.WndProc(Message::GetStyleAt, 2, 0) == 0);
+	CHECK(editor.GetStyleAt(0) == 0);
+	CHECK(editor.GetStyleAt(2) == 0);
 }
 
 TEST_CASE("View whitespace whitespace size and selection colours redraw") {
@@ -172,23 +171,23 @@ TEST_CASE("View whitespace whitespace size and selection colours redraw") {
 	editor.PaintAll();
 
 	editor.ClearObservations();
-	editor.WndProc(Message::SetViewWS, static_cast<uptr_t>(WhiteSpace::VisibleAlways), 0);
-	CHECK(static_cast<WhiteSpace>(editor.WndProc(Message::GetViewWS, 0, 0)) == WhiteSpace::VisibleAlways);
+	editor.SetViewWS(WhiteSpace::VisibleAlways);
+	CHECK(static_cast<WhiteSpace>(editor.GetViewWS()) == WhiteSpace::VisibleAlways);
 	CHECK(editor.Snapshot().invalidatedRectangles > 0);
 
 	editor.PaintAll();
 	editor.ClearObservations();
-	editor.WndProc(Message::SetWhitespaceSize, 3, 0);
-	CHECK(editor.WndProc(Message::GetWhitespaceSize, 0, 0) == 3);
+	editor.SetWhitespaceSize(static_cast<int>(3));
+	CHECK(editor.GetWhitespaceSize() == 3);
 	CHECK(editor.Snapshot().invalidatedRectangles > 0);
 
 	editor.PaintAll();
 	editor.ClearObservations();
-	editor.WndProc(Message::SetSelFore, 1, 0x112233);
+	editor.SetSelFore(true, 0x112233);
 	CHECK(editor.Snapshot().invalidatedRectangles > 0);
-	editor.WndProc(Message::SetSelBack, 1, 0x445566);
-	editor.WndProc(Message::SetSelAlpha, 128, 0);
-	CHECK(editor.WndProc(Message::GetSelAlpha, 0, 0) == 128);
+	editor.SetSelBack(true, 0x445566);
+	editor.SetSelAlpha(static_cast<int>(128));
+	CHECK(editor.GetSelAlpha() == 128);
 }
 
 TEST_CASE("Element colours idle styling layout cache and phases") {
@@ -197,33 +196,33 @@ TEST_CASE("Element colours idle styling layout cache and phases") {
 
 	editor.PaintAll();
 	editor.ClearObservations();
-	editor.WndProc(Message::SetElementColour, static_cast<uptr_t>(Element::Caret), 0xFF0000FF);
-	CHECK(editor.WndProc(Message::GetElementIsSet, static_cast<uptr_t>(Element::Caret), 0) != 0);
+	editor.SetElementColour(Element::Caret, 0xFF0000FF);
+	CHECK(editor.GetElementIsSet(Element::Caret) != 0);
 	CHECK(editor.Snapshot().invalidatedRectangles > 0);
-	editor.WndProc(Message::ResetElementColour, static_cast<uptr_t>(Element::Caret), 0);
-	CHECK(editor.WndProc(Message::GetElementIsSet, static_cast<uptr_t>(Element::Caret), 0) == 0);
+	editor.ResetElementColour(Element::Caret);
+	CHECK(editor.GetElementIsSet(Element::Caret) == 0);
 
-	editor.WndProc(Message::SetIdleStyling, static_cast<uptr_t>(IdleStyling::ToVisible), 0);
-	CHECK(static_cast<IdleStyling>(editor.WndProc(Message::GetIdleStyling, 0, 0)) == IdleStyling::ToVisible);
+	editor.SetIdleStyling(IdleStyling::ToVisible);
+	CHECK(static_cast<IdleStyling>(editor.GetIdleStyling()) == IdleStyling::ToVisible);
 
-	editor.WndProc(Message::SetLayoutCache, static_cast<uptr_t>(LineCache::Page), 0);
-	CHECK(static_cast<LineCache>(editor.WndProc(Message::GetLayoutCache, 0, 0)) == LineCache::Page);
+	editor.SetLayoutCache(LineCache::Page);
+	CHECK(static_cast<LineCache>(editor.GetLayoutCache()) == LineCache::Page);
 
-	editor.WndProc(Message::SetPositionCache, 1024, 0);
-	CHECK(editor.WndProc(Message::GetPositionCache, 0, 0) == 1024);
+	editor.SetPositionCache(static_cast<int>(1024));
+	CHECK(editor.GetPositionCache() == 1024);
 
 	editor.PaintAll();
 	editor.ClearObservations();
-	editor.WndProc(Message::SetPhasesDraw, 2, 0);
-	CHECK(editor.WndProc(Message::GetPhasesDraw, 0, 0) == 2);
+	editor.SetPhasesDraw(static_cast<int>(2));
+	CHECK(editor.GetPhasesDraw() == 2);
 
 	editor.PaintAll();
 	editor.ClearObservations();
-	editor.WndProc(Message::SetExtraAscent, 2, 0);
-	CHECK(editor.WndProc(Message::GetExtraAscent, 0, 0) == 2);
+	editor.SetExtraAscent(static_cast<int>(2));
+	CHECK(editor.GetExtraAscent() == 2);
 	CHECK(editor.Snapshot().invalidatedRectangles > 0);
-	editor.WndProc(Message::SetExtraDescent, 3, 0);
-	CHECK(editor.WndProc(Message::GetExtraDescent, 0, 0) == 3);
+	editor.SetExtraDescent(static_cast<int>(3));
+	CHECK(editor.GetExtraDescent() == 3);
 }
 
 TEST_CASE("Zoom edge mode multi-edge highlight guide and extended styles") {
@@ -232,37 +231,37 @@ TEST_CASE("Zoom edge mode multi-edge highlight guide and extended styles") {
 
 	editor.PaintAll();
 	editor.ClearObservations();
-	editor.WndProc(Message::SetZoom, 4, 0);
-	CHECK(editor.WndProc(Message::GetZoom, 0, 0) == 4);
+	editor.SetZoom(static_cast<int>(4));
+	CHECK(editor.GetZoom() == 4);
 	CHECK(editor.Snapshot().invalidatedRectangles > 0);
 	// Same zoom should not re-invalidate via SetAppearance.
 	editor.PaintAll();
 	editor.ClearObservations();
-	editor.WndProc(Message::SetZoom, 4, 0);
+	editor.SetZoom(static_cast<int>(4));
 	CHECK(editor.Snapshot().invalidatedRectangles == 0);
 
-	editor.WndProc(Message::SetEdgeMode, static_cast<uptr_t>(EdgeVisualStyle::Line), 0);
-	CHECK(static_cast<EdgeVisualStyle>(editor.WndProc(Message::GetEdgeMode, 0, 0)) == EdgeVisualStyle::Line);
-	editor.WndProc(Message::SetEdgeColour, 0x00AABB, 0);
-	CHECK(editor.WndProc(Message::GetEdgeColour, 0, 0) == 0x00AABB);
+	editor.SetEdgeMode(EdgeVisualStyle::Line);
+	CHECK(static_cast<EdgeVisualStyle>(editor.GetEdgeMode()) == EdgeVisualStyle::Line);
+	editor.SetEdgeColour(static_cast<int>(0x00AABB));
+	CHECK(editor.GetEdgeColour() == 0x00AABB);
 
-	editor.WndProc(Message::MultiEdgeAddLine, 40, 0x112233);
-	editor.WndProc(Message::MultiEdgeAddLine, 80, 0x445566);
-	CHECK(editor.WndProc(Message::GetMultiEdgeColumn, 0, 0) == 40);
-	CHECK(editor.WndProc(Message::GetMultiEdgeColumn, 1, 0) == 80);
-	editor.WndProc(Message::MultiEdgeClearAll, 0, 0);
-	CHECK(editor.WndProc(Message::GetMultiEdgeColumn, 0, 0) < 0);
+	editor.MultiEdgeAddLine(40, 0x112233);
+	editor.MultiEdgeAddLine(80, 0x445566);
+	CHECK(editor.GetMultiEdgeColumn(0) == 40);
+	CHECK(editor.GetMultiEdgeColumn(1) == 80);
+	editor.MultiEdgeClearAll();
+	CHECK(editor.GetMultiEdgeColumn(0) < 0);
 
 	editor.PaintAll();
 	editor.ClearObservations();
-	editor.WndProc(Message::SetHighlightGuide, 4, 0);
-	CHECK(editor.WndProc(Message::GetHighlightGuide, 0, 0) == 4);
+	editor.SetHighlightGuide(static_cast<int>(4));
+	CHECK(editor.GetHighlightGuide() == 4);
 	CHECK(editor.Snapshot().invalidatedRectangles > 0);
 
-	const sptr_t first = editor.WndProc(Message::AllocateExtendedStyles, 8, 0);
+	const sptr_t first = editor.AllocateExtendedStyles(static_cast<int>(8));
 	CHECK(first >= 256);
-	editor.WndProc(Message::ReleaseAllExtendedStyles, 0, 0);
-	const sptr_t again = editor.WndProc(Message::AllocateExtendedStyles, 8, 0);
+	editor.ReleaseAllExtendedStyles();
+	const sptr_t again = editor.AllocateExtendedStyles(static_cast<int>(8));
 	CHECK(again == first);
 }
 
@@ -270,19 +269,19 @@ TEST_CASE("TextWidth and named zoom parity with message path") {
 	TestHost host;
 	TestEditor editor(host);
 	editor.SetText("MMMM");
-	editor.WndProc(Message::StyleSetFore, 0, 0x010203);
-	CHECK(editor.WndProc(Message::StyleGetFore, 0, 0) == 0x010203);
+	editor.StyleSetFore(0, 0x010203);
+	CHECK(editor.StyleGetFore(0) == 0x010203);
 
-	const long w = editor.WndProc(Message::TextWidth, 0, reinterpret_cast<sptr_t>("MM"));
+	const long w = editor.TextWidth(0, "MM");
 	CHECK(w > 0);
 	const std::string_view textWithNul("M\0M", 3);
 	CHECK(editor.TextWidth(0, textWithNul) == 3 * editor.TextWidth(0, "M"));
 
 	editor.SetZoom(6);
 	CHECK(editor.GetZoom() == 6);
-	CHECK(editor.WndProc(Message::GetZoom, 0, 0) == 6);
+	CHECK(editor.GetZoom() == 6);
 
 	// Message path matches named setter.
-	editor.WndProc(Message::SetZoom, 2, 0);
+	editor.SetZoom(static_cast<int>(2));
 	CHECK(editor.GetZoom() == 2);
 }

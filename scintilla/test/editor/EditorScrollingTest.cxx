@@ -3,7 +3,6 @@
  ** Focused behavior tests for view scrolling and scrollbar options.
  **/
 
-#include <array>
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
@@ -20,7 +19,6 @@
 #include <vector>
 
 #include "ScintillaTypes.h"
-#include "ScintillaMessages.h"
 #include "ScintillaStructures.h"
 #include "ILoader.h"
 #include "ILexer.h"
@@ -66,7 +64,7 @@
 using namespace Scintilla;
 using namespace Scintilla::Internal;
 
-TEST_CASE("X offset and first-visible-line message path round-trip") {
+TEST_CASE("X offset and first-visible-line round-trip") {
 	TestHost host;
 	TestEditor editor(host, PRectangle(0, 0, 160, 40));
 	LoadClean(editor,
@@ -74,12 +72,10 @@ TEST_CASE("X offset and first-visible-line message path round-trip") {
 		"line 06\nline 07\nline 08\nline 09\nline 10\nline 11\n"
 		"line 12\nline 13\nline 14\nline 15\nline 16\nline 17\n");
 	CHECK(editor.GetFirstVisibleLine() == 0);
-	CHECK(editor.WndProc(Message::GetFirstVisibleLine, 0, 0) == 0);
 
 	editor.SetXOffset(12);
 	CHECK(editor.GetXOffset() == 12);
-	CHECK(editor.WndProc(Message::GetXOffset, 0, 0) == 12);
-	editor.WndProc(Message::SetXOffset, 0, 0);
+	editor.SetXOffset(0);
 	CHECK(editor.GetXOffset() == 0);
 
 	// Named application scroll operations move an observable view origin.
@@ -95,30 +91,29 @@ TEST_CASE("X offset and first-visible-line message path round-trip") {
 TEST_CASE("Scroll width and end-at-last-line options") {
 	TestHost host;
 	TestEditor editor(host);
-	editor.WndProc(Message::SetScrollWidth, 400, 0);
-	CHECK(editor.WndProc(Message::GetScrollWidth, 0, 0) == 400);
-	editor.WndProc(Message::SetScrollWidthTracking, 1, 0);
-	CHECK(editor.WndProc(Message::GetScrollWidthTracking, 0, 0) != 0);
-	editor.WndProc(Message::SetEndAtLastLine, 0, 0);
-	CHECK(editor.WndProc(Message::GetEndAtLastLine, 0, 0) == 0);
+	editor.SetScrollWidth(400);
+	CHECK(editor.GetScrollWidth() == 400);
+	editor.SetScrollWidthTracking(true);
+	CHECK(editor.GetScrollWidthTracking());
+	editor.SetEndAtLastLine(false);
+	CHECK_FALSE(editor.GetEndAtLastLine());
 }
 
 TEST_CASE("Scroll bar visibility options round-trip") {
 	TestHost host;
 	TestEditor editor(host);
-	editor.WndProc(Message::SetHScrollBar, 0, 0);
-	CHECK(editor.WndProc(Message::GetHScrollBar, 0, 0) == 0);
-	editor.WndProc(Message::SetVScrollBar, 0, 0);
-	CHECK(editor.WndProc(Message::GetVScrollBar, 0, 0) == 0);
-	editor.WndProc(Message::SetHScrollBar, 1, 0);
-	editor.WndProc(Message::SetVScrollBar, 1, 0);
-	CHECK(editor.WndProc(Message::GetHScrollBar, 0, 0) != 0);
-	CHECK(editor.WndProc(Message::GetVScrollBar, 0, 0) != 0);
+	editor.SetHScrollBar(false);
+	CHECK_FALSE(editor.GetHScrollBar());
+	editor.SetVScrollBar(false);
+	CHECK_FALSE(editor.GetVScrollBar());
+	editor.SetHScrollBar(true);
+	editor.SetVScrollBar(true);
+	CHECK(editor.GetHScrollBar());
+	CHECK(editor.GetVScrollBar());
 }
 
 TEST_CASE("TextHeight reports a positive line height") {
 	TestHost host;
 	TestEditor editor(host);
 	CHECK(editor.TextHeightPixels() > 0);
-	CHECK(editor.WndProc(Message::TextHeight, 0, 0) == editor.TextHeightPixels());
 }
