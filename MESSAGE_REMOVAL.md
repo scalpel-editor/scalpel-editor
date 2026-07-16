@@ -338,14 +338,14 @@ Moved (2026-07-15): print settings and typed `FormatRange` live in `EditorPrinti
 
 ### Host and lifecycle (14)
 
-Moved (2026-07-15): modification-event filtering, command-event filtering, status reporting, and surface feature queries live in `EditorHost.cxx` with temporary `WndProc` forwarders; focused coverage is in `EditorHostTest.cxx`. Direct-call accessors and widget identifiers remain for step 13 deletion. Recording remains for steps 14-16.
+Moved (2026-07-15): modification-event filtering, command-event filtering, status reporting, and surface feature queries live in `EditorHost.cxx` with temporary `WndProc` forwarders; focused coverage is in `EditorHostTest.cxx`. Widget identifiers deleted (2026-07-15): `SetIdentifier` / `GetIdentifier` and `ctrlID` / `SetCtrlID` / `GetCtrlID` removed; notifications go to the single test host. Direct-call accessors remain for step 13 deletion. Recording remains for steps 14-16.
 
 | Entries | Owner | Classification | Target and named entry point | Focused test | Documentation | Deletion reason |
 | --- | --- | --- | --- | --- | --- | --- |
 | `SetModEventMask`, `GetModEventMask`, `SetCommandEvents`, `GetCommandEvents`, `SetStatus`, `GetStatus`, `SupportsFeature` | `Editor` and its fixed host | Private editor operation | `EditorHost.cxx`; typed notification filters, status, and feature queries keep their interface names | `EditorHostTest.cxx`: filtering, change notifications, status, and every test-surface feature answer | Moved to `EditorHost.cxx`; HTML reduced to pointers | Not deleted |
 | `StartRecord`, `StopRecord` | `Editor` macro recorder and application boundary | Application-facing method | `EditorRecording.cxx`; `StartRecording()` and `StopRecording()` emit typed `RecordedAction` values | Add editor tests for commands, inserted/replaced text, ignored display changes, start/stop behavior, and parameter lifetime | Replace macro API prose with the typed record format | Not deleted: macro recording remains a Scintilla editing feature |
 | `GetDirectFunction`, `GetDirectStatusFunction`, `GetDirectPointer` | Generated client direct-call optimization | Feature to delete | Applications call named methods directly | Keep direct named-method tests | Delete API prose | These expose the numeric message dispatcher while avoiding a widget send-message call; both layers are being removed |
-| `SetIdentifier`, `GetIdentifier` | Embedded multi-widget notification routing | Feature to delete | The standalone editor host owns one editor directly | Keep notification routing tests through the single test host | Delete API prose | A one-window application does not need client-assigned widget identifiers |
+| `SetIdentifier`, `GetIdentifier` | Embedded multi-widget notification routing | Feature to delete | No replacement | `EditorHostTest.cxx`: deleted messages fall through; single-host notifications still arrive | Deleted API prose | A one-window application does not need client-assigned widget identifiers |
 
 `get GetDirectFunction=2184`, `get GetDirectStatusFunction=2772`, `get GetDirectPointer=2185`, `set SetModEventMask=2359`, `get GetModEventMask=2378`, `set SetCommandEvents=2717`, `get GetCommandEvents=2718`, `set SetStatus=2382`, `get GetStatus=2383`, `set SetIdentifier=2622`, `get GetIdentifier=2623`, `get SupportsFeature=2750`, `fun StartRecord=3001`, `fun StopRecord=3002`
 

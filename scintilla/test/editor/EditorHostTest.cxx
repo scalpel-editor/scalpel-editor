@@ -156,3 +156,28 @@ TEST_CASE("Fixed test surface reports every feature as unsupported") {
 		CHECK(editor.WndProc(Message::SupportsFeature, static_cast<uptr_t>(feature), 0) == 0);
 	}
 }
+
+TEST_CASE("Deleted widget identifier messages fall through without affecting notifications") {
+	TestHost host;
+	TestEditor editor(host);
+	LoadClean(editor, "solo");
+	editor.ClearObservations();
+
+	// SetIdentifier / GetIdentifier are removed from dispatch; they fall through to DefWndProc.
+	CHECK(editor.WndProc(Message::SetIdentifier, 99, 0) == 0);
+	CHECK(editor.WndProc(Message::GetIdentifier, 0, 0) == 0);
+	CHECK(std::find(editor.observations.defaultWindowCalls.begin(),
+		editor.observations.defaultWindowCalls.end(),
+		Message::SetIdentifier) != editor.observations.defaultWindowCalls.end());
+	CHECK(std::find(editor.observations.defaultWindowCalls.begin(),
+		editor.observations.defaultWindowCalls.end(),
+		Message::GetIdentifier) != editor.observations.defaultWindowCalls.end());
+	CHECK(editor.Text() == "solo");
+
+	// The single test host still receives notifications without a widget identifier.
+	editor.ClearObservations();
+	editor.InsertInput("x");
+	CHECK(ModifiedNotifications(editor) >= 1);
+	CHECK(editor.Text().size() == 5);
+	CHECK(editor.Text().find('x') != std::string::npos);
+}

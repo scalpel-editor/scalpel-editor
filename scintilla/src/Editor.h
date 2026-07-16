@@ -754,8 +754,6 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void SetStatus(Scintilla::Status status) noexcept;
 	Scintilla::Status GetStatus() const noexcept;
 	virtual void NotifyFocus(bool focus);
-	virtual void SetCtrlID(int identifier);
-	virtual int GetCtrlID() { return ctrlID; }
 	virtual void NotifyParent(Scintilla::NotificationData scn) = 0;
 	virtual void NotifyStyleToNeeded(Sci::Position endStyleNeeded);
 	void NotifyChar(int ch, Scintilla::CharacterSource charSource);
@@ -1298,8 +1296,6 @@ public:
 
 	// Public so scintilla_send_message can use it.
 	virtual Scintilla::sptr_t WndProc(Scintilla::Message iMessage, Scintilla::uptr_t wParam, Scintilla::sptr_t lParam);
-	// Public so scintilla_set_id can use it.
-	int ctrlID;
 	friend class AutoSurface;
 };
 

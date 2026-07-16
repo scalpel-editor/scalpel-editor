@@ -130,8 +130,6 @@ Idler::Idler() noexcept :
 		state(false), idlerID(nullptr) {}
 
 Editor::Editor() : durationWrapOneByte(0.000001, 0.00000001, 0.00001) {
-	ctrlID = 0;
-
 	stylesValid = false;
 	technology = Technology::Default;
 	scaleRGBAImage = 100.0f;
@@ -1868,10 +1866,6 @@ void Editor::NotifyFocus(bool focus) {
 	NotificationData scn = {};
 	scn.nmhdr.code = focus ? Notification::FocusIn : Notification::FocusOut;
 	NotifyParent(scn);
-}
-
-void Editor::SetCtrlID(int identifier) {
-	ctrlID = identifier;
 }
 
 void Editor::NotifyStyleToNeeded(Sci::Position endStyleNeeded) {
@@ -6674,13 +6668,8 @@ sptr_t Editor::WndProc(Message iMessage, uptr_t wParam, sptr_t lParam) {
 		ChangeLexerState(PositionFromUPtr(wParam), lParam);
 		break;
 
-	case Message::SetIdentifier:
-		SetCtrlID(static_cast<int>(wParam));
-		break;
-
-	case Message::GetIdentifier:
-		return GetCtrlID();
-
+	// SetIdentifier / GetIdentifier deleted: the standalone host owns one editor
+	// and does not route notifications by a client-assigned widget identifier.
 	// SetTechnology / GetTechnology deleted: one fixed renderer technology.
 
 	case Message::CountCharacters:

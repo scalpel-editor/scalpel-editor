@@ -1938,9 +1938,8 @@ struct SCNotification {
     <p>The following <code>SCI_*</code> messages are associated with these notifications:</p>
     <code><a class="message" href="#SCI_SETMOUSEDWELLTIME">SCI_SETMOUSEDWELLTIME(int periodMilliseconds)</a><br />
      <a class="message" href="#SCI_GETMOUSEDWELLTIME">SCI_GETMOUSEDWELLTIME &rarr; int</a><br />
-     <a class="message" href="#SCI_SETIDENTIFIER">SCI_SETIDENTIFIER(int identifier)</a><br />
-     <a class="message" href="#SCI_GETIDENTIFIER">SCI_GETIDENTIFIER &rarr; int</a><br />
     </code>
+    <p><code>SCI_SETIDENTIFIER</code> and <code>SCI_GETIDENTIFIER</code> are deleted: the standalone host owns one editor and does not route notifications by a client-assigned widget identifier.</p>
 
     <p>The following additional notifications are sent using a secondary "command" method and should
     be avoided in new code as the primary "notification" method provides all the same events with richer
@@ -1954,17 +1953,6 @@ struct SCNotification {
      <a class="message" href="#SCEN_SETFOCUS">SCEN_SETFOCUS</a><br />
      <a class="message" href="#SCEN_KILLFOCUS">SCEN_KILLFOCUS</a><br />
     </code>
-
-    <p><b id="SCI_SETIDENTIFIER">SCI_SETIDENTIFIER(int identifier)</b><br />
-     <b id="SCI_GETIDENTIFIER">SCI_GETIDENTIFIER &rarr; int</b><br />
-     These two messages set and get the identifier of the Scintilla instance which is included in notifications as the
-     <code>idFrom</code> field.
-     When an application creates multiple Scintilla widgets, this allows the source of each notification to be found.
-     On Windows, this value is initialised in the <code>CreateWindow</code> call and stored as the
-     <code>GWLP_ID</code> attribute of the window.
-     The value should be small, preferably less than 16 bits,
-     rather than a pointer as some of the functions will only transmit 16 or 32 bits.
-    </p>
 
     <p><b id="SCN_STYLENEEDED">SCN_STYLENEEDED</b><br />
      If you used <code>ScintillaBase::SetILexer(nullptr)</code> to make the container act as the
@@ -2928,9 +2916,7 @@ for line = lineStart to lineEnd do SCI_ENSUREVISIBLE(line) next
     widgets.</p>
 
     <p><b id="scintilla_set_id">void scintilla_set_id(ScintillaObject *sci, uptr_t id)</b><br />
-    Set the control ID which will be used in the idFrom field of the Sci_NotifyHeader structure of all
-    notifications for this instance.
-    This is equivalent to <a class="seealso" href="#SCI_SETIDENTIFIER">SCI_SETIDENTIFIER</a>.</p>
+    GTK multi-widget control ID for notification routing. Deleted with the widget identifier API: this project has one editor and no GTK embedding surface.</p>
 
     <p><b id="scintilla_send_message">sptr_t scintilla_send_message(ScintillaObject *sci,unsigned int iMessage, uptr_t wParam, sptr_t lParam)</b><br />
     The main entry point allows sending any of the messages described in this document.</p>
