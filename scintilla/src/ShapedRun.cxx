@@ -77,12 +77,7 @@ std::shared_ptr<FontFace> FaceForCharacter(
 }
 
 std::string FaceIdentity(const FontFace *face) {
-	if (!face) {
-		return {};
-	}
-	return face->Path().string() + ':' + std::to_string(face->RequestedSize()) + ':' +
-		std::to_string(static_cast<int>(face->RequestedWeight())) + ':' +
-		(face->RequestedItalic() ? '1' : '0');
+	return std::to_string(reinterpret_cast<std::uintptr_t>(face));
 }
 
 std::string CacheKey(
@@ -249,7 +244,7 @@ public:
 	explicit Impl(size_t capacity_) : capacity(std::max<size_t>(1, capacity_)) {
 	}
 
-	const ShapedRun &Get(
+	std::shared_ptr<const ShapedRun> Get(
 		std::string_view text,
 		const std::shared_ptr<FontFace> &primary,
 		const std::vector<std::shared_ptr<FontFace>> &fallbacks) {
@@ -260,8 +255,8 @@ public:
 			return found->second->run;
 		}
 
-		ShapedRun shaped = ShapeText(text, primary, fallbacks);
-		order.push_front(Entry{key, std::move(shaped)});
+		auto shaped = std::make_shared<ShapedRun>(ShapeText(text, primary, fallbacks));
+		order.push_front(Entry{key, std::move(shaped), primary, fallbacks});
 		map[key] = order.begin();
 
 		while (order.size() > capacity) {
@@ -287,7 +282,9 @@ public:
 private:
 	struct Entry {
 		std::string key;
-		ShapedRun run;
+		std::shared_ptr<const ShapedRun> run;
+		std::shared_ptr<FontFace> primary;
+		std::vector<std::shared_ptr<FontFace>> fallbacks;
 	};
 
 	size_t capacity;
@@ -300,7 +297,7 @@ ShapedRunCache::ShapedRunCache(size_t capacity) : impl(std::make_unique<Impl>(ca
 
 ShapedRunCache::~ShapedRunCache() = default;
 
-const ShapedRun &ShapedRunCache::Get(
+std::shared_ptr<const ShapedRun> ShapedRunCache::Get(
 	std::string_view text,
 	const std::shared_ptr<FontFace> &primary,
 	const std::vector<std::shared_ptr<FontFace>> &fallbacks) {

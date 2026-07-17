@@ -97,8 +97,10 @@ ShapedRun ShapeText(
 /**
  * Bounded cache of shaped runs keyed by faces, text bytes, and direction.
  *
- * Runs hold shared_ptr references to the faces they used. Clear or destroy the
- * cache when discarding a FontCache if you need faces released promptly.
+ * Returned shared pointers keep runs alive across later lookups and eviction.
+ * Cache entries retain every face in their key, while runs retain the faces
+ * used by their glyphs. Clear or destroy the cache when discarding a FontCache
+ * if you need unused entries and faces released promptly.
  */
 class ShapedRunCache {
 public:
@@ -110,7 +112,7 @@ public:
 	ShapedRunCache &operator=(const ShapedRunCache &) = delete;
 	ShapedRunCache &operator=(ShapedRunCache &&) = delete;
 
-	const ShapedRun &Get(
+	std::shared_ptr<const ShapedRun> Get(
 		std::string_view text,
 		const std::shared_ptr<FontFace> &primary,
 		const std::vector<std::shared_ptr<FontFace>> &fallbacks = {});

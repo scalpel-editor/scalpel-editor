@@ -242,31 +242,50 @@ TEST_CASE("ShapedRunCache returns the same run for the same key") {
 	const auto face = LoadPrimary(fonts);
 	ShapedRunCache cache(8);
 
-	const ShapedRun &first = cache.Get("AV", face);
-	const ShapedRun &again = cache.Get("AV", face);
-	CHECK(&first == &again);
+	const auto first = cache.Get("AV", face);
+	const auto again = cache.Get("AV", face);
+	CHECK(first == again);
 	CHECK(cache.Size() == 1);
 
-	const ShapedRun &other = cache.Get("AB", face);
-	CHECK(&other != &first);
+	const auto other = cache.Get("AB", face);
+	CHECK(other != first);
 	CHECK(cache.Size() == 2);
-	CHECK(other.text != first.text);
+	CHECK(other->text != first->text);
 }
 
-TEST_CASE("ShapedRunCache evicts the least recently used entry") {
+TEST_CASE("ShapedRunCache keeps returned runs alive after eviction") {
 	FontCache fonts;
 	const auto face = LoadPrimary(fonts);
 	ShapedRunCache cache(2);
 
-	cache.Get("A", face);
-	cache.Get("B", face);
+	const auto a = cache.Get("A", face);
+	const auto b = cache.Get("B", face);
 	CHECK(cache.Size() == 2);
 	// Touch A so B is the older entry when C arrives.
-	const XYPOSITION aWidth = cache.Get("A", face).Width();
+	const XYPOSITION aWidth = cache.Get("A", face)->Width();
 	cache.Get("C", face);
 	CHECK(cache.Size() == 2);
 
-	// A and C remain; reshaping B allocates a new slot and drops one of them.
-	const ShapedRun &aAgain = cache.Get("A", face);
-	CHECK(aAgain.Width() == aWidth);
+	// Recreating B evicts A from the cache, but the returned run remains valid.
+	const auto bAgain = cache.Get("B", face);
+	CHECK(bAgain != b);
+	CHECK(a->text == "A");
+	CHECK(a->Width() == aWidth);
+}
+
+TEST_CASE("ShapedRunCache distinguishes face objects") {
+	FontCache firstFonts;
+	FontCache secondFonts;
+	const auto firstFace = LoadPrimary(firstFonts);
+	const auto secondFace = LoadPrimary(secondFonts);
+	REQUIRE(firstFace != secondFace);
+	ShapedRunCache cache;
+
+	const auto first = cache.Get("A", firstFace);
+	const auto second = cache.Get("A", secondFace);
+
+	CHECK(first != second);
+	CHECK(cache.Size() == 2);
+	REQUIRE_FALSE(second->glyphs.empty());
+	CHECK(second->glyphs.front().face == secondFace);
 }
