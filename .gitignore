@@ -9,3 +9,5 @@
 # Note: never add a `.*/` pattern here. grepai's ignore matcher mis-reads it as
 # "every directory" and indexes nothing (see AGENTS.md, Tooling notes). List
 # hidden directories explicitly instead.
+# CocoIndex Code (ccc)
+/.cocoindex_code/
