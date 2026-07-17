@@ -8,6 +8,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #define GL_GLEXT_PROTOTYPES
 #include <GL/gl.h>
@@ -203,7 +204,9 @@ ColourRGBA ColourBuffer::ReadPixel(int x, int y) const {
 
 Renderer::Renderer(GlContext &context_) : context(context_) {
 	context.MakeCurrent();
-	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	// Straight-alpha source-over: rgb = s.rgb*s.a + d.rgb*(1-s.a);
+	// a = s.a + d.a*(1-s.a).
+	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 	glDisable(GL_BLEND);
 	EnsureSolidProgram();
 }
@@ -252,8 +255,8 @@ void Renderer::EnsureSolidProgram() {
 	glGenBuffers(1, &vbo);
 	glBindVertexArray(vao);
 	glBindBuffer(GL_ARRAY_BUFFER, vbo);
-	// 6 vertices (two triangles) × vec2; updated per draw.
-	glBufferData(GL_ARRAY_BUFFER, 6 * 2 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+	// Large enough for tessellated ellipses/stadiums (updated per draw).
+	glBufferData(GL_ARRAY_BUFFER, 512 * 2 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
 	glEnableVertexAttribArray(0);
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
 	glBindVertexArray(0);
@@ -351,12 +354,30 @@ void Renderer::UploadProjection() const {
 	glUniformMatrix4fv(uniformTransform, 1, GL_FALSE, mat);
 }
 
-void Renderer::DrawSolidQuad(float x0, float y0, float x1, float y1, ColourRGBA colour) {
+void Renderer::BeginDraw() {
+	MakeCurrent();
+	glBindFramebuffer(GL_FRAMEBUFFER, targetFbo);
+	glViewport(0, 0, targetWidth, targetHeight);
+	ApplyScissor();
+}
+
+void Renderer::SetBlendForColour(ColourRGBA colour) {
+	if (colour.IsOpaque()) {
+		glDisable(GL_BLEND);
+	} else {
+		glEnable(GL_BLEND);
+	}
+}
+
+void Renderer::DrawSolidTriangles(const float *xy, size_t vertexCount, ColourRGBA colour) {
+	if (!xy || vertexCount < 3) {
+		return;
+	}
 	EnsureSolidProgram();
-	const float verts[12] = {
-		x0, y0, x1, y0, x1, y1,
-		x0, y0, x1, y1, x0, y1,
-	};
+	const size_t floats = vertexCount * 2;
+	if (floats > 512 * 2) {
+		throw std::runtime_error("DrawSolidTriangles vertex count exceeds buffer");
+	}
 	glUseProgram(programSolid);
 	UploadProjection();
 	glUniform4f(uniformColour,
@@ -366,16 +387,47 @@ void Renderer::DrawSolidQuad(float x0, float y0, float x1, float y1, ColourRGBA 
 		colour.GetAlphaComponent());
 	glBindVertexArray(vao);
 	glBindBuffer(GL_ARRAY_BUFFER, vbo);
-	glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
-	glDrawArrays(GL_TRIANGLES, 0, 6);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, floats * sizeof(float), xy);
+	glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(vertexCount));
 	glBindVertexArray(0);
 	glUseProgram(0);
 }
 
+void Renderer::DrawSolidQuad(float x0, float y0, float x1, float y1, ColourRGBA colour) {
+	const float verts[12] = {
+		x0, y0, x1, y0, x1, y1,
+		x0, y0, x1, y1, x0, y1,
+	};
+	DrawSolidTriangles(verts, 6, colour);
+}
+
+void Renderer::DrawLineSegment(Point start, Point end, XYPOSITION width, ColourRGBA colour) {
+	const double dx = end.x - start.x;
+	const double dy = end.y - start.y;
+	const double len = std::sqrt(dx * dx + dy * dy);
+	if (len <= 0.0) {
+		// Degenerate: draw a small square around the point.
+		const double h = std::max(width, 1.0) * 0.5;
+		DrawSolidQuad(static_cast<float>(start.x - h), static_cast<float>(start.y - h),
+			static_cast<float>(start.x + h), static_cast<float>(start.y + h), colour);
+		return;
+	}
+	const double half = std::max(width, 1.0) * 0.5;
+	const double nx = -dy / len * half;
+	const double ny = dx / len * half;
+	const float verts[12] = {
+		static_cast<float>(start.x + nx), static_cast<float>(start.y + ny),
+		static_cast<float>(start.x - nx), static_cast<float>(start.y - ny),
+		static_cast<float>(end.x - nx), static_cast<float>(end.y - ny),
+		static_cast<float>(start.x + nx), static_cast<float>(start.y + ny),
+		static_cast<float>(end.x - nx), static_cast<float>(end.y - ny),
+		static_cast<float>(end.x + nx), static_cast<float>(end.y + ny),
+	};
+	DrawSolidTriangles(verts, 6, colour);
+}
+
 void Renderer::FillRectangleOpaque(PRectangle rc, ColourRGBA colour) {
-	MakeCurrent();
-	glBindFramebuffer(GL_FRAMEBUFFER, targetFbo);
-	glViewport(0, 0, targetWidth, targetHeight);
+	BeginDraw();
 
 	PixelRect pr = IntersectPixelRect(PixelRectFromPRectangle(rc), CurrentClip());
 	if (pr.Empty()) {
@@ -398,16 +450,294 @@ void Renderer::FillRectangle(PRectangle rc, ColourRGBA colour) {
 		FillRectangleOpaque(rc, colour);
 		return;
 	}
-	MakeCurrent();
-	glBindFramebuffer(GL_FRAMEBUFFER, targetFbo);
-	glViewport(0, 0, targetWidth, targetHeight);
-	ApplyScissor();
+	BeginDraw();
 	if (CurrentClip().Empty()) {
 		return;
 	}
 	glEnable(GL_BLEND);
 	DrawSolidQuad(rc.left, rc.top, rc.right, rc.bottom, colour);
 	glDisable(GL_BLEND);
+}
+
+void Renderer::LineDraw(Point start, Point end, Stroke stroke) {
+	BeginDraw();
+	if (CurrentClip().Empty()) {
+		return;
+	}
+	SetBlendForColour(stroke.colour);
+	DrawLineSegment(start, end, stroke.width, stroke.colour);
+	glDisable(GL_BLEND);
+}
+
+void Renderer::PolyLine(const Point *pts, size_t npts, Stroke stroke) {
+	if (!pts || npts < 2) {
+		return;
+	}
+	BeginDraw();
+	if (CurrentClip().Empty()) {
+		return;
+	}
+	SetBlendForColour(stroke.colour);
+	for (size_t i = 1; i < npts; i++) {
+		DrawLineSegment(pts[i - 1], pts[i], stroke.width, stroke.colour);
+	}
+	glDisable(GL_BLEND);
+}
+
+void Renderer::Polygon(const Point *pts, size_t npts, FillStroke fillStroke) {
+	if (!pts || npts < 3) {
+		return;
+	}
+	BeginDraw();
+	if (CurrentClip().Empty()) {
+		return;
+	}
+	// Triangle fan from pts[0].
+	std::vector<float> tris;
+	tris.reserve((npts - 2) * 6);
+	for (size_t i = 1; i + 1 < npts; i++) {
+		tris.push_back(pts[0].x);
+		tris.push_back(pts[0].y);
+		tris.push_back(pts[i].x);
+		tris.push_back(pts[i].y);
+		tris.push_back(pts[i + 1].x);
+		tris.push_back(pts[i + 1].y);
+	}
+	SetBlendForColour(fillStroke.fill.colour);
+	DrawSolidTriangles(tris.data(), tris.size() / 2, fillStroke.fill.colour);
+	SetBlendForColour(fillStroke.stroke.colour);
+	for (size_t i = 0; i < npts; i++) {
+		DrawLineSegment(pts[i], pts[(i + 1) % npts], fillStroke.stroke.width, fillStroke.stroke.colour);
+	}
+	glDisable(GL_BLEND);
+}
+
+void Renderer::RectangleDraw(PRectangle rc, FillStroke fillStroke) {
+	FillRectangle(rc, fillStroke.fill.colour);
+	RectangleFrame(rc, fillStroke.stroke);
+}
+
+void Renderer::RectangleFrame(PRectangle rc, Stroke stroke) {
+	const Point pts[5] = {
+		Point(rc.left, rc.top),
+		Point(rc.right, rc.top),
+		Point(rc.right, rc.bottom),
+		Point(rc.left, rc.bottom),
+		Point(rc.left, rc.top),
+	};
+	PolyLine(pts, 5, stroke);
+}
+
+void Renderer::RoundedRectangle(PRectangle rc, FillStroke fillStroke, XYPOSITION radius) {
+	AlphaRectangle(rc, radius, fillStroke);
+}
+
+void Renderer::AlphaRectangle(PRectangle rc, XYPOSITION cornerSize, FillStroke fillStroke) {
+	BeginDraw();
+	if (CurrentClip().Empty()) {
+		return;
+	}
+	const XYPOSITION w = rc.Width();
+	const XYPOSITION h = rc.Height();
+	if (w <= 0.0 || h <= 0.0) {
+		return;
+	}
+	XYPOSITION r = std::max<XYPOSITION>(0.0, cornerSize);
+	r = std::min<XYPOSITION>(r, std::min(w, h) * 0.5);
+
+	if (r <= 0.5) {
+		FillRectangle(rc, fillStroke.fill.colour);
+		if (fillStroke.stroke.width > 0.0) {
+			RectangleFrame(rc, fillStroke.stroke);
+		}
+		return;
+	}
+
+	// Tessellate rounded rect as centre box + side boxes + corner quarter-circles.
+	constexpr int kSeg = 8;
+	std::vector<float> tris;
+	auto addTri = [&](double ax, double ay, double bx, double by, double cx, double cy) {
+		tris.push_back(static_cast<float>(ax)); tris.push_back(static_cast<float>(ay));
+		tris.push_back(static_cast<float>(bx)); tris.push_back(static_cast<float>(by));
+		tris.push_back(static_cast<float>(cx)); tris.push_back(static_cast<float>(cy));
+	};
+	const double x0 = rc.left;
+	const double y0 = rc.top;
+	const double x1 = rc.right;
+	const double y1 = rc.bottom;
+	// Centre and sides (axis-aligned).
+	addTri(x0 + r, y0, x1 - r, y0, x1 - r, y1);
+	addTri(x0 + r, y0, x1 - r, y1, x0 + r, y1);
+	addTri(x0, y0 + r, x0 + r, y0 + r, x0 + r, y1 - r);
+	addTri(x0, y0 + r, x0 + r, y1 - r, x0, y1 - r);
+	addTri(x1 - r, y0 + r, x1, y0 + r, x1, y1 - r);
+	addTri(x1 - r, y0 + r, x1, y1 - r, x1 - r, y1 - r);
+
+	auto corner = [&](double cx, double cy, double a0, double a1) {
+		for (int i = 0; i < kSeg; i++) {
+			const double t0 = a0 + (a1 - a0) * (static_cast<double>(i) / kSeg);
+			const double t1 = a0 + (a1 - a0) * (static_cast<double>(i + 1) / kSeg);
+			addTri(cx, cy,
+				cx + std::cos(t0) * r, cy + std::sin(t0) * r,
+				cx + std::cos(t1) * r, cy + std::sin(t1) * r);
+		}
+	};
+	// Angles in surface space (y down): top-left, top-right, bottom-right, bottom-left.
+	constexpr double pi = 3.141592653589793;
+	corner(x0 + r, y0 + r, pi, pi * 1.5);
+	corner(x1 - r, y0 + r, pi * 1.5, pi * 2.0);
+	corner(x1 - r, y1 - r, 0.0, pi * 0.5);
+	corner(x0 + r, y1 - r, pi * 0.5, pi);
+
+	SetBlendForColour(fillStroke.fill.colour);
+	DrawSolidTriangles(tris.data(), tris.size() / 2, fillStroke.fill.colour);
+	if (fillStroke.stroke.width > 0.0) {
+		// Approximate stroke with the outer polyline of the rounded rect.
+		std::vector<Point> outline;
+		outline.reserve(kSeg * 4 + 4);
+		auto arc = [&](double cx, double cy, double a0, double a1) {
+			for (int i = 0; i <= kSeg; i++) {
+				const double t = a0 + (a1 - a0) * (static_cast<double>(i) / kSeg);
+				outline.push_back(Point(cx + std::cos(t) * r, cy + std::sin(t) * r));
+			}
+		};
+		arc(x0 + r, y0 + r, pi, pi * 1.5);
+		arc(x1 - r, y0 + r, pi * 1.5, pi * 2.0);
+		arc(x1 - r, y1 - r, 0.0, pi * 0.5);
+		arc(x0 + r, y1 - r, pi * 0.5, pi);
+		SetBlendForColour(fillStroke.stroke.colour);
+		for (size_t i = 0; i < outline.size(); i++) {
+			DrawLineSegment(outline[i], outline[(i + 1) % outline.size()],
+				fillStroke.stroke.width, fillStroke.stroke.colour);
+		}
+	}
+	glDisable(GL_BLEND);
+}
+
+void Renderer::DrawEllipse(PRectangle rc, ColourRGBA fill, ColourRGBA stroke, XYPOSITION strokeWidth,
+	bool doFill, bool doStroke) {
+	const double cx = (rc.left + rc.right) * 0.5;
+	const double cy = (rc.top + rc.bottom) * 0.5;
+	const double rx = rc.Width() * 0.5;
+	const double ry = rc.Height() * 0.5;
+	if (rx <= 0.0 || ry <= 0.0) {
+		return;
+	}
+	constexpr int kSeg = 48;
+	constexpr double pi2 = 6.283185307179586;
+	if (doFill) {
+		std::vector<float> tris;
+		tris.reserve(static_cast<size_t>(kSeg) * 6);
+		for (int i = 0; i < kSeg; i++) {
+			const double t0 = pi2 * (static_cast<double>(i) / kSeg);
+			const double t1 = pi2 * (static_cast<double>(i + 1) / kSeg);
+			tris.push_back(static_cast<float>(cx));
+			tris.push_back(static_cast<float>(cy));
+			tris.push_back(static_cast<float>(cx + std::cos(t0) * rx));
+			tris.push_back(static_cast<float>(cy + std::sin(t0) * ry));
+			tris.push_back(static_cast<float>(cx + std::cos(t1) * rx));
+			tris.push_back(static_cast<float>(cy + std::sin(t1) * ry));
+		}
+		SetBlendForColour(fill);
+		DrawSolidTriangles(tris.data(), tris.size() / 2, fill);
+	}
+	if (doStroke && strokeWidth > 0.0) {
+		SetBlendForColour(stroke);
+		Point prev(cx + rx, cy);
+		for (int i = 1; i <= kSeg; i++) {
+			const double t = pi2 * (static_cast<double>(i) / kSeg);
+			Point cur(cx + std::cos(t) * rx, cy + std::sin(t) * ry);
+			DrawLineSegment(prev, cur, strokeWidth, stroke);
+			prev = cur;
+		}
+	}
+	glDisable(GL_BLEND);
+}
+
+void Renderer::Ellipse(PRectangle rc, FillStroke fillStroke) {
+	BeginDraw();
+	if (CurrentClip().Empty()) {
+		return;
+	}
+	DrawEllipse(rc, fillStroke.fill.colour, fillStroke.stroke.colour, fillStroke.stroke.width, true, true);
+}
+
+void Renderer::Stadium(PRectangle rc, FillStroke fillStroke, int ends) {
+	BeginDraw();
+	if (CurrentClip().Empty()) {
+		return;
+	}
+	// Surface::Ends: low nibble left, high nibble right. semiCircles = 0.
+	const int leftEnd = ends & 0xf;
+	const int rightEnd = (ends >> 4) & 0xf;
+	const XYPOSITION h = rc.Height();
+	const XYPOSITION r = h * 0.5;
+	const XYPOSITION midY = (rc.top + rc.bottom) * 0.5;
+
+	// Body rectangle between end caps.
+	XYPOSITION bodyLeft = rc.left;
+	XYPOSITION bodyRight = rc.right;
+	if (leftEnd == 0) { // semiCircles
+		bodyLeft = rc.left + r;
+	}
+	if (rightEnd == 0) {
+		bodyRight = rc.right - r;
+	}
+	if (bodyRight > bodyLeft) {
+		FillRectangle(PRectangle(bodyLeft, rc.top, bodyRight, rc.bottom), fillStroke.fill.colour);
+	}
+
+	auto disc = [&](XYPOSITION cx) {
+		DrawEllipse(PRectangle(cx - r, rc.top, cx + r, rc.bottom),
+			fillStroke.fill.colour, fillStroke.stroke.colour, 0.0, true, false);
+	};
+	if (leftEnd == 0) {
+		disc(rc.left + r);
+	} else {
+		// Flat or angled: approximate with a rectangle on the end.
+		FillRectangle(PRectangle(rc.left, rc.top, std::min<XYPOSITION>(rc.left + r, bodyLeft), rc.bottom),
+			fillStroke.fill.colour);
+	}
+	if (rightEnd == 0) {
+		disc(rc.right - r);
+	} else {
+		FillRectangle(PRectangle(std::max<XYPOSITION>(rc.right - r, bodyRight), rc.top, rc.right, rc.bottom),
+			fillStroke.fill.colour);
+	}
+
+	if (fillStroke.stroke.width > 0.0) {
+		// Outline: top/bottom lines + end arcs or flats.
+		Stroke stroke = fillStroke.stroke;
+		LineDraw(Point(bodyLeft, rc.top), Point(bodyRight, rc.top), stroke);
+		LineDraw(Point(bodyLeft, rc.bottom), Point(bodyRight, rc.bottom), stroke);
+		if (leftEnd == 0) {
+			const XYPOSITION cx = rc.left + r;
+			constexpr int kSeg = 16;
+			Point prev(cx, rc.top);
+			for (int i = 1; i <= kSeg; i++) {
+				const double t = 3.141592653589793 * (static_cast<double>(i) / kSeg);
+				// Left semicircle from top to bottom, going left.
+				Point cur(cx - std::sin(t) * r, midY - std::cos(t) * r);
+				LineDraw(prev, cur, stroke);
+				prev = cur;
+			}
+		} else {
+			LineDraw(Point(rc.left, rc.top), Point(rc.left, rc.bottom), stroke);
+		}
+		if (rightEnd == 0) {
+			const XYPOSITION cx = rc.right - r;
+			constexpr int kSeg = 16;
+			Point prev(cx, rc.top);
+			for (int i = 1; i <= kSeg; i++) {
+				const double t = 3.141592653589793 * (static_cast<double>(i) / kSeg);
+				Point cur(cx + std::sin(t) * r, midY - std::cos(t) * r);
+				LineDraw(prev, cur, stroke);
+				prev = cur;
+			}
+		} else {
+			LineDraw(Point(rc.right, rc.top), Point(rc.right, rc.bottom), stroke);
+		}
+	}
 }
 
 }

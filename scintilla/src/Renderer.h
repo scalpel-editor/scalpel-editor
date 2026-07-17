@@ -6,7 +6,8 @@
 // - glReadPixels is bottom-to-top; ReadPixelsTopDown flips rows.
 // - PRectangle includes left/top and excludes right/bottom (see Geometry.h).
 // - Dithering and multisampling are disabled on the owning GlContext.
-// - Blend: GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA for RGB and alpha.
+// - Blend (straight alpha source-over): RGB uses SRC_ALPHA / ONE_MINUS_SRC_ALPHA;
+//   alpha uses ONE / ONE_MINUS_SRC_ALPHA so out_a = src_a + dst_a*(1-src_a).
 // - Exact pixel equality for clears and solid opaque interiors; ±1 per channel
 //   for alpha blends and gradients.
 // - Surface coordinates: origin top-left, y increases downward. The orthographic
@@ -141,6 +142,36 @@ public:
 	 */
 	void FillRectangle(PRectangle rc, ColourRGBA colour);
 
+	/** Stroke a line segment (surface coords). Width comes from stroke. */
+	void LineDraw(Point start, Point end, Stroke stroke);
+
+	/** Polyline through pts[0..npts). */
+	void PolyLine(const Point *pts, size_t npts, Stroke stroke);
+
+	/** Filled polygon with optional stroke (triangle fan; npts >= 3). */
+	void Polygon(const Point *pts, size_t npts, FillStroke fillStroke);
+
+	/** Fill then stroke an axis-aligned rectangle. */
+	void RectangleDraw(PRectangle rc, FillStroke fillStroke);
+
+	/** Stroke only the rectangle frame (inset by half stroke where useful). */
+	void RectangleFrame(PRectangle rc, Stroke stroke);
+
+	/** Filled/stroked rounded rectangle (corner radius in surface units). */
+	void RoundedRectangle(PRectangle rc, FillStroke fillStroke, XYPOSITION radius);
+
+	/** Translucent filled rect with optional rounded corners and stroke. */
+	void AlphaRectangle(PRectangle rc, XYPOSITION cornerSize, FillStroke fillStroke);
+
+	/** Filled/stroked ellipse inscribed in rc. */
+	void Ellipse(PRectangle rc, FillStroke fillStroke);
+
+	/**
+	 * Stadium (capsule): rectangle with semicircular or flat/angled ends.
+	 * ends encodes Surface::Ends flags.
+	 */
+	void Stadium(PRectangle rc, FillStroke fillStroke, int ends);
+
 	[[nodiscard]] int TargetWidth() const noexcept { return targetWidth; }
 	[[nodiscard]] int TargetHeight() const noexcept { return targetHeight; }
 	[[nodiscard]] size_t ClipDepth() const noexcept { return clipStack.size(); }
@@ -151,7 +182,12 @@ private:
 	void ApplyScissor() const;
 	void UploadProjection() const;
 	void DrawSolidQuad(float x0, float y0, float x1, float y1, ColourRGBA colour);
+	void DrawSolidTriangles(const float *xy, size_t vertexCount, ColourRGBA colour);
+	void DrawLineSegment(Point start, Point end, XYPOSITION width, ColourRGBA colour);
+	void DrawEllipse(PRectangle rc, ColourRGBA fill, ColourRGBA stroke, XYPOSITION strokeWidth, bool doFill, bool doStroke);
 	[[nodiscard]] PixelRect CurrentClip() const noexcept;
+	void BeginDraw();
+	void SetBlendForColour(ColourRGBA colour);
 
 	GlContext &context;
 	unsigned targetFbo = 0;

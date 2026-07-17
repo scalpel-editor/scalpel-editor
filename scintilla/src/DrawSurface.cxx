@@ -2,6 +2,7 @@
 
 #include "DrawSurface.h"
 
+#include <algorithm>
 #include <stdexcept>
 #include <utility>
 
@@ -119,11 +120,35 @@ int DrawSurface::DeviceHeightFont(int points) {
 	return (points * LogPixelsY() + 36) / 72;
 }
 
-void DrawSurface::LineDraw(Point, Point, Stroke) {}
-void DrawSurface::PolyLine(const Point *, size_t, Stroke) {}
-void DrawSurface::Polygon(const Point *, size_t, FillStroke) {}
-void DrawSurface::RectangleDraw(PRectangle, FillStroke) {}
-void DrawSurface::RectangleFrame(PRectangle, Stroke) {}
+void DrawSurface::LineDraw(Point start, Point end, Stroke stroke) {
+	EnsureRenderer();
+	BindDrawTarget();
+	renderer->LineDraw(start, end, stroke);
+}
+
+void DrawSurface::PolyLine(const Point *pts, size_t npts, Stroke stroke) {
+	EnsureRenderer();
+	BindDrawTarget();
+	renderer->PolyLine(pts, npts, stroke);
+}
+
+void DrawSurface::Polygon(const Point *pts, size_t npts, FillStroke fillStroke) {
+	EnsureRenderer();
+	BindDrawTarget();
+	renderer->Polygon(pts, npts, fillStroke);
+}
+
+void DrawSurface::RectangleDraw(PRectangle rc, FillStroke fillStroke) {
+	EnsureRenderer();
+	BindDrawTarget();
+	renderer->RectangleDraw(rc, fillStroke);
+}
+
+void DrawSurface::RectangleFrame(PRectangle rc, Stroke stroke) {
+	EnsureRenderer();
+	BindDrawTarget();
+	renderer->RectangleFrame(rc, stroke);
+}
 
 void DrawSurface::FillRectangle(PRectangle rc, Fill fill) {
 	EnsureRenderer();
@@ -136,12 +161,35 @@ void DrawSurface::FillRectangleAligned(PRectangle rc, Fill fill) {
 }
 
 void DrawSurface::FillRectangle(PRectangle, Surface &) {}
-void DrawSurface::RoundedRectangle(PRectangle, FillStroke) {}
-void DrawSurface::AlphaRectangle(PRectangle, XYPOSITION, FillStroke) {}
+
+void DrawSurface::RoundedRectangle(PRectangle rc, FillStroke fillStroke) {
+	EnsureRenderer();
+	BindDrawTarget();
+	const XYPOSITION radius = std::min(rc.Width(), rc.Height()) * 0.25f;
+	renderer->RoundedRectangle(rc, fillStroke, radius);
+}
+
+void DrawSurface::AlphaRectangle(PRectangle rc, XYPOSITION cornerSize, FillStroke fillStroke) {
+	EnsureRenderer();
+	BindDrawTarget();
+	renderer->AlphaRectangle(rc, cornerSize, fillStroke);
+}
+
 void DrawSurface::GradientRectangle(PRectangle, const std::vector<ColourStop> &, GradientOptions) {}
 void DrawSurface::DrawRGBAImage(PRectangle, int, int, const unsigned char *) {}
-void DrawSurface::Ellipse(PRectangle, FillStroke) {}
-void DrawSurface::Stadium(PRectangle, FillStroke, Ends) {}
+
+void DrawSurface::Ellipse(PRectangle rc, FillStroke fillStroke) {
+	EnsureRenderer();
+	BindDrawTarget();
+	renderer->Ellipse(rc, fillStroke);
+}
+
+void DrawSurface::Stadium(PRectangle rc, FillStroke fillStroke, Ends ends) {
+	EnsureRenderer();
+	BindDrawTarget();
+	renderer->Stadium(rc, fillStroke, static_cast<int>(ends));
+}
+
 void DrawSurface::Copy(PRectangle, Point, Surface &) {}
 
 std::unique_ptr<IScreenLineLayout> DrawSurface::Layout(const IScreenLine *screenLine) {
