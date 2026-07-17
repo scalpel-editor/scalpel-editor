@@ -162,6 +162,64 @@ TEST_CASE("ShapeText applies kerning on AV with the primary fixture") {
 	CHECK(pair.Width() > 0.0);
 }
 
+TEST_CASE("RasterizeGlyph returns coverage for a shaped ASCII glyph") {
+	FontCache cache;
+	const auto face = LoadPrimary(cache);
+	const ShapedRun run = ShapeText("A", face);
+	REQUIRE_FALSE(run.glyphs.empty());
+
+	const GlyphImage image = face->RasterizeGlyph(run.glyphs[0].glyphId);
+	REQUIRE(image.width > 0);
+	REQUIRE(image.height > 0);
+	REQUIRE(image.gray.size() == static_cast<size_t>(image.width) * static_cast<size_t>(image.height));
+	const bool hasCoverage = std::any_of(image.gray.begin(), image.gray.end(),
+		[](uint8_t c) { return c > 0; });
+	CHECK(hasCoverage);
+	// Capital letters typically sit above the baseline.
+	CHECK(image.top > 0);
+}
+
+TEST_CASE("RasterizeGlyph is deterministic for the same glyph id") {
+	FontCache cache;
+	const auto face = LoadPrimary(cache);
+	const ShapedRun run = ShapeText("B", face);
+	REQUIRE_FALSE(run.glyphs.empty());
+	const uint32_t glyphId = run.glyphs[0].glyphId;
+
+	const GlyphImage first = face->RasterizeGlyph(glyphId);
+	const GlyphImage second = face->RasterizeGlyph(glyphId);
+	CHECK(first.width == second.width);
+	CHECK(first.height == second.height);
+	CHECK(first.left == second.left);
+	CHECK(first.top == second.top);
+	CHECK(first.gray == second.gray);
+}
+
+TEST_CASE("RasterizeGlyph returns empty image for unloadable glyph id") {
+	FontCache cache;
+	const auto face = LoadPrimary(cache);
+	// FreeType glyph indices are face-specific; a huge id fails load cleanly.
+	const GlyphImage image = face->RasterizeGlyph(0x7fffffffu);
+	CHECK(image.width == 0);
+	CHECK(image.height == 0);
+	CHECK(image.gray.empty());
+}
+
+TEST_CASE("RasterizeGlyph covers the shaped snowman fallback glyph") {
+	FontCache cache;
+	const auto snowman = LoadSnowman(cache);
+	const std::string text = "\xE2\x98\x83";
+	const ShapedRun run = ShapeText(text, snowman);
+	REQUIRE_FALSE(run.glyphs.empty());
+
+	const GlyphImage image = snowman->RasterizeGlyph(run.glyphs[0].glyphId);
+	REQUIRE(image.width > 0);
+	REQUIRE(image.height > 0);
+	const bool hasCoverage = std::any_of(image.gray.begin(), image.gray.end(),
+		[](uint8_t c) { return c > 0; });
+	CHECK(hasCoverage);
+}
+
 TEST_CASE("ShapeText keeps multi-byte clusters and caret stops") {
 	FontCache cache;
 	const auto snowman = LoadSnowman(cache);

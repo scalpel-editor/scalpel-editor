@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <filesystem>
 #include <memory>
 #include <stdexcept>
@@ -153,6 +154,43 @@ FontMetrics FontFace::Metrics() const noexcept {
 
 bool FontFace::HasGlyph(char32_t character) const noexcept {
 	return FT_Get_Char_Index(impl->face, static_cast<FT_ULong>(character)) != 0;
+}
+
+GlyphImage FontFace::RasterizeGlyph(uint32_t glyphId) const {
+	GlyphImage image;
+	if (FT_Load_Glyph(impl->face, static_cast<FT_UInt>(glyphId), FT_LOAD_DEFAULT) != 0) {
+		return image;
+	}
+	if (FT_Render_Glyph(impl->face->glyph, FT_RENDER_MODE_NORMAL) != 0) {
+		return image;
+	}
+	const FT_Bitmap &bitmap = impl->face->glyph->bitmap;
+	image.left = impl->face->glyph->bitmap_left;
+	image.top = impl->face->glyph->bitmap_top;
+	image.width = static_cast<int>(bitmap.width);
+	image.height = static_cast<int>(bitmap.rows);
+	if (image.width <= 0 || image.height <= 0 || !bitmap.buffer) {
+		image.width = 0;
+		image.height = 0;
+		return image;
+	}
+	image.gray.resize(static_cast<size_t>(image.width) * static_cast<size_t>(image.height));
+	const int pitch = bitmap.pitch;
+	const uint8_t *src = bitmap.buffer;
+	// FreeType pitch may be negative (bottom-up). Copy into top-down rows.
+	if (pitch >= 0) {
+		for (int y = 0; y < image.height; y++) {
+			std::memcpy(image.gray.data() + static_cast<size_t>(y) * static_cast<size_t>(image.width),
+				src + y * pitch, static_cast<size_t>(image.width));
+		}
+	} else {
+		const int absPitch = -pitch;
+		for (int y = 0; y < image.height; y++) {
+			std::memcpy(image.gray.data() + static_cast<size_t>(y) * static_cast<size_t>(image.width),
+				src + (image.height - 1 - y) * absPitch, static_cast<size_t>(image.width));
+		}
+	}
+	return image;
 }
 
 void *FontFace::HarfBuzzFont() const noexcept {

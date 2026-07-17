@@ -20,6 +20,22 @@ struct FontMetrics {
 	double internalLeading = 0.0;
 };
 
+/**
+ * FreeType-rasterized glyph coverage (FT_RENDER_MODE_NORMAL).
+ *
+ * gray is 8-bit coverage, row-major, top-down. left/top are FreeType bearings:
+ * left is the horizontal distance from the pen origin to the left of the
+ * bitmap; top is the vertical distance from the baseline up to the top of the
+ * bitmap (positive above the baseline). Empty width/height means no ink.
+ */
+struct GlyphImage {
+	int width = 0;
+	int height = 0;
+	int left = 0;
+	int top = 0;
+	std::vector<uint8_t> gray;
+};
+
 class FontFace {
 	class Impl;
 	std::unique_ptr<Impl> impl;
@@ -41,6 +57,16 @@ public:
 	bool RequestedItalic() const noexcept;
 	FontMetrics Metrics() const noexcept;
 	bool HasGlyph(char32_t character) const noexcept;
+
+	/**
+	 * Rasterize one glyph by FreeType glyph index (not a character code).
+	 *
+	 * Uses FT_LOAD_DEFAULT and FT_RENDER_MODE_NORMAL (no LCD subpixel). Missing
+	 * or unloadable glyphs return an empty image. Callers that share this face
+	 * with HarfBuzz must not change FT_Face size after construction; load and
+	 * render only replace the slot.
+	 */
+	GlyphImage RasterizeGlyph(uint32_t glyphId) const;
 
 	/**
 	 * HarfBuzz font for this face. Owned by FontFace and destroyed before the
