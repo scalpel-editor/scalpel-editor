@@ -10,11 +10,22 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 		"  cmake --preset dev   (or ./check.sh for the full matrix)")
 endif()
 
-# The Scintilla core as one static library. Everything in src/ compiles
-# against Platform.h alone; the concrete platform implementation arrives in a
-# later phase, so nothing here links into a runnable program yet. The unit
-# tests link only the subset of objects they need, which the static library
-# provides on demand.
+# The Scintilla core as one static library. The concrete platform is arriving
+# concern by concern in phase 6, starting with fonts. Nothing links into a
+# runnable program yet. The unit tests link only the subset of objects they
+# need, which the static library provides on demand.
+
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(FREETYPE REQUIRED IMPORTED_TARGET freetype2)
+pkg_check_modules(FONTCONFIG REQUIRED IMPORTED_TARGET fontconfig)
+
+add_library(scintilla_font STATIC
+  src/FontPlatform.cxx
+)
+
+target_include_directories(scintilla_font PUBLIC include src)
+target_link_libraries(scintilla_font PUBLIC PkgConfig::FREETYPE PkgConfig::FONTCONFIG)
+target_compile_options(scintilla_font PRIVATE -Wall -Wextra)
 
 add_library(scintilla_core STATIC
   src/AutoComplete.cxx
@@ -76,7 +87,10 @@ add_library(scintilla_core STATIC
 
 target_include_directories(scintilla_core PUBLIC include src)
 
+target_link_libraries(scintilla_core PUBLIC scintilla_font)
+
 target_compile_options(scintilla_core PRIVATE -Wall -Wextra)
 
 add_subdirectory(test/unit)
 add_subdirectory(test/editor)
+add_subdirectory(test/font)
