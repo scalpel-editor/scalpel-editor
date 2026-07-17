@@ -11,14 +11,16 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 endif()
 
 # The Scintilla core as one static library. The concrete platform is arriving
-# concern by concern in phase 6, starting with fonts. Nothing links into a
-# runnable program yet. The unit tests link only the subset of objects they
-# need, which the static library provides on demand.
+# concern by concern in phase 6 (fonts, shaping, then the GL renderer). Nothing
+# links into a runnable program yet. The unit tests link only the subset of
+# objects they need, which the static library provides on demand.
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(FREETYPE REQUIRED IMPORTED_TARGET freetype2)
 pkg_check_modules(FONTCONFIG REQUIRED IMPORTED_TARGET fontconfig)
 pkg_check_modules(HARFBUZZ REQUIRED IMPORTED_TARGET harfbuzz)
+pkg_check_modules(GL REQUIRED IMPORTED_TARGET gl)
+pkg_check_modules(EGL REQUIRED IMPORTED_TARGET egl)
 
 # Font lookup, FreeType/HarfBuzz ownership, UTF-8 helpers used by shaping, and the
 # shaped-run model. UniConversion lives here so shaping can walk invalid UTF-8
@@ -38,6 +40,20 @@ target_link_libraries(scintilla_font PUBLIC
   PkgConfig::HARFBUZZ
 )
 target_compile_options(scintilla_font PRIVATE -Wall -Wextra)
+
+# Headless EGL/OpenGL context and (step 5+) the one drawing implementation.
+# Linked by renderer tests; not by editorTest until step 7 wires Surface::Allocate.
+add_library(scintilla_render STATIC
+  src/GlContext.cxx
+)
+
+target_include_directories(scintilla_render PUBLIC include src)
+target_link_libraries(scintilla_render PUBLIC
+  scintilla_font
+  PkgConfig::GL
+  PkgConfig::EGL
+)
+target_compile_options(scintilla_render PRIVATE -Wall -Wextra)
 
 add_library(scintilla_core STATIC
   src/AutoComplete.cxx
@@ -106,3 +122,4 @@ add_subdirectory(test/unit)
 add_subdirectory(test/editor)
 add_subdirectory(test/font)
 add_subdirectory(test/layout)
+add_subdirectory(test/renderer)
