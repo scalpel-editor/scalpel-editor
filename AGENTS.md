@@ -48,6 +48,8 @@ cmake --build build --target unitTest
 ./build/scintilla/test/unit/unitTest "Document*"
 ```
 
+Keep iteration checks narrow even when the final workflow will be broad. Build only the target under development and run only its focused tests; do not also build unrelated test targets in anticipation of the final workflow. A CMake dependency or compile-flag change may make Ninja rebuild much of the tree, so let the required final workflow pay that cost once unless a broader intermediate build is needed to diagnose the change.
+
 Documentation-only changes do not require a build unless they alter build or test instructions. Before handing off a compiled-code change, run the normal configure/build/test workflow once:
 
 ```
@@ -81,7 +83,7 @@ New code follows the naming and layout of the file it lives in. The Scintilla co
 
 Headers under `scintilla/src` and `scintilla/include` must compile alone: `#include "Name.h"` is a valid translation unit with the same flags as `scintilla_core`. Do not restore a shared mega-preamble in `.cxx` files. A translation unit includes only what it uses; prefer include-what-you-use (`iwyu_tool.py` / `fix_includes.py`) over hand-copying include lists.
 
-After changing header includes, run `tools/check-self-contained-headers.sh` (needs `build/compile_commands.json` from `cmake --preset dev`). That check covers every `scintilla/src/*.h` and `scintilla/include/*.h` by default.
+After changing header includes, run `tools/check-self-contained-headers.sh` (needs `build/compile_commands.json` from `cmake --preset dev`). Pass each changed header path for a narrow change, for example `tools/check-self-contained-headers.sh scintilla/src/FontPlatform.h`. Run it without paths, which checks every `scintilla/src/*.h` and `scintilla/include/*.h`, only after broad include-graph or header-check tooling changes or when a full-tree check is specifically required.
 
 IWYU baseline flags for this tree: `iwyu_tool.py -p build <sources> -- -Xiwyu --no_fwd_decls`, then review and apply with `fix_includes.py --nosafe_headers --nocomments --reorder` when bulk-fixing `.cxx` files. Prefer a complete include when a header's own interface needs a complete type; keep a forward declaration when the header only names a pointer, reference, or incomplete type in a signature. Do not accept IWYU suggestions that pull a private implementation header into a public header solely to replace such a forward declaration.
 
