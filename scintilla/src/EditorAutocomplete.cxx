@@ -331,7 +331,7 @@ void ScintillaBase::AutoCompleteStart(Sci::Position lenEntered, const char *list
 	}
 
 	ac.Start(wMain, idAutoComplete, sel.MainCaret(), PointMainCaret(),
-				lenEntered, lineHeight, technology, options);
+				lenEntered, lineHeight, options);
 
 	const PRectangle rcClient = GetClientRectangle();
 	Point pt = LocationFromPosition(sel.MainCaret() - lenEntered);

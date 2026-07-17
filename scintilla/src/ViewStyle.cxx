@@ -66,14 +66,14 @@ bool MarginStyle::ShowsFolding() const noexcept {
 	return (mask & MaskFolders) != 0;
 }
 
-void FontRealised::Realise(Surface &surface, int zoomLevel, Technology technology, const FontSpecification &fs, const char *localeName) {
+void FontRealised::Realise(Surface &surface, int zoomLevel, const FontSpecification &fs, const char *localeName) {
 	PLATFORM_ASSERT(fs.fontName);
 	// If negative zoomLevel, ensure sizeZoomed at least minimum positive size 
 	measurements.sizeZoomed = std::max(fs.size + (zoomLevel * FontSizeMultiplier), FontSizeMultiplier);
 
 	const float deviceHeight = static_cast<float>(surface.DeviceHeightFont(measurements.sizeZoomed));
 	const FontParameters fp(fs.fontName, deviceHeight / FontSizeMultiplier, fs.weight,
-		fs.italic, fs.extraFontFlag, technology, fs.characterSet, localeName, fs.stretch);
+		fs.italic, fs.extraFontFlag, fs.characterSet, localeName, fs.stretch);
 	font = Font::Allocate(fp);
 
 	// floor here is historical as platform layers have tweaked their values to match.
@@ -170,7 +170,6 @@ ViewStyle::ViewStyle(size_t stylesSize_) :
 	markers[indexHistoryRevertedToModified].fore = revertedToChange;
 	markers[indexHistoryRevertedToModified].markType = MarkerSymbol::Bar;
 
-	technology = Technology::Default;
 	indicatorsDynamic = false;
 	indicatorsSetFore = false;
 	lineHeight = 1;
@@ -401,7 +400,7 @@ void ViewStyle::Refresh(Surface &surface, int tabInChars) {
 
 	// Ask platform to allocate each unique font.
 	for (const std::pair<const FontSpecification, std::unique_ptr<FontRealised>> &font : fonts) {
-		font.second->Realise(surface, zoomLevel, technology, font.first, localeName.c_str());
+		font.second->Realise(surface, zoomLevel, font.first, localeName.c_str());
 	}
 
 	// Set the platform font handle and measurements for each style.

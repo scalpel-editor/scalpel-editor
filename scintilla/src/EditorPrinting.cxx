@@ -60,8 +60,8 @@ Wrap Editor::GetPrintWrapMode() const noexcept {
 // selection, and caret. An enabled line-number margin is printed.
 Sci::Position Editor::FormatRange(bool draw, Sci::Position cpMin, Sci::Position cpMax,
 	PRectangle rc, SurfaceID hdc, SurfaceID hdcTarget) {
-	AutoSurface surface(hdc, this, Technology::Default);
-	AutoSurface surfaceMeasure(hdcTarget, this, Technology::Default);
+	AutoSurface surface(hdc, this);
+	AutoSurface surfaceMeasure(hdcTarget, this);
 	if (!surface || !surfaceMeasure) {
 		return 0;
 	}

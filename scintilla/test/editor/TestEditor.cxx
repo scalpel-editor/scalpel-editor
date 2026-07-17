@@ -164,7 +164,7 @@ void TestEditor::PaintAll() {
 	paintState = PaintState::painting;
 	rcPaint = GetClientRectangle();
 	paintingAllText = true;
-	std::unique_ptr<Surface> surface = Surface::Allocate(Scintilla::Technology::Default);
+	std::unique_ptr<Surface> surface = Surface::Allocate();
 	surface->Init(static_cast<SurfaceID>(&host.mainWindow), static_cast<WindowID>(&host.mainWindow));
 	Paint(surface.get(), rcPaint);
 	surface->Release();

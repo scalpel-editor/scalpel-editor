@@ -3,7 +3,6 @@
  ** Project-owned shared position, colour, and platform-state types.
  **
  ** Position and colour aliases used by the named editor API and notifications.
- ** Technology selects a surface/font backend until phase 6 collapses the platform.
  ** Bidirectional stores layout mode; full mixed-direction screen lines are later work.
  **/
 // Copyright 1998-2019 by Neil Hodgson <neilh@scintilla.org>
@@ -24,14 +23,6 @@ using ColourAlpha = int;
 constexpr Position InvalidPosition = -1;
 // UTF-8-only document reports this code page to Lexilla.
 constexpr int CpUtf8 = 65001;
-
-enum class Technology {
-	Default = 0,
-	DirectWrite = 1,
-	DirectWriteRetain = 2,
-	DirectWriteDC = 3,
-	DirectWrite1 = 4,
-};
 
 enum class Bidirectional {
 	Disabled = 0,

@@ -100,7 +100,6 @@ Idler::Idler() noexcept :
 
 Editor::Editor() : durationWrapOneByte(0.000001, 0.00000001, 0.00001) {
 	stylesValid = false;
-	technology = Technology::Default;
 	scaleRGBAImage = 100.0f;
 
 	cursorMode = CursorShape::Normal;
@@ -199,7 +198,6 @@ void Editor::DropGraphics() noexcept {
 
 void Editor::InvalidateStyleData() noexcept {
 	stylesValid = false;
-	vs.technology = technology;
 	DropGraphics();
 	view.llc.Invalidate(LineLayout::ValidLevel::invalid);
 	view.posCache->Clear();
@@ -4198,17 +4196,17 @@ std::unique_ptr<Surface> Editor::CreateMeasurementSurface() const {
 	if (!wMain.GetID()) {
 		return {};
 	}
-	std::unique_ptr<Surface> surf = Surface::Allocate(technology);
+	std::unique_ptr<Surface> surf = Surface::Allocate();
 	surf->Init(wMain.GetID());
 	surf->SetMode(CurrentSurfaceMode());
 	return surf;
 }
 
-std::unique_ptr<Surface> Editor::CreateDrawingSurface(SurfaceID sid, std::optional<Scintilla::Technology> technologyOpt) const {
+std::unique_ptr<Surface> Editor::CreateDrawingSurface(SurfaceID sid) const {
 	if (!wMain.GetID()) {
 		return {};
 	}
-	std::unique_ptr<Surface> surf = Surface::Allocate(technologyOpt ? *technologyOpt : technology);
+	std::unique_ptr<Surface> surf = Surface::Allocate();
 	surf->Init(sid, wMain.GetID());
 	surf->SetMode(CurrentSurfaceMode());
 	return surf;

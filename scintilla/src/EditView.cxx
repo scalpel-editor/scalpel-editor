@@ -2682,7 +2682,6 @@ Sci::Position EditView::FormatRange(bool draw, Sci::Position cpMin, Sci::Positio
 	const int rcBottom = static_cast<int>(rc.bottom);
 
 	ViewStyle vsPrint(vs);
-	vsPrint.technology = Technology::Default;
 
 	// Modify the view style for printing as do not normally want any of the transient features to be printed
 	// Printing supports only the line number margin.
@@ -2697,7 +2696,6 @@ Sci::Position EditView::FormatRange(bool draw, Sci::Position cpMin, Sci::Positio
 	vsPrint.fixedColumnWidth = 0;
 	vsPrint.zoomLevel = printParameters.magnification;
 	// Don't show indentation guides
-	// If this ever gets changed, cached pixmap would need to be recreated if technology != Technology::Default
 	vsPrint.viewIndentationGuides = IndentView::None;
 	// Don't show the selection when printing
 	vsPrint.selection.visible = false;

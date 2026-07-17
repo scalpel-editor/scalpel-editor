@@ -330,7 +330,7 @@ public:
 		PublishState();
 	}
 
-	void Create(Window &, int, Point location, int lineHeight_, Scintilla::Technology) override {
+	void Create(Window &, int, Point location, int lineHeight_) override {
 		window.rect = PRectangle(location.x, location.y, location.x, location.y);
 		window.cursor = Window::Cursor::invalid;
 		window.visible = false;
@@ -578,7 +578,7 @@ std::shared_ptr<Font> Font::Allocate(const FontParameters &) {
 	return std::make_shared<TestFont>();
 }
 
-std::unique_ptr<Surface> Surface::Allocate(Scintilla::Technology) {
+std::unique_ptr<Surface> Surface::Allocate() {
 	if (TestPlatformLog *log = TestHost::CurrentLog())
 		log->surfacesAllocated++;
 	return std::make_unique<TestSurface>();

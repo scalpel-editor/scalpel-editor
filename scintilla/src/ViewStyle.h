@@ -50,7 +50,7 @@ class FontRealised {
 public:
 	FontMeasurements measurements;
 	std::shared_ptr<Font> font;
-	void Realise(Surface &surface, int zoomLevel, Scintilla::Technology technology, const FontSpecification &fs, const char *localeName);
+	void Realise(Surface &surface, int zoomLevel, const FontSpecification &fs, const char *localeName);
 };
 
 typedef std::map<FontSpecification, std::unique_ptr<FontRealised>> FontMap;
@@ -137,7 +137,6 @@ public:
 	std::vector<Indicator> indicators;
 	bool indicatorsDynamic;
 	bool indicatorsSetFore;
-	Scintilla::Technology technology;
 	int lineHeight;
 	int lineOverlap;
 	XYPOSITION maxAscent;

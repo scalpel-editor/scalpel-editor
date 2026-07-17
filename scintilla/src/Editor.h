@@ -225,7 +225,6 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	 * When a style attribute is changed, this cache is flushed. */
 	bool stylesValid;
 	ViewStyle vs;
-	Scintilla::Technology technology;
 	Point sizeRGBAImage;
 	float scaleRGBAImage;
 
@@ -1128,7 +1127,7 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void SetHoverIndicatorPoint(Point pt);
 
 	virtual std::unique_ptr<Surface> CreateMeasurementSurface() const;
-	virtual std::unique_ptr<Surface> CreateDrawingSurface(SurfaceID sid, std::optional<Scintilla::Technology> technologyOpt = {}) const;
+	virtual std::unique_ptr<Surface> CreateDrawingSurface(SurfaceID sid) const;
 
 	Sci::Line WrapCount(Sci::Line line);
 	void AddStyledText(const char *buffer, Sci::Position appendLength);
@@ -1308,8 +1307,8 @@ public:
 	AutoSurface(const Editor *ed) :
 		surf(ed->CreateMeasurementSurface())  {
 	}
-	AutoSurface(SurfaceID sid, const Editor *ed, std::optional<Scintilla::Technology> technology = {}) :
-		surf(ed->CreateDrawingSurface(sid, technology)) {
+	AutoSurface(SurfaceID sid, const Editor *ed) :
+		surf(ed->CreateDrawingSurface(sid)) {
 	}
 	// Deleted so AutoSurface objects can not be copied.
 	AutoSurface(const AutoSurface &) = delete;

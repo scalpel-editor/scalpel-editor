@@ -117,7 +117,6 @@ struct FontParameters {
 	Scintilla::FontWeight weight;
 	bool italic;
 	Scintilla::FontQuality extraFontFlag;
-	Scintilla::Technology technology;
 	Scintilla::CharacterSet characterSet;
 	const char *localeName;
 	Scintilla::FontStretch stretch;
@@ -128,7 +127,6 @@ struct FontParameters {
 		Scintilla::FontWeight weight_= Scintilla::FontWeight::Normal,
 		bool italic_=false,
 		Scintilla::FontQuality extraFontFlag_= Scintilla::FontQuality::QualityDefault,
-		Scintilla::Technology technology_= Scintilla::Technology::Default,
 		Scintilla::CharacterSet characterSet_= Scintilla::CharacterSet::Ansi,
 		const char *localeName_=localeNameDefault,
 		Scintilla::FontStretch stretch_=Scintilla::FontStretch::Normal) noexcept :
@@ -138,7 +136,6 @@ struct FontParameters {
 		weight(weight_),
 		italic(italic_),
 		extraFontFlag(extraFontFlag_),
-		technology(technology_),
 		characterSet(characterSet_),
 		localeName(localeName_),
 		stretch(stretch_)
@@ -205,7 +202,7 @@ public:
 	Surface &operator=(const Surface &) = delete;
 	Surface &operator=(Surface &&) = delete;
 	virtual ~Surface() noexcept = default;
-	static std::unique_ptr<Surface> Allocate(Scintilla::Technology technology);
+	static std::unique_ptr<Surface> Allocate();
 
 	virtual void Init(WindowID wid)=0;	// For measuring text
 	virtual void Init(SurfaceID sid, WindowID wid)=0;	// For drawing
@@ -334,7 +331,7 @@ public:
 	static std::unique_ptr<ListBox> Allocate();
 
 	virtual void SetFont(const Font *font)=0;
-	virtual void Create(Window &parent, int ctrlID, Point location, int lineHeight_, Scintilla::Technology technology_)=0;
+	virtual void Create(Window &parent, int ctrlID, Point location, int lineHeight_)=0;
 	virtual void SetAverageCharWidth(int width)=0;
 	virtual void SetVisibleRows(int rows)=0;
 	virtual int GetVisibleRows() const=0;
