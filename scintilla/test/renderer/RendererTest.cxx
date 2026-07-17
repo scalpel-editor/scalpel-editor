@@ -1,12 +1,18 @@
 // scalpel-editor offscreen renderer tests (headless EGL, no compositor).
 
+#include <cmath>
 #include <cstdio>
 #include <cstdint>
+#include <filesystem>
+#include <memory>
 #include <string>
 #include <vector>
 
+#include "DrawSurface.h"
+#include "FontPlatform.h"
 #include "Geometry.h"
 #include "GlContext.h"
+#include "Platform.h"
 #include "Renderer.h"
 
 #define CATCH_CONFIG_MAIN
@@ -83,4 +89,37 @@ TEST_CASE("clear fills ColourBuffer; readback is top-to-bottom RGBA") {
 	const ColourRGBA blue(0, 0, 255, 255);
 	renderer.Clear(blue);
 	REQUIRE(ExactColour(buffer.ReadPixel(2, 1), blue));
+}
+
+TEST_CASE("DrawSurface measures through shaped runs; text draw is a no-op") {
+	FontCache fonts;
+	const std::filesystem::path primary = std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "FallbackPrimary.ttf";
+	std::shared_ptr<FontFace> face = fonts.LoadPath(primary, FontParameters("fixture", 16.0));
+	std::shared_ptr<Font> font = FontFromFace(face);
+
+	std::unique_ptr<DrawSurface> surface = CreateMeasureOnlySurface();
+	REQUIRE(surface->Initialised());
+	REQUIRE(surface->WidthText(font.get(), "Hi") > 0.0f);
+
+	XYPOSITION positions[2] = {};
+	surface->MeasureWidths(font.get(), "Hi", positions);
+	REQUIRE(positions[0] > 0.0f);
+	REQUIRE(positions[1] >= positions[0]);
+	REQUIRE(surface->Ascent(font.get()) > 0.0f);
+	REQUIRE(surface->Height(font.get()) > 0.0f);
+
+	// DrawText* must not throw and must not require a renderer.
+	surface->DrawTextTransparent(PRectangle::FromInts(0, 0, 10, 10), font.get(), 8.0f, "Hi",
+		ColourRGBA(0, 0, 0));
+}
+
+TEST_CASE("CreateDrawSurface clears through Renderer into its colour buffer") {
+	GlContext context;
+	Renderer renderer(context);
+	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(renderer, 8, 6);
+	const ColourRGBA green(0, 255, 0, 255);
+	surface->BindDrawTarget();
+	renderer.Clear(green);
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(0, 0), green));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(7, 5), green));
 }

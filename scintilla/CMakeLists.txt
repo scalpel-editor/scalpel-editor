@@ -44,6 +44,7 @@ target_compile_options(scintilla_font PRIVATE -Wall -Wextra)
 # Headless EGL/OpenGL context and (step 5+) the one drawing implementation.
 # Linked by renderer tests; not by editorTest until step 7 wires Surface::Allocate.
 add_library(scintilla_render STATIC
+  src/DrawSurface.cxx
   src/GlContext.cxx
   src/Renderer.cxx
 )

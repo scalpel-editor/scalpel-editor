@@ -7,6 +7,9 @@ add_executable(rendererTest
 
 target_include_directories(rendererTest PRIVATE ../../src ../unit)
 target_link_libraries(rendererTest PRIVATE scintilla_render)
+target_compile_definitions(rendererTest PRIVATE
+  SCALPEL_TEST_FONT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../fonts"
+)
 target_compile_options(rendererTest PRIVATE -Wall -Wextra)
 
 add_test(NAME renderer COMMAND rendererTest)

@@ -1,36 +1,53 @@
-// scalpel-editor measure-only surface: widths and screen-line layout from shaped runs.
+// scalpel-editor concrete Surface: shaped-run measure plus GL drawing (step 5).
+//
+// Measurement and Layout reuse the shaped-run path (same helpers as MeasureSurface).
+// DrawText* stays a deliberate no-op until step 6 (glyph rasterization).
+// Geometry, clips, images, and pixmaps are filled in by later step-5 commits.
+//
+// Surface::Allocate is not defined here. editorTest keeps TestPlatform until
+// step 7 wires this implementation into the editor host. Tests and the future
+// host construct DrawSurface through CreateDrawSurface / CreateMeasureOnlySurface.
 
-#ifndef MEASURESURFACE_H
-#define MEASURESURFACE_H
+#ifndef DRAWSURFACE_H
+#define DRAWSURFACE_H
 
 #include <memory>
 #include <vector>
 
 #include "FontPlatform.h"
 #include "Platform.h"
+#include "Renderer.h"
 #include "ShapedRun.h"
 
 namespace Scintilla::Internal {
 
 /**
- * Surface that implements measurement and screen-line layout only.
+ * One Surface implementation for measure and (step 5+) draw.
  *
- * MeasureWidths, WidthText, and Layout consume ShapeText (via an internal
- * ShapedRunCache). Font metrics come from FontFace. Drawing methods are
- * no-ops. The production path is DrawSurface, which uses the same shaped-run
- * helpers; this type remains for layoutTest and other measure-only callers
- * that do not link the GL renderer.
- *
- * Fonts must be platform faces (Font::Allocate or FontFromFace). Optional
- * fallbacks are used when shaping spans for Layout and MeasureWidths.
+ * Drawing surfaces hold a ColourBuffer in the parent Renderer context. Measure-
+ * only surfaces have no buffer and still answer MeasureWidths, WidthText,
+ * Layout, and font metrics. Pixmaps share the parent Renderer (same GL context).
  */
-class MeasureSurface final : public Surface {
+class DrawSurface final : public Surface {
 public:
-	explicit MeasureSurface(std::vector<std::shared_ptr<FontFace>> fallbacks = {});
+	/**
+	 * @param renderer_ Required for drawing and pixmaps; may be null only for
+	 *        measure-only surfaces that never draw or allocate pixmaps.
+	 */
+	explicit DrawSurface(Renderer *renderer_ = nullptr,
+		std::vector<std::shared_ptr<FontFace>> fallbacks = {});
+
+	~DrawSurface() override;
 
 	void SetFallbacks(std::vector<std::shared_ptr<FontFace>> fallbacks);
 	[[nodiscard]] ShapedRunCache &RunCache() noexcept { return runCache; }
 	[[nodiscard]] const ShapedRunCache &RunCache() const noexcept { return runCache; }
+	[[nodiscard]] Renderer *GetRenderer() const noexcept { return renderer; }
+	[[nodiscard]] ColourBuffer &Buffer() noexcept { return buffer; }
+	[[nodiscard]] const ColourBuffer &Buffer() const noexcept { return buffer; }
+
+	/** Bind this surface's colour buffer as the renderer draw target. */
+	void BindDrawTarget();
 
 	void Init(WindowID wid) override;
 	void Init(SurfaceID sid, WindowID wid) override;
@@ -81,14 +98,22 @@ public:
 private:
 	std::shared_ptr<FontFace> RequireFace(const Font *font_) const;
 	FontMetrics MetricsOf(const Font *font_) const;
+	void EnsureRenderer() const;
 
+	Renderer *renderer = nullptr;
+	ColourBuffer buffer;
 	bool initialised = false;
 	SurfaceMode mode{};
 	ShapedRunCache runCache;
 	std::vector<std::shared_ptr<FontFace>> fallbacks;
 };
 
-std::unique_ptr<Surface> CreateMeasureSurface(
+/** Drawing surface with an offscreen colour buffer of the given size. */
+std::unique_ptr<DrawSurface> CreateDrawSurface(Renderer &renderer, int width, int height,
+	std::vector<std::shared_ptr<FontFace>> fallbacks = {});
+
+/** Measure-only surface (no GL buffer). Same measure path as drawing surfaces. */
+std::unique_ptr<DrawSurface> CreateMeasureOnlySurface(
 	std::vector<std::shared_ptr<FontFace>> fallbacks = {});
 
 }
