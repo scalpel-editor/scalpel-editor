@@ -2,13 +2,21 @@
 //
 // Phase 6 step 5 pixel matrix (no Wayland):
 // - Primitive bounds: FillRectangle half-open, final-pixel LineDraw, concave
-//   Polygon, Ellipse,
-//   Stadium, AlphaRectangle / RoundedRectangle
+//   Polygon, Ellipse, Stadium, AlphaRectangle / RoundedRectangle
 // - Nested clips: SetClip stack limits fills and survives pixmap target switches
 // - Alpha blending: translucent fill over opaque and transparent backgrounds
 // - Image placement: DrawRGBAImage top-left, neighbours, and straight-alpha input
-// Also covered: linear gradients (stops + both axes), pixmap Copy, pattern fill,
-// headless context, clear/readback, and shaped-run measure through DrawSurface.
+// - Gradients, pixmap Copy, pattern fill, headless context, clear/readback
+//
+// Phase 6 step 6 text and composition matrix:
+// - English DrawText*, empty string, NoClip back fill, Transparent, Clipped
+// - Glyph cache + DrawGlyph placement with FreeType bearings
+// - Shaped width (kerning AV), fallback snowman multi-face ink bands
+// - Numeric ink bounds vs layout width and caret stops
+// - Selection under text, caret line, indicator underline, margin + line number
+// - Scrolled (negative origin) text clipped to a viewport
+// - Multi-glyph xOffset/yOffset placement (synthetic pen offsets)
+// Fixture fonts are ASCII + U+2603 only; Latin combining marks are out of scope.
 
 #include <cmath>
 #include <cstdio>
@@ -851,4 +859,182 @@ TEST_CASE("fallback run ink spans three shaped advance regions") {
 	REQUIRE(bandHasInk(originX, aEnd));
 	REQUIRE(bandHasInk(aEnd, snowEnd));
 	REQUIRE(bandHasInk(snowEnd, bEnd));
+}
+
+TEST_CASE("composed caret line sits at shaped caret x") {
+	FontCache fonts;
+	const std::filesystem::path primary =
+		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "FallbackPrimary.ttf";
+	std::shared_ptr<FontFace> face = fonts.LoadPath(primary, FontParameters("fixture", 16.0));
+	std::shared_ptr<Font> font = FontFromFace(face);
+
+	GlContext context;
+	Renderer renderer(context);
+	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(renderer, 64, 32);
+	const ColourRGBA bg(0, 0, 0, 255);
+	const ColourRGBA caret(255, 0, 0, 255);
+	const ColourRGBA fg(200, 200, 200, 255);
+	surface->BindDrawTarget();
+	renderer.Clear(bg);
+
+	const char *text = "Hi";
+	const XYPOSITION originX = 6.0;
+	const XYPOSITION ybase = surface->Ascent(font.get());
+	const ShapedRun run = ShapeText(text, face);
+	surface->DrawTextTransparent(PRectangle(originX, 0.0, 64.0, 32.0), font.get(), ybase, text, fg);
+
+	// Caret after first character.
+	const XYPOSITION caretX = originX + run.byteEndPositions[0];
+	const int cx = static_cast<int>(std::floor(caretX));
+	surface->FillRectangle(PRectangle::FromInts(cx, 2, cx + 1, 28), Fill(caret));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(cx, 4), caret));
+	// Neighbour column is not forced to caret red (may be ink or bg).
+	if (cx + 1 < surface->Buffer().Width()) {
+		REQUIRE_FALSE(ExactColour(surface->Buffer().ReadPixel(cx + 1, 4), caret));
+	}
+}
+
+TEST_CASE("composed indicator underline sits under the baseline") {
+	FontCache fonts;
+	const std::filesystem::path primary =
+		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "FallbackPrimary.ttf";
+	std::shared_ptr<FontFace> face = fonts.LoadPath(primary, FontParameters("fixture", 16.0));
+	std::shared_ptr<Font> font = FontFromFace(face);
+
+	GlContext context;
+	Renderer renderer(context);
+	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(renderer, 64, 40);
+	const ColourRGBA bg(0, 0, 0, 255);
+	const ColourRGBA under(0, 255, 0, 255);
+	const ColourRGBA fg(255, 255, 255, 255);
+	surface->BindDrawTarget();
+	renderer.Clear(bg);
+
+	const XYPOSITION originX = 4.0;
+	const XYPOSITION ybase = surface->Ascent(font.get());
+	const XYPOSITION width = surface->WidthText(font.get(), "Hi");
+	surface->DrawTextTransparent(PRectangle(originX, 0.0, 64.0, 40.0), font.get(), ybase, "Hi", fg);
+
+	const int underY = static_cast<int>(std::floor(ybase)) + 1;
+	surface->FillRectangle(
+		PRectangle(originX, static_cast<XYPOSITION>(underY), originX + width,
+			static_cast<XYPOSITION>(underY + 1)),
+		Fill(under));
+	const int midX = static_cast<int>(std::floor(originX + width * 0.5));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(midX, underY), under));
+}
+
+TEST_CASE("composed margin band and line-number text") {
+	FontCache fonts;
+	const std::filesystem::path primary =
+		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "FallbackPrimary.ttf";
+	std::shared_ptr<FontFace> face = fonts.LoadPath(primary, FontParameters("fixture", 16.0));
+	std::shared_ptr<Font> font = FontFromFace(face);
+
+	GlContext context;
+	Renderer renderer(context);
+	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(renderer, 80, 36);
+	const ColourRGBA bg(0, 0, 0, 255);
+	const ColourRGBA margin(40, 40, 40, 255);
+	const ColourRGBA fg(255, 255, 0, 255);
+	surface->BindDrawTarget();
+	renderer.Clear(bg);
+
+	const int marginRight = 24;
+	surface->FillRectangle(PRectangle::FromInts(0, 0, marginRight, 36), Fill(margin));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(0, 0), margin));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(marginRight, 0), bg));
+
+	const XYPOSITION ybase = surface->Ascent(font.get());
+	surface->DrawTextTransparent(PRectangle::FromInts(2, 0, marginRight, 36), font.get(),
+		ybase, "1", fg);
+	// Line-number ink appears inside the margin band.
+	bool inkInMargin = false;
+	for (int y = 0; y < 36 && !inkInMargin; y++) {
+		for (int x = 0; x < marginRight; x++) {
+			const ColourRGBA p = surface->Buffer().ReadPixel(x, y);
+			if (!ExactColour(p, margin) && !ExactColour(p, bg)) {
+				inkInMargin = true;
+				break;
+			}
+		}
+	}
+	REQUIRE(inkInMargin);
+	// Text area to the right of the margin stays clear.
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(marginRight + 2, 2), bg));
+}
+
+TEST_CASE("scrolled text clip shows only the viewport portion") {
+	FontCache fonts;
+	const std::filesystem::path primary =
+		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "FallbackPrimary.ttf";
+	std::shared_ptr<FontFace> face = fonts.LoadPath(primary, FontParameters("fixture", 16.0));
+	std::shared_ptr<Font> font = FontFromFace(face);
+
+	GlContext context;
+	Renderer renderer(context);
+	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(renderer, 48, 32);
+	const ColourRGBA bg(0, 0, 0, 255);
+	const ColourRGBA fg(255, 255, 255, 255);
+	surface->BindDrawTarget();
+	renderer.Clear(bg);
+
+	const XYPOSITION ybase = surface->Ascent(font.get());
+	// Viewport is the full buffer; draw as if scrolled so the first glyphs sit left of 0.
+	const XYPOSITION originX = -12.0;
+	surface->SetClip(PRectangle::FromInts(0, 0, 48, 32));
+	surface->DrawTextTransparent(PRectangle(originX, 0.0, 80.0, 32.0), font.get(), ybase,
+		"Hello", fg);
+	surface->PopClip();
+
+	REQUIRE(HasNonBackgroundInk(surface->Buffer(), bg));
+	// Leftmost column may or may not have ink depending on how much scrolled;
+	// right side of a long string should have ink when origin is negative.
+	const InkBounds ink = FindInkBounds(surface->Buffer(), bg);
+	REQUIRE_FALSE(ink.Empty());
+	CHECK(ink.left >= 0);
+	CHECK(ink.right <= 48);
+}
+
+TEST_CASE("DrawGlyph applies synthetic xOffset and yOffset placement") {
+	// Fixture fonts do not provide Latin combining marks; prove the pen+offset
+	// path places a second glyph relative to the same origin.
+	FontCache fonts;
+	const std::filesystem::path primary =
+		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "FallbackPrimary.ttf";
+	std::shared_ptr<FontFace> face = fonts.LoadPath(primary, FontParameters("fixture", 16.0));
+	const ShapedRun run = ShapeText("o", face);
+	REQUIRE_FALSE(run.glyphs.empty());
+	const uint32_t glyphId = run.glyphs[0].glyphId;
+
+	GlContext context;
+	Renderer renderer(context);
+	ColourBuffer buffer;
+	buffer.Resize(48, 48);
+	renderer.SetDrawTarget(buffer.FramebufferName(), buffer.Width(), buffer.Height());
+	const ColourRGBA bg(0, 0, 0, 255);
+	const ColourRGBA fg(255, 255, 255, 255);
+	renderer.Clear(bg);
+
+	const FontMetrics metrics = face->Metrics();
+	const XYPOSITION baseline = metrics.ascent;
+	const XYPOSITION penX = 8.0;
+	renderer.DrawGlyph(penX, baseline, *face, glyphId, fg);
+	const InkBounds baseInk = FindInkBounds(buffer, bg);
+	REQUIRE_FALSE(baseInk.Empty());
+
+	renderer.Clear(bg);
+	// Positive yOffset moves down in surface coords (y increases downward).
+	const XYPOSITION yOffset = 6.0;
+	renderer.DrawGlyph(penX + 0.0, baseline + yOffset, *face, glyphId, fg);
+	const InkBounds shifted = FindInkBounds(buffer, bg);
+	REQUIRE_FALSE(shifted.Empty());
+	CHECK(shifted.top >= baseInk.top + 4);
+
+	renderer.Clear(bg);
+	const XYPOSITION xOffset = 10.0;
+	renderer.DrawGlyph(penX + xOffset, baseline, *face, glyphId, fg);
+	const InkBounds right = FindInkBounds(buffer, bg);
+	REQUIRE_FALSE(right.Empty());
+	CHECK(right.left >= baseInk.left + 6);
 }
