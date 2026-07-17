@@ -80,7 +80,7 @@ All of the following are **Renderer**, steps 5–6 (primitives in 5, used heavil
 | `MeasureWidths` | `PositionCache`, `ViewStyle` (ASCII table) | **Renderer** via shaped runs | 3–4 |
 | `WidthText` | Layout, fold text, call tips, markers, line numbers | **Renderer** via shaped runs | 3–4 |
 | `Ascent` / `Descent` / `InternalLeading` / `Height` / `AverageCharWidth` | Font realise, call tips, autocomplete sizing | **Renderer** | 2, 4 |
-| `Layout` → `IScreenLineLayout` | `EditView` for position-from-x, x-from-position, selection intervals when bidirectional or screen-line layout path is active | **Renderer** | 4; LTR with required shaping; no mixed-direction line ordering |
+| `Layout` → `IScreenLineLayout` | `EditView` for position-from-x, x-from-position, selection intervals when bidirectional or screen-line layout path is active | **Renderer** | 4; English LTR shaping; no other scripts or mixed-direction line ordering |
 | `IScreenLine` (text, fonts, tabs, representations) | Fed into `Layout` by core | **Renderer** consumes; core supplies | 4 |
 | `DrawTextNoClip` / `DrawTextClipped` / `DrawTextTransparent` | Text, control chars, call tips, line numbers | **Renderer** | 6 (must use shaped advances, not re-measure) |
 | `SetClip` / `PopClip` | Nested paint clips | **Renderer** | 5 |
@@ -208,7 +208,7 @@ Libraries discovered with pkg-config (versions below are what this development h
 | Module / tool | Role in phase 6 | First step | Not for phase 6 |
 | --- | --- | --- | --- |
 | `freetype2` | Face open, metrics, glyph rasterization | 2, 6 | — |
-| `harfbuzz` | Shape directional runs; discretionary ligatures off | 3 | Mixed-direction line ordering |
+| `harfbuzz` | Shape English LTR runs with fixed Latin and English properties; discretionary ligatures off | 3 | Other scripts and mixed-direction line ordering |
 | `fontconfig` | Production family lookup and fallback | 2 | — |
 | `wayland-client` | Display connection, registry, compositor, seat, surface | 9–11 | — |
 | `wayland-protocols` + `wayland-scanner` | Generate **xdg-shell** client code only | 9 | decoration, presentation-time, foreign, viewporter, text-input (later phases) |

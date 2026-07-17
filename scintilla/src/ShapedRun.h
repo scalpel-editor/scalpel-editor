@@ -18,9 +18,10 @@ namespace Scintilla::Internal {
 /**
  * Writing direction stored on a shaped run.
  *
- * Phase 6 shapes left-to-right only. Mixed-direction line ordering is out of
- * scope; the field stays so a later bidirectional layout step can use the same
- * run model without collapsing clusters or direction into per-character data.
+ * Phase 6 shapes English left-to-right only. Other scripts and mixed-direction
+ * line ordering are out of scope; the field stays so later work can use the
+ * same run model without collapsing clusters or direction into per-character
+ * data.
  */
 enum class TextDirection {
 	LeftToRight = 0,
@@ -77,14 +78,15 @@ public:
 };
 
 /**
- * Shape UTF-8 text left-to-right.
+ * Shape UTF-8 text as left-to-right English.
  *
  * Walks the input by UTF-8 character (each invalid byte is one character, same
  * policy as the document). Splits into maximal same-face spans using primary
  * when it has the glyph, else the first fallback that has it, else primary
- * (HarfBuzz emits .notdef). Each span is shaped with discretionary ligatures
- * (liga, dlig) disabled. Cluster values stay as original byte offsets across
- * fallback splits.
+ * (HarfBuzz emits .notdef). Each span uses fixed Latin script and English
+ * language properties with discretionary ligatures (liga, dlig) disabled.
+ * Cluster values stay as original byte offsets across fallback splits. Correct
+ * shaping for other scripts is outside the current editor scope.
  */
 ShapedRun ShapeText(
 	std::string_view text,

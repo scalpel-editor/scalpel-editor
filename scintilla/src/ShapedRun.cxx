@@ -131,6 +131,7 @@ void ShapeSpan(
 	}
 	// hb_buffer_add requires UNICODE content type; it does not set it itself.
 	hb_buffer_set_content_type(buffer, HB_BUFFER_CONTENT_TYPE_UNICODE);
+	// The editor currently supports English shaping only.
 	hb_buffer_set_direction(buffer, HB_DIRECTION_LTR);
 	hb_buffer_set_script(buffer, HB_SCRIPT_LATIN);
 	hb_buffer_set_language(buffer, hb_language_from_string("en", -1));
