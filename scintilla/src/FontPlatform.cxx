@@ -323,9 +323,51 @@ std::vector<std::shared_ptr<FontFace>> FontCache::LoadPaths(
 	return loaded;
 }
 
-std::shared_ptr<Font> Font::Allocate(const FontParameters &parameters) {
+namespace {
+
+FontCache &SharedFontCache() {
 	static FontCache cache;
-	return std::make_shared<FontImpl>(cache.Match(parameters));
+	return cache;
+}
+
+std::filesystem::path testPrimaryPath;
+std::vector<std::filesystem::path> testFallbackPaths;
+
+}
+
+void UseTestFontPaths(const std::filesystem::path &primary,
+	const std::vector<std::filesystem::path> &fallbacks) {
+	testPrimaryPath = primary;
+	testFallbackPaths = fallbacks;
+}
+
+void ClearTestFontPaths() noexcept {
+	testPrimaryPath.clear();
+	testFallbackPaths.clear();
+}
+
+bool TestFontPathsActive() noexcept {
+	return !testPrimaryPath.empty();
+}
+
+std::vector<std::shared_ptr<FontFace>> TestFontFallbackFaces(double size) {
+	std::vector<std::shared_ptr<FontFace>> faces;
+	if (testFallbackPaths.empty()) {
+		return faces;
+	}
+	const FontParameters parameters("fixture", size);
+	faces.reserve(testFallbackPaths.size());
+	for (const std::filesystem::path &path : testFallbackPaths) {
+		faces.push_back(SharedFontCache().LoadPath(path, parameters));
+	}
+	return faces;
+}
+
+std::shared_ptr<Font> Font::Allocate(const FontParameters &parameters) {
+	if (!testPrimaryPath.empty()) {
+		return std::make_shared<FontImpl>(SharedFontCache().LoadPath(testPrimaryPath, parameters));
+	}
+	return std::make_shared<FontImpl>(SharedFontCache().Match(parameters));
 }
 
 const FontFace *FaceFromFont(const Font *font) noexcept {

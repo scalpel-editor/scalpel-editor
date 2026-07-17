@@ -134,22 +134,18 @@ TEST_CASE("Command events only filter the coarse text-change callback") {
 	CHECK(editor.observations.changeNotifications == 0);
 }
 
-TEST_CASE("Fixed test surface reports every feature as unsupported") {
+TEST_CASE("DrawSurface reports honest SupportsFeature answers") {
 	TestHost host;
 	TestEditor editor(host);
-	constexpr std::array features {
-		Supports::LineDrawsFinal,
-		Supports::PixelDivisions,
-		Supports::FractionalStrokeWidth,
-		Supports::TranslucentStroke,
-		Supports::PixelModification,
-		Supports::ThreadSafeMeasureWidths,
-	};
-
-	for (const Supports feature : features) {
-		CAPTURE(feature);
-		CHECK(editor.SupportsFeature(feature) == 0);
-	}
+	// Matches DrawSurface::SupportsFeature: final-pixel lines, pixel divisions,
+	// and translucent stroke are live; fractional stroke, pixel poke, and
+	// thread-safe measure widths are not.
+	CHECK(editor.SupportsFeature(Supports::LineDrawsFinal) == 1);
+	CHECK(editor.SupportsFeature(Supports::PixelDivisions) == 1);
+	CHECK(editor.SupportsFeature(Supports::FractionalStrokeWidth) == 0);
+	CHECK(editor.SupportsFeature(Supports::TranslucentStroke) == 1);
+	CHECK(editor.SupportsFeature(Supports::PixelModification) == 0);
+	CHECK(editor.SupportsFeature(Supports::ThreadSafeMeasureWidths) == 0);
 }
 
 TEST_CASE("Named whole-buffer access works without widget identifier messages") {

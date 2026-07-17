@@ -92,11 +92,30 @@ bool HasNotification(const TestEditor &editor, Notification code) {
 	return FindNotification(editor, code) != nullptr;
 }
 
-// Default fixedColumnWidth is about left gap + symbol margin (16). Place clicks
-// past that so PositionFromLocation lands on text, and inside it for margins.
-constexpr XYPOSITION textX = 40;
-constexpr XYPOSITION textY = 5;
-constexpr XYPOSITION marginX = 8;
+// Client x of the text origin (left margin gap plus every margin width).
+XYPOSITION TextOriginX(const TestEditor &editor) {
+	XYPOSITION x = static_cast<XYPOSITION>(editor.GetMarginLeft());
+	const int marginCount = static_cast<int>(editor.GetMargins());
+	for (int i = 0; i < marginCount; i++) {
+		x += static_cast<XYPOSITION>(editor.GetMarginWidthN(i));
+	}
+	return x;
+}
+
+// Click inside the first glyph of the document after styles are realised.
+Point TextClickPoint(TestEditor &editor) {
+	const XYPOSITION x = TextOriginX(editor) +
+		static_cast<XYPOSITION>(editor.TextWidth(0, "M")) * 0.5f;
+	const XYPOSITION y = static_cast<XYPOSITION>(editor.TextHeightPixels()) * 0.5f;
+	return Point(x, y);
+}
+
+// Click inside the default symbol margin (margin 1, width 16).
+Point MarginClickPoint(TestEditor &editor) {
+	const XYPOSITION x = static_cast<XYPOSITION>(editor.GetMarginLeft()) + 8.0f;
+	const XYPOSITION y = static_cast<XYPOSITION>(editor.TextHeightPixels()) * 0.5f;
+	return Point(x, y);
+}
 
 void PaintClean(TestEditor &editor, std::string_view text) {
 	LoadClean(editor, text);
@@ -202,7 +221,7 @@ TEST_CASE("DoubleClick reports position line and modifiers") {
 	TestHost host;
 	TestEditor editor(host);
 	PaintClean(editor, "hello");
-	const Point pt(textX, textY);
+	const Point pt = TextClickPoint(editor);
 	editor.MouseDown(pt, KeyMod::Shift);
 	editor.MouseUp(pt, KeyMod::Shift);
 	editor.AdvanceTime(50);
@@ -221,7 +240,7 @@ TEST_CASE("HotSpot click and release") {
 	editor.SetText("hot");
 	editor.StyleSetHotSpot(0, true);
 	editor.PaintAll();
-	const Point pt(textX, textY);
+	const Point pt = TextClickPoint(editor);
 
 	editor.ClearObservations();
 	editor.MouseDown(pt, KeyMod::Ctrl);
@@ -242,7 +261,7 @@ TEST_CASE("HotSpotDoubleClick on multi-click in hotspot text") {
 	editor.SetText("hot");
 	editor.StyleSetHotSpot(0, true);
 	editor.PaintAll();
-	const Point pt(textX, textY);
+	const Point pt = TextClickPoint(editor);
 
 	editor.MouseDown(pt, KeyMod::Norm);
 	editor.MouseUp(pt, KeyMod::Norm);
@@ -260,7 +279,7 @@ TEST_CASE("Indicator click and release") {
 	editor.SetIndicatorCurrent(0);
 	editor.IndicatorFillRange(0, 3);
 	editor.PaintAll();
-	const Point pt(textX, textY);
+	const Point pt = TextClickPoint(editor);
 
 	editor.ClearObservations();
 	editor.MouseDown(pt, KeyMod::Alt);
@@ -285,7 +304,7 @@ TEST_CASE("MarginClick and MarginRightClick report margin index") {
 	// Keep folder automatic click off so the host receives the click.
 	editor.SetAutomaticFold(AutomaticFold::None);
 	editor.PaintAll();
-	const Point pt(marginX, textY);
+	const Point pt = MarginClickPoint(editor);
 
 	editor.ClearObservations();
 	editor.MouseDown(pt, KeyMod::Norm);
@@ -324,7 +343,8 @@ TEST_CASE("DwellStart and DwellEnd from fine ticker") {
 	TestEditor editor(host);
 	PaintClean(editor, "dwell");
 	editor.SetMouseDwellTime(100);
-	editor.MouseMove(Point(textX, textY), KeyMod::Norm);
+	const Point dwellAt = TextClickPoint(editor);
+	editor.MouseMove(dwellAt, KeyMod::Norm);
 
 	editor.ClearObservations();
 	editor.FireDwellTick();
@@ -334,7 +354,7 @@ TEST_CASE("DwellStart and DwellEnd from fine ticker") {
 	CHECK(start->y >= 0);
 
 	editor.ClearObservations();
-	editor.MouseMove(Point(textX + 20, textY), KeyMod::Norm);
+	editor.MouseMove(Point(dwellAt.x + 20, dwellAt.y), KeyMod::Norm);
 	const TestNotification *end = FindNotification(editor, Notification::DwellEnd);
 	REQUIRE(end != nullptr);
 }

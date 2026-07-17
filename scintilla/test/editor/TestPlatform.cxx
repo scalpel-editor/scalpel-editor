@@ -1,6 +1,7 @@
 // scalpel-editor test code
 /** @file TestPlatform.cxx
- ** Deterministic test implementation of the Platform.h contracts.
+ ** Deterministic test host for Window, ListBox, Menu, and Platform helpers.
+ ** Surfaces and fonts are provided by DrawSurface and FontPlatform.
  ** See TestPlatform.h for the design.
  **/
 
@@ -10,6 +11,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 
 #include <string>
 #include <string_view>
@@ -24,10 +26,11 @@
 #include "EditorLayoutTypes.h"
 
 #include "Debugging.h"
+#include "FontPlatform.h"
 #include "Geometry.h"
+#include "GlContext.h"
 #include "Platform.h"
-
-#include "UniConversion.h"
+#include "Renderer.h"
 
 #include "TestPlatform.h"
 
@@ -52,258 +55,33 @@ void RecordInto(std::vector<std::string> *destination, const char *format, ...) 
 	destination->emplace_back(buffer);
 }
 
-std::vector<std::string> *DrawCommands() noexcept {
-	TestPlatformLog *log = TestHost::CurrentLog();
-	return log ? &log->drawCommands : nullptr;
-}
-
 std::vector<std::string> *PopupRequests() noexcept {
 	TestPlatformLog *log = TestHost::CurrentLog();
 	return log ? &log->popupRequests : nullptr;
 }
 
-std::vector<std::string> *UnsupportedRequests() noexcept {
-	TestPlatformLog *log = TestHost::CurrentLog();
-	return log ? &log->unsupportedRequests : nullptr;
-}
-
-std::string RectText(PRectangle rc) {
-	char buffer[128];
-	snprintf(buffer, sizeof(buffer), "%.1f,%.1f %.1fx%.1f", rc.left, rc.top, rc.Width(), rc.Height());
-	return buffer;
-}
-
-std::string ColourText(ColourRGBA colour) {
-	char buffer[16];
-	snprintf(buffer, sizeof(buffer), "#%02X%02X%02X%02X",
-		colour.GetRed(), colour.GetGreen(), colour.GetBlue(), colour.GetAlpha());
-	return buffer;
-}
-
+// UTF-8 code-point count for list-box width estimates only.
 size_t CodePointsIn(std::string_view text) noexcept {
 	size_t count = 0;
 	size_t i = 0;
 	while (i < text.length()) {
-		size_t bytes = UTF8BytesOfLead[static_cast<unsigned char>(text[i])];
-		if (i + bytes > text.length())
+		unsigned char lead = static_cast<unsigned char>(text[i]);
+		size_t bytes = 1;
+		if (lead >= 0xF0) {
+			bytes = 4;
+		} else if (lead >= 0xE0) {
+			bytes = 3;
+		} else if (lead >= 0xC0) {
+			bytes = 2;
+		}
+		if (i + bytes > text.length()) {
 			bytes = text.length() - i;
+		}
 		i += bytes;
 		count++;
 	}
 	return count;
 }
-
-class TestFont final : public Font {
-public:
-	TestFont() noexcept = default;
-};
-
-class TestSurface final : public Surface {
-public:
-	void Init(WindowID) override {
-		initialised = true;
-	}
-
-	void Init(SurfaceID, WindowID) override {
-		initialised = true;
-	}
-
-	std::unique_ptr<Surface> AllocatePixMap(int width, int height) override {
-		Record("AllocatePixMap %dx%d", width, height);
-		auto pixMap = std::make_unique<TestSurface>();
-		pixMap->mode = mode;
-		pixMap->initialised = true;
-		return pixMap;
-	}
-
-	void SetMode(SurfaceMode mode_) override {
-		mode = mode_;
-	}
-
-	void Release() noexcept override {
-		initialised = false;
-	}
-
-	int SupportsFeature(Scintilla::Supports) noexcept override {
-		return 0;
-	}
-
-	bool Initialised() override {
-		return initialised;
-	}
-
-	int LogPixelsY() override {
-		return 96;
-	}
-
-	int PixelDivisions() override {
-		return 1;
-	}
-
-	int DeviceHeightFont(int points) override {
-		return (points * LogPixelsY() + 36) / 72;
-	}
-
-	void LineDraw(Point start, Point end, Stroke) override {
-		Record("LineDraw %.1f,%.1f -> %.1f,%.1f", start.x, start.y, end.x, end.y);
-	}
-
-	void PolyLine(const Point *, size_t npts, Stroke) override {
-		Record("PolyLine %zu points", npts);
-	}
-
-	void Polygon(const Point *, size_t npts, FillStroke) override {
-		Record("Polygon %zu points", npts);
-	}
-
-	void RectangleDraw(PRectangle rc, FillStroke) override {
-		Record("RectangleDraw %s", RectText(rc).c_str());
-	}
-
-	void RectangleFrame(PRectangle rc, Stroke) override {
-		Record("RectangleFrame %s", RectText(rc).c_str());
-	}
-
-	void FillRectangle(PRectangle rc, Fill fill) override {
-		Record("FillRectangle %s %s", RectText(rc).c_str(), ColourText(fill.colour).c_str());
-	}
-
-	void FillRectangleAligned(PRectangle rc, Fill fill) override {
-		Record("FillRectangleAligned %s %s", RectText(rc).c_str(), ColourText(fill.colour).c_str());
-	}
-
-	void FillRectangle(PRectangle rc, Surface &) override {
-		Record("FillRectanglePattern %s", RectText(rc).c_str());
-	}
-
-	void RoundedRectangle(PRectangle rc, FillStroke) override {
-		Record("RoundedRectangle %s", RectText(rc).c_str());
-	}
-
-	void AlphaRectangle(PRectangle rc, XYPOSITION, FillStroke) override {
-		Record("AlphaRectangle %s", RectText(rc).c_str());
-	}
-
-	void GradientRectangle(PRectangle rc, const std::vector<ColourStop> &, GradientOptions) override {
-		Record("GradientRectangle %s", RectText(rc).c_str());
-	}
-
-	void DrawRGBAImage(PRectangle rc, int width, int height, const unsigned char *) override {
-		Record("DrawRGBAImage %s %dx%d", RectText(rc).c_str(), width, height);
-	}
-
-	void Ellipse(PRectangle rc, FillStroke) override {
-		Record("Ellipse %s", RectText(rc).c_str());
-	}
-
-	void Stadium(PRectangle rc, FillStroke, Ends) override {
-		Record("Stadium %s", RectText(rc).c_str());
-	}
-
-	void Copy(PRectangle rc, Point from, Surface &) override {
-		Record("Copy %s from %.1f,%.1f", RectText(rc).c_str(), from.x, from.y);
-	}
-
-	std::unique_ptr<IScreenLineLayout> Layout(const IScreenLine *) override {
-		// Only bidirectional mode asks for a screen-line layout; the test
-		// platform does not implement it.
-		RecordInto(UnsupportedRequests(), "Surface::Layout");
-		return {};
-	}
-
-	void DrawTextNoClip(PRectangle rc, const Font *, XYPOSITION ybase, std::string_view text,
-		ColourRGBA fore, ColourRGBA) override {
-		RecordText("DrawTextNoClip", rc, ybase, text, fore);
-	}
-
-	void DrawTextClipped(PRectangle rc, const Font *, XYPOSITION ybase, std::string_view text,
-		ColourRGBA fore, ColourRGBA) override {
-		RecordText("DrawTextClipped", rc, ybase, text, fore);
-	}
-
-	void DrawTextTransparent(PRectangle rc, const Font *, XYPOSITION ybase, std::string_view text,
-		ColourRGBA fore) override {
-		RecordText("DrawTextTransparent", rc, ybase, text, fore);
-	}
-
-	void MeasureWidths(const Font *, std::string_view text, XYPOSITION *positions) override {
-		// Each code point advances testCharWidth. Every byte of a code point
-		// reports the code point's end position, matching the real platform
-		// layers, so position arrays are filled for all requested bytes.
-		XYPOSITION x = 0;
-		size_t i = 0;
-		while (i < text.length()) {
-			size_t bytes = UTF8BytesOfLead[static_cast<unsigned char>(text[i])];
-			if (i + bytes > text.length())
-				bytes = text.length() - i;
-			x += testCharWidth;
-			for (size_t b = 0; b < bytes; b++) {
-				positions[i + b] = x;
-			}
-			i += bytes;
-		}
-	}
-
-	XYPOSITION WidthText(const Font *, std::string_view text) override {
-		return testCharWidth * static_cast<XYPOSITION>(CodePointsIn(text));
-	}
-
-	XYPOSITION Ascent(const Font *) override {
-		return testFontAscent;
-	}
-
-	XYPOSITION Descent(const Font *) override {
-		return testFontDescent;
-	}
-
-	XYPOSITION InternalLeading(const Font *) override {
-		return 0;
-	}
-
-	XYPOSITION Height(const Font *) override {
-		return testFontAscent + testFontDescent;
-	}
-
-	XYPOSITION AverageCharWidth(const Font *) override {
-		return testCharWidth;
-	}
-
-	void SetClip(PRectangle rc) override {
-		Record("SetClip %s", RectText(rc).c_str());
-	}
-
-	void PopClip() override {
-		Record("PopClip");
-	}
-
-	void FlushCachedState() override {
-	}
-
-	void FlushDrawing() override {
-	}
-
-private:
-	void Record(const char *format, ...) {
-		std::vector<std::string> *destination = DrawCommands();
-		if (!destination)
-			return;
-		char buffer[512];
-		va_list args;
-		va_start(args, format);
-		vsnprintf(buffer, sizeof(buffer), format, args);
-		va_end(args);
-		destination->emplace_back(buffer);
-	}
-
-	void RecordText(const char *operation, PRectangle rc, XYPOSITION ybase, std::string_view text,
-		ColourRGBA fore) {
-		Record("%s %s ybase=%.1f %s '%.*s'", operation, RectText(rc).c_str(), ybase,
-			ColourText(fore).c_str(), static_cast<int>(text.length()), text.data());
-	}
-
-	SurfaceMode mode;
-	bool initialised = false;
-};
 
 } // namespace
 
@@ -548,10 +326,27 @@ TestHost::TestHost() {
 		abort();
 	}
 	currentHost = this;
+#ifndef SCALPEL_TEST_FONT_DIR
+#error "editorTest must define SCALPEL_TEST_FONT_DIR to the checked-in fonts directory"
+#endif
+	const std::filesystem::path fontDir = SCALPEL_TEST_FONT_DIR;
+	UseTestFontPaths(fontDir / "FallbackPrimary.ttf", {fontDir / "FallbackSnowman.ttf"});
 }
 
 TestHost::~TestHost() {
+	// Tear down GL before clearing font paths so faces stay valid during paint cleanup.
+	renderer.reset();
+	glContext.reset();
+	ClearTestFontPaths();
 	currentHost = nullptr;
+}
+
+void TestHost::EnsureRenderer() {
+	if (renderer) {
+		return;
+	}
+	glContext = std::make_unique<GlContext>();
+	renderer = std::make_unique<Renderer>(*glContext);
 }
 
 TestPlatformLog *TestHost::CurrentLog() noexcept {
@@ -570,18 +365,6 @@ void TestHost::NotifyListBoxSelectionChange() {
 void TestHost::NotifyListBoxDoubleClick() {
 	if (liveListBox)
 		liveListBox->NotifyDoubleClick();
-}
-
-std::shared_ptr<Font> Font::Allocate(const FontParameters &) {
-	if (TestPlatformLog *log = TestHost::CurrentLog())
-		log->fontsAllocated++;
-	return std::make_shared<TestFont>();
-}
-
-std::unique_ptr<Surface> Surface::Allocate() {
-	if (TestPlatformLog *log = TestHost::CurrentLog())
-		log->surfacesAllocated++;
-	return std::make_unique<TestSurface>();
 }
 
 Window::~Window() noexcept = default;
@@ -704,7 +487,7 @@ ColourRGBA Platform::ChromeHighlight() {
 }
 
 const char *Platform::DefaultFont() {
-	return "TestFont";
+	return "fixture";
 }
 
 int Platform::DefaultFontSize() {

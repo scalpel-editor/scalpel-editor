@@ -29,8 +29,11 @@
 #include "ILexer.h"
 
 #include "Debugging.h"
+#include "DrawSurface.h"
+#include "FontPlatform.h"
 #include "Geometry.h"
 #include "Platform.h"
+#include "Renderer.h"
 #include "CharacterType.h"
 #include "CharacterCategoryMap.h"
 #include "Position.h"
@@ -164,8 +167,12 @@ void TestEditor::PaintAll() {
 	paintState = PaintState::painting;
 	rcPaint = GetClientRectangle();
 	paintingAllText = true;
-	std::unique_ptr<Surface> surface = Surface::Allocate();
-	surface->Init(static_cast<SurfaceID>(&host.mainWindow), static_cast<WindowID>(&host.mainWindow));
+	const int width = std::max(1, static_cast<int>(rcPaint.Width()));
+	const int height = std::max(1, static_cast<int>(rcPaint.Height()));
+	host.EnsureRenderer();
+	const double fontSize = static_cast<double>(Platform::DefaultFontSize());
+	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(
+		*host.GetRenderer(), width, height, TestFontFallbackFaces(fontSize));
 	Paint(surface.get(), rcPaint);
 	surface->Release();
 	paintState = PaintState::notPainting;
@@ -183,14 +190,10 @@ void TestEditor::ClearObservations() {
 	host.mainWindow.invalidations.clear();
 	host.mainWindow.invalidateAllCount = 0;
 	// Keep live list-box and call-tip window state: those reflect current UI,
-	// not a one-shot host effect log. Only clear request/draw logs and counters.
+	// not a one-shot host effect log. Only clear request logs and counters.
 	const int listBoxesAllocated = host.log.listBoxesAllocated;
-	const int surfacesAllocated = host.log.surfacesAllocated;
-	const int fontsAllocated = host.log.fontsAllocated;
 	host.log = {};
 	host.log.listBoxesAllocated = listBoxesAllocated;
-	host.log.surfacesAllocated = surfacesAllocated;
-	host.log.fontsAllocated = fontsAllocated;
 }
 
 void TestEditor::OnRecordedAction(const RecordedAction &action) {

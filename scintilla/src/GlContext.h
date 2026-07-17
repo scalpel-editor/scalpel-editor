@@ -1,9 +1,8 @@
 // scalpel-editor headless OpenGL context via EGL (no Wayland/X11 display).
 //
-// Step 5 offscreen tests and later application hosts each own their own
-// GlContext. The same Renderer implementation is constructed per context;
-// GL objects are never shared across contexts. Surface::Allocate remains with
-// TestPlatform until step 7 wires the concrete path into the editor host.
+// Offscreen tests and application hosts each own their own GlContext. The same
+// Renderer implementation is constructed per context; GL objects are never
+// shared across contexts.
 
 #ifndef GLCONTEXT_H
 #define GLCONTEXT_H

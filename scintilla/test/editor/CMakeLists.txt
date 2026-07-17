@@ -32,7 +32,10 @@ add_executable(editorTest
 )
 
 target_include_directories(editorTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ../unit)
-target_link_libraries(editorTest PRIVATE scintilla_core)
+target_link_libraries(editorTest PRIVATE scintilla_core scintilla_render)
+target_compile_definitions(editorTest PRIVATE
+  SCALPEL_TEST_FONT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../fonts"
+)
 target_compile_options(editorTest PRIVATE -Wall -Wextra)
 
 add_test(NAME editor COMMAND editorTest)

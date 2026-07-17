@@ -1,13 +1,11 @@
 // scalpel-editor test code
 /** @file TestPlatform.h
- ** Deterministic test implementation of the Platform.h contracts.
+ ** Deterministic test host for Window, ListBox, Menu, and Platform helpers.
  **
- ** The platform here never draws pixels, opens real windows, or talks to a
- ** display server. Windows store their state in memory, surfaces record
- ** drawing commands as text, fonts report fixed metrics, and autocomplete
- ** list boxes and call-tip windows are fully in-memory and inspectable.
- ** Menus and bidirectional layout still record the request instead of
- ** pretending they succeeded.
+ ** Surfaces and fonts come from the concrete DrawSurface / FontPlatform path
+ ** (fixture fonts via UseTestFontPaths). This file keeps in-memory windows,
+ ** autocomplete list boxes, call-tip windows, and menu request logs so host
+ ** observation stays inspectable without a display server.
  **
  ** Like Scintilla's internal headers, this header expects Geometry.h and
  ** Platform.h (and their standard-library prerequisites) to be included
@@ -17,11 +15,15 @@
 #ifndef TESTPLATFORM_H
 #define TESTPLATFORM_H
 
+#include <memory>
+
 namespace Scintilla::Internal {
 
-// Fixed metrics reported by every test font, and the fixed advance of every
-// code point. Small round numbers so tests can compute expected pixel
-// positions by hand: a line is 10 pixels high, a character 10 wide.
+class GlContext;
+class Renderer;
+
+// Default list-box geometry when the core has not supplied a line height or
+// average character width yet. Not used for document layout or paint metrics.
 constexpr XYPOSITION testFontAscent = 8;
 constexpr XYPOSITION testFontDescent = 2;
 constexpr XYPOSITION testCharWidth = 10;
@@ -60,19 +62,14 @@ struct TestCallTipState {
 	int invalidateAllCount = 0;
 };
 
-// Everything the platform layer observes. Owned by TestHost; the platform
-// free functions reach it through TestHost::CurrentLog().
+// Everything the host-side platform helpers observe. Owned by TestHost; free
+// functions reach it through TestHost::CurrentLog().
 struct TestPlatformLog {
-	// One formatted line per Surface drawing call, in call order.
-	std::vector<std::string> drawCommands;
 	// Popup-window activity: menu creation and show requests.
 	std::vector<std::string> popupRequests;
-	// Calls into features the test platform does not implement
-	// (bidirectional layout). Recorded so a test that strays into them sees
-	// the request instead of silent fake success.
+	// Calls into features the host does not implement. Recorded so a test that
+	// strays into them sees the request instead of silent fake success.
 	std::vector<std::string> unsupportedRequests;
-	int surfacesAllocated = 0;
-	int fontsAllocated = 0;
 	int listBoxesAllocated = 0;
 };
 
@@ -92,11 +89,10 @@ struct TestWindow {
 class TestListBox;
 
 // A test constructs one TestHost before its editor and keeps it alive
-// throughout. The platform free functions (Surface::Allocate,
-// Font::Allocate, ListBox::Allocate, Menu and Platform calls) take no
-// context argument, so they find the log through the single current host;
-// only one TestHost may be alive at a time. Fixtures that compare two
-// editors therefore run them one after the other, not side by side.
+// throughout. Window / ListBox / Menu free functions take no context argument,
+// so they find this host through Current(); only one TestHost may be alive at
+// a time. Fixtures that compare two editors therefore run them one after the
+// other, not side by side.
 class TestHost {
 public:
 	TestHost();
@@ -110,6 +106,10 @@ public:
 	static TestPlatformLog *CurrentLog() noexcept;
 	// The live host, or null when no host is alive.
 	static TestHost *Current() noexcept;
+
+	// Create headless GL context and Renderer on first paint need.
+	void EnsureRenderer();
+	Renderer *GetRenderer() noexcept { return renderer.get(); }
 
 	// Inject list-box events as if the user changed selection or double-clicked.
 	// No-op when no list box is registered.
@@ -127,6 +127,10 @@ public:
 	TestListBox *liveListBox = nullptr;
 	// WindowID of the list box after Create, for Destroy tracking.
 	WindowID listBoxWindowId = nullptr;
+
+private:
+	std::unique_ptr<GlContext> glContext;
+	std::unique_ptr<Renderer> renderer;
 };
 
 }

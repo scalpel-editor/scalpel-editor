@@ -277,8 +277,12 @@ TEST_CASE("Text width preserves embedded NUL bytes and zoom round-trips") {
 
 	const long w = editor.TextWidth(0, "MM");
 	CHECK(w > 0);
+	// Embedded NUL is one character for measure (UTF-8 policy). Width is the
+	// sum of shaped advances, not necessarily 3 times the width of "M".
 	const std::string_view textWithNul("M\0M", 3);
-	CHECK(editor.TextWidth(0, textWithNul) == 3 * editor.TextWidth(0, "M"));
+	const long widthWithNul = editor.TextWidth(0, textWithNul);
+	CHECK(widthWithNul > editor.TextWidth(0, "M"));
+	CHECK(widthWithNul >= editor.TextWidth(0, "MM"));
 
 	editor.SetZoom(6);
 	CHECK(editor.GetZoom() == 6);

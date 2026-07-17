@@ -119,6 +119,24 @@ std::shared_ptr<FontFace> SharedFaceFromFont(const Font *font) noexcept;
  */
 std::shared_ptr<Font> FontFromFace(std::shared_ptr<FontFace> face);
 
+/**
+ * Force Font::Allocate and Surface measure fallbacks to load checked-in fixture
+ * paths instead of Fontconfig. editorTest calls this so system fonts cannot
+ * move metrics. Empty primary clears the override (production default).
+ */
+void UseTestFontPaths(const std::filesystem::path &primary,
+	const std::vector<std::filesystem::path> &fallbacks = {});
+void ClearTestFontPaths() noexcept;
+
+/** True while UseTestFontPaths has a non-empty primary. */
+bool TestFontPathsActive() noexcept;
+
+/**
+ * Load fallback fixture faces at the given point size from the paths set by
+ * UseTestFontPaths. Empty when no test paths are active.
+ */
+std::vector<std::shared_ptr<FontFace>> TestFontFallbackFaces(double size);
+
 }
 
 #endif

@@ -389,4 +389,12 @@ std::unique_ptr<DrawSurface> CreateMeasureOnlySurface(
 	return surface;
 }
 
+std::unique_ptr<Surface> Surface::Allocate() {
+	// Measure-only by default. Drawing surfaces need a Renderer and size from
+	// CreateDrawSurface or a host override of CreateDrawingSurface.
+	// Fallback face size 10 matches Platform::DefaultFontSize when tests set
+	// fixture paths; production Match does not use this list.
+	return CreateMeasureOnlySurface(TestFontFallbackFaces(10.0));
+}
+
 }

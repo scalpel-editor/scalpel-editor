@@ -3,9 +3,8 @@
 // Measurement, Layout, and DrawText* all consume the shaped-run path (same
 // helpers as MeasureSurface). Glyphs are rasterized and cached on Renderer.
 //
-// Surface::Allocate is not defined here. editorTest keeps TestPlatform until
-// step 7 wires this implementation into the editor host. Tests and the future
-// host construct DrawSurface through CreateDrawSurface / CreateMeasureOnlySurface.
+// Surface::Allocate returns a measure-only DrawSurface (no GL buffer). Painting
+// targets are built with CreateDrawSurface against a Renderer and ColourBuffer.
 
 #ifndef DRAWSURFACE_H
 #define DRAWSURFACE_H
