@@ -200,3 +200,74 @@ The following are **out of phase 6** even if seed code or protocols already exis
 - **xdg-decoration**, **xdg-foreign**, **portal** / D-Bus (phase 7–8)
 
 Phase 6 step 11 only: build the **current** keymap from the seat, translate press/release into text insertion or `EditorCommand`, and route pointer motion, buttons, wheel, capture, and coordinates.
+
+## Dependencies
+
+Libraries discovered with pkg-config (versions below are what this development host had at freeze time; CMake should require the modules, not pin these exact numbers unless a known minimum is found later).
+
+| Module / tool | Role in phase 6 | First step | Not for phase 6 |
+| --- | --- | --- | --- |
+| `freetype2` | Face open, metrics, glyph rasterization | 2, 6 | — |
+| `harfbuzz` | Shape directional runs; discretionary ligatures off | 3 | Mixed-direction line ordering |
+| `fontconfig` | Production family lookup and fallback | 2 | — |
+| `wayland-client` | Display connection, registry, compositor, seat, surface | 9–11 | — |
+| `wayland-protocols` + `wayland-scanner` | Generate **xdg-shell** client code only | 9 | decoration, presentation-time, foreign, viewporter, text-input (later phases) |
+| `wayland-egl` | `wl_egl_window` for the EGL window surface | 9 | — |
+| `egl` | Config, context, window surface, swap | 9–10 | — |
+| OpenGL (`gl` on this host; seed renderer is GL3-style) | One drawing implementation for window and offscreen targets | 5–6 | Product abstraction / multi-backend |
+| `xkbcommon` | Map seat keymap; key press/release → text or `EditorCommand` | 11 | Compose, repeat (phase 7) |
+
+### Explicitly not required until later phases
+
+| Module | Deferred to |
+| --- | --- |
+| `wayland-cursor` | Phase 7 (cursor themes) |
+| `dbus-1` / portal helpers | Phase 7–8 (file dialogs and related watches) |
+| xdg-decoration protocol | Phase 7 |
+| presentation-time protocol | Phase 7 |
+| xdg-foreign protocol | Phase 7–8 (parent handle for portals) |
+
+Seed CMake (`seed/cmake/DependenciesForBackends.cmake`) still finds decoration, presentation-time, foreign, and dbus for the old OnlyWayUi backend. Phase 6 production CMake must **not** copy that whole list; generate and link only what the steps above need.
+
+### Protocol generation
+
+- **Required in phase 6:** `xdg-shell` stable XML from the wayland-protocols package data directory → client header and code via `wayland-scanner`.
+- **Handshake:** bind compositor and seat; complete initial xdg-surface configure; create xdg-toplevel and `wl_egl_window` (step 9).
+- **Cleanup:** destroy EGL and Wayland objects in reverse order of creation (step 9).
+- **Not generated in phase 6:** xdg-decoration, presentation-time, xdg-foreign, text-input, primary-selection, viewporter, fractional-scale.
+
+## Source references (mine, do not build on)
+
+These paths teach techniques. Useful logic is rewritten as direct code under this project's layout; seed files are deleted only when step 12 (or phase 7) says so.
+
+| Path | What to take | Absorbed by | Delete when |
+| --- | --- | --- | --- |
+| `seed/editor/PlatOWUI.cxx` / `.h` | LTR surface wiring over a foreign font engine; **not** HarfBuzz screen-line layout (unimplemented there) | Steps 2–7 | Step 12 |
+| `seed/backends/OnlyWayUi_Renderer_GL3.cpp` / `.h` | GL setup, transforms, clipping, geometry, textures, layers — techniques only, not RmlUi interfaces | Steps 5–6 | Step 12 |
+| `seed/backends/OnlyWayUi_Platform_Wayland.cpp` / `.h` | Connection, xdg-shell, seat, EGL window patterns; frame and presentation patterns for **phase 7** | Steps 9–11 (subset) | After phase 7 absorbs the rest |
+| `seed/backends/OnlyWayUi_Backend*` / `OnlyWayUi_Include_GL3.h` | How the sample ties platform and renderer | Reference | With backends when unused |
+| `seed/sample/` | Shape of a text-editor main loop over a hosted Scintilla | Steps 8–11 | When no longer needed as reference |
+| `seed/cmake/DependenciesForBackends.cmake` | Example pkg-config and scanner wiring (trim to phase 6 set) | CMake in early code steps | Keep or replace when production CMake exists |
+| OnlyWayUi `Samples/basic/harfbuzz/` (external tree; see [ORIGINS.md](../ORIGINS.md)) | FreeType + HarfBuzz integration ideas | Step 3 | External; not vendored |
+| `scintilla/test/editor/TestPlatform.*` | Contract completeness and host-observation patterns | Steps 7–8 | Remains as test host; drawing side replaced in step 7 |
+
+`ORIGINS.md` records that PlatOWUI does not provide per-input-byte measurements from shaped clusters. Phase 6 must build that mapping (step 3) and use it for measure, caret, selection, and draw (steps 4–6).
+
+## Licenses
+
+| Material | License location | Rule |
+| --- | --- | --- |
+| Scintilla core under `scintilla/` | `scintilla/License.txt` | Unchanged; core edits stay under that grant |
+| Seed and any code derived from OnlyWayUi / RmlUi | `seed/LICENSE.txt` (MIT; CodePoint / Shift / RmlUi Team notices) | Keep the copyright and permission notice with every derived file for as long as derived code remains |
+| Checked-in test fonts (step 2) | Notices checked in beside the font files | Compatibly licensed **primary and fallback** faces; system font packages must not be required for deterministic tests |
+| FreeType, HarfBuzz, Fontconfig, Wayland, EGL, OpenGL, xkbcommon | System package licenses | Link only; do not vendor unless a later decision says so |
+
+## Completion of step 1
+
+Step 1 is done when:
+
+1. Every live `Platform.h` operation and the editor host hooks listed above have an owner (renderer, minimal shell, popup stub, phase 7, or debug-only).
+2. The phase 7 cut line is explicit so steps 9–11 do not re-litigate compose, IME, clipboard, themes, pacing, or scale.
+3. Dependencies, protocol generation, seed sources, and license rules are recorded for steps 2 onward.
+
+Implementation (trees, CMake targets, fonts, shaping code) starts at step 2.
