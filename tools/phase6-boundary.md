@@ -14,28 +14,28 @@ Owners used in the tables:
 | **Phase 7** | Compose, key repeat, IME, clipboard and primary selection transfers, cursor themes, frame pacing, presentation feedback, optional-protocol fallback, scale and buffer-scale, robust global and seat removal, hot-plugged seats. |
 | **Debug only** | Assert and debug-print helpers used by the core; not part of the user-visible editor surface. |
 
-Until step 7 replaces it, `scintilla/test/editor/TestPlatform.cxx` remains the only implementation of `Platform.h` symbols linked by `editorTest` (including `Surface::Allocate`). Step 5 ships the concrete path as `scintilla_render` (`GlContext`, `Renderer`, `DrawSurface`, `ColourBuffer`) with `CreateDrawSurface` / `CreateMeasureOnlySurface` factories used by `rendererTest`. Step 6 owns live `DrawText*` on `DrawSurface` and the per-`Renderer` FreeType glyph texture cache (`DrawGlyph`). Step 7 wires `Surface::Allocate` and the editor host onto that path and swaps the fixture's recorded drawing surface for the offscreen target while keeping host observation.
+Step 7 is complete: `Surface::Allocate` is measure-only `DrawSurface` in `scintilla_render`; `Font::Allocate` is `FontPlatform` (fixture paths via `UseTestFontPaths` in `editorTest`); `editorTest` paints with `CreateDrawSurface` on a host-owned headless `GlContext`/`Renderer`. `TestPlatform` still owns Window, inspectable ListBox, Menu logs, and Platform chrome helpers for the fixture. Production ListBox/Menu stubs are `scintilla_platform_popups` (not linked by `editorTest`).
 
 ## Opaque IDs (`Platform.h`)
 
 | Type | Role today | Owner | Notes |
 | --- | --- | --- | --- |
-| `SurfaceID` | Handle passed to `Surface::Init` for drawing and to `FormatRange` | **Renderer** (step 7 may rename or drop when collapsing) | Opaque `void *`. Printing and paint pass it through `CreateDrawingSurface`. |
+| `SurfaceID` | Optional handle for `Surface::Init` drawing overload | **Renderer** | Still typed as `void *`; `DrawSurface::Init` ignores it when the surface already owns a colour buffer. `FormatRange` no longer takes SurfaceIDs. |
 | `WindowID` | Handle behind `Window` and `Surface::Init` measure path | **Minimal shell** | Main editor window, margin pixmap window, call-tip and list-box windows when those exist. |
 | `MenuID` | Handle behind `Menu` | **Popup stub** | No real menu in phase 6. |
 | `TickerID` | Declared; fine tickers use virtuals on `Editor`, not this typedef | **Minimal shell** | Host implements `FineTickerStart` / `Cancel` / `Running` (step 8 / 10). |
 | `IdlerID` | Declared; idle uses `SetIdle` virtual on `Editor` | **Minimal shell** | Step 8 / 10. |
-| `Function` | Declared; unused by current core call sites inventoried here | **Minimal shell** or drop in step 7 | Revisit when collapsing the platform layer. |
+| `Function` | Declared; unused by current core call sites inventoried here | Drop or unused | Not required by the concrete platform. |
 
 ## Multi-platform macros (`Platform.h`)
 
-The `PLAT_GTK` / `PLAT_WIN` / … block and the default-to-Win32 `#else` branch are multi-platform leftovers. **Renderer / shell do not use them.** Step 7 deletes or replaces them when collapsing `Platform.h` onto one implementation. Until then production code must not introduce new `#if PLAT_*` branches.
+Removed in step 7. There is no `PLAT_*` selection block and no default-to-Win32 branch.
 
 ## Font
 
 | Operation | Used by | Owner | Step |
 | --- | --- | --- | --- |
-| `FontParameters` fields (`faceName`, `size`, `weight`, `italic`, `extraFontFlag`, `technology`, `characterSet`, `localeName`, `stretch`) | `ViewStyle::FontRealised::Realise` | **Renderer** | 2 (lookup / ownership), 3–4 (shape/measure); `technology` removed in step 7; `characterSet` is legacy Scintilla field (UTF-8-only project — ignore for face selection beyond face name / style) |
+| `FontParameters` fields (`faceName`, `size`, `weight`, `italic`, `extraFontFlag`, `characterSet`, `localeName`, `stretch`) | `ViewStyle::FontRealised::Realise` | **Renderer** | 2–7; `technology` gone; `characterSet` is legacy Scintilla field (UTF-8-only project — ignore for face selection beyond face name / style) |
 | `Font::Allocate` | `ViewStyle` when realising style fonts | **Renderer** | 2 |
 | `Font` lifetime (`shared_ptr`, non-copyable base) | Styles hold shared fonts | **Renderer** | 2 |
 
@@ -43,9 +43,9 @@ The `PLAT_GTK` / `PLAT_WIN` / … block and the default-to-Win32 `#else` branch 
 
 | Operation | Used by | Owner | Step |
 | --- | --- | --- | --- |
-| `Surface::Allocate(Technology)` | `Editor::CreateMeasurementSurface` / `CreateDrawingSurface` | **Renderer** | 5–7; technology argument removed in step 7 |
+| `Surface::Allocate()` | `Editor::CreateMeasurementSurface` / default draw path | **Renderer** | 7; returns measure-only `DrawSurface`; painting uses `CreateDrawSurface` |
 | `Init(WindowID)` | Measurement surface | **Renderer** | 5 |
-| `Init(SurfaceID, WindowID)` | Drawing surface (window or print target) | **Renderer** | 5; print path step 7 |
+| `Init(SurfaceID, WindowID)` | Drawing surface (window or print target) | **Renderer** | 5–7; `FormatRange` uses `Surface *` not SurfaceID |
 | `AllocatePixMap` | Margin caching, buffered draw | **Renderer** | 5 |
 | `SetMode` | Bidi flag on surface (LTR goal; mode retained for later) | **Renderer** | 5; mixed-direction ordering still out of scope |
 | `Release` / `Initialised` | Surface teardown and readiness | **Renderer** | 5 |
@@ -109,7 +109,7 @@ Allocated by `AutoComplete` via `ListBox::Allocate`. Full virtual surface is use
 
 | Operation group | Owner | Step |
 | --- | --- | --- |
-| `ListBox::Allocate` and all virtuals (`SetFont`, `Create`, `SetAverageCharWidth`, `SetVisibleRows`, `GetVisibleRows`, `GetDesiredRect`, `CaretFromEdge`, `Clear`, `Append`, `Length`, `Select`, `GetSelection`, `Find`, `GetValue`, image registration, `SetDelegate`, `SetList`, `SetOptions`) plus inherited `Window` methods | **Popup stub** | 7 (recorded-failure stubs); real windows are post-roadmap |
+| `ListBox::Allocate` and all virtuals (`SetFont`, `Create`, `SetAverageCharWidth`, `SetVisibleRows`, `GetVisibleRows`, `GetDesiredRect`, `CaretFromEdge`, `Clear`, `Append`, `Length`, `Select`, `GetSelection`, `Find`, `GetValue`, image registration, `SetDelegate`, `SetList`, `SetOptions`) plus inherited `Window` methods | **Popup stub** | 7 ✅ production: `scintilla_platform_popups`; tests: inspectable `TestListBox`; real windows are post-roadmap |
 | `IListBoxDelegate` / `ListBoxEvent` | Core (`ScintillaBase`) | Unchanged; stubs never deliver success events unless a test injects them |
 
 ## Menu
@@ -177,13 +177,15 @@ These pure or virtual methods are how the core talks to the application host. St
 | `UpdateSystemCaret` / `NotifyCaretMove` | Optional; phase 7 or later if a system caret is wanted. |
 | `CaseMapString` | Default UTF-8 case mapping in core is enough for the slice. |
 
-## Technology and surface selection (collapse target)
+## Technology and surface selection (step 7 complete)
 
 | Item | Disposition |
 | --- | --- |
-| `Scintilla::Technology` on `Editor`, `FontParameters`, `Surface::Allocate`, `ListBox::Create`, `CreateDrawingSurface` | **Step 7**: remove renderer-selection arguments and multi-backend allocation; one surface and font implementation. |
-| `SurfaceID` as opaque void pointer | **Step 7**: may become a typed renderer target or disappear from public print API shape as the print path is updated. |
-| `TestPlatform` recorded draw log | **Step 7**: replace drawing assertions with offscreen pixel/readback checks; retain host observation (`TestEditor` notifications, tickers, capture, scrollbars). |
+| `Scintilla::Technology` | **Deleted.** One surface and font path. |
+| `Surface::Allocate` / `ListBox::Create` / `CreateDrawingSurface` | No technology argument; one `DrawSurface` implementation. |
+| `FormatRange` | Takes optional `Surface *surfaceDraw`; measure-only allocates measure surfaces. |
+| `TestPlatform` recorded draw log | **Removed.** Paint uses offscreen `CreateDrawSurface`; host observation retained (`TestEditor` notifications, tickers, capture, scrollbars). |
+| Production popups | `scintilla_platform_popups` logs ListBox/Menu requests; `editorTest` keeps inspectable TestListBox. |
 
 ## Phase 7 cut line (do not implement in phase 6)
 
@@ -249,7 +251,7 @@ These paths teach techniques. Useful logic is rewritten as direct code under thi
 | `seed/sample/` | Shape of a text-editor main loop over a hosted Scintilla | Steps 8–11 | When no longer needed as reference |
 | `seed/cmake/DependenciesForBackends.cmake` | Example pkg-config and scanner wiring (trim to phase 6 set) | CMake in early code steps | Keep or replace when production CMake exists |
 | OnlyWayUi `Samples/basic/harfbuzz/` (external tree; see [ORIGINS.md](../ORIGINS.md)) | FreeType + HarfBuzz integration ideas | Step 3 | External; not vendored |
-| `scintilla/test/editor/TestPlatform.*` | Contract completeness and host-observation patterns | Steps 7–8 | Remains as test host; drawing side replaced in step 7 |
+| `scintilla/test/editor/TestPlatform.*` | Contract completeness and host-observation patterns | Steps 7–8 | Host observation only after step 7; drawing is `DrawSurface` |
 
 `ORIGINS.md` records that PlatOWUI does not provide per-input-byte measurements from shaped clusters. Phase 6 must build that mapping (step 3) and use it for measure, caret, selection, and draw (steps 4–6).
 
