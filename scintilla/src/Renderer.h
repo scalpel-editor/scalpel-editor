@@ -6,10 +6,11 @@
 // - glReadPixels is bottom-to-top; ReadPixelsTopDown flips rows.
 // - PRectangle includes left/top and excludes right/bottom (see Geometry.h).
 // - Dithering and multisampling are disabled on the owning GlContext.
-// - Blend (when enabled later): GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA for RGB
-//   and the same for alpha so destination alpha accumulates in the usual way.
+// - Blend: GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA for RGB and alpha.
 // - Exact pixel equality for clears and solid opaque interiors; ±1 per channel
 //   for alpha blends and gradients.
+// - Surface coordinates: origin top-left, y increases downward. The orthographic
+//   transform maps that space into OpenGL NDC for triangle draws.
 
 #ifndef RENDERER_H
 #define RENDERER_H
@@ -66,6 +67,27 @@ private:
 	int height = 0;
 };
 
+/** Integer half-open rectangle in top-down pixel space (matches PRectangle). */
+struct PixelRect {
+	int left = 0;
+	int top = 0;
+	int right = 0;
+	int bottom = 0;
+
+	[[nodiscard]] bool Empty() const noexcept {
+		return right <= left || bottom <= top;
+	}
+
+	[[nodiscard]] int Width() const noexcept { return right - left; }
+	[[nodiscard]] int Height() const noexcept { return bottom - top; }
+};
+
+/** Convert a PRectangle to a pixel rect (floor left/top, ceil right/bottom). */
+[[nodiscard]] PixelRect PixelRectFromPRectangle(PRectangle rc) noexcept;
+
+/** Intersect two half-open pixel rects; empty if no overlap. */
+[[nodiscard]] PixelRect IntersectPixelRect(PixelRect a, PixelRect b) noexcept;
+
 /**
  * Per-context drawing state. Window and offscreen hosts each construct their
  * own Renderer on their own GlContext; they share this implementation, not GL
@@ -88,23 +110,61 @@ public:
 	void MakeCurrent();
 
 	/**
-	 * Bind a draw target for subsequent Clear and geometry. Pass framebuffer 0
-	 * only for a window default framebuffer (step 9+). Offscreen uses a
-	 * ColourBuffer FBO name.
+	 * Select the draw target. Pass framebuffer 0 only for a window default
+	 * framebuffer (step 9+). Offscreen uses a ColourBuffer FBO name.
+	 * Resets the clip stack when the target identity or size changes.
 	 */
 	void SetDrawTarget(unsigned framebuffer, int width, int height);
 
-	/** Clear the current draw target to colour (straight alpha, premultiplied not used). */
+	/** Re-bind the current target FBO and viewport without clearing clips. */
+	void BindCurrentTarget();
+
+	/** Clear the current draw target fully (ignores clip stack). */
 	void Clear(ColourRGBA colour);
+
+	/**
+	 * Push a clip rectangle (surface coords, top-left origin). Intersects with
+	 * the current clip (or the full target). Empty intersection disables drawing
+	 * until PopClip.
+	 */
+	void SetClip(PRectangle rc);
+
+	/** Restore the previous clip; no-op if the stack is empty. */
+	void PopClip();
+
+	/** Opaque axis-aligned fill of a half-open rectangle (scissor + clear). */
+	void FillRectangleOpaque(PRectangle rc, ColourRGBA colour);
+
+	/**
+	 * Axis-aligned fill with blending when alpha < 255. Uses the solid-colour
+	 * program and the orthographic transform.
+	 */
+	void FillRectangle(PRectangle rc, ColourRGBA colour);
 
 	[[nodiscard]] int TargetWidth() const noexcept { return targetWidth; }
 	[[nodiscard]] int TargetHeight() const noexcept { return targetHeight; }
+	[[nodiscard]] size_t ClipDepth() const noexcept { return clipStack.size(); }
 
 private:
+	void DestroyGl() noexcept;
+	void EnsureSolidProgram();
+	void ApplyScissor() const;
+	void UploadProjection() const;
+	void DrawSolidQuad(float x0, float y0, float x1, float y1, ColourRGBA colour);
+	[[nodiscard]] PixelRect CurrentClip() const noexcept;
+
 	GlContext &context;
 	unsigned targetFbo = 0;
 	int targetWidth = 0;
 	int targetHeight = 0;
+
+	std::vector<PixelRect> clipStack;
+
+	unsigned programSolid = 0;
+	unsigned vao = 0;
+	unsigned vbo = 0;
+	int uniformTransform = -1;
+	int uniformColour = -1;
 };
 
 }

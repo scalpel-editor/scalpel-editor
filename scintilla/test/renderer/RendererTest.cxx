@@ -123,3 +123,60 @@ TEST_CASE("CreateDrawSurface clears through Renderer into its colour buffer") {
 	REQUIRE(ExactColour(surface->Buffer().ReadPixel(0, 0), green));
 	REQUIRE(ExactColour(surface->Buffer().ReadPixel(7, 5), green));
 }
+
+TEST_CASE("nested clips limit solid fills; outer pixels stay previous colour") {
+	GlContext context;
+	Renderer renderer(context);
+	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(renderer, 10, 10);
+	const ColourRGBA bg(0, 0, 0, 255);
+	const ColourRGBA outer(255, 0, 0, 255);
+	const ColourRGBA inner(0, 255, 0, 255);
+
+	surface->BindDrawTarget();
+	renderer.Clear(bg);
+
+	surface->SetClip(PRectangle::FromInts(2, 2, 8, 8));
+	surface->FillRectangle(PRectangle::FromInts(0, 0, 10, 10), Fill(outer));
+	// Outside the outer clip remains background.
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(0, 0), bg));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(9, 9), bg));
+	// Inside outer clip is red.
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(2, 2), outer));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(7, 7), outer));
+
+	surface->SetClip(PRectangle::FromInts(4, 4, 6, 6));
+	surface->FillRectangle(PRectangle::FromInts(0, 0, 10, 10), Fill(inner));
+	// Nested region is green.
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(4, 4), inner));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(5, 5), inner));
+	// Still inside outer clip but outside nested clip stays red.
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(2, 2), outer));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(7, 7), outer));
+	// Outside outer clip still background.
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(1, 1), bg));
+
+	surface->PopClip();
+	surface->PopClip();
+	// After popping, a full fill covers everything.
+	surface->FillRectangle(PRectangle::FromInts(0, 0, 10, 10), Fill(ColourRGBA(0, 0, 255, 255)));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(0, 0), ColourRGBA(0, 0, 255, 255)));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(9, 9), ColourRGBA(0, 0, 255, 255)));
+}
+
+TEST_CASE("opaque FillRectangle respects half-open bounds") {
+	GlContext context;
+	Renderer renderer(context);
+	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(renderer, 5, 5);
+	const ColourRGBA bg(10, 10, 10, 255);
+	const ColourRGBA fg(200, 100, 50, 255);
+	surface->BindDrawTarget();
+	renderer.Clear(bg);
+	// Fill [1,3) x [1,3) — pixels (1,1),(2,1),(1,2),(2,2) only.
+	surface->FillRectangle(PRectangle::FromInts(1, 1, 3, 3), Fill(fg));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(1, 1), fg));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(2, 2), fg));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(0, 0), bg));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(3, 1), bg));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(1, 3), bg));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(3, 3), bg));
+}

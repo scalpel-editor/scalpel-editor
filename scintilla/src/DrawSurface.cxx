@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "EditorStyleTypes.h"
+#include "Geometry.h"
 #include "ShapedLayout.h"
 #include "ShapedRun.h"
 
@@ -39,7 +40,9 @@ void DrawSurface::BindDrawTarget() {
 	if (!buffer.Valid()) {
 		throw std::runtime_error("DrawSurface::BindDrawTarget without a colour buffer");
 	}
+	// SetDrawTarget resets the clip stack only when the target changes.
 	renderer->SetDrawTarget(buffer.FramebufferName(), buffer.Width(), buffer.Height());
+	renderer->BindCurrentTarget();
 }
 
 void DrawSurface::Init(WindowID) {
@@ -121,8 +124,17 @@ void DrawSurface::PolyLine(const Point *, size_t, Stroke) {}
 void DrawSurface::Polygon(const Point *, size_t, FillStroke) {}
 void DrawSurface::RectangleDraw(PRectangle, FillStroke) {}
 void DrawSurface::RectangleFrame(PRectangle, Stroke) {}
-void DrawSurface::FillRectangle(PRectangle, Fill) {}
-void DrawSurface::FillRectangleAligned(PRectangle, Fill) {}
+
+void DrawSurface::FillRectangle(PRectangle rc, Fill fill) {
+	EnsureRenderer();
+	BindDrawTarget();
+	renderer->FillRectangle(rc, fill.colour);
+}
+
+void DrawSurface::FillRectangleAligned(PRectangle rc, Fill fill) {
+	FillRectangle(PixelAlign(rc, PixelDivisions()), fill);
+}
+
 void DrawSurface::FillRectangle(PRectangle, Surface &) {}
 void DrawSurface::RoundedRectangle(PRectangle, FillStroke) {}
 void DrawSurface::AlphaRectangle(PRectangle, XYPOSITION, FillStroke) {}
@@ -187,10 +199,25 @@ XYPOSITION DrawSurface::AverageCharWidth(const Font *font_) {
 	return WidthText(font_, "x");
 }
 
-void DrawSurface::SetClip(PRectangle) {}
-void DrawSurface::PopClip() {}
+void DrawSurface::SetClip(PRectangle rc) {
+	EnsureRenderer();
+	BindDrawTarget();
+	renderer->SetClip(rc);
+}
+
+void DrawSurface::PopClip() {
+	EnsureRenderer();
+	BindDrawTarget();
+	renderer->PopClip();
+}
+
 void DrawSurface::FlushCachedState() {}
-void DrawSurface::FlushDrawing() {}
+void DrawSurface::FlushDrawing() {
+	if (renderer) {
+		renderer->MakeCurrent();
+		// Commands are immediate; no batch to flush yet.
+	}
+}
 
 std::unique_ptr<DrawSurface> CreateDrawSurface(Renderer &renderer, int width, int height,
 	std::vector<std::shared_ptr<FontFace>> fallbacks) {

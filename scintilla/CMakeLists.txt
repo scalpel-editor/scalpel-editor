@@ -45,6 +45,7 @@ target_compile_options(scintilla_font PRIVATE -Wall -Wextra)
 # Linked by renderer tests; not by editorTest until step 7 wires Surface::Allocate.
 add_library(scintilla_render STATIC
   src/DrawSurface.cxx
+  src/Geometry.cxx
   src/GlContext.cxx
   src/Renderer.cxx
 )
