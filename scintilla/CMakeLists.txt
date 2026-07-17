@@ -18,13 +18,23 @@ endif()
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(FREETYPE REQUIRED IMPORTED_TARGET freetype2)
 pkg_check_modules(FONTCONFIG REQUIRED IMPORTED_TARGET fontconfig)
+pkg_check_modules(HARFBUZZ REQUIRED IMPORTED_TARGET harfbuzz)
 
+# Font lookup, FreeType/HarfBuzz ownership, UTF-8 helpers used by shaping, and the
+# shaped-run model. UniConversion lives here so shaping can walk invalid UTF-8
+# without a circular link on scintilla_core.
 add_library(scintilla_font STATIC
   src/FontPlatform.cxx
+  src/ShapedRun.cxx
+  src/UniConversion.cxx
 )
 
 target_include_directories(scintilla_font PUBLIC include src)
-target_link_libraries(scintilla_font PUBLIC PkgConfig::FREETYPE PkgConfig::FONTCONFIG)
+target_link_libraries(scintilla_font PUBLIC
+  PkgConfig::FREETYPE
+  PkgConfig::FONTCONFIG
+  PkgConfig::HARFBUZZ
+)
 target_compile_options(scintilla_font PRIVATE -Wall -Wextra)
 
 add_library(scintilla_core STATIC
@@ -79,7 +89,6 @@ add_library(scintilla_core STATIC
   src/Selection.cxx
   src/Style.cxx
   src/UndoHistory.cxx
-  src/UniConversion.cxx
   src/UniqueString.cxx
   src/ViewStyle.cxx
   src/XPM.cxx

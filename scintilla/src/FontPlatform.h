@@ -41,6 +41,13 @@ public:
 	bool RequestedItalic() const noexcept;
 	FontMetrics Metrics() const noexcept;
 	bool HasGlyph(char32_t character) const noexcept;
+
+	/**
+	 * HarfBuzz font for this face. Owned by FontFace and destroyed before the
+	 * FreeType face. Typed as void* so this header does not include HarfBuzz.
+	 * Callers cast to hb_font_t *.
+	 */
+	void *HarfBuzzFont() const noexcept;
 };
 
 /**
@@ -49,8 +56,8 @@ public:
  * Production requests use Fontconfig. Tests load explicit paths so installed
  * fonts and the user's Fontconfig rules cannot change their results. Cached
  * faces stay alive until this cache is destroyed; each face also retains the
- * shared FreeType owner needed by its FT_Face. HarfBuzz fonts will belong to
- * FontFace when shaping is added, so they are destroyed before the FT_Face.
+ * shared FreeType owner needed by its FT_Face. HarfBuzz fonts belong to
+ * FontFace and are destroyed before the FT_Face.
  */
 class FontCache {
 	class Impl;

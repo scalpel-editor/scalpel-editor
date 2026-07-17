@@ -1,0 +1,126 @@
+// scalpel-editor shaped-run model: HarfBuzz shaping with per-input-byte positions.
+
+#ifndef SHAPEDRUN_H
+#define SHAPEDRUN_H
+
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "FontPlatform.h"
+#include "Geometry.h"
+
+namespace Scintilla::Internal {
+
+/**
+ * Writing direction stored on a shaped run.
+ *
+ * Phase 6 shapes left-to-right only. Mixed-direction line ordering is out of
+ * scope; the field stays so a later bidirectional layout step can use the same
+ * run model without collapsing clusters or direction into per-character data.
+ */
+enum class TextDirection {
+	LeftToRight = 0,
+};
+
+/**
+ * One output glyph from HarfBuzz for a shaped span.
+ *
+ * cluster is a byte offset into the original UTF-8 input (not a code-point
+ * index). Several glyphs may share a cluster when one character maps to many
+ * glyphs; ligatures that merge characters use the first character's cluster.
+ */
+struct ShapedGlyph {
+	uint32_t glyphId = 0;
+	XYPOSITION xAdvance = 0.0;
+	XYPOSITION yAdvance = 0.0;
+	XYPOSITION xOffset = 0.0;
+	XYPOSITION yOffset = 0.0;
+	size_t cluster = 0;
+	std::shared_ptr<FontFace> face;
+};
+
+/**
+ * Cached result of shaping a UTF-8 string: glyphs, per-byte end positions, and
+ * valid caret stops.
+ *
+ * Measurement, wrapping, hit testing, selection, and drawing must all consume
+ * this result rather than measuring again. byteEndPositions matches the
+ * Surface::MeasureWidths contract: positions[i] is the cumulative advance
+ * through input byte i (inclusive). Bytes that belong to the same character
+ * share that character's end position.
+ *
+ * caretStops lists byte offsets where a caret may sit: 0, each character start,
+ * and text.size(). Trail bytes of a multi-byte character are not stops.
+ */
+class ShapedRun {
+public:
+	std::string text;
+	TextDirection direction = TextDirection::LeftToRight;
+	std::vector<ShapedGlyph> glyphs;
+	std::vector<XYPOSITION> byteEndPositions;
+	std::vector<size_t> caretStops;
+
+	[[nodiscard]] bool Empty() const noexcept {
+		return text.empty();
+	}
+
+	[[nodiscard]] XYPOSITION Width() const noexcept {
+		if (byteEndPositions.empty()) {
+			return 0.0;
+		}
+		return byteEndPositions.back();
+	}
+};
+
+/**
+ * Shape UTF-8 text left-to-right.
+ *
+ * Walks the input by UTF-8 character (each invalid byte is one character, same
+ * policy as the document). Splits into maximal same-face spans using primary
+ * when it has the glyph, else the first fallback that has it, else primary
+ * (HarfBuzz emits .notdef). Each span is shaped with discretionary ligatures
+ * (liga, dlig) disabled. Cluster values stay as original byte offsets across
+ * fallback splits.
+ */
+ShapedRun ShapeText(
+	std::string_view text,
+	const std::shared_ptr<FontFace> &primary,
+	const std::vector<std::shared_ptr<FontFace>> &fallbacks = {});
+
+/**
+ * Bounded cache of shaped runs keyed by faces, text bytes, and direction.
+ *
+ * Runs hold shared_ptr references to the faces they used. Clear or destroy the
+ * cache when discarding a FontCache if you need faces released promptly.
+ */
+class ShapedRunCache {
+public:
+	explicit ShapedRunCache(size_t capacity = 256);
+	~ShapedRunCache();
+
+	ShapedRunCache(const ShapedRunCache &) = delete;
+	ShapedRunCache(ShapedRunCache &&) = delete;
+	ShapedRunCache &operator=(const ShapedRunCache &) = delete;
+	ShapedRunCache &operator=(ShapedRunCache &&) = delete;
+
+	const ShapedRun &Get(
+		std::string_view text,
+		const std::shared_ptr<FontFace> &primary,
+		const std::vector<std::shared_ptr<FontFace>> &fallbacks = {});
+
+	void Clear() noexcept;
+	[[nodiscard]] size_t Size() const noexcept;
+	[[nodiscard]] size_t Capacity() const noexcept;
+
+private:
+	class Impl;
+	std::unique_ptr<Impl> impl;
+};
+
+}
+
+#endif

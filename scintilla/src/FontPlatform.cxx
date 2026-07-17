@@ -13,6 +13,8 @@
 #include <fontconfig/fontconfig.h>
 #include <ft2build.h>
 #include FT_FREETYPE_H
+#include <hb.h>
+#include <hb-ft.h>
 
 #include "EditorStyleTypes.h"
 #include "FontPlatform.h"
@@ -86,17 +88,26 @@ public:
 		double size_, FontWeight weight_, bool italic_) :
 		libraryOwner(std::move(libraryOwner_)), pattern(pattern_, FcPatternDestroy), face(face_),
 		path(std::move(path_)), size(size_), weight(weight_), italic(italic_) {
+		// Size must be set on the FT_Face before hb_ft_font_create_referenced.
+		hbFont = hb_ft_font_create_referenced(face);
 	}
 
 	~Impl() noexcept {
+		// HarfBuzz font first: it may hold a reference on the FT_Face.
+		if (hbFont) {
+			hb_font_destroy(hbFont);
+			hbFont = nullptr;
+		}
 		if (face) {
 			FT_Done_Face(face);
+			face = nullptr;
 		}
 	}
 
-	// Declaration order makes the face and future hb_font die before the library owner.
+	// Declaration order: hb_font and FT_Face die before the FreeType library owner.
 	std::shared_ptr<void> libraryOwner;
 	PatternPtr pattern;
+	hb_font_t *hbFont = nullptr;
 	FT_Face face = nullptr;
 	std::filesystem::path path;
 	double size;
@@ -142,6 +153,10 @@ FontMetrics FontFace::Metrics() const noexcept {
 
 bool FontFace::HasGlyph(char32_t character) const noexcept {
 	return FT_Get_Char_Index(impl->face, static_cast<FT_ULong>(character)) != 0;
+}
+
+void *FontFace::HarfBuzzFont() const noexcept {
+	return impl->hbFont;
 }
 
 class FontCache::Impl {

@@ -1,13 +1,15 @@
-// scalpel-editor font selection and ownership tests.
+// scalpel-editor font selection, ownership, and shaped-run tests.
 
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "EditorStyleTypes.h"
 #include "FontPlatform.h"
 #include "Platform.h"
+#include "ShapedRun.h"
 
 #define CATCH_CONFIG_MAIN
 #include "catch.hpp"
@@ -20,6 +22,23 @@ namespace {
 const std::filesystem::path fontDirectory = SCALPEL_TEST_FONT_DIR;
 const std::filesystem::path primaryPath = fontDirectory / "FallbackPrimary.ttf";
 const std::filesystem::path snowmanPath = fontDirectory / "FallbackSnowman.ttf";
+
+std::shared_ptr<FontFace> LoadPrimary(FontCache &cache, double size = 16.0) {
+	return cache.LoadPath(primaryPath, FontParameters("fixture", size));
+}
+
+std::shared_ptr<FontFace> LoadSnowman(FontCache &cache, double size = 16.0) {
+	return cache.LoadPath(snowmanPath, FontParameters("fixture", size));
+}
+
+bool MonotonicEnds(const std::vector<XYPOSITION> &ends) {
+	for (size_t i = 1; i < ends.size(); i++) {
+		if (ends[i] + 1e-9 < ends[i - 1]) {
+			return false;
+		}
+	}
+	return true;
+}
 
 }
 
@@ -102,4 +121,152 @@ TEST_CASE("Face cache owns primary and fallback faces") {
 	CHECK(first->HasGlyph(U'A'));
 	CHECK_FALSE(first->HasGlyph(U'\u2603'));
 	CHECK(fallback->HasGlyph(U'\u2603'));
+}
+
+TEST_CASE("Fixture faces own a HarfBuzz font") {
+	FontCache cache;
+	const auto face = LoadPrimary(cache);
+	REQUIRE(face->HarfBuzzFont() != nullptr);
+}
+
+TEST_CASE("ShapeText measures ASCII with per-byte end positions") {
+	FontCache cache;
+	const auto face = LoadPrimary(cache);
+	const ShapedRun run = ShapeText("AB", face);
+
+	REQUIRE(run.text == "AB");
+	REQUIRE(run.byteEndPositions.size() == 2);
+	CHECK(run.byteEndPositions[0] > 0.0);
+	CHECK(run.byteEndPositions[1] > run.byteEndPositions[0]);
+	CHECK(run.Width() == run.byteEndPositions.back());
+	CHECK(MonotonicEnds(run.byteEndPositions));
+	REQUIRE(run.caretStops == std::vector<size_t>{0, 1, 2});
+	REQUIRE_FALSE(run.glyphs.empty());
+	CHECK(run.glyphs[0].face == face);
+	CHECK(run.glyphs[0].cluster == 0);
+}
+
+TEST_CASE("ShapeText applies kerning on AV with the primary fixture") {
+	FontCache cache;
+	const auto face = LoadPrimary(cache);
+	const ShapedRun pair = ShapeText("AV", face);
+	const ShapedRun a = ShapeText("A", face);
+	const ShapedRun v = ShapeText("V", face);
+
+	const XYPOSITION separate = a.Width() + v.Width();
+	CHECK(pair.Width() + 1e-6 < separate);
+	CHECK(pair.Width() > 0.0);
+}
+
+TEST_CASE("ShapeText keeps multi-byte clusters and caret stops") {
+	FontCache cache;
+	const auto snowman = LoadSnowman(cache);
+	// U+2603 SNOWMAN is three UTF-8 bytes: e2 98 83
+	const std::string text = "\xE2\x98\x83";
+	const ShapedRun run = ShapeText(text, snowman);
+
+	REQUIRE(run.byteEndPositions.size() == 3);
+	CHECK(run.byteEndPositions[0] == run.byteEndPositions[1]);
+	CHECK(run.byteEndPositions[1] == run.byteEndPositions[2]);
+	CHECK(run.byteEndPositions[0] > 0.0);
+	// Caret only at start and end; not on trail bytes.
+	REQUIRE(run.caretStops == std::vector<size_t>{0, 3});
+	REQUIRE_FALSE(run.glyphs.empty());
+	CHECK(run.glyphs[0].cluster == 0);
+}
+
+TEST_CASE("ShapeText treats each invalid UTF-8 byte as one character") {
+	FontCache cache;
+	const auto face = LoadPrimary(cache);
+	// 0xFF is never a valid UTF-8 lead or trail alone in a useful sequence here.
+	const std::string text = "A\xFF" "B";
+	const ShapedRun run = ShapeText(text, face);
+
+	REQUIRE(run.byteEndPositions.size() == 3);
+	CHECK(MonotonicEnds(run.byteEndPositions));
+	REQUIRE(run.caretStops == std::vector<size_t>{0, 1, 2, 3});
+	// Three clusters: A, invalid byte, B.
+	std::vector<size_t> clusters;
+	for (const ShapedGlyph &glyph : run.glyphs) {
+		if (clusters.empty() || clusters.back() != glyph.cluster) {
+			clusters.push_back(glyph.cluster);
+		}
+	}
+	REQUIRE(clusters.size() == 3);
+	CHECK(clusters[0] == 0);
+	CHECK(clusters[1] == 1);
+	CHECK(clusters[2] == 2);
+}
+
+TEST_CASE("ShapeText splits fallback spans without losing byte offsets") {
+	FontCache cache;
+	const auto primary = LoadPrimary(cache);
+	const auto snowman = LoadSnowman(cache);
+	// A (primary), snowman (fallback), B (primary)
+	const std::string text = std::string("A") + "\xE2\x98\x83" + "B";
+	const ShapedRun run = ShapeText(text, primary, {snowman});
+
+	REQUIRE(run.byteEndPositions.size() == 5);
+	CHECK(MonotonicEnds(run.byteEndPositions));
+	// Caret stops: before A, before snowman (byte 1), before B (byte 4), end (5).
+	REQUIRE(run.caretStops == std::vector<size_t>{0, 1, 4, 5});
+
+	const ShapedGlyph *snowmanGlyph = nullptr;
+	for (const ShapedGlyph &glyph : run.glyphs) {
+		if (glyph.cluster == 1) {
+			snowmanGlyph = &glyph;
+			break;
+		}
+	}
+	REQUIRE(snowmanGlyph != nullptr);
+	CHECK(snowmanGlyph->face == snowman);
+
+	bool sawPrimaryA = false;
+	bool sawPrimaryB = false;
+	for (const ShapedGlyph &glyph : run.glyphs) {
+		if (glyph.cluster == 0) {
+			CHECK(glyph.face == primary);
+			sawPrimaryA = true;
+		}
+		if (glyph.cluster == 4) {
+			CHECK(glyph.face == primary);
+			sawPrimaryB = true;
+		}
+	}
+	CHECK(sawPrimaryA);
+	CHECK(sawPrimaryB);
+}
+
+TEST_CASE("ShapedRunCache returns the same run for the same key") {
+	FontCache fonts;
+	const auto face = LoadPrimary(fonts);
+	ShapedRunCache cache(8);
+
+	const ShapedRun &first = cache.Get("AV", face);
+	const ShapedRun &again = cache.Get("AV", face);
+	CHECK(&first == &again);
+	CHECK(cache.Size() == 1);
+
+	const ShapedRun &other = cache.Get("AB", face);
+	CHECK(&other != &first);
+	CHECK(cache.Size() == 2);
+	CHECK(other.text != first.text);
+}
+
+TEST_CASE("ShapedRunCache evicts the least recently used entry") {
+	FontCache fonts;
+	const auto face = LoadPrimary(fonts);
+	ShapedRunCache cache(2);
+
+	cache.Get("A", face);
+	cache.Get("B", face);
+	CHECK(cache.Size() == 2);
+	// Touch A so B is the older entry when C arrives.
+	const XYPOSITION aWidth = cache.Get("A", face).Width();
+	cache.Get("C", face);
+	CHECK(cache.Size() == 2);
+
+	// A and C remain; reshaping B allocates a new slot and drops one of them.
+	const ShapedRun &aAgain = cache.Get("A", face);
+	CHECK(aAgain.Width() == aWidth);
 }
