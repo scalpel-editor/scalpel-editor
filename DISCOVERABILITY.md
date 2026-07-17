@@ -1,6 +1,6 @@
 # Source discoverability guide
 
-This guide defines how the Scintilla refactor should make features easier to find and understand with exact search, semantic code search, structural tools, and direct source reading. Search quality is part of the refactor result, but no single tool or query defines success.
+This guide defines how the Scintilla refactor should make features easier to find and understand with exact search, descriptive code search, structural tools, and direct source reading. grepai is evaluated as a candidate-file finder; exact tools and direct reading remain responsible for locating and understanding the implementation.
 
 Reusable source-organization lessons and grepai improvement ideas are recorded in [DISCOVERABILITY_LESSONS.md](DISCOVERABILITY_LESSONS.md). The [scalpel-editor case study](DISCOVERABILITY_CASE_STUDY.md) records project-specific measurements, corrections, and decisions. This guide remains the source for refactor rules, benchmark procedure, and acceptance criteria.
 
@@ -10,7 +10,7 @@ The phase 2 `SetWrapMode` extraction gave the operation a direct name and focuse
 
 The local grepai configuration uses 512-token chunks with 50-token overlap and the `nomic-embed-text` model. The upstream grepai chunker approximates this as fixed windows of about 2,048 characters with about 200 characters of overlap, breaks at newlines rather than C++ function boundaries, and adds the file path to the text embedded for every chunk. The required local build includes `.cxx` indexing plus the status wait interface introduced by `47bba43`; use `grepai version` and recorded benchmark metadata for the exact installed identity. (`.iface` was indexed during phase 4 while the generator input still existed; that file is gone after phase 5 step 10.) Local benchmark results remain the authority, but the observed chunk boundaries agree with the [upstream chunker](https://github.com/yoanbernabeu/grepai/blob/main/indexer/chunker.go).
 
-This means a short named method can be outweighed by unrelated neighboring code. It also means a descriptive file path and a file whose neighboring definitions cover one concern can improve every chunk without writing comments for a search engine.
+This means a short named method can be outweighed by unrelated neighboring code. A descriptive file path and a file whose neighboring definitions cover one concern can help grepai choose a candidate file without writing comments for a search engine, but the returned span may still omit the requested operation.
 
 Hybrid search improved exact-name lookup in the case study but did not solve intent lookup. With hybrid search temporarily enabled, `set wrap mode` ranked the documented declaration first, while `SetWrapMode` ranked the implementation seventh. Descriptive queries still preferred other wrapping code. grepai documents hybrid search as a combination of vector and text ranking intended for queries containing identifiers or keywords; it is a benchmark variable, not a substitute for clear source organization. See the [grepai hybrid-search guide](https://yoanbernabeu.github.io/grepai/hybrid-search/).
 
@@ -29,6 +29,7 @@ grepai call and reference analysis also has current limits. Tests reported decla
 - Keep direct control flow from a named entry point into its work. Delete numeric dispatch and avoid new indirection whose only purpose is routing between names.
 - Do not arrange code around grepai's current chunk size or a particular embedding model. Concern-focused files and direct names must remain useful when tools and settings change.
 - Treat search as a two-step workflow. Natural-language search should find the correct concern; exact or structural search should then find the named definition and its callers. Do not require vector search to replace `rg` when the name is already known.
+- Treat grepai line spans as hints. The useful result is a candidate concern file; do not assume the returned chunk contains the requested operation.
 
 ## Search checks for each concern
 
@@ -98,6 +99,8 @@ Do not change more than one tool setting in a comparison. Refactor layout and to
 Add a boundary-stability check after each pilot. Add or remove about 200 characters before a selected entry point, use `grepai status --wait --steady --indexed ... --after ...` to wait for that exact file version in the durable index, and confirm that the correct concern remains easy to find. Restore the file and perform the same wait again before continuing. This checks that a result does not depend on an accidental fixed-window boundary.
 
 Add cold navigation checks for the baseline and pilot. Ask a reader or agent to locate a feature, summarize its effects, identify its callers, and name its focused tests without first giving it the symbol name. Record the searches used, wrong files opened, and whether it reached the authoritative implementation.
+
+Repeat selected queries against the same fixed index and configuration. The current matrix records one result per query and therefore does not measure rank variation; do not interpret a one-rank change as stable without repeated trials.
 
 ## Acceptance criteria
 

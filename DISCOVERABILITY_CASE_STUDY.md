@@ -10,7 +10,7 @@ The required search cell was vector search over the whole repository. Hybrid and
 
 ## Pilot results
 
-The wrapping baseline left named operations inside `Editor.cxx`. Moving the complete wrapping concern into `EditorWrapping.cxx` improved the feature's results without making every short definition the first returned chunk.
+The wrapping baseline left named operations inside `Editor.cxx`. Moving the complete wrapping concern into `EditorWrapping.cxx` improved its recorded concern-file ranks without making every short definition the first returned chunk.
 
 | Check | Baseline | Wrapping pilot |
 | --- | --- | --- |
@@ -20,7 +20,7 @@ The wrapping baseline left named operations inside `Editor.cxx`. Moving the comp
 | `SetWrapMode` held-out concern rank | 3 | 2 |
 | `WrapCount` held-out concern rank | 8 | 1 |
 
-The broad corpus regressed for concerns that had not moved: natural-language top-three results fell from 52.8 percent to 19.4 percent, and held-out top-three results fell from 25 percent to 16.7 percent. Removing an early block shifted later fixed windows in `Editor.cxx`; the unchanged code was not treated as a refactor failure.
+The broad corpus regressed for concerns that had not moved: natural-language top-three results fell from 52.8 percent to 19.4 percent, and held-out top-three results fell from 25 percent to 16.7 percent. Removing an early block shifted later fixed windows in `Editor.cxx`; the unchanged code was not treated as a refactor failure. The improvement for wrapping therefore supports a candidate-file result, not a claim that the original Scintilla layout was the main cause of weak definition lookup.
 
 The autocomplete and call-tip pilot tested a different owner and popup state. All six spaced-name, intent, and effect queries placed their concern in the top three, and both held-out queries improved over baseline. The pilot rejected a universal public-first order: autocomplete benefited from named operations before a long private workflow, while call tips worked best with the public show operation beside the placement helper it calls. This approved concern-oriented organization for the rest of Phase 4.
 
@@ -41,6 +41,16 @@ Both final gates used the unchanged query text, validated final-tree expectation
 Phase 5 removed generated interfaces, message dispatch, client packing types, and obsolete HTML. Natural-language concern results improved by one, exact-name results stayed unchanged, and held-out top-three results fell by one. The mixed result is why rank changes alone do not establish whether removing repository noise improved navigation. No deleted generated interface, client header, obsolete HTML, or benchmark output outranked a live concern in the final record.
 
 The authoritative records are the [Phase 4 final observations](benchmark-results/phase4-final/observations.md) and [Phase 5 final observations](benchmark-results/phase5-final/observations.md).
+
+## Confirmed tool boundary
+
+On 2026-07-17, the live hybrid configuration still did not make `grepai search "set wrap mode" -n 5` point to `Editor::SetWrapMode` at `EditorWrapping.cxx:42-55`. Separate plain and compact JSON invocations ranked `EditorWrapping.cxx` but returned other spans such as lines 61-116 and 109-164. A query closely matching the operation's leading comment, `sets how lines wider than the window wrap`, also ranked lines 61-116 instead of the documented operation. The exact identifier `SetWrapMode` did return a chunk at lines 1-63 that contains the definition, but `rg` remains the consistent exact lookup.
+
+The live configuration had hybrid search enabled while the saved index identity came from the vector configuration, and `grepai status` reported that the configuration did not match the index. Hybrid ranking does not require different embedded source chunks, but this means the live commands are not a reproduction of the Phase 5 vector gate. It does not explain away the result: the recorded gate also judged concern-file rank separately because definition selection was unreliable.
+
+Separate invocations returned different rankings for the same natural-language query. This does not isolate output formatting as the cause because every command performs a new query embedding and search, but it exposes a benchmark deficiency: the matrix records one trial per cell and does not measure rank variation.
+
+The supported conclusion is narrow. grepai has shown semi-consistent value for answering which files might contain the requested work. It has not shown dependable selection of the relevant definition or line span. The concern split still improves direct browsing, exact search, local documentation, and human reading, but these measurements do not establish that the original Scintilla tree was unusually unfriendly to grepai.
 
 ## Corpus corrections
 
@@ -68,8 +78,8 @@ A local Ollama access failure left a partial benchmark directory. The runner sti
 
 - Organize `Editor` and `ScintillaBase` implementation by coherent editor concerns and keep related state, policy, operations, and focused tests together.
 - Move complete concerns rather than isolated wrappers, and keep authoritative descriptions beside named definitions.
-- Use descriptive vector search to locate a concern and `rg` or structural search to resolve exact definitions and callers.
+- Use descriptive grepai search only to suggest candidate concern files; use `rg` or structural search to resolve exact definitions and callers.
 - Keep query text fixed, validate target expectations as data, and assign destinations per query.
 - Score retained and deleted features separately and exclude benchmark output from the search index.
-- Record boundary and held-out movement as diagnostics; do not arrange source around one embedding model's fixed windows.
+- Record repeated trials, boundary movement, and held-out movement as diagnostics; do not arrange source around one embedding model's fixed windows.
 - Run completion and exact-source audits before expensive benchmark snapshots, then verify behavior independently with focused tests and the full build matrix.

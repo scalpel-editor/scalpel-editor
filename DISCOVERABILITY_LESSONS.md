@@ -6,7 +6,7 @@ This document records reusable lessons about organizing source code, evaluating 
 
 ### Organize files by a coherent concern
 
-A descriptive path improves every indexed chunk because grepai includes the path in the text it embeds. More importantly, a concern-focused file makes neighboring definitions support the same reader question. A named feature file is a stronger search target than an equally well-named method surrounded by unrelated work in a catch-all file.
+grepai includes the path in the text it embeds, so a descriptive path adds a feature name to every indexed chunk. A concern-focused file also makes neighboring definitions support the same reader question. These properties can help the tool choose a candidate file; they do not make it reliably select the relevant definition or line span within that file.
 
 File size alone is not the rule. A small catch-all file can still mix unrelated work, while a larger file can remain coherent. The useful boundary is the set of operations, private work, state, documentation, and tests that a reader needs to understand one feature area.
 
@@ -46,11 +46,17 @@ Tests are also the guard against a source move that looks mechanical but acciden
 
 ### Design for two search steps
 
-Descriptive search and exact search answer different questions. The first should locate the correct concern. Once a reader learns an operation name, literal search, structural search, or a reliable hybrid search should locate the definition and callers.
+Descriptive search and exact search answer different questions. The demonstrated use of descriptive grepai search is to suggest files that may contain the concern. Once a reader learns an operation name, literal search or structural search should locate the definition and callers.
 
-Returning internal work from the correct concern can be an acceptable first result when an exact second search reaches the public operation and tests. Requiring vector search to select every short definition encourages source changes tied to one model and chunk layout.
+Treat the returned line span as a hint, not as the answer. grepai can rank the correct concern file while showing an unrelated chunk from that file, even when the query closely matches documentation beside the desired definition. Opening the candidate file and running an exact second search is required for dependable navigation.
 
 Exact identifiers and descriptive queries therefore need separate gates. Use descriptive queries to evaluate concern discovery and literal tools to prove exact definitions, declarations, and callers. Record vector or hybrid exact-name ranks as diagnostics rather than making them a release gate when broad identifiers also name legitimate lower-level work.
+
+### Measure repeatability before comparing ranks
+
+A single ranked run does not show that a result is stable. Repeat the same query against one fixed index and configuration, record rank variation, and define how repeated results are summarized before using small rank changes as evidence.
+
+Separate invocations using plain and compact JSON output have produced different rankings for the same query. Because each invocation embeds and searches again, that observation does not prove the output format caused the change. It does prove that a one-pass benchmark does not measure repeatability.
 
 ### Do not preserve accidental chunk boundaries
 
@@ -66,9 +72,9 @@ Do not index benchmark output. Result files repeat queries, expected definitions
 
 ### Treat ranks as evidence, not a verdict
 
-Removing repository noise can improve some queries, leave others unchanged, and move still others down because the indexed corpus and chunk boundaries changed. A rank change alone does not establish whether a refactor improved navigation.
+Removing repository noise can improve some queries, leave others unchanged, and move still others down because the indexed corpus, chunk boundaries, and repeated search results can change. A rank change alone does not establish whether a refactor improved navigation.
 
-Interpret ranks with exact-source audits, cold navigation, concern coherence, held-out queries, and behavior checks. Record regressions instead of padding source or repeating keywords to erase them.
+Interpret ranks with exact-source audits, cold navigation, concern coherence, held-out queries, repeated trials, and behavior checks. Record regressions instead of padding source or repeating keywords to erase them.
 
 ## Evaluation and completion
 
