@@ -58,6 +58,14 @@ target_link_libraries(scintilla_render PUBLIC
 )
 target_compile_options(scintilla_render PRIVATE -Wall -Wextra)
 
+# ListBox and Menu stubs for the production host (step 8+). editorTest links
+# TestPlatform's inspectable list box instead and must not link this library.
+add_library(scintilla_platform_popups STATIC
+  src/PlatformPopups.cxx
+)
+target_include_directories(scintilla_platform_popups PUBLIC include src)
+target_compile_options(scintilla_platform_popups PRIVATE -Wall -Wextra)
+
 add_library(scintilla_core STATIC
   src/AutoComplete.cxx
   src/CallTip.cxx
