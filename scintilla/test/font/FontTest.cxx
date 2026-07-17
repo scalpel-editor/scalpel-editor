@@ -300,6 +300,7 @@ public:
 	std::string text;
 	std::shared_ptr<Font> font;
 	std::vector<XYPOSITION> representationWidths;
+	std::vector<XYPOSITION> positions;
 	XYPOSITION tabWidth = 40.0;
 	int tabMinPixels = 2;
 
@@ -326,7 +327,19 @@ public:
 	XYPOSITION TabPositionAfter(XYPOSITION xPosition) const override {
 		return (std::floor((xPosition + TabWidthMinimumPixels()) / TabWidth()) + 1.0) * TabWidth();
 	}
+	XYPOSITION XFromPosition(size_t position) const override {
+		if (positions.empty()) {
+			return 0.0;
+		}
+		return position < positions.size() ? positions[position] : positions.back();
+	}
 };
+
+void SetPositions(FakeScreenLine &line, const ShapedRun &run) {
+	line.positions.assign(1, 0.0);
+	line.positions.insert(line.positions.end(),
+		run.byteEndPositions.begin(), run.byteEndPositions.end());
+}
 
 }
 
@@ -338,8 +351,9 @@ TEST_CASE("LayoutScreenLine places ASCII and agrees with shaped widths") {
 	line.text = "AB";
 	line.representationWidths.assign(line.text.size(), 0.0);
 
-	const auto layout = LayoutScreenLine(&line);
 	const ShapedRun run = ShapeText("AB", face);
+	SetPositions(line, run);
+	const auto layout = LayoutScreenLine(&line);
 	CHECK(layout->XFromPosition(0) == 0.0);
 	CHECK(layout->XFromPosition(1) == run.byteEndPositions[0]);
 	CHECK(layout->XFromPosition(2) == run.Width());
@@ -355,8 +369,9 @@ TEST_CASE("LayoutScreenLine keeps multi-byte cluster ends and caret stops") {
 	line.text = "\xE2\x98\x83";
 	line.representationWidths.assign(line.text.size(), 0.0);
 
-	const auto layout = LayoutScreenLine(&line);
 	const ShapedRun run = ShapeText(line.text, snowman);
+	SetPositions(line, run);
+	const auto layout = LayoutScreenLine(&line);
 	REQUIRE(run.caretStops == std::vector<size_t>{0, 3});
 	CHECK(layout->XFromPosition(0) == 0.0);
 	CHECK(layout->XFromPosition(1) == run.Width());
@@ -365,6 +380,7 @@ TEST_CASE("LayoutScreenLine keeps multi-byte cluster ends and caret stops") {
 	// Left half of the glyph (strictly before the mid-cell) maps to the start.
 	const size_t hit = layout->PositionFromX(run.Width() / 2.0 - 0.01, false);
 	CHECK(hit == 0);
+	CHECK(layout->PositionFromX(run.Width() / 2.0 + 0.01, false) == 3);
 	// Trail byte offsets are not caret stops; X equals the cluster end.
 	for (size_t stop : run.caretStops) {
 		if (stop == 0) {
@@ -384,9 +400,10 @@ TEST_CASE("LayoutScreenLine expands tabs and fixed representations") {
 	line.representationWidths = {0.0, 0.0, 0.0};
 	line.tabWidth = 40.0;
 
-	const auto layout = LayoutScreenLine(&line);
 	const ShapedRun a = ShapeText("A", face);
 	const ShapedRun b = ShapeText("B", face);
+	line.positions = {0.0, a.Width(), 40.0, 40.0 + b.Width()};
+	const auto layout = LayoutScreenLine(&line);
 	CHECK(layout->XFromPosition(0) == 0.0);
 	CHECK(layout->XFromPosition(1) == a.Width());
 	// Tab from after A goes to the next multiple of 40.
@@ -400,6 +417,7 @@ TEST_CASE("LayoutScreenLine expands tabs and fixed representations") {
 	withRepr.text = std::string("A") + '\x7f' + 'B';
 	REQUIRE(withRepr.text.size() == 3);
 	withRepr.representationWidths = {0.0, 12.0, 0.0};
+	withRepr.positions = {0.0, a.Width(), a.Width() + 12.0, a.Width() + 12.0 + b.Width()};
 	const auto reprLayout = LayoutScreenLine(&withRepr);
 	CHECK(reprLayout->XFromPosition(1) == a.Width());
 	CHECK(reprLayout->XFromPosition(2) == Approx(a.Width() + 12.0));
@@ -413,6 +431,7 @@ TEST_CASE("LayoutScreenLine selection interval is one LTR range") {
 	line.font = FontFromFace(face);
 	line.text = "ABCD";
 	line.representationWidths.assign(line.text.size(), 0.0);
+	SetPositions(line, ShapeText(line.text, face));
 
 	const auto layout = LayoutScreenLine(&line);
 	const auto intervals = layout->FindRangeIntervals(1, 3);

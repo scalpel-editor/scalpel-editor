@@ -172,6 +172,8 @@ public:
 	virtual const Font *FontOfPosition(size_t position) const = 0;
 	virtual XYPOSITION RepresentationWidth(size_t position) const = 0;
 	virtual XYPOSITION TabPositionAfter(XYPOSITION xPosition) const = 0;
+	// Measured x relative to the start of this screen line.
+	virtual XYPOSITION XFromPosition(size_t position) const = 0;
 };
 
 class IScreenLineLayout {

@@ -116,6 +116,7 @@ public:
 	std::string text;
 	std::shared_ptr<Font> font;
 	std::vector<XYPOSITION> representationWidths;
+	std::vector<XYPOSITION> positions;
 	XYPOSITION tabWidth = 40.0;
 	int tabMinPixels = 2;
 
@@ -138,7 +139,19 @@ public:
 	XYPOSITION TabPositionAfter(XYPOSITION xPosition) const override {
 		return (std::floor((xPosition + TabWidthMinimumPixels()) / TabWidth()) + 1.0) * TabWidth();
 	}
+	XYPOSITION XFromPosition(size_t position) const override {
+		if (positions.empty()) {
+			return 0.0;
+		}
+		return position < positions.size() ? positions[position] : positions.back();
+	}
 };
+
+void SetPositions(FakeScreenLine &line, const ShapedRun &run) {
+	line.positions.assign(1, 0.0);
+	line.positions.insert(line.positions.end(),
+		run.byteEndPositions.begin(), run.byteEndPositions.end());
+}
 
 }
 
@@ -197,6 +210,7 @@ TEST_CASE("MeasureSurface Layout matches LayoutScreenLine") {
 	line.font = FontFromFace(face);
 	line.text = "AB";
 	line.representationWidths.assign(2, 0.0);
+	SetPositions(line, ShapeText(line.text, face));
 
 	auto surface = CreateMeasureSurface();
 	const auto viaSurface = surface->Layout(&line);
@@ -204,6 +218,39 @@ TEST_CASE("MeasureSurface Layout matches LayoutScreenLine") {
 	CHECK(viaSurface->XFromPosition(0) == viaHelper->XFromPosition(0));
 	CHECK(viaSurface->XFromPosition(1) == viaHelper->XFromPosition(1));
 	CHECK(viaSurface->XFromPosition(2) == viaHelper->XFromPosition(2));
+}
+
+TEST_CASE("Layout consumes the positions already measured for the screen line") {
+	FontCache fonts;
+	FakeScreenLine line;
+	line.font = FontFromFace(LoadPrimary(fonts));
+	line.text = "AV";
+	line.representationWidths.assign(line.text.size(), 0.0);
+	// Deliberately differ from this font's shaped widths. Layout must not shape
+	// the text a second time because LayoutLine may have measured other spans.
+	line.positions = {0.0, 7.0, 19.0};
+
+	auto surface = CreateMeasureSurface();
+	const auto layout = surface->Layout(&line);
+	CHECK(layout->XFromPosition(0) == 0.0);
+	CHECK(layout->XFromPosition(1) == 7.0);
+	CHECK(layout->XFromPosition(2) == 19.0);
+}
+
+TEST_CASE("Layout hit testing skips positions inside a merged cluster") {
+	FontCache fonts;
+	FakeScreenLine line;
+	line.font = FontFromFace(LoadPrimary(fonts));
+	line.text = "a\xCC\x81"; // a followed by COMBINING ACUTE ACCENT
+	line.representationWidths.assign(line.text.size(), 0.0);
+	line.positions = {0.0, 10.0, 10.0, 10.0};
+
+	auto surface = CreateMeasureSurface();
+	const auto layout = surface->Layout(&line);
+	CHECK(layout->PositionFromX(4.9, false) == 0);
+	CHECK(layout->PositionFromX(5.1, false) == 3);
+	CHECK(layout->PositionFromX(9.9, true) == 0);
+	CHECK(layout->PositionFromX(10.0, true) == 3);
 }
 
 TEST_CASE("MeasureSurface Layout uses fallback faces for missing glyphs") {
@@ -218,8 +265,9 @@ TEST_CASE("MeasureSurface Layout uses fallback faces for missing glyphs") {
 	line.representationWidths.assign(text.size(), 0.0);
 
 	auto surface = CreateMeasureSurface({snowman});
-	const auto layout = surface->Layout(&line);
 	const ShapedRun run = ShapeText(text, primary, {snowman});
+	SetPositions(line, run);
+	const auto layout = surface->Layout(&line);
 
 	CHECK(layout->XFromPosition(0) == 0.0);
 	CHECK(layout->XFromPosition(1) == run.byteEndPositions[0]);

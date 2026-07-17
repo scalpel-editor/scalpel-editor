@@ -3,17 +3,12 @@
 #include <algorithm>
 #include <cstddef>
 #include <memory>
-#include <stdexcept>
-#include <string_view>
 #include <utility>
 #include <vector>
 
-#include "FontPlatform.h"
 #include "Geometry.h"
 #include "Platform.h"
 #include "ShapedLayout.h"
-#include "ShapedRun.h"
-#include "UniConversion.h"
 
 namespace Scintilla::Internal {
 
@@ -28,13 +23,20 @@ namespace {
 class ScreenLineLayout final : public IScreenLineLayout {
 public:
 	explicit ScreenLineLayout(std::vector<XYPOSITION> xAtCaret_) : xAtCaret(std::move(xAtCaret_)) {
+		caretStops.push_back(0);
+		for (size_t position = 1; position < xAtCaret.size(); position++) {
+			if ((position + 1 == xAtCaret.size()) ||
+				xAtCaret[position] != xAtCaret[position + 1]) {
+				caretStops.push_back(position);
+			}
+		}
 	}
 
 	size_t PositionFromX(XYPOSITION xDistance, bool charPosition) override {
 		if (xAtCaret.size() <= 1) {
 			return 0;
 		}
-		const size_t last = xAtCaret.size() - 1;
+		const size_t last = caretStops.back();
 		if (xDistance <= xAtCaret[0]) {
 			return 0;
 		}
@@ -42,16 +44,16 @@ public:
 			return last;
 		}
 		// Mirror LineLayout::FindPositionFromX over the whole line range.
-		size_t pos = 0;
-		while (pos < last) {
+		for (size_t stop = 0; stop + 1 < caretStops.size(); stop++) {
+			const size_t pos = caretStops[stop];
+			const size_t next = caretStops[stop + 1];
 			if (charPosition) {
-				if (xDistance < xAtCaret[pos + 1]) {
+				if (xDistance < xAtCaret[next]) {
 					return pos;
 				}
-			} else if (xDistance < (xAtCaret[pos] + xAtCaret[pos + 1]) / 2.0) {
+			} else if (xDistance < (xAtCaret[pos] + xAtCaret[next]) / 2.0) {
 				return pos;
 			}
-			pos++;
 		}
 		return last;
 	}
@@ -80,83 +82,20 @@ public:
 
 private:
 	std::vector<XYPOSITION> xAtCaret;
+	std::vector<size_t> caretStops;
 };
 
-size_t CharacterByteLength(std::string_view text, size_t offset) noexcept {
-	if (offset >= text.size()) {
-		return 0;
-	}
-	const int classified = UTF8Classify(text.data() + offset, text.size() - offset);
-	if (classified & UTF8MaskInvalid) {
-		return 1;
-	}
-	return static_cast<size_t>(classified & UTF8MaskWidth);
 }
 
-}
-
-std::unique_ptr<IScreenLineLayout> LayoutScreenLine(
-	const IScreenLine *screenLine,
-	ShapedRunCache *cache,
-	const std::vector<std::shared_ptr<FontFace>> &fallbacks) {
+std::unique_ptr<IScreenLineLayout> LayoutScreenLine(const IScreenLine *screenLine) {
 	if (!screenLine) {
 		return std::make_unique<ScreenLineLayout>(std::vector<XYPOSITION>{0.0});
 	}
 
-	const std::string_view text = screenLine->Text();
-	const size_t len = text.size();
+	const size_t len = screenLine->Length();
 	std::vector<XYPOSITION> xAtCaret(len + 1, 0.0);
-	XYPOSITION x = 0.0;
-	size_t i = 0;
-	while (i < len) {
-		const XYPOSITION reprWidth = screenLine->RepresentationWidth(i);
-		if (reprWidth > 0.0) {
-			const size_t charLen = CharacterByteLength(text, i);
-			x += reprWidth;
-			for (size_t b = 1; b <= charLen; b++) {
-				xAtCaret[i + b] = x;
-			}
-			i += charLen;
-			continue;
-		}
-		if (text[i] == '\t') {
-			x = screenLine->TabPositionAfter(x);
-			xAtCaret[i + 1] = x;
-			i++;
-			continue;
-		}
-
-		// Maximal same-font plain-text span (no tabs, no representations).
-		const Font *font = screenLine->FontOfPosition(i);
-		const size_t spanStart = i;
-		i++;
-		while (i < len) {
-			if (text[i] == '\t') {
-				break;
-			}
-			if (screenLine->RepresentationWidth(i) > 0.0) {
-				break;
-			}
-			if (screenLine->FontOfPosition(i) != font) {
-				break;
-			}
-			i++;
-		}
-		const std::string_view span = text.substr(spanStart, i - spanStart);
-		std::shared_ptr<FontFace> primary = SharedFaceFromFont(font);
-		if (!primary) {
-			throw std::runtime_error("LayoutScreenLine requires a platform Font with a face");
-		}
-		std::shared_ptr<const ShapedRun> run;
-		if (cache) {
-			run = cache->Get(span, primary, fallbacks);
-		} else {
-			run = std::make_shared<const ShapedRun>(ShapeText(span, primary, fallbacks));
-		}
-		for (size_t b = 0; b < span.size(); b++) {
-			xAtCaret[spanStart + b + 1] = x + run->byteEndPositions[b];
-		}
-		x = xAtCaret[i];
+	for (size_t position = 0; position <= len; position++) {
+		xAtCaret[position] = screenLine->XFromPosition(position);
 	}
 	return std::make_unique<ScreenLineLayout>(std::move(xAtCaret));
 }

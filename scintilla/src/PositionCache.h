@@ -149,6 +149,7 @@ struct ScreenLine : public IScreenLine {
 	const Font *FontOfPosition(size_t position) const override;
 	XYPOSITION RepresentationWidth(size_t position) const override;
 	XYPOSITION TabPositionAfter(XYPOSITION xPosition) const override;
+	XYPOSITION XFromPosition(size_t position) const override;
 };
 
 struct SignificantLines {

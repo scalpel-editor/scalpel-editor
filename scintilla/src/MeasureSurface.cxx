@@ -87,7 +87,7 @@ void MeasureSurface::Stadium(PRectangle, FillStroke, Ends) {}
 void MeasureSurface::Copy(PRectangle, Point, Surface &) {}
 
 std::unique_ptr<IScreenLineLayout> MeasureSurface::Layout(const IScreenLine *screenLine) {
-	return LayoutScreenLine(screenLine, &runCache, fallbacks);
+	return LayoutScreenLine(screenLine);
 }
 
 void MeasureSurface::DrawTextNoClip(PRectangle, const Font *, XYPOSITION, std::string_view, ColourRGBA, ColourRGBA) {}
