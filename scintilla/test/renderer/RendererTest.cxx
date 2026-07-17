@@ -1,4 +1,13 @@
 // scalpel-editor offscreen renderer tests (headless EGL, no compositor).
+//
+// Phase 6 step 5 pixel matrix (no Wayland):
+// - Primitive bounds: FillRectangle half-open, LineDraw, Polygon, Ellipse,
+//   Stadium, AlphaRectangle / RoundedRectangle
+// - Nested clips: SetClip stack limits solid fills
+// - Alpha blending: translucent fill over opaque background (±1 channel)
+// - Image placement: DrawRGBAImage top-left and neighbours
+// Also covered: linear gradients (stops + both axes), pixmap Copy, pattern fill,
+// headless context, clear/readback, and shaped-run measure through DrawSurface.
 
 #include <cmath>
 #include <cstdio>

@@ -14,7 +14,7 @@ Owners used in the tables:
 | **Phase 7** | Compose, key repeat, IME, clipboard and primary selection transfers, cursor themes, frame pacing, presentation feedback, optional-protocol fallback, scale and buffer-scale, robust global and seat removal, hot-plugged seats. |
 | **Debug only** | Assert and debug-print helpers used by the core; not part of the user-visible editor surface. |
 
-Until step 7 replaces it, `scintilla/test/editor/TestPlatform.cxx` remains the only implementation of `Platform.h` symbols linked by `editorTest`. Production symbols arrive with the concrete platform; step 7 swaps the editor fixture's recorded drawing surface for the renderer's offscreen target while keeping host observation.
+Until step 7 replaces it, `scintilla/test/editor/TestPlatform.cxx` remains the only implementation of `Platform.h` symbols linked by `editorTest` (including `Surface::Allocate`). Step 5 ships the concrete path as `scintilla_render` (`GlContext`, `Renderer`, `DrawSurface`, `ColourBuffer`) with `CreateDrawSurface` / `CreateMeasureOnlySurface` factories used by `rendererTest`; step 7 wires `Surface::Allocate` and the editor host onto that path and swaps the fixture's recorded drawing surface for the offscreen target while keeping host observation.
 
 ## Opaque IDs (`Platform.h`)
 
