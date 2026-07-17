@@ -14,7 +14,7 @@ Owners used in the tables:
 | **Phase 7** | Compose, key repeat, IME, clipboard and primary selection transfers, cursor themes, frame pacing, presentation feedback, optional-protocol fallback, scale and buffer-scale, robust global and seat removal, hot-plugged seats. |
 | **Debug only** | Assert and debug-print helpers used by the core; not part of the user-visible editor surface. |
 
-Until step 7 replaces it, `scintilla/test/editor/TestPlatform.cxx` remains the only implementation of `Platform.h` symbols linked by `editorTest` (including `Surface::Allocate`). Step 5 ships the concrete path as `scintilla_render` (`GlContext`, `Renderer`, `DrawSurface`, `ColourBuffer`) with `CreateDrawSurface` / `CreateMeasureOnlySurface` factories used by `rendererTest`; step 7 wires `Surface::Allocate` and the editor host onto that path and swaps the fixture's recorded drawing surface for the offscreen target while keeping host observation.
+Until step 7 replaces it, `scintilla/test/editor/TestPlatform.cxx` remains the only implementation of `Platform.h` symbols linked by `editorTest` (including `Surface::Allocate`). Step 5 ships the concrete path as `scintilla_render` (`GlContext`, `Renderer`, `DrawSurface`, `ColourBuffer`) with `CreateDrawSurface` / `CreateMeasureOnlySurface` factories used by `rendererTest`. Step 6 owns live `DrawText*` on `DrawSurface` and the per-`Renderer` FreeType glyph texture cache (`DrawGlyph`). Step 7 wires `Surface::Allocate` and the editor host onto that path and swaps the fixture's recorded drawing surface for the offscreen target while keeping host observation.
 
 ## Opaque IDs (`Platform.h`)
 
@@ -82,7 +82,7 @@ All of the following are **Renderer**, steps 5–6 (primitives in 5, used heavil
 | `Ascent` / `Descent` / `InternalLeading` / `Height` / `AverageCharWidth` | Font realise, call tips, autocomplete sizing | **Renderer** | 2, 4 |
 | `Layout` → `IScreenLineLayout` | `EditView` for position-from-x, x-from-position, selection intervals when bidirectional or screen-line layout path is active | **Renderer** | 4; English LTR shaping; no other scripts or mixed-direction line ordering |
 | `IScreenLine` (text, fonts, tabs, representations) | Fed into `Layout` by core | **Renderer** consumes; core supplies | 4 |
-| `DrawTextNoClip` / `DrawTextClipped` / `DrawTextTransparent` | Text, control chars, call tips, line numbers | **Renderer** | 6 (must use shaped advances, not re-measure) |
+| `DrawTextNoClip` / `DrawTextClipped` / `DrawTextTransparent` | Text, control chars, call tips, line numbers | **Renderer** | 6 ✅ shaped runs + glyph cache on `Renderer`; must not re-measure |
 | `SetClip` / `PopClip` | Nested paint clips | **Renderer** | 5 |
 | `FlushCachedState` / `FlushDrawing` | End of paint batches | **Renderer** | 5 |
 
