@@ -170,8 +170,7 @@ void ShapeSpan(
 // Map glyph advances onto per-byte end positions and caret stops.
 void FinishRun(ShapedRun &run, const std::vector<InputCharacter> &characters) {
 	run.byteEndPositions.assign(run.text.size(), 0.0);
-	run.caretStops.clear();
-	run.caretStops.push_back(0);
+	run.caretStops = {0};
 
 	if (characters.empty()) {
 		return;
@@ -181,17 +180,18 @@ void FinishRun(ShapedRun &run, const std::vector<InputCharacter> &characters) {
 	std::unordered_map<size_t, XYPOSITION> advanceByCluster;
 	for (const ShapedGlyph &glyph : run.glyphs) {
 		advanceByCluster[glyph.cluster] += glyph.xAdvance;
+		if (glyph.cluster != 0 && glyph.cluster < run.text.size()) {
+			run.caretStops.push_back(glyph.cluster);
+		}
 	}
+	std::sort(run.caretStops.begin(), run.caretStops.end());
+	run.caretStops.erase(std::unique(run.caretStops.begin(), run.caretStops.end()), run.caretStops.end());
 
 	XYPOSITION cumulative = 0.0;
 	for (const InputCharacter &ch : characters) {
 		cumulative += advanceByCluster[ch.byteOffset];
 		for (size_t b = 0; b < ch.byteLength; b++) {
 			run.byteEndPositions[ch.byteOffset + b] = cumulative;
-		}
-		// Caret may sit before each character; trail bytes of multi-byte characters are not stops.
-		if (ch.byteOffset != 0) {
-			run.caretStops.push_back(ch.byteOffset);
 		}
 	}
 	if (run.caretStops.back() != run.text.size()) {

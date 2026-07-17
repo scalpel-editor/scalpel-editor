@@ -54,8 +54,9 @@ struct ShapedGlyph {
  * through input byte i (inclusive). Bytes that belong to the same character
  * share that character's end position.
  *
- * caretStops lists byte offsets where a caret may sit: 0, each character start,
- * and text.size(). Trail bytes of a multi-byte character are not stops.
+ * caretStops lists byte offsets where a caret may sit: 0, each shaped-cluster
+ * start, and text.size(). Trail bytes and positions inside a merged cluster are
+ * not stops.
  */
 class ShapedRun {
 public:
