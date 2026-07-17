@@ -8,7 +8,16 @@
 #ifndef XPM_H
 #define XPM_H
 
+#include <cstddef>
+#include <map>
+#include <memory>
+#include <vector>
+
+#include "Geometry.h"
+
 namespace Scintilla::Internal {
+
+class Surface;
 
 /**
  * Hold a pixmap in XPM format.

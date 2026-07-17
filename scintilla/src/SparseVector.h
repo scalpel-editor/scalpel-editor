@@ -8,6 +8,13 @@
 #ifndef SPARSEVECTOR_H
 #define SPARSEVECTOR_H
 
+#include <cassert>
+#include <stdexcept>
+
+#include "Partitioning.h"
+#include "Position.h"
+#include "SplitVector.h"
+
 namespace Scintilla::Internal {
 
 // SparseVector is similar to RunStyles but is more efficient for cases where values occur

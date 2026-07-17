@@ -9,6 +9,11 @@
 #ifndef RESEARCH_H
 #define RESEARCH_H
 
+#include <array>
+
+#include "CharClassify.h"
+#include "Position.h"
+
 namespace Scintilla::Internal {
 
 class CharacterIndexer {

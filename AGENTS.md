@@ -79,7 +79,11 @@ New code follows the naming and layout of the file it lives in. The Scintilla co
 
 ### Includes
 
-Headers under `scintilla/src` (and the Lexilla-facing includes) must compile alone: `#include "Name.h"` is a valid translation unit with the same flags as `scintilla_core`. Do not restore a shared mega-preamble in `Editor*.cxx` files. A translation unit includes only what it uses; prefer include-what-you-use (`iwyu_tool.py` / `fix_includes.py`) over hand-copying include lists. After changing header includes in the Editor/Document DAG, run `tools/check-self-contained-headers.sh` (needs `build/compile_commands.json` from `cmake --preset dev`).
+Headers under `scintilla/src` and `scintilla/include` must compile alone: `#include "Name.h"` is a valid translation unit with the same flags as `scintilla_core`. Do not restore a shared mega-preamble in `.cxx` files. A translation unit includes only what it uses; prefer include-what-you-use (`iwyu_tool.py` / `fix_includes.py`) over hand-copying include lists.
+
+After changing header includes, run `tools/check-self-contained-headers.sh` (needs `build/compile_commands.json` from `cmake --preset dev`). That check covers every `scintilla/src/*.h` and `scintilla/include/*.h` by default.
+
+IWYU baseline flags for this tree: `iwyu_tool.py -p build <sources> -- -Xiwyu --no_fwd_decls`, then review and apply with `fix_includes.py --nosafe_headers --nocomments --reorder` when bulk-fixing `.cxx` files. Prefer a complete include when a header's own interface needs a complete type; keep a forward declaration when the header only names a pointer, reference, or incomplete type in a signature. Do not accept IWYU suggestions that pull a private implementation header into a public header solely to replace such a forward declaration.
 
 ## Documentation guidance
 

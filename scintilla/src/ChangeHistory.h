@@ -8,6 +8,14 @@
 #ifndef CHANGEHISTORY_H
 #define CHANGEHISTORY_H
 
+#include <cstddef>
+#include <memory>
+#include <vector>
+
+#include "Position.h"
+#include "RunStyles.h"
+#include "SparseVector.h"
+
 namespace Scintilla::Internal {
 
 constexpr int changeOriginal = 0;
