@@ -103,9 +103,11 @@ const char *kTextureFrag = R"(#version 330 core
 in vec2 vUV;
 uniform sampler2D uTex;
 uniform bool uStraightAlpha;
+// Straight RGBA modulate (glyphs: white coverage texture * fore colour).
+uniform vec4 uTexColour;
 out vec4 fragColour;
 void main() {
-	fragColour = texture(uTex, vUV);
+	fragColour = texture(uTex, vUV) * uTexColour;
 	if (uStraightAlpha) {
 		fragColour.rgb *= fragColour.a;
 	}
@@ -414,7 +416,19 @@ Renderer::~Renderer() noexcept {
 	DestroyGl();
 }
 
+void Renderer::ClearGlyphCache() noexcept {
+	for (auto &entry : glyphCache) {
+		if (entry.second.texture != 0) {
+			GLuint name = entry.second.texture;
+			glDeleteTextures(1, &name);
+			entry.second.texture = 0;
+		}
+	}
+	glyphCache.clear();
+}
+
 void Renderer::DestroyGl() noexcept {
+	ClearGlyphCache();
 	if (vbo != 0) {
 		GLuint name = vbo;
 		glDeleteBuffers(1, &name);
@@ -442,6 +456,7 @@ void Renderer::DestroyGl() noexcept {
 	uniformTexTransform = -1;
 	uniformTexSampler = -1;
 	uniformTexStraightAlpha = -1;
+	uniformTexModulate = -1;
 	uniformGradTransform = -1;
 	uniformGradStart = -1;
 	uniformGradEnd = -1;
@@ -487,6 +502,7 @@ void Renderer::EnsureTextureProgram() {
 	uniformTexTransform = glGetUniformLocation(programTexture, "uTransform");
 	uniformTexSampler = glGetUniformLocation(programTexture, "uTex");
 	uniformTexStraightAlpha = glGetUniformLocation(programTexture, "uStraightAlpha");
+	uniformTexModulate = glGetUniformLocation(programTexture, "uTexColour");
 }
 
 void Renderer::EnsureGradientProgram() {
@@ -954,7 +970,7 @@ void Renderer::Stadium(PRectangle rc, FillStroke fillStroke, int ends) {
 
 void Renderer::DrawTexturedQuad(float x0, float y0, float x1, float y1,
 	float u0, float v0, float u1, float v1, unsigned texture, bool flipV,
-	bool sourceStraightAlpha) {
+	bool sourceStraightAlpha, ColourRGBA modulate) {
 	EnsureTextureProgram();
 	// Texture sampling uses top-down UVs by default (v=0 at top of image).
 	// OpenGL textures are bottom-up; ColourBuffer contents match that when
@@ -978,6 +994,9 @@ void Renderer::DrawTexturedQuad(float x0, float y0, float x1, float y1,
 	glUniformMatrix4fv(uniformTexTransform, 1, GL_FALSE, mat);
 	glUniform1i(uniformTexSampler, 0);
 	glUniform1i(uniformTexStraightAlpha, sourceStraightAlpha ? 1 : 0);
+	glUniform4f(uniformTexModulate,
+		modulate.GetRedComponent(), modulate.GetGreenComponent(),
+		modulate.GetBlueComponent(), modulate.GetAlphaComponent());
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, texture);
 	glBindVertexArray(vao);
@@ -995,6 +1014,67 @@ void Renderer::DrawTexturedQuad(float x0, float y0, float x1, float y1,
 	glBindVertexArray(0);
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glUseProgram(0);
+}
+
+const Renderer::CachedGlyph &Renderer::GetOrCreateGlyph(const FontFace &face, uint32_t glyphId) {
+	const GlyphKey key{&face, glyphId};
+	if (const auto found = glyphCache.find(key); found != glyphCache.end()) {
+		return found->second;
+	}
+	CachedGlyph cached;
+	const GlyphImage image = face.RasterizeGlyph(glyphId);
+	cached.left = image.left;
+	cached.top = image.top;
+	cached.width = image.width;
+	cached.height = image.height;
+	if (image.width > 0 && image.height > 0 && !image.gray.empty()) {
+		// White RGB + coverage alpha (straight). DrawGlyph multiplies by fore.
+		std::vector<uint8_t> rgba(static_cast<size_t>(image.width) * static_cast<size_t>(image.height) * 4u);
+		for (size_t i = 0; i < image.gray.size(); i++) {
+			rgba[i * 4u + 0u] = 255;
+			rgba[i * 4u + 1u] = 255;
+			rgba[i * 4u + 2u] = 255;
+			rgba[i * 4u + 3u] = image.gray[i];
+		}
+		GLuint tex = 0;
+		glGenTextures(1, &tex);
+		glBindTexture(GL_TEXTURE_2D, tex);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, image.width, image.height, 0,
+			GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+		glBindTexture(GL_TEXTURE_2D, 0);
+		cached.texture = tex;
+	}
+	const auto [inserted, _] = glyphCache.emplace(key, cached);
+	return inserted->second;
+}
+
+void Renderer::DrawGlyph(XYPOSITION penX, XYPOSITION penY, const FontFace &face,
+	uint32_t glyphId, ColourRGBA fore) {
+	if (fore.GetAlpha() == 0) {
+		return;
+	}
+	BeginDraw();
+	if (CurrentClip().Empty()) {
+		return;
+	}
+	const CachedGlyph &glyph = GetOrCreateGlyph(face, glyphId);
+	if (glyph.texture == 0 || glyph.width <= 0 || glyph.height <= 0) {
+		return;
+	}
+	const float x0 = static_cast<float>(penX) + static_cast<float>(glyph.left);
+	const float y0 = static_cast<float>(penY) - static_cast<float>(glyph.top);
+	const float x1 = x0 + static_cast<float>(glyph.width);
+	const float y1 = y0 + static_cast<float>(glyph.height);
+	glEnable(GL_BLEND);
+	// Same top-down upload convention as DrawRGBAImage (no flipV).
+	DrawTexturedQuad(x0, y0, x1, y1, 0.0f, 0.0f, 1.0f, 1.0f, glyph.texture,
+		false, true, fore);
+	glDisable(GL_BLEND);
 }
 
 void Renderer::GradientRectangle(PRectangle rc, const std::vector<ColourStop> &stops, int options) {

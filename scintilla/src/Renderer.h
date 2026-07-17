@@ -17,8 +17,12 @@
 #define RENDERER_H
 
 #include <cstdint>
+#include <memory>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
+#include "FontPlatform.h"
 #include "Geometry.h"
 #include "GlContext.h"
 
@@ -183,6 +187,21 @@ public:
 	void DrawRGBAImage(PRectangle rc, int width, int height, const unsigned char *pixels);
 
 	/**
+	 * Rasterize (or reuse a cached texture for) one FreeType glyph and draw it.
+	 *
+	 * penX/penY is the baseline origin in surface coordinates (y down). FreeType
+	 * bearings place the bitmap: dest left = penX + left, dest top = penY - top.
+	 * fore modulates coverage as straight alpha. Empty bitmaps are a no-op after
+	 * the first miss is cached. Glyph textures stay alive until this Renderer is
+	 * destroyed; face pointer identity is the cache key (same face object).
+	 */
+	void DrawGlyph(XYPOSITION penX, XYPOSITION penY, const FontFace &face,
+		uint32_t glyphId, ColourRGBA fore);
+
+	/** Number of face+glyphId entries in the glyph texture cache. */
+	[[nodiscard]] size_t GlyphCacheSize() const noexcept { return glyphCache.size(); }
+
+	/**
 	 * Copy a rectangle from a colour buffer texture into the current target.
 	 * from is the top-left of the source region in source pixel space.
 	 * rc is the destination rectangle in the current target.
@@ -204,7 +223,33 @@ public:
 	static constexpr int kGradientTopToBottom = 1;
 
 private:
+	struct GlyphKey {
+		const FontFace *face = nullptr;
+		uint32_t glyphId = 0;
+
+		bool operator==(const GlyphKey &other) const noexcept {
+			return face == other.face && glyphId == other.glyphId;
+		}
+	};
+
+	struct GlyphKeyHash {
+		size_t operator()(const GlyphKey &key) const noexcept {
+			return std::hash<const void *>{}(key.face) ^
+				(std::hash<uint32_t>{}(key.glyphId) * 0x9e3779b9u);
+		}
+	};
+
+	struct CachedGlyph {
+		unsigned texture = 0;
+		int width = 0;
+		int height = 0;
+		int left = 0;
+		int top = 0;
+	};
+
 	void DestroyGl() noexcept;
+	void ClearGlyphCache() noexcept;
+	const CachedGlyph &GetOrCreateGlyph(const FontFace &face, uint32_t glyphId);
 	void EnsureSolidProgram();
 	void EnsureTextureProgram();
 	void EnsureGradientProgram();
@@ -216,7 +261,7 @@ private:
 	void DrawEllipse(PRectangle rc, ColourRGBA fill, ColourRGBA stroke, XYPOSITION strokeWidth, bool doFill, bool doStroke);
 	void DrawTexturedQuad(float x0, float y0, float x1, float y1,
 		float u0, float v0, float u1, float v1, unsigned texture, bool flipV,
-		bool sourceStraightAlpha);
+		bool sourceStraightAlpha, ColourRGBA modulate = ColourRGBA(255, 255, 255, 255));
 	[[nodiscard]] PixelRect CurrentClip() const noexcept;
 	void BeginDraw();
 	void SetBlendForColour(ColourRGBA colour);
@@ -227,6 +272,7 @@ private:
 	int targetHeight = 0;
 
 	std::vector<PixelRect> clipStack;
+	std::unordered_map<GlyphKey, CachedGlyph, GlyphKeyHash> glyphCache;
 
 	unsigned programSolid = 0;
 	unsigned programTexture = 0;
@@ -238,6 +284,7 @@ private:
 	int uniformTexTransform = -1;
 	int uniformTexSampler = -1;
 	int uniformTexStraightAlpha = -1;
+	int uniformTexModulate = -1;
 	int uniformGradTransform = -1;
 	int uniformGradStart = -1;
 	int uniformGradEnd = -1;

@@ -25,6 +25,7 @@
 #include "GlContext.h"
 #include "Platform.h"
 #include "Renderer.h"
+#include "ShapedRun.h"
 
 #define CATCH_CONFIG_MAIN
 #include "catch.hpp"
@@ -475,4 +476,92 @@ TEST_CASE("surface clip survives drawing to a sibling pixmap") {
 	REQUIRE(ExactColour(surface->Buffer().ReadPixel(7, 7), fg));
 	REQUIRE(ExactColour(surface->Buffer().ReadPixel(8, 8), bg));
 	surface->PopClip();
+}
+
+namespace {
+
+bool HasNonBackgroundInk(const ColourBuffer &buffer, ColourRGBA bg) {
+	for (int y = 0; y < buffer.Height(); y++) {
+		for (int x = 0; x < buffer.Width(); x++) {
+			if (!ExactColour(buffer.ReadPixel(x, y), bg)) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+}
+
+TEST_CASE("DrawGlyph paints shaped coverage and reuses the glyph cache") {
+	FontCache fonts;
+	const std::filesystem::path primary =
+		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "FallbackPrimary.ttf";
+	std::shared_ptr<FontFace> face = fonts.LoadPath(primary, FontParameters("fixture", 16.0));
+	const ShapedRun run = ShapeText("A", face);
+	REQUIRE_FALSE(run.glyphs.empty());
+
+	GlContext context;
+	Renderer renderer(context);
+	ColourBuffer buffer;
+	buffer.Resize(48, 48);
+	renderer.SetDrawTarget(buffer.FramebufferName(), buffer.Width(), buffer.Height());
+	const ColourRGBA bg(0, 0, 0, 255);
+	const ColourRGBA fg(255, 255, 255, 255);
+	renderer.Clear(bg);
+
+	const FontMetrics metrics = face->Metrics();
+	const XYPOSITION baseline = metrics.ascent;
+	REQUIRE(renderer.GlyphCacheSize() == 0);
+	renderer.DrawGlyph(4.0, baseline, *face, run.glyphs[0].glyphId, fg);
+	REQUIRE(renderer.GlyphCacheSize() == 1);
+	REQUIRE(HasNonBackgroundInk(buffer, bg));
+
+	// Far corner stays clear when the glyph sits near the origin.
+	REQUIRE(ExactColour(buffer.ReadPixel(47, 47), bg));
+
+	// Second draw of the same id reuses the cached texture entry.
+	renderer.DrawGlyph(20.0, baseline, *face, run.glyphs[0].glyphId, fg);
+	REQUIRE(renderer.GlyphCacheSize() == 1);
+}
+
+TEST_CASE("DrawGlyph respects clip and translucent fore colour") {
+	FontCache fonts;
+	const std::filesystem::path primary =
+		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "FallbackPrimary.ttf";
+	std::shared_ptr<FontFace> face = fonts.LoadPath(primary, FontParameters("fixture", 16.0));
+	const ShapedRun run = ShapeText("A", face);
+	REQUIRE_FALSE(run.glyphs.empty());
+
+	GlContext context;
+	Renderer renderer(context);
+	ColourBuffer buffer;
+	buffer.Resize(40, 40);
+	renderer.SetDrawTarget(buffer.FramebufferName(), buffer.Width(), buffer.Height());
+	const ColourRGBA bg(0, 0, 0, 255);
+	renderer.Clear(bg);
+
+	const FontMetrics metrics = face->Metrics();
+	const XYPOSITION baseline = metrics.ascent;
+
+	// Clip to a 1x1 pixel that is outside a typical glyph at pen (30, baseline).
+	renderer.SetClip(PRectangle::FromInts(0, 0, 1, 1));
+	renderer.DrawGlyph(30.0, baseline, *face, run.glyphs[0].glyphId, ColourRGBA(255, 0, 0, 255));
+	renderer.PopClip();
+	REQUIRE_FALSE(HasNonBackgroundInk(buffer, bg));
+
+	// Full-target translucent red: some pixel must move off pure black.
+	renderer.DrawGlyph(4.0, baseline, *face, run.glyphs[0].glyphId, ColourRGBA(255, 0, 0, 128));
+	bool sawBlend = false;
+	for (int y = 0; y < buffer.Height() && !sawBlend; y++) {
+		for (int x = 0; x < buffer.Width(); x++) {
+			const ColourRGBA p = buffer.ReadPixel(x, y);
+			if (p.GetRed() > 0) {
+				sawBlend = true;
+				// Coverage * 128/255 should be strictly less than full red on partial pixels.
+				break;
+			}
+		}
+	}
+	REQUIRE(sawBlend);
 }
