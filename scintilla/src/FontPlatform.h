@@ -81,6 +81,18 @@ public:
 
 const FontFace *FaceFromFont(const Font *font) noexcept;
 
+/**
+ * Shared face behind a Font produced by Font::Allocate or FontFromFace.
+ * Empty when the Font is not a platform face (for example a test stub).
+ */
+std::shared_ptr<FontFace> SharedFaceFromFont(const Font *font) noexcept;
+
+/**
+ * Wrap an existing face as a Font for Surface and IScreenLine callers.
+ * Face must be non-null.
+ */
+std::shared_ptr<Font> FontFromFace(std::shared_ptr<FontFace> face);
+
 }
 
 #endif

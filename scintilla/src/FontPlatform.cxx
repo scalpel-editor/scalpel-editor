@@ -295,4 +295,16 @@ const FontFace *FaceFromFont(const Font *font) noexcept {
 	return concrete ? concrete->face.get() : nullptr;
 }
 
+std::shared_ptr<FontFace> SharedFaceFromFont(const Font *font) noexcept {
+	const auto *concrete = dynamic_cast<const FontImpl *>(font);
+	return concrete ? concrete->face : std::shared_ptr<FontFace>{};
+}
+
+std::shared_ptr<Font> FontFromFace(std::shared_ptr<FontFace> face) {
+	if (!face) {
+		throw std::invalid_argument("FontFromFace requires a face");
+	}
+	return std::make_shared<FontImpl>(std::move(face));
+}
+
 }
