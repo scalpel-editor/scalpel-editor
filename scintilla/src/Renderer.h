@@ -2,12 +2,12 @@
 //
 // Pixel contract (locked for step 5 tests and later paint):
 // - Colour attachments are GL_RGBA8, linear (framebuffer sRGB disabled).
-// - Public pixel buffers are top-to-bottom RGBA8 with straight alpha.
+// - GL colour attachments store premultiplied RGBA8 for correct source-over.
+// - Public pixel buffers are top-to-bottom RGBA8 converted back to straight alpha.
 // - glReadPixels is bottom-to-top; ReadPixelsTopDown flips rows.
 // - PRectangle includes left/top and excludes right/bottom (see Geometry.h).
 // - Dithering and multisampling are disabled on the owning GlContext.
-// - Blend (straight alpha source-over): RGB uses SRC_ALPHA / ONE_MINUS_SRC_ALPHA;
-//   alpha uses ONE / ONE_MINUS_SRC_ALPHA so out_a = src_a + dst_a*(1-src_a).
+// - Blend uses premultiplied source-over: ONE / ONE_MINUS_SRC_ALPHA for RGBA.
 // - Exact pixel equality for clears and solid opaque interiors; ±1 per channel
 //   for alpha blends and gradients.
 // - Surface coordinates: origin top-left, y increases downward. The orthographic
@@ -196,6 +196,7 @@ public:
 
 	[[nodiscard]] int TargetWidth() const noexcept { return targetWidth; }
 	[[nodiscard]] int TargetHeight() const noexcept { return targetHeight; }
+	[[nodiscard]] unsigned TargetFramebuffer() const noexcept { return targetFbo; }
 	[[nodiscard]] size_t ClipDepth() const noexcept { return clipStack.size(); }
 
 	/** GradientOptions values mirrored here to avoid pulling Platform into every caller. */
@@ -214,7 +215,8 @@ private:
 	void DrawLineSegment(Point start, Point end, XYPOSITION width, ColourRGBA colour);
 	void DrawEllipse(PRectangle rc, ColourRGBA fill, ColourRGBA stroke, XYPOSITION strokeWidth, bool doFill, bool doStroke);
 	void DrawTexturedQuad(float x0, float y0, float x1, float y1,
-		float u0, float v0, float u1, float v1, unsigned texture, bool flipV);
+		float u0, float v0, float u1, float v1, unsigned texture, bool flipV,
+		bool sourceStraightAlpha);
 	[[nodiscard]] PixelRect CurrentClip() const noexcept;
 	void BeginDraw();
 	void SetBlendForColour(ColourRGBA colour);
@@ -235,6 +237,7 @@ private:
 	int uniformColour = -1;
 	int uniformTexTransform = -1;
 	int uniformTexSampler = -1;
+	int uniformTexStraightAlpha = -1;
 	int uniformGradTransform = -1;
 	int uniformGradStart = -1;
 	int uniformGradEnd = -1;

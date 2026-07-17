@@ -41,8 +41,14 @@ void DrawSurface::BindDrawTarget() {
 	if (!buffer.Valid()) {
 		throw std::runtime_error("DrawSurface::BindDrawTarget without a colour buffer");
 	}
-	// SetDrawTarget resets the clip stack only when the target changes.
+	const bool targetChanged = renderer->TargetFramebuffer() != buffer.FramebufferName() ||
+		renderer->TargetWidth() != buffer.Width() || renderer->TargetHeight() != buffer.Height();
 	renderer->SetDrawTarget(buffer.FramebufferName(), buffer.Width(), buffer.Height());
+	if (targetChanged) {
+		for (const PRectangle rc : clipStack) {
+			renderer->SetClip(rc);
+		}
+	}
 	renderer->BindCurrentTarget();
 }
 
@@ -82,6 +88,7 @@ void DrawSurface::Release() noexcept {
 		}
 	}
 	initialised = false;
+	clipStack.clear();
 }
 
 int DrawSurface::SupportsFeature(Scintilla::Supports feature) noexcept {
@@ -282,13 +289,23 @@ XYPOSITION DrawSurface::AverageCharWidth(const Font *font_) {
 void DrawSurface::SetClip(PRectangle rc) {
 	EnsureRenderer();
 	BindDrawTarget();
-	renderer->SetClip(rc);
+	clipStack.push_back(rc);
+	try {
+		renderer->SetClip(rc);
+	} catch (...) {
+		clipStack.pop_back();
+		throw;
+	}
 }
 
 void DrawSurface::PopClip() {
 	EnsureRenderer();
 	BindDrawTarget();
+	if (clipStack.empty()) {
+		return;
+	}
 	renderer->PopClip();
+	clipStack.pop_back();
 }
 
 void DrawSurface::FlushCachedState() {}

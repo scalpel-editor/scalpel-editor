@@ -106,6 +106,7 @@ private:
 	SurfaceMode mode{};
 	ShapedRunCache runCache;
 	std::vector<std::shared_ptr<FontFace>> fallbacks;
+	std::vector<PRectangle> clipStack;
 };
 
 /** Drawing surface with an offscreen colour buffer of the given size. */

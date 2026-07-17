@@ -1,11 +1,12 @@
 // scalpel-editor offscreen renderer tests (headless EGL, no compositor).
 //
 // Phase 6 step 5 pixel matrix (no Wayland):
-// - Primitive bounds: FillRectangle half-open, LineDraw, Polygon, Ellipse,
+// - Primitive bounds: FillRectangle half-open, final-pixel LineDraw, concave
+//   Polygon, Ellipse,
 //   Stadium, AlphaRectangle / RoundedRectangle
-// - Nested clips: SetClip stack limits solid fills
-// - Alpha blending: translucent fill over opaque background (±1 channel)
-// - Image placement: DrawRGBAImage top-left and neighbours
+// - Nested clips: SetClip stack limits fills and survives pixmap target switches
+// - Alpha blending: translucent fill over opaque and transparent backgrounds
+// - Image placement: DrawRGBAImage top-left, neighbours, and straight-alpha input
 // Also covered: linear gradients (stops + both axes), pixmap Copy, pattern fill,
 // headless context, clear/readback, and shaped-run measure through DrawSurface.
 
@@ -229,6 +230,21 @@ TEST_CASE("horizontal LineDraw paints the segment interior") {
 	REQUIRE(ExactColour(surface->Buffer().ReadPixel(0, 0), bg));
 }
 
+TEST_CASE("LineDraw includes both aligned endpoint pixels") {
+	GlContext context;
+	Renderer renderer(context);
+	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(renderer, 12, 8);
+	const ColourRGBA bg(0, 0, 0, 255);
+	const ColourRGBA fg(0, 255, 0, 255);
+	surface->BindDrawTarget();
+	renderer.Clear(bg);
+	surface->LineDraw(Point(2.5f, 4.5f), Point(9.5f, 4.5f), Stroke(fg, 1.0f));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(2, 4), fg));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(9, 4), fg));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(1, 4), bg));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(10, 4), bg));
+}
+
 TEST_CASE("Polygon triangle fill covers centroid and not outside bounds") {
 	GlContext context;
 	Renderer renderer(context);
@@ -242,6 +258,27 @@ TEST_CASE("Polygon triangle fill covers centroid and not outside bounds") {
 	REQUIRE(ExactColour(surface->Buffer().ReadPixel(10, 6), fg));
 	REQUIRE(ExactColour(surface->Buffer().ReadPixel(0, 0), bg));
 	REQUIRE(ExactColour(surface->Buffer().ReadPixel(19, 19), bg));
+}
+
+TEST_CASE("Polygon fills a concave plus without filling its corners") {
+	GlContext context;
+	Renderer renderer(context);
+	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(renderer, 24, 24);
+	const ColourRGBA bg(0, 0, 0, 255);
+	const ColourRGBA fg(255, 0, 0, 255);
+	surface->BindDrawTarget();
+	renderer.Clear(bg);
+	const Point plus[] = {
+		Point(4, 10), Point(10, 10), Point(10, 4), Point(14, 4),
+		Point(14, 10), Point(20, 10), Point(20, 14), Point(14, 14),
+		Point(14, 20), Point(10, 20), Point(10, 14), Point(4, 14),
+	};
+	surface->Polygon(plus, std::size(plus), FillStroke(fg, ColourRGBA(0, 0, 0, 0), 0.0f));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(12, 6), fg));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(6, 12), fg));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(9, 4), bg));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(7, 7), bg));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(16, 16), bg));
 }
 
 TEST_CASE("Ellipse fill covers centre and leaves far corner of bounds empty") {
@@ -272,6 +309,23 @@ TEST_CASE("Stadium semicircle ends cover centre line") {
 		Surface::Ends::semiCircles);
 	REQUIRE(ExactColour(surface->Buffer().ReadPixel(20, 6), fg));
 	REQUIRE(ExactColour(surface->Buffer().ReadPixel(0, 0), bg));
+}
+
+TEST_CASE("Stadium angle end tapers to its midpoint") {
+	GlContext context;
+	Renderer renderer(context);
+	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(renderer, 24, 12);
+	const ColourRGBA bg(0, 0, 0, 255);
+	const ColourRGBA fg(255, 0, 255, 255);
+	surface->BindDrawTarget();
+	renderer.Clear(bg);
+	const Surface::Ends angleFlat = static_cast<Surface::Ends>(
+		static_cast<int>(Surface::Ends::leftAngle) |
+		static_cast<int>(Surface::Ends::rightFlat));
+	surface->Stadium(PRectangle::FromInts(2, 2, 22, 10), FillStroke(fg, fg, 0.0f), angleFlat);
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(2, 2), bg));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(2, 6), fg));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(21, 2), fg));
 }
 
 TEST_CASE("RoundedRectangle / AlphaRectangle fill interior") {
@@ -361,6 +415,22 @@ TEST_CASE("DrawRGBAImage places top-left pixel correctly") {
 	REQUIRE(ExactColour(surface->Buffer().ReadPixel(0, 0), ColourRGBA(0, 0, 0, 255)));
 }
 
+TEST_CASE("transparent targets read back straight alpha after blending") {
+	GlContext context;
+	Renderer renderer(context);
+	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(renderer, 4, 4);
+	surface->BindDrawTarget();
+	renderer.Clear(ColourRGBA(0, 0, 0, 0));
+	surface->FillRectangle(PRectangle::FromInts(0, 0, 2, 2), Fill(ColourRGBA(255, 0, 0, 128)));
+	REQUIRE(NearColour(surface->Buffer().ReadPixel(0, 0), ColourRGBA(255, 0, 0, 128), 1));
+	const std::vector<uint8_t> pixels = surface->Buffer().ReadPixelsTopDown();
+	REQUIRE(NearColour(PixelAt(pixels, 4, 0, 0), ColourRGBA(255, 0, 0, 128), 1));
+
+	const unsigned char image[] = {0, 255, 0, 128};
+	surface->DrawRGBAImage(PRectangle::FromInts(2, 0, 3, 1), 1, 1, image);
+	REQUIRE(NearColour(surface->Buffer().ReadPixel(2, 0), ColourRGBA(0, 255, 0, 128), 1));
+}
+
 TEST_CASE("AllocatePixMap Copy and pattern fill") {
 	GlContext context;
 	Renderer renderer(context);
@@ -386,4 +456,23 @@ TEST_CASE("AllocatePixMap Copy and pattern fill") {
 	REQUIRE(NearColour(surface->Buffer().ReadPixel(0, 0), ColourRGBA(255, 0, 0, 255), 1));
 	REQUIRE(NearColour(surface->Buffer().ReadPixel(2, 0), ColourRGBA(0, 0, 255, 255), 1));
 	REQUIRE(NearColour(surface->Buffer().ReadPixel(4, 0), ColourRGBA(255, 0, 0, 255), 1));
+}
+
+TEST_CASE("surface clip survives drawing to a sibling pixmap") {
+	GlContext context;
+	Renderer renderer(context);
+	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(renderer, 10, 10);
+	std::unique_ptr<Surface> pixmap = surface->AllocatePixMap(4, 4);
+	const ColourRGBA bg(0, 0, 0, 255);
+	const ColourRGBA fg(255, 0, 0, 255);
+	surface->BindDrawTarget();
+	renderer.Clear(bg);
+	surface->SetClip(PRectangle::FromInts(2, 2, 8, 8));
+	pixmap->FillRectangle(PRectangle::FromInts(0, 0, 4, 4), Fill(ColourRGBA(0, 255, 0, 255)));
+	surface->FillRectangle(PRectangle::FromInts(0, 0, 10, 10), Fill(fg));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(1, 1), bg));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(2, 2), fg));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(7, 7), fg));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(8, 8), bg));
+	surface->PopClip();
 }

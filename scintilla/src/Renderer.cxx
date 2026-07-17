@@ -84,7 +84,7 @@ const char *kSolidFrag = R"(#version 330 core
 uniform vec4 uColour;
 out vec4 fragColour;
 void main() {
-	fragColour = uColour;
+	fragColour = vec4(uColour.rgb * uColour.a, uColour.a);
 }
 )";
 
@@ -102,9 +102,13 @@ void main() {
 const char *kTextureFrag = R"(#version 330 core
 in vec2 vUV;
 uniform sampler2D uTex;
+uniform bool uStraightAlpha;
 out vec4 fragColour;
 void main() {
 	fragColour = texture(uTex, vUV);
+	if (uStraightAlpha) {
+		fragColour.rgb *= fragColour.a;
+	}
 }
 )";
 
@@ -128,6 +132,9 @@ uniform int uStopCount;
 uniform float uStops[8];
 uniform vec4 uColours[8];
 out vec4 fragColour;
+vec4 Premultiply(vec4 colour) {
+	return vec4(colour.rgb * colour.a, colour.a);
+}
 void main() {
 	vec2 d = uEnd - uStart;
 	float len2 = dot(d, d);
@@ -140,24 +147,136 @@ void main() {
 		return;
 	}
 	if (uStopCount == 1 || t <= uStops[0]) {
-		fragColour = uColours[0];
+		fragColour = Premultiply(uColours[0]);
 		return;
 	}
 	for (int i = 1; i < 8; ++i) {
 		if (i >= uStopCount) {
-			fragColour = uColours[uStopCount - 1];
+			fragColour = Premultiply(uColours[uStopCount - 1]);
 			return;
 		}
 		if (t <= uStops[i]) {
 			float span = uStops[i] - uStops[i - 1];
 			float u = span > 1e-6 ? (t - uStops[i - 1]) / span : 0.0;
-			fragColour = mix(uColours[i - 1], uColours[i], u);
+			fragColour = Premultiply(mix(uColours[i - 1], uColours[i], u));
 			return;
 		}
 	}
-	fragColour = uColours[uStopCount - 1];
+	fragColour = Premultiply(uColours[uStopCount - 1]);
 }
 )";
+
+void UnpremultiplyPixel(uint8_t *pixel) noexcept {
+	const unsigned alpha = pixel[3];
+	if (alpha == 0) {
+		pixel[0] = 0;
+		pixel[1] = 0;
+		pixel[2] = 0;
+		return;
+	}
+	for (size_t channel = 0; channel < 3; channel++) {
+		const unsigned straight = (static_cast<unsigned>(pixel[channel]) * 255u + alpha / 2u) / alpha;
+		pixel[channel] = static_cast<uint8_t>(std::min(straight, 255u));
+	}
+}
+
+[[nodiscard]] double Cross(Point a, Point b, Point c) noexcept {
+	return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+}
+
+[[nodiscard]] double PolygonAreaTwice(const std::vector<Point> &points) noexcept {
+	double area = 0.0;
+	for (size_t i = 0; i < points.size(); i++) {
+		const Point a = points[i];
+		const Point b = points[(i + 1) % points.size()];
+		area += a.x * b.y - b.x * a.y;
+	}
+	return area;
+}
+
+[[nodiscard]] bool PointStrictlyInsideTriangle(Point p, Point a, Point b, Point c,
+	double winding) noexcept {
+	constexpr double epsilon = 1.0e-8;
+	return winding * Cross(a, b, p) > epsilon &&
+		winding * Cross(b, c, p) > epsilon &&
+		winding * Cross(c, a, p) > epsilon;
+}
+
+[[nodiscard]] std::vector<float> TriangulatePolygon(const Point *pts, size_t npts) {
+	std::vector<Point> points;
+	points.reserve(npts);
+	for (size_t i = 0; i < npts; i++) {
+		if (points.empty() || pts[i].x != points.back().x || pts[i].y != points.back().y) {
+			points.push_back(pts[i]);
+		}
+	}
+	if (points.size() > 1 && points.front().x == points.back().x &&
+		points.front().y == points.back().y) {
+		points.pop_back();
+	}
+	if (points.size() < 3) {
+		return {};
+	}
+
+	const double area = PolygonAreaTwice(points);
+	if (std::abs(area) < 1.0e-8) {
+		return {};
+	}
+	const double winding = area > 0.0 ? 1.0 : -1.0;
+	std::vector<size_t> remaining(points.size());
+	for (size_t i = 0; i < remaining.size(); i++) {
+		remaining[i] = i;
+	}
+
+	std::vector<float> triangles;
+	triangles.reserve((points.size() - 2) * 6);
+	while (remaining.size() > 3) {
+		bool clipped = false;
+		for (size_t i = 0; i < remaining.size(); i++) {
+			const size_t previous = remaining[(i + remaining.size() - 1) % remaining.size()];
+			const size_t current = remaining[i];
+			const size_t next = remaining[(i + 1) % remaining.size()];
+			const double corner = Cross(points[previous], points[current], points[next]);
+			if (std::abs(corner) <= 1.0e-8) {
+				remaining.erase(remaining.begin() + static_cast<std::ptrdiff_t>(i));
+				clipped = true;
+				break;
+			}
+			if (winding * corner < 0.0) {
+				continue;
+			}
+
+			bool containsPoint = false;
+			for (const size_t candidate : remaining) {
+				if (candidate != previous && candidate != current && candidate != next &&
+					PointStrictlyInsideTriangle(points[candidate], points[previous],
+						points[current], points[next], winding)) {
+					containsPoint = true;
+					break;
+				}
+			}
+			if (containsPoint) {
+				continue;
+			}
+
+			for (const size_t index : {previous, current, next}) {
+				triangles.push_back(points[index].x);
+				triangles.push_back(points[index].y);
+			}
+			remaining.erase(remaining.begin() + static_cast<std::ptrdiff_t>(i));
+			clipped = true;
+			break;
+		}
+		if (!clipped) {
+			throw std::runtime_error("Polygon contains crossing or unusable edges");
+		}
+	}
+	for (const size_t index : remaining) {
+		triangles.push_back(points[index].x);
+		triangles.push_back(points[index].y);
+	}
+	return triangles;
+}
 
 }  // namespace
 
@@ -251,6 +370,9 @@ std::vector<uint8_t> ColourBuffer::ReadPixelsTopDown() const {
 	glPixelStorei(GL_PACK_ALIGNMENT, 1);
 	glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, bottomUp.data());
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	for (size_t i = 0; i < total; i += 4) {
+		UnpremultiplyPixel(bottomUp.data() + i);
+	}
 
 	std::vector<uint8_t> topDown(total);
 	for (int y = 0; y < height; y++) {
@@ -271,14 +393,14 @@ ColourRGBA ColourBuffer::ReadPixel(int x, int y) const {
 	glPixelStorei(GL_PACK_ALIGNMENT, 1);
 	glReadPixels(x, glY, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	UnpremultiplyPixel(px);
 	return ColourRGBA(px[0], px[1], px[2], px[3]);
 }
 
 Renderer::Renderer(GlContext &context_) : context(context_) {
 	context.MakeCurrent();
-	// Straight-alpha source-over: rgb = s.rgb*s.a + d.rgb*(1-s.a);
-	// a = s.a + d.a*(1-s.a).
-	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+	// Premultiplied source-over: rgba = source + destination * (1-source alpha).
+	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 	glDisable(GL_BLEND);
 	EnsureSolidProgram();
 }
@@ -319,6 +441,7 @@ void Renderer::DestroyGl() noexcept {
 	uniformColour = -1;
 	uniformTexTransform = -1;
 	uniformTexSampler = -1;
+	uniformTexStraightAlpha = -1;
 	uniformGradTransform = -1;
 	uniformGradStart = -1;
 	uniformGradEnd = -1;
@@ -363,6 +486,7 @@ void Renderer::EnsureTextureProgram() {
 	glDeleteShader(fs);
 	uniformTexTransform = glGetUniformLocation(programTexture, "uTransform");
 	uniformTexSampler = glGetUniformLocation(programTexture, "uTex");
+	uniformTexStraightAlpha = glGetUniformLocation(programTexture, "uStraightAlpha");
 }
 
 void Renderer::EnsureGradientProgram() {
@@ -459,9 +583,9 @@ void Renderer::Clear(ColourRGBA colour) {
 	// Full-target clear ignores the clip stack.
 	glDisable(GL_SCISSOR_TEST);
 	glClearColor(
-		colour.GetRedComponent(),
-		colour.GetGreenComponent(),
-		colour.GetBlueComponent(),
+		colour.GetRedComponent() * colour.GetAlphaComponent(),
+		colour.GetGreenComponent() * colour.GetAlphaComponent(),
+		colour.GetBlueComponent() * colour.GetAlphaComponent(),
 		colour.GetAlphaComponent());
 	glClear(GL_COLOR_BUFFER_BIT);
 	ApplyScissor();
@@ -531,16 +655,18 @@ void Renderer::DrawLineSegment(Point start, Point end, XYPOSITION width, ColourR
 			static_cast<float>(start.x + h), static_cast<float>(start.y + h), colour);
 		return;
 	}
-	const double half = std::max(width, 1.0) * 0.5;
+	const double half = width * 0.5;
+	const double tx = dx / len * half;
+	const double ty = dy / len * half;
 	const double nx = -dy / len * half;
 	const double ny = dx / len * half;
 	const float verts[12] = {
-		static_cast<float>(start.x + nx), static_cast<float>(start.y + ny),
-		static_cast<float>(start.x - nx), static_cast<float>(start.y - ny),
-		static_cast<float>(end.x - nx), static_cast<float>(end.y - ny),
-		static_cast<float>(start.x + nx), static_cast<float>(start.y + ny),
-		static_cast<float>(end.x - nx), static_cast<float>(end.y - ny),
-		static_cast<float>(end.x + nx), static_cast<float>(end.y + ny),
+		static_cast<float>(start.x - tx + nx), static_cast<float>(start.y - ty + ny),
+		static_cast<float>(start.x - tx - nx), static_cast<float>(start.y - ty - ny),
+		static_cast<float>(end.x + tx - nx), static_cast<float>(end.y + ty - ny),
+		static_cast<float>(start.x - tx + nx), static_cast<float>(start.y - ty + ny),
+		static_cast<float>(end.x + tx - nx), static_cast<float>(end.y + ty - ny),
+		static_cast<float>(end.x + tx + nx), static_cast<float>(end.y + ty + ny),
 	};
 	DrawSolidTriangles(verts, 6, colour);
 }
@@ -579,6 +705,9 @@ void Renderer::FillRectangle(PRectangle rc, ColourRGBA colour) {
 }
 
 void Renderer::LineDraw(Point start, Point end, Stroke stroke) {
+	if (stroke.width <= 0.0) {
+		return;
+	}
 	BeginDraw();
 	if (CurrentClip().Empty()) {
 		return;
@@ -589,7 +718,7 @@ void Renderer::LineDraw(Point start, Point end, Stroke stroke) {
 }
 
 void Renderer::PolyLine(const Point *pts, size_t npts, Stroke stroke) {
-	if (!pts || npts < 2) {
+	if (!pts || npts < 2 || stroke.width <= 0.0) {
 		return;
 	}
 	BeginDraw();
@@ -611,22 +740,14 @@ void Renderer::Polygon(const Point *pts, size_t npts, FillStroke fillStroke) {
 	if (CurrentClip().Empty()) {
 		return;
 	}
-	// Triangle fan from pts[0].
-	std::vector<float> tris;
-	tris.reserve((npts - 2) * 6);
-	for (size_t i = 1; i + 1 < npts; i++) {
-		tris.push_back(pts[0].x);
-		tris.push_back(pts[0].y);
-		tris.push_back(pts[i].x);
-		tris.push_back(pts[i].y);
-		tris.push_back(pts[i + 1].x);
-		tris.push_back(pts[i + 1].y);
-	}
+	const std::vector<float> tris = TriangulatePolygon(pts, npts);
 	SetBlendForColour(fillStroke.fill.colour);
 	DrawSolidTriangles(tris.data(), tris.size() / 2, fillStroke.fill.colour);
-	SetBlendForColour(fillStroke.stroke.colour);
-	for (size_t i = 0; i < npts; i++) {
-		DrawLineSegment(pts[i], pts[(i + 1) % npts], fillStroke.stroke.width, fillStroke.stroke.colour);
+	if (fillStroke.stroke.width > 0.0) {
+		SetBlendForColour(fillStroke.stroke.colour);
+		for (size_t i = 0; i < npts; i++) {
+			DrawLineSegment(pts[i], pts[(i + 1) % npts], fillStroke.stroke.width, fillStroke.stroke.colour);
+		}
 	}
 	glDisable(GL_BLEND);
 }
@@ -786,81 +907,54 @@ void Renderer::Stadium(PRectangle rc, FillStroke fillStroke, int ends) {
 	if (CurrentClip().Empty()) {
 		return;
 	}
+	if (rc.Width() <= 0.0 || rc.Height() <= 0.0) {
+		return;
+	}
 	// Surface::Ends: low nibble left, high nibble right. semiCircles = 0.
 	const int leftEnd = ends & 0xf;
 	const int rightEnd = (ends >> 4) & 0xf;
-	const XYPOSITION h = rc.Height();
-	const XYPOSITION r = h * 0.5;
+	const XYPOSITION r = std::min(rc.Height(), rc.Width()) * 0.5;
 	const XYPOSITION midY = (rc.top + rc.bottom) * 0.5;
+	const bool leftRound = leftEnd == 0;
+	const bool rightRound = rightEnd == 0;
+	const bool leftAngle = leftEnd == 2;
+	const bool rightAngle = rightEnd == 2;
+	const XYPOSITION bodyLeft = (leftRound || leftAngle) ? rc.left + r : rc.left;
+	const XYPOSITION bodyRight = (rightRound || rightAngle) ? rc.right - r : rc.right;
 
-	// Body rectangle between end caps.
-	XYPOSITION bodyLeft = rc.left;
-	XYPOSITION bodyRight = rc.right;
-	if (leftEnd == 0) { // semiCircles
-		bodyLeft = rc.left + r;
-	}
-	if (rightEnd == 0) {
-		bodyRight = rc.right - r;
-	}
-	if (bodyRight > bodyLeft) {
-		FillRectangle(PRectangle(bodyLeft, rc.top, bodyRight, rc.bottom), fillStroke.fill.colour);
-	}
-
-	auto disc = [&](XYPOSITION cx) {
-		DrawEllipse(PRectangle(cx - r, rc.top, cx + r, rc.bottom),
-			fillStroke.fill.colour, fillStroke.stroke.colour, 0.0, true, false);
-	};
-	if (leftEnd == 0) {
-		disc(rc.left + r);
-	} else {
-		// Flat or angled: approximate with a rectangle on the end.
-		FillRectangle(PRectangle(rc.left, rc.top, std::min<XYPOSITION>(rc.left + r, bodyLeft), rc.bottom),
-			fillStroke.fill.colour);
-	}
-	if (rightEnd == 0) {
-		disc(rc.right - r);
-	} else {
-		FillRectangle(PRectangle(std::max<XYPOSITION>(rc.right - r, bodyRight), rc.top, rc.right, rc.bottom),
-			fillStroke.fill.colour);
-	}
-
-	if (fillStroke.stroke.width > 0.0) {
-		// Outline: top/bottom lines + end arcs or flats.
-		Stroke stroke = fillStroke.stroke;
-		LineDraw(Point(bodyLeft, rc.top), Point(bodyRight, rc.top), stroke);
-		LineDraw(Point(bodyLeft, rc.bottom), Point(bodyRight, rc.bottom), stroke);
-		if (leftEnd == 0) {
-			const XYPOSITION cx = rc.left + r;
-			constexpr int kSeg = 16;
-			Point prev(cx, rc.top);
-			for (int i = 1; i <= kSeg; i++) {
-				const double t = 3.141592653589793 * (static_cast<double>(i) / kSeg);
-				// Left semicircle from top to bottom, going left.
-				Point cur(cx - std::sin(t) * r, midY - std::cos(t) * r);
-				LineDraw(prev, cur, stroke);
-				prev = cur;
-			}
-		} else {
-			LineDraw(Point(rc.left, rc.top), Point(rc.left, rc.bottom), stroke);
+	std::vector<Point> outline;
+	outline.emplace_back(bodyLeft, rc.top);
+	outline.emplace_back(bodyRight, rc.top);
+	constexpr int kSeg = 16;
+	constexpr double pi = 3.141592653589793;
+	if (rightRound) {
+		for (int i = 1; i <= kSeg; i++) {
+			const double angle = -pi * 0.5 + pi * static_cast<double>(i) / kSeg;
+			outline.emplace_back(bodyRight + std::cos(angle) * r,
+				midY + std::sin(angle) * r);
 		}
-		if (rightEnd == 0) {
-			const XYPOSITION cx = rc.right - r;
-			constexpr int kSeg = 16;
-			Point prev(cx, rc.top);
-			for (int i = 1; i <= kSeg; i++) {
-				const double t = 3.141592653589793 * (static_cast<double>(i) / kSeg);
-				Point cur(cx + std::sin(t) * r, midY - std::cos(t) * r);
-				LineDraw(prev, cur, stroke);
-				prev = cur;
-			}
-		} else {
-			LineDraw(Point(rc.right, rc.top), Point(rc.right, rc.bottom), stroke);
-		}
+	} else if (rightAngle) {
+		outline.emplace_back(rc.right, midY);
+		outline.emplace_back(bodyRight, rc.bottom);
+	} else {
+		outline.emplace_back(bodyRight, rc.bottom);
 	}
+	outline.emplace_back(bodyLeft, rc.bottom);
+	if (leftRound) {
+		for (int i = 1; i <= kSeg; i++) {
+			const double angle = pi * 0.5 + pi * static_cast<double>(i) / kSeg;
+			outline.emplace_back(bodyLeft + std::cos(angle) * r,
+				midY + std::sin(angle) * r);
+		}
+	} else if (leftAngle) {
+		outline.emplace_back(rc.left, midY);
+	}
+	Polygon(outline.data(), outline.size(), fillStroke);
 }
 
 void Renderer::DrawTexturedQuad(float x0, float y0, float x1, float y1,
-	float u0, float v0, float u1, float v1, unsigned texture, bool flipV) {
+	float u0, float v0, float u1, float v1, unsigned texture, bool flipV,
+	bool sourceStraightAlpha) {
 	EnsureTextureProgram();
 	// Texture sampling uses top-down UVs by default (v=0 at top of image).
 	// OpenGL textures are bottom-up; ColourBuffer contents match that when
@@ -883,6 +977,7 @@ void Renderer::DrawTexturedQuad(float x0, float y0, float x1, float y1,
 	OrthoTopLeft(static_cast<float>(targetWidth), static_cast<float>(targetHeight), mat);
 	glUniformMatrix4fv(uniformTexTransform, 1, GL_FALSE, mat);
 	glUniform1i(uniformTexSampler, 0);
+	glUniform1i(uniformTexStraightAlpha, sourceStraightAlpha ? 1 : 0);
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, texture);
 	glBindVertexArray(vao);
@@ -1006,7 +1101,7 @@ void Renderer::DrawRGBAImage(PRectangle rc, int width, int height, const unsigne
 	DrawTexturedQuad(
 		static_cast<float>(rc.left), static_cast<float>(rc.top),
 		static_cast<float>(rc.right), static_cast<float>(rc.bottom),
-		0.0f, 0.0f, 1.0f, 1.0f, tex, false);
+		0.0f, 0.0f, 1.0f, 1.0f, tex, false, true);
 	glDisable(GL_BLEND);
 
 	glDeleteTextures(1, &tex);
@@ -1042,7 +1137,7 @@ void Renderer::Copy(PRectangle rc, Point from, const ColourBuffer &source) {
 	DrawTexturedQuad(
 		static_cast<float>(rc.left), static_cast<float>(rc.top),
 		static_cast<float>(rc.right), static_cast<float>(rc.bottom),
-		u0, vTop, u1, vBottom, source.TextureName(), false);
+		u0, vTop, u1, vBottom, source.TextureName(), false, false);
 }
 
 void Renderer::FillRectanglePattern(PRectangle rc, const ColourBuffer &pattern) {
@@ -1071,7 +1166,7 @@ void Renderer::FillRectanglePattern(PRectangle rc, const ColourBuffer &pattern) 
 	DrawTexturedQuad(
 		static_cast<float>(rc.left), static_cast<float>(rc.top),
 		static_cast<float>(rc.right), static_cast<float>(rc.bottom),
-		0.0f, tilesY, u1, 0.0f, pattern.TextureName(), false);
+		0.0f, tilesY, u1, 0.0f, pattern.TextureName(), false, false);
 
 	glBindTexture(GL_TEXTURE_2D, pattern.TextureName());
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
