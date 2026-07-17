@@ -25,6 +25,7 @@ pkg_check_modules(HARFBUZZ REQUIRED IMPORTED_TARGET harfbuzz)
 # without a circular link on scintilla_core.
 add_library(scintilla_font STATIC
   src/FontPlatform.cxx
+  src/MeasureSurface.cxx
   src/ShapedLayout.cxx
   src/ShapedRun.cxx
   src/UniConversion.cxx
@@ -104,3 +105,4 @@ target_compile_options(scintilla_core PRIVATE -Wall -Wextra)
 add_subdirectory(test/unit)
 add_subdirectory(test/editor)
 add_subdirectory(test/font)
+add_subdirectory(test/layout)
