@@ -235,10 +235,65 @@ std::unique_ptr<IScreenLineLayout> DrawSurface::Layout(const IScreenLine *screen
 	return LayoutScreenLine(screenLine);
 }
 
-// Text drawing arrives in step 6 (glyph atlas). Keep the API honest: no fake glyphs.
-void DrawSurface::DrawTextNoClip(PRectangle, const Font *, XYPOSITION, std::string_view, ColourRGBA, ColourRGBA) {}
-void DrawSurface::DrawTextClipped(PRectangle, const Font *, XYPOSITION, std::string_view, ColourRGBA, ColourRGBA) {}
-void DrawSurface::DrawTextTransparent(PRectangle, const Font *, XYPOSITION, std::string_view, ColourRGBA) {}
+void DrawSurface::DrawTextCommon(PRectangle rc, const Font *font_, XYPOSITION ybase,
+	std::string_view text, ColourRGBA fore, bool fillBack, ColourRGBA back, bool clipToRc) {
+	if (!renderer) {
+		// Measure-only surfaces never paint; match the previous no-op contract.
+		return;
+	}
+	if (fillBack && !rc.Empty()) {
+		BindDrawTarget();
+		renderer->FillRectangle(rc, back);
+	}
+	if (text.empty() || !font_ || fore.GetAlpha() == 0) {
+		return;
+	}
+	std::shared_ptr<FontFace> primary = SharedFaceFromFont(font_);
+	if (!primary) {
+		return;
+	}
+	const std::shared_ptr<const ShapedRun> run = runCache.Get(text, primary, fallbacks);
+	if (!run || run->glyphs.empty()) {
+		return;
+	}
+	BindDrawTarget();
+	if (clipToRc) {
+		clipStack.push_back(rc);
+		try {
+			renderer->SetClip(rc);
+		} catch (...) {
+			clipStack.pop_back();
+			throw;
+		}
+	}
+	XYPOSITION penX = rc.left;
+	for (const ShapedGlyph &glyph : run->glyphs) {
+		if (glyph.face) {
+			renderer->DrawGlyph(penX + glyph.xOffset, ybase + glyph.yOffset,
+				*glyph.face, glyph.glyphId, fore);
+		}
+		penX += glyph.xAdvance;
+	}
+	if (clipToRc) {
+		renderer->PopClip();
+		clipStack.pop_back();
+	}
+}
+
+void DrawSurface::DrawTextNoClip(PRectangle rc, const Font *font_, XYPOSITION ybase,
+	std::string_view text, ColourRGBA fore, ColourRGBA back) {
+	DrawTextCommon(rc, font_, ybase, text, fore, true, back, false);
+}
+
+void DrawSurface::DrawTextClipped(PRectangle rc, const Font *font_, XYPOSITION ybase,
+	std::string_view text, ColourRGBA fore, ColourRGBA back) {
+	DrawTextCommon(rc, font_, ybase, text, fore, true, back, true);
+}
+
+void DrawSurface::DrawTextTransparent(PRectangle rc, const Font *font_, XYPOSITION ybase,
+	std::string_view text, ColourRGBA fore) {
+	DrawTextCommon(rc, font_, ybase, text, fore, false, ColourRGBA(), false);
+}
 
 std::shared_ptr<FontFace> DrawSurface::RequireFace(const Font *font_) const {
 	std::shared_ptr<FontFace> face = SharedFaceFromFont(font_);

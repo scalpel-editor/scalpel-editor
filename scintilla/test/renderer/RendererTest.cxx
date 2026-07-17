@@ -44,6 +44,17 @@ ColourRGBA PixelAt(const std::vector<uint8_t> &topDown, int width, int x, int y)
 	return ColourRGBA(topDown[i], topDown[i + 1], topDown[i + 2], topDown[i + 3]);
 }
 
+bool HasNonBackgroundInk(const ColourBuffer &buffer, ColourRGBA bg) {
+	for (int y = 0; y < buffer.Height(); y++) {
+		for (int x = 0; x < buffer.Width(); x++) {
+			if (!ExactColour(buffer.ReadPixel(x, y), bg)) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 }
 
 TEST_CASE("headless GlContext creates OpenGL 3.3 without a window system display") {
@@ -103,7 +114,7 @@ TEST_CASE("clear fills ColourBuffer; readback is top-to-bottom RGBA") {
 	REQUIRE(ExactColour(buffer.ReadPixel(2, 1), blue));
 }
 
-TEST_CASE("DrawSurface measures through shaped runs; text draw is a no-op") {
+TEST_CASE("DrawSurface measures through shaped runs; measure-only text is a no-op") {
 	FontCache fonts;
 	const std::filesystem::path primary = std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "FallbackPrimary.ttf";
 	std::shared_ptr<FontFace> face = fonts.LoadPath(primary, FontParameters("fixture", 16.0));
@@ -120,9 +131,135 @@ TEST_CASE("DrawSurface measures through shaped runs; text draw is a no-op") {
 	REQUIRE(surface->Ascent(font.get()) > 0.0f);
 	REQUIRE(surface->Height(font.get()) > 0.0f);
 
-	// DrawText* must not throw and must not require a renderer.
+	// Measure-only surfaces never paint and must not require a Renderer.
 	surface->DrawTextTransparent(PRectangle::FromInts(0, 0, 10, 10), font.get(), 8.0f, "Hi",
 		ColourRGBA(0, 0, 0));
+}
+
+TEST_CASE("DrawTextTransparent paints English text; empty string leaves buffer") {
+	FontCache fonts;
+	const std::filesystem::path primary =
+		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "FallbackPrimary.ttf";
+	std::shared_ptr<FontFace> face = fonts.LoadPath(primary, FontParameters("fixture", 16.0));
+	std::shared_ptr<Font> font = FontFromFace(face);
+
+	GlContext context;
+	Renderer renderer(context);
+	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(renderer, 64, 40);
+	const ColourRGBA bg(0, 0, 0, 255);
+	const ColourRGBA fg(255, 255, 255, 255);
+	surface->BindDrawTarget();
+	renderer.Clear(bg);
+
+	const XYPOSITION ybase = surface->Ascent(font.get());
+	surface->DrawTextTransparent(PRectangle::FromInts(2, 0, 64, 40), font.get(), ybase, "",
+		fg);
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(10, 10), bg));
+
+	surface->DrawTextTransparent(PRectangle::FromInts(2, 0, 64, 40), font.get(), ybase, "Hi",
+		fg);
+	REQUIRE(HasNonBackgroundInk(surface->Buffer(), bg));
+}
+
+TEST_CASE("DrawTextNoClip fills background; Transparent does not") {
+	FontCache fonts;
+	const std::filesystem::path primary =
+		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "FallbackPrimary.ttf";
+	std::shared_ptr<FontFace> face = fonts.LoadPath(primary, FontParameters("fixture", 16.0));
+	std::shared_ptr<Font> font = FontFromFace(face);
+
+	GlContext context;
+	Renderer renderer(context);
+	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(renderer, 40, 30);
+	const ColourRGBA green(0, 255, 0, 255);
+	const ColourRGBA back(0, 0, 128, 255);
+	const ColourRGBA fg(255, 255, 255, 255);
+	surface->BindDrawTarget();
+	renderer.Clear(green);
+
+	const PRectangle rc = PRectangle::FromInts(4, 4, 36, 26);
+	const XYPOSITION ybase = 4.0 + surface->Ascent(font.get());
+	surface->DrawTextNoClip(rc, font.get(), ybase, "X", fg, back);
+	// Background fill covers the rect; a pixel on the edge interior should be back or ink.
+	const ColourRGBA corner = surface->Buffer().ReadPixel(4, 4);
+	REQUIRE((ExactColour(corner, back) || !ExactColour(corner, green)));
+
+	renderer.Clear(green);
+	surface->DrawTextTransparent(rc, font.get(), ybase, "X", fg);
+	// Transparent leaves corners of the rect as the previous clear when ink does not reach them.
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(0, 0), green));
+}
+
+TEST_CASE("DrawTextClipped keeps ink inside the clip rectangle") {
+	FontCache fonts;
+	const std::filesystem::path primary =
+		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "FallbackPrimary.ttf";
+	std::shared_ptr<FontFace> face = fonts.LoadPath(primary, FontParameters("fixture", 16.0));
+	std::shared_ptr<Font> font = FontFromFace(face);
+
+	GlContext context;
+	Renderer renderer(context);
+	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(renderer, 48, 32);
+	const ColourRGBA bg(0, 0, 0, 255);
+	const ColourRGBA back(32, 32, 32, 255);
+	const ColourRGBA fg(255, 255, 255, 255);
+	surface->BindDrawTarget();
+	renderer.Clear(bg);
+
+	const PRectangle rc = PRectangle::FromInts(8, 4, 24, 28);
+	const XYPOSITION ybase = 4.0 + surface->Ascent(font.get());
+	surface->DrawTextClipped(rc, font.get(), ybase, "WWWW", fg, back);
+
+	// Outside the clip rect, background clear remains (not the text back fill either).
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(0, 0), bg));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(30, 10), bg));
+	// Inside the clip: either back fill or glyph ink.
+	const ColourRGBA inside = surface->Buffer().ReadPixel(10, 10);
+	REQUIRE_FALSE(ExactColour(inside, bg));
+}
+
+TEST_CASE("DrawText uses shaped width for AV kerning pair") {
+	FontCache fonts;
+	const std::filesystem::path primary =
+		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "FallbackPrimary.ttf";
+	std::shared_ptr<FontFace> face = fonts.LoadPath(primary, FontParameters("fixture", 16.0));
+	std::shared_ptr<Font> font = FontFromFace(face);
+
+	GlContext context;
+	Renderer renderer(context);
+	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(renderer, 64, 40, {});
+	const XYPOSITION width = surface->WidthText(font.get(), "AV");
+	const ShapedRun run = ShapeText("AV", face);
+	REQUIRE(width == run.Width());
+	REQUIRE(width > 0.0);
+}
+
+TEST_CASE("DrawText fallback span paints primary and snowman faces") {
+	FontCache fonts;
+	const std::filesystem::path primaryPath =
+		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "FallbackPrimary.ttf";
+	const std::filesystem::path snowmanPath =
+		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "FallbackSnowman.ttf";
+	std::shared_ptr<FontFace> primary = fonts.LoadPath(primaryPath, FontParameters("fixture", 16.0));
+	std::shared_ptr<FontFace> snowman = fonts.LoadPath(snowmanPath, FontParameters("fixture", 16.0));
+	std::shared_ptr<Font> font = FontFromFace(primary);
+
+	GlContext context;
+	Renderer renderer(context);
+	std::unique_ptr<DrawSurface> surface =
+		CreateDrawSurface(renderer, 96, 40, {snowman});
+	const ColourRGBA bg(0, 0, 0, 255);
+	const ColourRGBA fg(255, 255, 255, 255);
+	surface->BindDrawTarget();
+	renderer.Clear(bg);
+
+	const std::string text = std::string("A") + "\xE2\x98\x83" + "B";
+	const XYPOSITION ybase = surface->Ascent(font.get());
+	surface->DrawTextTransparent(PRectangle::FromInts(2, 0, 96, 40), font.get(), ybase, text, fg);
+	REQUIRE(HasNonBackgroundInk(surface->Buffer(), bg));
+	// Width matches the multi-face shaped run.
+	const ShapedRun run = ShapeText(text, primary, {snowman});
+	CHECK(surface->WidthText(font.get(), text) == run.Width());
 }
 
 TEST_CASE("CreateDrawSurface clears through Renderer into its colour buffer") {
@@ -476,21 +613,6 @@ TEST_CASE("surface clip survives drawing to a sibling pixmap") {
 	REQUIRE(ExactColour(surface->Buffer().ReadPixel(7, 7), fg));
 	REQUIRE(ExactColour(surface->Buffer().ReadPixel(8, 8), bg));
 	surface->PopClip();
-}
-
-namespace {
-
-bool HasNonBackgroundInk(const ColourBuffer &buffer, ColourRGBA bg) {
-	for (int y = 0; y < buffer.Height(); y++) {
-		for (int x = 0; x < buffer.Width(); x++) {
-			if (!ExactColour(buffer.ReadPixel(x, y), bg)) {
-				return true;
-			}
-		}
-	}
-	return false;
-}
-
 }
 
 TEST_CASE("DrawGlyph paints shaped coverage and reuses the glyph cache") {

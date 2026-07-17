@@ -1,8 +1,7 @@
-// scalpel-editor concrete Surface: shaped-run measure plus GL drawing (step 5).
+// scalpel-editor concrete Surface: shaped-run measure plus GL drawing.
 //
-// Measurement and Layout reuse the shaped-run path (same helpers as MeasureSurface).
-// DrawText* stays a deliberate no-op until step 6 (glyph rasterization).
-// Geometry, clips, images, and pixmaps are filled in by later step-5 commits.
+// Measurement, Layout, and DrawText* all consume the shaped-run path (same
+// helpers as MeasureSurface). Glyphs are rasterized and cached on Renderer.
 //
 // Surface::Allocate is not defined here. editorTest keeps TestPlatform until
 // step 7 wires this implementation into the editor host. Tests and the future
@@ -22,11 +21,12 @@
 namespace Scintilla::Internal {
 
 /**
- * One Surface implementation for measure and (step 5+) draw.
+ * One Surface implementation for measure and draw.
  *
  * Drawing surfaces hold a ColourBuffer in the parent Renderer context. Measure-
  * only surfaces have no buffer and still answer MeasureWidths, WidthText,
- * Layout, and font metrics. Pixmaps share the parent Renderer (same GL context).
+ * Layout, and font metrics; DrawText* is a no-op without a Renderer. Pixmaps
+ * share the parent Renderer (same GL context).
  */
 class DrawSurface final : public Surface {
 public:
@@ -99,6 +99,8 @@ private:
 	std::shared_ptr<FontFace> RequireFace(const Font *font_) const;
 	FontMetrics MetricsOf(const Font *font_) const;
 	void EnsureRenderer() const;
+	void DrawTextCommon(PRectangle rc, const Font *font_, XYPOSITION ybase, std::string_view text,
+		ColourRGBA fore, bool fillBack, ColourRGBA back, bool clipToRc);
 
 	Renderer *renderer = nullptr;
 	ColourBuffer buffer;
