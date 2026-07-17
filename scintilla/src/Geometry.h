@@ -8,6 +8,8 @@
 #ifndef GEOMETRY_H
 #define GEOMETRY_H
 
+#include <cstdint>
+
 namespace Scintilla::Internal {
 
 typedef double XYPOSITION;

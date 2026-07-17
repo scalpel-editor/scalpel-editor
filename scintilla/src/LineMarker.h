@@ -8,6 +8,12 @@
 #ifndef LINEMARKER_H
 #define LINEMARKER_H
 
+#include <memory>
+
+#include "EditorStyleTypes.h"
+#include "Geometry.h"
+#include "Platform.h"
+
 namespace Scintilla::Internal {
 
 class XPM;

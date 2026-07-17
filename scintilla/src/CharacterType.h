@@ -8,6 +8,8 @@
 #ifndef CHARACTERTYPE_H
 #define CHARACTERTYPE_H
 
+#include <cstddef>
+
 namespace Scintilla::Internal {
 
 // Functions for classifying characters

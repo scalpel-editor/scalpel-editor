@@ -8,6 +8,32 @@
 #ifndef DOCUMENT_H
 #define DOCUMENT_H
 
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <map>
+#include <memory>
+#include <optional>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "ILexer.h"
+#include "ILoader.h"
+
+#include "CaseFolder.h"
+#include "CellBuffer.h"
+#include "CharClassify.h"
+#include "CharacterCategoryMap.h"
+#include "Decoration.h"
+#include "EditorDocumentTypes.h"
+#include "EditorInputTypes.h"
+#include "EditorLayoutTypes.h"
+#include "PerLine.h"
+#include "Position.h"
+
 namespace Scintilla::Internal {
 
 class DocWatcher;

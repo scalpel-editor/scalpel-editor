@@ -8,6 +8,22 @@
 #ifndef EDITVIEW_H
 #define EDITVIEW_H
 
+#include <cstddef>
+#include <memory>
+#include <string_view>
+#include <vector>
+
+#include "Document.h"
+#include "EditModel.h"
+#include "EditorLayoutTypes.h"
+#include "EditorStyleTypes.h"
+#include "Geometry.h"
+#include "MarginView.h"
+#include "Platform.h"
+#include "Position.h"
+#include "PositionCache.h"
+#include "ViewStyle.h"
+
 namespace Scintilla::Internal {
 
 struct PrintParameters {

@@ -8,9 +8,33 @@
 #ifndef EDITOR_H
 #define EDITOR_H
 
+#include <algorithm>
+#include <cstddef>
+#include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "Document.h"
+#include "EditModel.h"
+#include "EditView.h"
+#include "EditorBasicTypes.h"
 #include "EditorCommands.h"
+#include "EditorDocumentTypes.h"
+#include "EditorInputTypes.h"
+#include "EditorLayoutTypes.h"
 #include "EditorNotifications.h"
 #include "EditorRecording.h"
+#include "EditorStyleTypes.h"
+#include "Geometry.h"
+#include "KeyMap.h"
+#include "MarginView.h"
+#include "Platform.h"
+#include "Position.h"
+#include "PositionCache.h"
+#include "Selection.h"
+#include "ViewStyle.h"
 
 namespace Scintilla::Internal {
 

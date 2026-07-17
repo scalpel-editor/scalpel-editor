@@ -8,7 +8,11 @@
 #ifndef KEYMAP_H
 #define KEYMAP_H
 
+#include <map>
+#include <vector>
+
 #include "EditorCommands.h"
+#include "EditorInputTypes.h"
 
 namespace Scintilla::Internal {
 

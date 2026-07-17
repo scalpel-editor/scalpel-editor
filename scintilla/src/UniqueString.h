@@ -11,6 +11,9 @@
 #ifndef UNIQUESTRING_H
 #define UNIQUESTRING_H
 
+#include <memory>
+#include <vector>
+
 namespace Scintilla::Internal {
 
 constexpr bool IsNullOrEmpty(const char *text) noexcept {

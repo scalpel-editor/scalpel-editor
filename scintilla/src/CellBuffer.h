@@ -8,6 +8,14 @@
 #ifndef CELLBUFFER_H
 #define CELLBUFFER_H
 
+#include <memory>
+#include <stdexcept>
+#include <string_view>
+
+#include "EditorDocumentTypes.h"
+#include "Position.h"
+#include "SplitVector.h"
+
 namespace Scintilla::Internal {
 
 struct Failure : public std::runtime_error {

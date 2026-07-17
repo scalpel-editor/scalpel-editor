@@ -8,6 +8,14 @@
 #ifndef MARGINVIEW_H
 #define MARGINVIEW_H
 
+#include <memory>
+
+#include "Document.h"
+#include "EditModel.h"
+#include "Geometry.h"
+#include "Platform.h"
+#include "ViewStyle.h"
+
 namespace Scintilla::Internal {
 
 void DrawWrapMarker(Surface *surface, PRectangle rcPlace, bool isEndMarker, ColourRGBA wrapColour);

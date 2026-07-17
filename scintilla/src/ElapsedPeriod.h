@@ -8,6 +8,8 @@
 #ifndef ELAPSEDPERIOD_H
 #define ELAPSEDPERIOD_H
 
+#include <chrono>
+
 namespace Scintilla::Internal {
 
 // Simplified access to high precision timing.

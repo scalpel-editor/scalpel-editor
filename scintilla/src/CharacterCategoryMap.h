@@ -10,6 +10,9 @@
 #ifndef CHARACTERCATEGORYMAP_H
 #define CHARACTERCATEGORYMAP_H
 
+#include <cstddef>
+#include <vector>
+
 namespace Scintilla::Internal {
 
 enum CharacterCategory {

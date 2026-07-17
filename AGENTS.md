@@ -77,6 +77,10 @@ Use simple, direct names and explanations. Favor code that shows lifetime, owner
 
 New code follows the naming and layout of the file it lives in. The Scintilla core keeps its existing conventions; do not restyle code while refactoring it.
 
+### Includes
+
+Headers under `scintilla/src` (and the Lexilla-facing includes) must compile alone: `#include "Name.h"` is a valid translation unit with the same flags as `scintilla_core`. Do not restore a shared mega-preamble in `Editor*.cxx` files. A translation unit includes only what it uses; prefer include-what-you-use (`iwyu_tool.py` / `fix_includes.py`) over hand-copying include lists. After changing header includes in the Editor/Document DAG, run `tools/check-self-contained-headers.sh` (needs `build/compile_commands.json` from `cmake --preset dev`).
+
 ## Documentation guidance
 
 Do not leave documentation describing a state the code no longer has. When a change removes or alters something the docs describe, update or delete that description in the same commit.

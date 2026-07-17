@@ -8,6 +8,15 @@
 #ifndef AUTOCOMPLETE_H
 #define AUTOCOMPLETE_H
 
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "EditorLayoutTypes.h"
+#include "EditorStyleTypes.h"
+#include "Platform.h"
+#include "Position.h"
+
 namespace Scintilla::Internal {
 
 /**

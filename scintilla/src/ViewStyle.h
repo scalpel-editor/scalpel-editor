@@ -8,6 +8,24 @@
 #ifndef VIEWSTYLE_H
 #define VIEWSTYLE_H
 
+#include <map>
+#include <memory>
+#include <optional>
+#include <set>
+#include <vector>
+
+#include "EditorBasicTypes.h"
+#include "EditorDocumentTypes.h"
+#include "EditorInputTypes.h"
+#include "EditorLayoutTypes.h"
+#include "EditorStyleTypes.h"
+#include "Geometry.h"
+#include "Indicator.h"
+#include "LineMarker.h"
+#include "Platform.h"
+#include "Style.h"
+#include "UniqueString.h"
+
 namespace Scintilla::Internal {
 
 /**

@@ -10,6 +10,9 @@
 #ifndef RUNSTYLES_H
 #define RUNSTYLES_H
 
+#include "Partitioning.h"
+#include "SplitVector.h"
+
 namespace Scintilla::Internal {
 
 // Return for RunStyles::FillRange reports if anything was changed and the

@@ -8,6 +8,8 @@
 #ifndef CASEFOLDER_H
 #define CASEFOLDER_H
 
+#include <cstddef>
+
 namespace Scintilla::Internal {
 
 class CaseFolder {

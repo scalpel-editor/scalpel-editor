@@ -8,6 +8,10 @@
 #ifndef CONTRACTIONSTATE_H
 #define CONTRACTIONSTATE_H
 
+#include <memory>
+
+#include "Position.h"
+
 namespace Scintilla::Internal {
 
 /**

@@ -8,6 +8,10 @@
 #ifndef STYLE_H
 #define STYLE_H
 
+#include "EditorStyleTypes.h"
+#include "Geometry.h"
+#include "Platform.h"
+
 namespace Scintilla::Internal {
 
 struct FontSpecification {

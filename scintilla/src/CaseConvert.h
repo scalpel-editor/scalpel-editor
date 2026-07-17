@@ -10,6 +10,9 @@
 #ifndef CASECONVERT_H
 #define CASECONVERT_H
 
+#include <cstddef>
+#include <string>
+
 namespace Scintilla::Internal {
 
 enum class CaseConversion {

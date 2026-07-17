@@ -7,6 +7,12 @@
 #ifndef DECORATION_H
 #define DECORATION_H
 
+#include <memory>
+#include <vector>
+
+#include "Position.h"
+#include "RunStyles.h"
+
 namespace Scintilla::Internal {
 
 class IDecoration {

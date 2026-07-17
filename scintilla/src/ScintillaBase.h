@@ -8,6 +8,20 @@
 #ifndef SCINTILLABASE_H
 #define SCINTILLABASE_H
 
+#include <string_view>
+
+#include "AutoComplete.h"
+#include "CallTip.h"
+#include "Editor.h"
+#include "EditorDocumentTypes.h"
+#include "EditorInputTypes.h"
+#include "EditorLayoutTypes.h"
+#include "EditorStyleTypes.h"
+#include "Geometry.h"
+#include "ILexer.h"
+#include "Platform.h"
+#include "Position.h"
+
 namespace Scintilla::Internal {
 
 // For most platforms (not Cocoa) all IME indicators are drawn in same colour,
@@ -20,6 +34,7 @@ constexpr int IndicatorConverted = IndicatorInput + 2;
 constexpr int IndicatorUnknown = IndicatorInput + 3;
 
 class LexState;
+
 /**
  */
 class ScintillaBase : public Editor, IListBoxDelegate {

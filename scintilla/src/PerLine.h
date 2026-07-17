@@ -8,6 +8,16 @@
 #ifndef PERLINE_H
 #define PERLINE_H
 
+#include <forward_list>
+#include <memory>
+#include <vector>
+
+#include "CellBuffer.h"
+#include "EditorDocumentTypes.h"
+#include "EditorLayoutTypes.h"
+#include "Position.h"
+#include "SplitVector.h"
+
 namespace Scintilla::Internal {
 
 /**

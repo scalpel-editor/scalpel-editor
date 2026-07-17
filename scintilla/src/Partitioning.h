@@ -8,6 +8,10 @@
 #ifndef PARTITIONING_H
 #define PARTITIONING_H
 
+#include <cstddef>
+
+#include "SplitVector.h"
+
 namespace Scintilla::Internal {
 
 /// Divide an interval into multiple partitions.

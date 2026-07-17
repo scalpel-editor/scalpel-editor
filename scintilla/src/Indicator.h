@@ -8,6 +8,10 @@
 #ifndef INDICATOR_H
 #define INDICATOR_H
 
+#include "EditorStyleTypes.h"
+#include "Geometry.h"
+#include "Platform.h"
+
 namespace Scintilla::Internal {
 
 struct StyleAndColour {

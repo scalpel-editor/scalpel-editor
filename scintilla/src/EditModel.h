@@ -8,6 +8,21 @@
 #ifndef EDITMODEL_H
 #define EDITMODEL_H
 
+#include <map>
+#include <memory>
+#include <string>
+
+#include "ContractionState.h"
+#include "Document.h"
+#include "EditorBasicTypes.h"
+#include "EditorDocumentTypes.h"
+#include "EditorInputTypes.h"
+#include "EditorLayoutTypes.h"
+#include "Position.h"
+#include "PositionCache.h"
+#include "Selection.h"
+#include "UniqueString.h"
+
 namespace Scintilla::Internal {
 
 /**

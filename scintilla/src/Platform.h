@@ -9,6 +9,18 @@
 #ifndef PLATFORM_H
 #define PLATFORM_H
 
+#include <cstddef>
+#include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "EditorBasicTypes.h"
+#include "EditorLayoutTypes.h"
+#include "EditorStyleTypes.h"
+#include "Geometry.h"
+
 // PLAT_GTK = GTK+ on Linux or Win32
 // PLAT_GTK_WIN32 is defined additionally when running PLAT_GTK under Win32
 // PLAT_WIN = Win32 API on Win32 OS

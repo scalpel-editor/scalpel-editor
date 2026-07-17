@@ -8,6 +8,16 @@
 #ifndef CALLTIP_H
 #define CALLTIP_H
 
+#include <cassert>
+#include <cstddef>
+#include <memory>
+#include <string>
+#include <string_view>
+
+#include "Geometry.h"
+#include "Platform.h"
+#include "Position.h"
+
 namespace Scintilla::Internal {
 
 struct Chunk {

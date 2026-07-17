@@ -8,6 +8,14 @@
 #ifndef SELECTION_H
 #define SELECTION_H
 
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "Debugging.h"
+#include "EditorInputTypes.h"
+#include "Position.h"
+
 namespace Scintilla::Internal {
 
 class SelectionPosition {

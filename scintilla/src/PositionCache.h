@@ -8,6 +8,21 @@
 #ifndef POSITIONCACHE_H
 #define POSITIONCACHE_H
 
+#include <cstddef>
+#include <map>
+#include <memory>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "Document.h"
+#include "EditorLayoutTypes.h"
+#include "Geometry.h"
+#include "Platform.h"
+#include "Position.h"
+#include "Selection.h"
+#include "ViewStyle.h"
+
 namespace Scintilla::Internal {
 
 /**
