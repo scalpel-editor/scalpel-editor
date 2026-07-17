@@ -1283,8 +1283,10 @@ public:
 	// display line and cpMax selects the last eligible document line, so the
 	// returned next-page position may be greater than cpMax. When draw is false,
 	// only measurement runs (for pagination).
+	// Measure or draw a print page. surfaceDraw may be null when draw is false
+	// (measure-only). When draw is true, surfaceDraw must be a ready Surface.
 	Sci::Position FormatRange(bool draw, Sci::Position cpMin, Sci::Position cpMax,
-		PRectangle rc, SurfaceID hdc, SurfaceID hdcTarget);
+		PRectangle rc, Surface *surfaceDraw = nullptr);
 
 	// Macro recording lifecycle, host sink, and replay; EditorRecording.cxx.
 	void StartRecording() noexcept;
@@ -1306,9 +1308,6 @@ private:
 public:
 	AutoSurface(const Editor *ed) :
 		surf(ed->CreateMeasurementSurface())  {
-	}
-	AutoSurface(SurfaceID sid, const Editor *ed) :
-		surf(ed->CreateDrawingSurface(sid)) {
 	}
 	// Deleted so AutoSurface objects can not be copied.
 	AutoSurface(const AutoSurface &) = delete;

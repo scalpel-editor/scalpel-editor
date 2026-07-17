@@ -91,11 +91,8 @@ TEST_CASE("FormatRange measures without drawing and returns a position") {
 	TestEditor editor(host);
 	editor.SetText("hello\nworld\n");
 
-	// Stand-in SurfaceID from the test main window for AutoSurface.
-	const SurfaceID sid = static_cast<SurfaceID>(&host.mainWindow);
 	const PRectangle rc = PRectangle::FromInts(0, 0, 400, 200);
-
-	const Sci::Position next = editor.FormatRange(false, 0, editor.GetTextLength(), rc, sid, sid);
+	const Sci::Position next = editor.FormatRange(false, 0, editor.GetTextLength(), rc);
 	// Measurement should advance past some or all of the document.
 	CHECK(next > 0);
 	CHECK(next <= editor.GetTextLength());
@@ -106,11 +103,17 @@ TEST_CASE("FormatRange position bounds select whole lines") {
 	TestEditor editor(host);
 	editor.SetText("hello\nworld\n");
 
-	const SurfaceID sid = static_cast<SurfaceID>(&host.mainWindow);
 	const PRectangle rc = PRectangle::FromInts(0, 0, 400, 200);
-
 	// cpMax is inside the first line, which is formatted as a whole.
-	const Sci::Position next = editor.FormatRange(false, 0, 1, rc, sid, sid);
+	const Sci::Position next = editor.FormatRange(false, 0, 1, rc);
 	CHECK(next == editor.PositionFromLine(1));
 	CHECK(next > 1);
+}
+
+TEST_CASE("FormatRange draw without a target returns zero") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.SetText("hello\n");
+	const PRectangle rc = PRectangle::FromInts(0, 0, 400, 200);
+	CHECK(editor.FormatRange(true, 0, editor.GetTextLength(), rc) == 0);
 }
