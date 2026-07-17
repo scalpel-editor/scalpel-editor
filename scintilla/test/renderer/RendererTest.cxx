@@ -55,6 +55,36 @@ bool HasNonBackgroundInk(const ColourBuffer &buffer, ColourRGBA bg) {
 	return false;
 }
 
+/** Half-open ink bounds of non-bg pixels; empty (right<=left) if no ink. */
+struct InkBounds {
+	int left = 0;
+	int top = 0;
+	int right = 0;
+	int bottom = 0;
+
+	bool Empty() const noexcept { return right <= left || bottom <= top; }
+};
+
+InkBounds FindInkBounds(const ColourBuffer &buffer, ColourRGBA bg) {
+	InkBounds b{buffer.Width(), buffer.Height(), 0, 0};
+	bool any = false;
+	for (int y = 0; y < buffer.Height(); y++) {
+		for (int x = 0; x < buffer.Width(); x++) {
+			if (!ExactColour(buffer.ReadPixel(x, y), bg)) {
+				any = true;
+				b.left = std::min(b.left, x);
+				b.top = std::min(b.top, y);
+				b.right = std::max(b.right, x + 1);
+				b.bottom = std::max(b.bottom, y + 1);
+			}
+		}
+	}
+	if (!any) {
+		return {};
+	}
+	return b;
+}
+
 }
 
 TEST_CASE("headless GlContext creates OpenGL 3.3 without a window system display") {
@@ -686,4 +716,139 @@ TEST_CASE("DrawGlyph respects clip and translucent fore colour") {
 		}
 	}
 	REQUIRE(sawBlend);
+}
+
+TEST_CASE("rendered glyph ink bounds sit within shaped layout width") {
+	FontCache fonts;
+	const std::filesystem::path primary =
+		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "FallbackPrimary.ttf";
+	std::shared_ptr<FontFace> face = fonts.LoadPath(primary, FontParameters("fixture", 16.0));
+	std::shared_ptr<Font> font = FontFromFace(face);
+
+	GlContext context;
+	Renderer renderer(context);
+	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(renderer, 80, 40);
+	const ColourRGBA bg(0, 0, 0, 255);
+	const ColourRGBA fg(255, 255, 255, 255);
+	surface->BindDrawTarget();
+	renderer.Clear(bg);
+
+	const char *text = "Hi";
+	const XYPOSITION originX = 4.0;
+	const XYPOSITION ybase = surface->Ascent(font.get());
+	const XYPOSITION width = surface->WidthText(font.get(), text);
+	const ShapedRun run = ShapeText(text, face);
+	REQUIRE(width == run.Width());
+
+	surface->DrawTextTransparent(PRectangle(originX, 0.0, originX + width + 8.0, 40.0),
+		font.get(), ybase, text, fg);
+
+	const InkBounds ink = FindInkBounds(surface->Buffer(), bg);
+	REQUIRE_FALSE(ink.Empty());
+	// Ink may start slightly left of origin via negative bearings; allow one pixel.
+	CHECK(ink.left + 1 >= static_cast<int>(std::floor(originX)) - 2);
+	// Right edge of ink stays within ceil(origin + width) plus anti-alias slack.
+	CHECK(ink.right <= static_cast<int>(std::ceil(originX + width)) + 2);
+
+	// Caret stops map to x positions inside the shaped advance span.
+	for (size_t stop : run.caretStops) {
+		XYPOSITION x = originX;
+		if (stop > 0) {
+			x = originX + run.byteEndPositions[stop - 1];
+		}
+		CHECK(x + 1e-6 >= originX);
+		CHECK(x <= originX + width + 1e-6);
+	}
+}
+
+TEST_CASE("selection fill under text matches layout byte positions") {
+	FontCache fonts;
+	const std::filesystem::path primary =
+		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "FallbackPrimary.ttf";
+	std::shared_ptr<FontFace> face = fonts.LoadPath(primary, FontParameters("fixture", 16.0));
+	std::shared_ptr<Font> font = FontFromFace(face);
+
+	GlContext context;
+	Renderer renderer(context);
+	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(renderer, 80, 40);
+	const ColourRGBA bg(0, 0, 0, 255);
+	const ColourRGBA sel(0, 0, 180, 255);
+	const ColourRGBA fg(255, 255, 255, 255);
+	surface->BindDrawTarget();
+	renderer.Clear(bg);
+
+	const char *text = "Hi";
+	const XYPOSITION originX = 8.0;
+	const XYPOSITION ybase = surface->Ascent(font.get());
+	const ShapedRun run = ShapeText(text, face);
+	REQUIRE(run.byteEndPositions.size() >= 2);
+	// Select the first character only: [0, end of first cluster).
+	const XYPOSITION selLeft = originX;
+	const XYPOSITION selRight = originX + run.byteEndPositions[0];
+	const PRectangle selRc(selLeft, 2.0, selRight, 30.0);
+	surface->FillRectangle(selRc, Fill(sel));
+	surface->DrawTextTransparent(PRectangle(originX, 0.0, 80.0, 40.0), font.get(), ybase, text, fg);
+
+	// Interior of selection (away from text ink) should still be selection blue.
+	const int midX = static_cast<int>(std::floor((selLeft + selRight) * 0.5));
+	// Sample near the bottom of the selection band where glyph ink is unlikely.
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(midX, 28), sel));
+	// Just outside the half-open selection right edge stays background.
+	const int outside = static_cast<int>(std::ceil(selRight));
+	if (outside < surface->Buffer().Width()) {
+		// May be bg or second-glyph ink; must not be solid selection blue unless ink.
+		const ColourRGBA p = surface->Buffer().ReadPixel(outside, 28);
+		if (ExactColour(p, sel)) {
+			// Selection half-open: right column exclusive.
+			FAIL("selection painted at exclusive right edge");
+		}
+	}
+	REQUIRE(HasNonBackgroundInk(surface->Buffer(), bg));
+}
+
+TEST_CASE("fallback run ink spans three shaped advance regions") {
+	FontCache fonts;
+	const std::filesystem::path primaryPath =
+		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "FallbackPrimary.ttf";
+	const std::filesystem::path snowmanPath =
+		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "FallbackSnowman.ttf";
+	std::shared_ptr<FontFace> primary = fonts.LoadPath(primaryPath, FontParameters("fixture", 16.0));
+	std::shared_ptr<FontFace> snowman = fonts.LoadPath(snowmanPath, FontParameters("fixture", 16.0));
+	std::shared_ptr<Font> font = FontFromFace(primary);
+
+	GlContext context;
+	Renderer renderer(context);
+	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(renderer, 120, 48, {snowman});
+	const ColourRGBA bg(0, 0, 0, 255);
+	const ColourRGBA fg(255, 255, 255, 255);
+	surface->BindDrawTarget();
+	renderer.Clear(bg);
+
+	const std::string text = std::string("A") + "\xE2\x98\x83" + "B";
+	const ShapedRun run = ShapeText(text, primary, {snowman});
+	REQUIRE(run.byteEndPositions.size() == 5);
+	const XYPOSITION originX = 4.0;
+	const XYPOSITION ybase = surface->Ascent(font.get());
+	surface->DrawTextTransparent(PRectangle(originX, 0.0, 120.0, 48.0), font.get(), ybase, text, fg);
+
+	// Three bands from cluster advances: A [0,e0), snowman [e0,e3], B (e3,end].
+	const XYPOSITION aEnd = originX + run.byteEndPositions[0];
+	const XYPOSITION snowEnd = originX + run.byteEndPositions[3];
+	const XYPOSITION bEnd = originX + run.Width();
+
+	auto bandHasInk = [&](XYPOSITION left, XYPOSITION right) {
+		const int x0 = std::max(0, static_cast<int>(std::floor(left)));
+		const int x1 = std::min(surface->Buffer().Width(), static_cast<int>(std::ceil(right)));
+		for (int y = 0; y < surface->Buffer().Height(); y++) {
+			for (int x = x0; x < x1; x++) {
+				if (!ExactColour(surface->Buffer().ReadPixel(x, y), bg)) {
+					return true;
+				}
+			}
+		}
+		return false;
+	};
+	REQUIRE(bandHasInk(originX, aEnd));
+	REQUIRE(bandHasInk(aEnd, snowEnd));
+	REQUIRE(bandHasInk(snowEnd, bEnd));
 }
