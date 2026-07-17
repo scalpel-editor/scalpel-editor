@@ -673,7 +673,7 @@ TEST_CASE("DrawGlyph paints shaped coverage and reuses the glyph cache") {
 	const FontMetrics metrics = face->Metrics();
 	const XYPOSITION baseline = metrics.ascent;
 	REQUIRE(renderer.GlyphCacheSize() == 0);
-	renderer.DrawGlyph(4.0, baseline, *face, run.glyphs[0].glyphId, fg);
+	renderer.DrawGlyph(4.0, baseline, face, run.glyphs[0].glyphId, fg);
 	REQUIRE(renderer.GlyphCacheSize() == 1);
 	REQUIRE(HasNonBackgroundInk(buffer, bg));
 
@@ -681,8 +681,32 @@ TEST_CASE("DrawGlyph paints shaped coverage and reuses the glyph cache") {
 	REQUIRE(ExactColour(buffer.ReadPixel(47, 47), bg));
 
 	// Second draw of the same id reuses the cached texture entry.
-	renderer.DrawGlyph(20.0, baseline, *face, run.glyphs[0].glyphId, fg);
+	renderer.DrawGlyph(20.0, baseline, face, run.glyphs[0].glyphId, fg);
 	REQUIRE(renderer.GlyphCacheSize() == 1);
+}
+
+TEST_CASE("Glyph cache retains each face used by its textures") {
+	GlContext context;
+	Renderer renderer(context);
+	ColourBuffer buffer;
+	buffer.Resize(32, 32);
+	renderer.SetDrawTarget(buffer.FramebufferName(), buffer.Width(), buffer.Height());
+
+	std::weak_ptr<FontFace> cachedFace;
+	{
+		FontCache fonts;
+		const std::filesystem::path primary =
+			std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "FallbackPrimary.ttf";
+		std::shared_ptr<FontFace> face = fonts.LoadPath(primary, FontParameters("fixture", 16.0));
+		const ShapedRun run = ShapeText("A", face);
+		REQUIRE_FALSE(run.glyphs.empty());
+		cachedFace = face;
+		renderer.DrawGlyph(4.0, face->Metrics().ascent, face, run.glyphs[0].glyphId,
+			ColourRGBA(255, 255, 255, 255));
+	}
+
+	REQUIRE(renderer.GlyphCacheSize() == 1);
+	CHECK_FALSE(cachedFace.expired());
 }
 
 TEST_CASE("DrawGlyph respects clip and translucent fore colour") {
@@ -706,12 +730,12 @@ TEST_CASE("DrawGlyph respects clip and translucent fore colour") {
 
 	// Clip to a 1x1 pixel that is outside a typical glyph at pen (30, baseline).
 	renderer.SetClip(PRectangle::FromInts(0, 0, 1, 1));
-	renderer.DrawGlyph(30.0, baseline, *face, run.glyphs[0].glyphId, ColourRGBA(255, 0, 0, 255));
+	renderer.DrawGlyph(30.0, baseline, face, run.glyphs[0].glyphId, ColourRGBA(255, 0, 0, 255));
 	renderer.PopClip();
 	REQUIRE_FALSE(HasNonBackgroundInk(buffer, bg));
 
 	// Full-target translucent red: some pixel must move off pure black.
-	renderer.DrawGlyph(4.0, baseline, *face, run.glyphs[0].glyphId, ColourRGBA(255, 0, 0, 128));
+	renderer.DrawGlyph(4.0, baseline, face, run.glyphs[0].glyphId, ColourRGBA(255, 0, 0, 128));
 	bool sawBlend = false;
 	for (int y = 0; y < buffer.Height() && !sawBlend; y++) {
 		for (int x = 0; x < buffer.Width(); x++) {
@@ -1019,21 +1043,21 @@ TEST_CASE("DrawGlyph applies synthetic xOffset and yOffset placement") {
 	const FontMetrics metrics = face->Metrics();
 	const XYPOSITION baseline = metrics.ascent;
 	const XYPOSITION penX = 8.0;
-	renderer.DrawGlyph(penX, baseline, *face, glyphId, fg);
+	renderer.DrawGlyph(penX, baseline, face, glyphId, fg);
 	const InkBounds baseInk = FindInkBounds(buffer, bg);
 	REQUIRE_FALSE(baseInk.Empty());
 
 	renderer.Clear(bg);
-	// Positive yOffset moves down in surface coords (y increases downward).
+	// Positive HarfBuzz yOffset moves up after conversion to surface coordinates.
 	const XYPOSITION yOffset = 6.0;
-	renderer.DrawGlyph(penX + 0.0, baseline + yOffset, *face, glyphId, fg);
+	renderer.DrawGlyph(penX + 0.0, baseline - yOffset, face, glyphId, fg);
 	const InkBounds shifted = FindInkBounds(buffer, bg);
 	REQUIRE_FALSE(shifted.Empty());
-	CHECK(shifted.top >= baseInk.top + 4);
+	CHECK(shifted.top + 4 <= baseInk.top);
 
 	renderer.Clear(bg);
 	const XYPOSITION xOffset = 10.0;
-	renderer.DrawGlyph(penX + xOffset, baseline, *face, glyphId, fg);
+	renderer.DrawGlyph(penX + xOffset, baseline, face, glyphId, fg);
 	const InkBounds right = FindInkBounds(buffer, bg);
 	REQUIRE_FALSE(right.Empty());
 	CHECK(right.left >= baseInk.left + 6);

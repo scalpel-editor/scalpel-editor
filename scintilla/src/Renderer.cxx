@@ -1016,13 +1016,14 @@ void Renderer::DrawTexturedQuad(float x0, float y0, float x1, float y1,
 	glUseProgram(0);
 }
 
-const Renderer::CachedGlyph &Renderer::GetOrCreateGlyph(const FontFace &face, uint32_t glyphId) {
-	const GlyphKey key{&face, glyphId};
+const Renderer::CachedGlyph &Renderer::GetOrCreateGlyph(
+	const std::shared_ptr<FontFace> &face, uint32_t glyphId) {
+	const GlyphKey key{face, glyphId};
 	if (const auto found = glyphCache.find(key); found != glyphCache.end()) {
 		return found->second;
 	}
 	CachedGlyph cached;
-	const GlyphImage image = face.RasterizeGlyph(glyphId);
+	const GlyphImage image = face->RasterizeGlyph(glyphId);
 	cached.left = image.left;
 	cached.top = image.top;
 	cached.width = image.width;
@@ -1053,9 +1054,10 @@ const Renderer::CachedGlyph &Renderer::GetOrCreateGlyph(const FontFace &face, ui
 	return inserted->second;
 }
 
-void Renderer::DrawGlyph(XYPOSITION penX, XYPOSITION penY, const FontFace &face,
+void Renderer::DrawGlyph(XYPOSITION penX, XYPOSITION penY,
+	const std::shared_ptr<FontFace> &face,
 	uint32_t glyphId, ColourRGBA fore) {
-	if (fore.GetAlpha() == 0) {
+	if (!face || fore.GetAlpha() == 0) {
 		return;
 	}
 	BeginDraw();

@@ -269,8 +269,9 @@ void DrawSurface::DrawTextCommon(PRectangle rc, const Font *font_, XYPOSITION yb
 	XYPOSITION penX = rc.left;
 	for (const ShapedGlyph &glyph : run->glyphs) {
 		if (glyph.face) {
-			renderer->DrawGlyph(penX + glyph.xOffset, ybase + glyph.yOffset,
-				*glyph.face, glyph.glyphId, fore);
+			// HarfBuzz uses font coordinates with Y up; surfaces use Y down.
+			renderer->DrawGlyph(penX + glyph.xOffset, ybase - glyph.yOffset,
+				glyph.face, glyph.glyphId, fore);
 		}
 		penX += glyph.xAdvance;
 	}

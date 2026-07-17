@@ -193,9 +193,10 @@ public:
 	 * bearings place the bitmap: dest left = penX + left, dest top = penY - top.
 	 * fore modulates coverage as straight alpha. Empty bitmaps are a no-op after
 	 * the first miss is cached. Glyph textures stay alive until this Renderer is
-	 * destroyed; face pointer identity is the cache key (same face object).
+	 * destroyed. Cache entries retain their face, and face identity is part of
+	 * the key.
 	 */
-	void DrawGlyph(XYPOSITION penX, XYPOSITION penY, const FontFace &face,
+	void DrawGlyph(XYPOSITION penX, XYPOSITION penY, const std::shared_ptr<FontFace> &face,
 		uint32_t glyphId, ColourRGBA fore);
 
 	/** Number of face+glyphId entries in the glyph texture cache. */
@@ -224,7 +225,7 @@ public:
 
 private:
 	struct GlyphKey {
-		const FontFace *face = nullptr;
+		std::shared_ptr<const FontFace> face;
 		uint32_t glyphId = 0;
 
 		bool operator==(const GlyphKey &other) const noexcept {
@@ -234,7 +235,7 @@ private:
 
 	struct GlyphKeyHash {
 		size_t operator()(const GlyphKey &key) const noexcept {
-			return std::hash<const void *>{}(key.face) ^
+			return std::hash<std::shared_ptr<const FontFace>>{}(key.face) ^
 				(std::hash<uint32_t>{}(key.glyphId) * 0x9e3779b9u);
 		}
 	};
@@ -249,7 +250,7 @@ private:
 
 	void DestroyGl() noexcept;
 	void ClearGlyphCache() noexcept;
-	const CachedGlyph &GetOrCreateGlyph(const FontFace &face, uint32_t glyphId);
+	const CachedGlyph &GetOrCreateGlyph(const std::shared_ptr<FontFace> &face, uint32_t glyphId);
 	void EnsureSolidProgram();
 	void EnsureTextureProgram();
 	void EnsureGradientProgram();
