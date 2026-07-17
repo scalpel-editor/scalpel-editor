@@ -15,6 +15,8 @@
 
 namespace Scintilla::Internal {
 
+class ShapedRunCache;
+
 /**
  * Writing direction stored on a shaped run.
  *
@@ -77,6 +79,40 @@ public:
 		return byteEndPositions.back();
 	}
 };
+
+/**
+ * Copy a shaped run into the Surface::MeasureWidths contract.
+ *
+ * positions must hold at least run.text.size() entries. Each positions[i] is
+ * the cumulative advance through input byte i (inclusive). Empty runs write
+ * nothing.
+ */
+void FillMeasureWidths(const ShapedRun &run, XYPOSITION *positions) noexcept;
+
+/**
+ * Shape text and fill MeasureWidths positions in one step.
+ *
+ * Requires a non-null primary face when text is non-empty (same as ShapeText).
+ * Empty text is a no-op. When cache is non-null, the shaped run is taken from
+ * (or stored in) that cache so later layout and drawing can share it.
+ */
+void MeasureWidthsShaped(
+	std::string_view text,
+	const std::shared_ptr<FontFace> &primary,
+	const std::vector<std::shared_ptr<FontFace>> &fallbacks,
+	XYPOSITION *positions,
+	ShapedRunCache *cache = nullptr);
+
+/**
+ * Total advance of shaped text (empty text is 0).
+ *
+ * Same face and cache rules as MeasureWidthsShaped.
+ */
+XYPOSITION WidthTextShaped(
+	std::string_view text,
+	const std::shared_ptr<FontFace> &primary,
+	const std::vector<std::shared_ptr<FontFace>> &fallbacks = {},
+	ShapedRunCache *cache = nullptr);
 
 /**
  * Shape UTF-8 text as left-to-right English.

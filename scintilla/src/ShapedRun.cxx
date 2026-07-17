@@ -239,6 +239,52 @@ ShapedRun ShapeText(
 	return run;
 }
 
+void FillMeasureWidths(const ShapedRun &run, XYPOSITION *positions) noexcept {
+	if (!positions || run.byteEndPositions.empty()) {
+		return;
+	}
+	std::copy(run.byteEndPositions.begin(), run.byteEndPositions.end(), positions);
+}
+
+namespace {
+
+std::shared_ptr<const ShapedRun> ShapeOrCache(
+	std::string_view text,
+	const std::shared_ptr<FontFace> &primary,
+	const std::vector<std::shared_ptr<FontFace>> &fallbacks,
+	ShapedRunCache *cache) {
+	if (cache) {
+		return cache->Get(text, primary, fallbacks);
+	}
+	return std::make_shared<const ShapedRun>(ShapeText(text, primary, fallbacks));
+}
+
+}
+
+void MeasureWidthsShaped(
+	std::string_view text,
+	const std::shared_ptr<FontFace> &primary,
+	const std::vector<std::shared_ptr<FontFace>> &fallbacks,
+	XYPOSITION *positions,
+	ShapedRunCache *cache) {
+	if (!positions || text.empty()) {
+		return;
+	}
+	const auto run = ShapeOrCache(text, primary, fallbacks, cache);
+	FillMeasureWidths(*run, positions);
+}
+
+XYPOSITION WidthTextShaped(
+	std::string_view text,
+	const std::shared_ptr<FontFace> &primary,
+	const std::vector<std::shared_ptr<FontFace>> &fallbacks,
+	ShapedRunCache *cache) {
+	if (text.empty()) {
+		return 0.0;
+	}
+	return ShapeOrCache(text, primary, fallbacks, cache)->Width();
+}
+
 class ShapedRunCache::Impl {
 public:
 	explicit Impl(size_t capacity_) : capacity(std::max<size_t>(1, capacity_)) {
