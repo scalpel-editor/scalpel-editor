@@ -278,3 +278,103 @@ TEST_CASE("RoundedRectangle / AlphaRectangle fill interior") {
 	// Outside the rounded rect remains background.
 	REQUIRE(ExactColour(surface->Buffer().ReadPixel(0, 0), bg));
 }
+
+TEST_CASE("left-to-right gradient samples ends, midpoint, and off-centre stop") {
+	GlContext context;
+	Renderer renderer(context);
+	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(renderer, 100, 4);
+	surface->BindDrawTarget();
+	renderer.Clear(ColourRGBA(0, 0, 0, 255));
+	// Black at 0, white at 0.25, red at 1. Midpoint (t=0.5) lies between white and red.
+	std::vector<ColourStop> stops = {
+		ColourStop(0.0f, ColourRGBA(0, 0, 0, 255)),
+		ColourStop(0.25f, ColourRGBA(255, 255, 255, 255)),
+		ColourStop(1.0f, ColourRGBA(255, 0, 0, 255)),
+	};
+	surface->GradientRectangle(PRectangle::FromInts(0, 0, 100, 4), stops,
+		Surface::GradientOptions::leftToRight);
+
+	// Pixel centres map to continuous t; check stop, midpoint, and that the
+	// left side is darker than the midpoint and the right side is redder.
+	const ColourRGBA left = surface->Buffer().ReadPixel(5, 1);
+	const ColourRGBA atStop = surface->Buffer().ReadPixel(25, 1);
+	const ColourRGBA mid = surface->Buffer().ReadPixel(50, 1);
+	const ColourRGBA right = surface->Buffer().ReadPixel(95, 1);
+
+	REQUIRE(left.GetRed() < 80);
+	REQUIRE(left.GetGreen() < 80);
+	REQUIRE(NearColour(atStop, ColourRGBA(255, 255, 255, 255), 8));
+	// t≈0.5 is about 1/3 of the way from 0.25 to 1.0 → mix white→red by ~0.333
+	REQUIRE(NearColour(mid, ColourRGBA(255, 170, 170, 255), 16));
+	REQUIRE(right.GetRed() > 200);
+	REQUIRE(right.GetGreen() < 40);
+	REQUIRE(mid.GetGreen() > left.GetGreen());
+}
+
+TEST_CASE("top-to-bottom gradient samples vertical ends") {
+	GlContext context;
+	Renderer renderer(context);
+	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(renderer, 4, 40);
+	surface->BindDrawTarget();
+	renderer.Clear(ColourRGBA(0, 0, 0, 255));
+	std::vector<ColourStop> stops = {
+		ColourStop(0.0f, ColourRGBA(0, 0, 255, 255)),
+		ColourStop(1.0f, ColourRGBA(0, 255, 0, 255)),
+	};
+	surface->GradientRectangle(PRectangle::FromInts(0, 0, 4, 40), stops,
+		Surface::GradientOptions::topToBottom);
+	const ColourRGBA top = surface->Buffer().ReadPixel(1, 2);
+	const ColourRGBA bottom = surface->Buffer().ReadPixel(1, 37);
+	const ColourRGBA mid = surface->Buffer().ReadPixel(1, 20);
+	REQUIRE(top.GetBlue() > 200);
+	REQUIRE(top.GetGreen() < 40);
+	REQUIRE(bottom.GetGreen() > 200);
+	REQUIRE(bottom.GetBlue() < 40);
+	REQUIRE(NearColour(mid, ColourRGBA(0, 128, 128, 255), 20));
+}
+
+TEST_CASE("DrawRGBAImage places top-left pixel correctly") {
+	GlContext context;
+	Renderer renderer(context);
+	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(renderer, 8, 8);
+	surface->BindDrawTarget();
+	renderer.Clear(ColourRGBA(0, 0, 0, 255));
+	// 2x2 image: red, green / blue, white
+	const unsigned char img[] = {
+		255, 0, 0, 255,   0, 255, 0, 255,
+		0, 0, 255, 255,   255, 255, 255, 255,
+	};
+	surface->DrawRGBAImage(PRectangle::FromInts(2, 2, 4, 4), 2, 2, img);
+	REQUIRE(NearColour(surface->Buffer().ReadPixel(2, 2), ColourRGBA(255, 0, 0, 255), 1));
+	REQUIRE(NearColour(surface->Buffer().ReadPixel(3, 2), ColourRGBA(0, 255, 0, 255), 1));
+	REQUIRE(NearColour(surface->Buffer().ReadPixel(2, 3), ColourRGBA(0, 0, 255, 255), 1));
+	REQUIRE(NearColour(surface->Buffer().ReadPixel(3, 3), ColourRGBA(255, 255, 255, 255), 1));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(0, 0), ColourRGBA(0, 0, 0, 255)));
+}
+
+TEST_CASE("AllocatePixMap Copy and pattern fill") {
+	GlContext context;
+	Renderer renderer(context);
+	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(renderer, 16, 16);
+	surface->BindDrawTarget();
+	renderer.Clear(ColourRGBA(0, 0, 0, 255));
+
+	std::unique_ptr<Surface> pix = surface->AllocatePixMap(4, 4);
+	auto *pixSurface = dynamic_cast<DrawSurface *>(pix.get());
+	REQUIRE(pixSurface != nullptr);
+	pixSurface->BindDrawTarget();
+	renderer.Clear(ColourRGBA(0, 0, 255, 255));
+	pixSurface->FillRectangle(PRectangle::FromInts(0, 0, 2, 2), Fill(ColourRGBA(255, 0, 0, 255)));
+
+	// Copy pixmap into main surface at (4,4).
+	surface->BindDrawTarget();
+	surface->Copy(PRectangle::FromInts(4, 4, 8, 8), Point(0, 0), *pix);
+	REQUIRE(NearColour(surface->Buffer().ReadPixel(4, 4), ColourRGBA(255, 0, 0, 255), 1));
+	REQUIRE(NearColour(surface->Buffer().ReadPixel(6, 6), ColourRGBA(0, 0, 255, 255), 1));
+
+	// Pattern fill tiles the pixmap over a region.
+	surface->FillRectangle(PRectangle::FromInts(0, 0, 8, 4), *pix);
+	REQUIRE(NearColour(surface->Buffer().ReadPixel(0, 0), ColourRGBA(255, 0, 0, 255), 1));
+	REQUIRE(NearColour(surface->Buffer().ReadPixel(2, 0), ColourRGBA(0, 0, 255, 255), 1));
+	REQUIRE(NearColour(surface->Buffer().ReadPixel(4, 0), ColourRGBA(255, 0, 0, 255), 1));
+}

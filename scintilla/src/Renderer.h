@@ -172,19 +172,49 @@ public:
 	 */
 	void Stadium(PRectangle rc, FillStroke fillStroke, int ends);
 
+	/**
+	 * Linear gradient fill. Stops are sorted by position in [0,1].
+	 * Interpolation is linear between adjacent stops (not smoothstep).
+	 * options: leftToRight or topToBottom.
+	 */
+	void GradientRectangle(PRectangle rc, const std::vector<ColourStop> &stops, int options);
+
+	/** Draw a top-down RGBA8 image into rc (may scale). */
+	void DrawRGBAImage(PRectangle rc, int width, int height, const unsigned char *pixels);
+
+	/**
+	 * Copy a rectangle from a colour buffer texture into the current target.
+	 * from is the top-left of the source region in source pixel space.
+	 * rc is the destination rectangle in the current target.
+	 */
+	void Copy(PRectangle rc, Point from, const ColourBuffer &source);
+
+	/**
+	 * Tile source texture across rc (pattern fill). Source must be non-empty.
+	 */
+	void FillRectanglePattern(PRectangle rc, const ColourBuffer &pattern);
+
 	[[nodiscard]] int TargetWidth() const noexcept { return targetWidth; }
 	[[nodiscard]] int TargetHeight() const noexcept { return targetHeight; }
 	[[nodiscard]] size_t ClipDepth() const noexcept { return clipStack.size(); }
 
+	/** GradientOptions values mirrored here to avoid pulling Platform into every caller. */
+	static constexpr int kGradientLeftToRight = 0;
+	static constexpr int kGradientTopToBottom = 1;
+
 private:
 	void DestroyGl() noexcept;
 	void EnsureSolidProgram();
+	void EnsureTextureProgram();
+	void EnsureGradientProgram();
 	void ApplyScissor() const;
 	void UploadProjection() const;
 	void DrawSolidQuad(float x0, float y0, float x1, float y1, ColourRGBA colour);
 	void DrawSolidTriangles(const float *xy, size_t vertexCount, ColourRGBA colour);
 	void DrawLineSegment(Point start, Point end, XYPOSITION width, ColourRGBA colour);
 	void DrawEllipse(PRectangle rc, ColourRGBA fill, ColourRGBA stroke, XYPOSITION strokeWidth, bool doFill, bool doStroke);
+	void DrawTexturedQuad(float x0, float y0, float x1, float y1,
+		float u0, float v0, float u1, float v1, unsigned texture, bool flipV);
 	[[nodiscard]] PixelRect CurrentClip() const noexcept;
 	void BeginDraw();
 	void SetBlendForColour(ColourRGBA colour);
@@ -197,10 +227,20 @@ private:
 	std::vector<PixelRect> clipStack;
 
 	unsigned programSolid = 0;
+	unsigned programTexture = 0;
+	unsigned programGradient = 0;
 	unsigned vao = 0;
 	unsigned vbo = 0;
 	int uniformTransform = -1;
 	int uniformColour = -1;
+	int uniformTexTransform = -1;
+	int uniformTexSampler = -1;
+	int uniformGradTransform = -1;
+	int uniformGradStart = -1;
+	int uniformGradEnd = -1;
+	int uniformGradStopCount = -1;
+	int uniformGradStops = -1;
+	int uniformGradColours = -1;
 };
 
 }

@@ -8,6 +8,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #define GL_GLEXT_PROTOTYPES
@@ -84,6 +85,77 @@ uniform vec4 uColour;
 out vec4 fragColour;
 void main() {
 	fragColour = uColour;
+}
+)";
+
+const char *kTextureVert = R"(#version 330 core
+layout(location = 0) in vec2 aPos;
+layout(location = 1) in vec2 aUV;
+uniform mat4 uTransform;
+out vec2 vUV;
+void main() {
+	gl_Position = uTransform * vec4(aPos, 0.0, 1.0);
+	vUV = aUV;
+}
+)";
+
+const char *kTextureFrag = R"(#version 330 core
+in vec2 vUV;
+uniform sampler2D uTex;
+out vec4 fragColour;
+void main() {
+	fragColour = texture(uTex, vUV);
+}
+)";
+
+// Linear gradient along a line from uStart to uEnd in surface pixel space.
+// Stop positions in [0,1]; colours are straight RGBA. Linear mix between stops.
+const char *kGradientVert = R"(#version 330 core
+layout(location = 0) in vec2 aPos;
+uniform mat4 uTransform;
+out vec2 vPos;
+void main() {
+	gl_Position = uTransform * vec4(aPos, 0.0, 1.0);
+	vPos = aPos;
+}
+)";
+
+const char *kGradientFrag = R"(#version 330 core
+in vec2 vPos;
+uniform vec2 uStart;
+uniform vec2 uEnd;
+uniform int uStopCount;
+uniform float uStops[8];
+uniform vec4 uColours[8];
+out vec4 fragColour;
+void main() {
+	vec2 d = uEnd - uStart;
+	float len2 = dot(d, d);
+	float t = 0.0;
+	if (len2 > 1e-6) {
+		t = clamp(dot(vPos - uStart, d) / len2, 0.0, 1.0);
+	}
+	if (uStopCount <= 0) {
+		fragColour = vec4(0.0);
+		return;
+	}
+	if (uStopCount == 1 || t <= uStops[0]) {
+		fragColour = uColours[0];
+		return;
+	}
+	for (int i = 1; i < 8; ++i) {
+		if (i >= uStopCount) {
+			fragColour = uColours[uStopCount - 1];
+			return;
+		}
+		if (t <= uStops[i]) {
+			float span = uStops[i] - uStops[i - 1];
+			float u = span > 1e-6 ? (t - uStops[i - 1]) / span : 0.0;
+			fragColour = mix(uColours[i - 1], uColours[i], u);
+			return;
+		}
+	}
+	fragColour = uColours[uStopCount - 1];
 }
 )";
 
@@ -235,8 +307,24 @@ void Renderer::DestroyGl() noexcept {
 		glDeleteProgram(programSolid);
 		programSolid = 0;
 	}
+	if (programTexture != 0) {
+		glDeleteProgram(programTexture);
+		programTexture = 0;
+	}
+	if (programGradient != 0) {
+		glDeleteProgram(programGradient);
+		programGradient = 0;
+	}
 	uniformTransform = -1;
 	uniformColour = -1;
+	uniformTexTransform = -1;
+	uniformTexSampler = -1;
+	uniformGradTransform = -1;
+	uniformGradStart = -1;
+	uniformGradEnd = -1;
+	uniformGradStopCount = -1;
+	uniformGradStops = -1;
+	uniformGradColours = -1;
 }
 
 void Renderer::EnsureSolidProgram() {
@@ -255,12 +343,43 @@ void Renderer::EnsureSolidProgram() {
 	glGenBuffers(1, &vbo);
 	glBindVertexArray(vao);
 	glBindBuffer(GL_ARRAY_BUFFER, vbo);
-	// Large enough for tessellated ellipses/stadiums (updated per draw).
-	glBufferData(GL_ARRAY_BUFFER, 512 * 2 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+	// Large enough for tessellated ellipses/stadiums or textured quads (pos+uv).
+	glBufferData(GL_ARRAY_BUFFER, 512 * 4 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
 	glEnableVertexAttribArray(0);
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
+	// Location 1 enabled only for texture draws (stride set there).
 	glBindVertexArray(0);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+
+void Renderer::EnsureTextureProgram() {
+	if (programTexture != 0) {
+		return;
+	}
+	const GLuint vs = CompileShader(GL_VERTEX_SHADER, kTextureVert);
+	const GLuint fs = CompileShader(GL_FRAGMENT_SHADER, kTextureFrag);
+	programTexture = LinkProgram(vs, fs);
+	glDeleteShader(vs);
+	glDeleteShader(fs);
+	uniformTexTransform = glGetUniformLocation(programTexture, "uTransform");
+	uniformTexSampler = glGetUniformLocation(programTexture, "uTex");
+}
+
+void Renderer::EnsureGradientProgram() {
+	if (programGradient != 0) {
+		return;
+	}
+	const GLuint vs = CompileShader(GL_VERTEX_SHADER, kGradientVert);
+	const GLuint fs = CompileShader(GL_FRAGMENT_SHADER, kGradientFrag);
+	programGradient = LinkProgram(vs, fs);
+	glDeleteShader(vs);
+	glDeleteShader(fs);
+	uniformGradTransform = glGetUniformLocation(programGradient, "uTransform");
+	uniformGradStart = glGetUniformLocation(programGradient, "uStart");
+	uniformGradEnd = glGetUniformLocation(programGradient, "uEnd");
+	uniformGradStopCount = glGetUniformLocation(programGradient, "uStopCount");
+	uniformGradStops = glGetUniformLocation(programGradient, "uStops");
+	uniformGradColours = glGetUniformLocation(programGradient, "uColours");
 }
 
 void Renderer::MakeCurrent() {
@@ -738,6 +857,226 @@ void Renderer::Stadium(PRectangle rc, FillStroke fillStroke, int ends) {
 			LineDraw(Point(rc.right, rc.top), Point(rc.right, rc.bottom), stroke);
 		}
 	}
+}
+
+void Renderer::DrawTexturedQuad(float x0, float y0, float x1, float y1,
+	float u0, float v0, float u1, float v1, unsigned texture, bool flipV) {
+	EnsureTextureProgram();
+	// Texture sampling uses top-down UVs by default (v=0 at top of image).
+	// OpenGL textures are bottom-up; ColourBuffer contents match that when
+	// rendered into an FBO. flipV selects whether to invert V for uploads that
+	// were given as top-down rows (DrawRGBAImage).
+	if (flipV) {
+		std::swap(v0, v1);
+	}
+	// Interleaved pos.xy, uv.xy — six vertices.
+	const float verts[24] = {
+		x0, y0, u0, v0,
+		x1, y0, u1, v0,
+		x1, y1, u1, v1,
+		x0, y0, u0, v0,
+		x1, y1, u1, v1,
+		x0, y1, u0, v1,
+	};
+	glUseProgram(programTexture);
+	float mat[16];
+	OrthoTopLeft(static_cast<float>(targetWidth), static_cast<float>(targetHeight), mat);
+	glUniformMatrix4fv(uniformTexTransform, 1, GL_FALSE, mat);
+	glUniform1i(uniformTexSampler, 0);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, texture);
+	glBindVertexArray(vao);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), nullptr);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
+		reinterpret_cast<void *>(2 * sizeof(float)));
+	glEnableVertexAttribArray(1);
+	glDrawArrays(GL_TRIANGLES, 0, 6);
+	glDisableVertexAttribArray(1);
+	// Restore solid-program layout (tight packed vec2).
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
+	glBindVertexArray(0);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	glUseProgram(0);
+}
+
+void Renderer::GradientRectangle(PRectangle rc, const std::vector<ColourStop> &stops, int options) {
+	if (stops.empty() || rc.Width() <= 0.0 || rc.Height() <= 0.0) {
+		return;
+	}
+	BeginDraw();
+	if (CurrentClip().Empty()) {
+		return;
+	}
+	EnsureGradientProgram();
+
+	// Sort stops by position for stable linear segments.
+	std::vector<ColourStop> ordered = stops;
+	std::sort(ordered.begin(), ordered.end(),
+		[](const ColourStop &a, const ColourStop &b) { return a.position < b.position; });
+	const int count = static_cast<int>(std::min<size_t>(ordered.size(), 8));
+
+	float stopPos[8] = {};
+	float stopCol[8 * 4] = {};
+	for (int i = 0; i < count; i++) {
+		stopPos[i] = static_cast<float>(ordered[static_cast<size_t>(i)].position);
+		const ColourRGBA c = ordered[static_cast<size_t>(i)].colour;
+		stopCol[i * 4 + 0] = c.GetRedComponent();
+		stopCol[i * 4 + 1] = c.GetGreenComponent();
+		stopCol[i * 4 + 2] = c.GetBlueComponent();
+		stopCol[i * 4 + 3] = c.GetAlphaComponent();
+	}
+
+	float sx = static_cast<float>(rc.left);
+	float sy = static_cast<float>(rc.top);
+	float ex = static_cast<float>(rc.right);
+	float ey = static_cast<float>(rc.top);
+	if (options == kGradientTopToBottom) {
+		ex = static_cast<float>(rc.left);
+		ey = static_cast<float>(rc.bottom);
+	}
+
+	const float verts[12] = {
+		static_cast<float>(rc.left), static_cast<float>(rc.top),
+		static_cast<float>(rc.right), static_cast<float>(rc.top),
+		static_cast<float>(rc.right), static_cast<float>(rc.bottom),
+		static_cast<float>(rc.left), static_cast<float>(rc.top),
+		static_cast<float>(rc.right), static_cast<float>(rc.bottom),
+		static_cast<float>(rc.left), static_cast<float>(rc.bottom),
+	};
+
+	// Use blend if any stop is translucent.
+	bool anyTranslucent = false;
+	for (int i = 0; i < count; i++) {
+		if (!ordered[static_cast<size_t>(i)].colour.IsOpaque()) {
+			anyTranslucent = true;
+			break;
+		}
+	}
+	if (anyTranslucent) {
+		glEnable(GL_BLEND);
+	} else {
+		glDisable(GL_BLEND);
+	}
+
+	glUseProgram(programGradient);
+	float mat[16];
+	OrthoTopLeft(static_cast<float>(targetWidth), static_cast<float>(targetHeight), mat);
+	glUniformMatrix4fv(uniformGradTransform, 1, GL_FALSE, mat);
+	glUniform2f(uniformGradStart, sx, sy);
+	glUniform2f(uniformGradEnd, ex, ey);
+	glUniform1i(uniformGradStopCount, count);
+	glUniform1fv(uniformGradStops, 8, stopPos);
+	glUniform4fv(uniformGradColours, 8, stopCol);
+	glBindVertexArray(vao);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
+	glDrawArrays(GL_TRIANGLES, 0, 6);
+	glBindVertexArray(0);
+	glUseProgram(0);
+	glDisable(GL_BLEND);
+}
+
+void Renderer::DrawRGBAImage(PRectangle rc, int width, int height, const unsigned char *pixels) {
+	if (!pixels || width <= 0 || height <= 0 || rc.Width() <= 0.0 || rc.Height() <= 0.0) {
+		return;
+	}
+	BeginDraw();
+	if (CurrentClip().Empty()) {
+		return;
+	}
+	// pixels are top-down. glTexImage2D treats the first row as the texture's
+	// bottom (v=0). Sampling with v=0 at the top of the dest quad therefore
+	// shows the first image row at the top without an extra V flip.
+	GLuint tex = 0;
+	glGenTextures(1, &tex);
+	glBindTexture(GL_TEXTURE_2D, tex);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	glEnable(GL_BLEND);
+	DrawTexturedQuad(
+		static_cast<float>(rc.left), static_cast<float>(rc.top),
+		static_cast<float>(rc.right), static_cast<float>(rc.bottom),
+		0.0f, 0.0f, 1.0f, 1.0f, tex, false);
+	glDisable(GL_BLEND);
+
+	glDeleteTextures(1, &tex);
+}
+
+void Renderer::Copy(PRectangle rc, Point from, const ColourBuffer &source) {
+	if (!source.Valid() || rc.Width() <= 0.0 || rc.Height() <= 0.0) {
+		return;
+	}
+	BeginDraw();
+	if (CurrentClip().Empty()) {
+		return;
+	}
+	const float sw = static_cast<float>(source.Width());
+	const float sh = static_cast<float>(source.Height());
+	if (sw <= 0.0f || sh <= 0.0f) {
+		return;
+	}
+	// Source UVs in OpenGL space (origin bottom-left on the texture).
+	// `from` and destination size are top-down surface coords on the source buffer.
+	const float srcLeft = static_cast<float>(from.x);
+	const float srcTop = static_cast<float>(from.y);
+	const float srcRight = srcLeft + static_cast<float>(rc.Width());
+	const float srcBottom = srcTop + static_cast<float>(rc.Height());
+	const float u0 = srcLeft / sw;
+	const float u1 = srcRight / sw;
+	// FBO colour attachments use OpenGL's bottom-left origin. Top-down source
+	// y maps to V = 1 - y/height. Dest top (y0) samples source top.
+	const float vTop = 1.0f - srcTop / sh;
+	const float vBottom = 1.0f - srcBottom / sh;
+
+	glDisable(GL_BLEND);
+	DrawTexturedQuad(
+		static_cast<float>(rc.left), static_cast<float>(rc.top),
+		static_cast<float>(rc.right), static_cast<float>(rc.bottom),
+		u0, vTop, u1, vBottom, source.TextureName(), false);
+}
+
+void Renderer::FillRectanglePattern(PRectangle rc, const ColourBuffer &pattern) {
+	if (!pattern.Valid() || rc.Width() <= 0.0 || rc.Height() <= 0.0) {
+		return;
+	}
+	BeginDraw();
+	if (CurrentClip().Empty()) {
+		return;
+	}
+	const float pw = static_cast<float>(pattern.Width());
+	const float ph = static_cast<float>(pattern.Height());
+	if (pw <= 0.0f || ph <= 0.0f) {
+		return;
+	}
+	// Tile count in pattern texels. FBO textures are bottom-up; match Copy.
+	const float u1 = static_cast<float>(rc.Width()) / pw;
+	const float tilesY = static_cast<float>(rc.Height()) / ph;
+	glBindTexture(GL_TEXTURE_2D, pattern.TextureName());
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	glDisable(GL_BLEND);
+	// Dest top samples high V within each tile so pattern top-down matches.
+	DrawTexturedQuad(
+		static_cast<float>(rc.left), static_cast<float>(rc.top),
+		static_cast<float>(rc.right), static_cast<float>(rc.bottom),
+		0.0f, tilesY, u1, 0.0f, pattern.TextureName(), false);
+
+	glBindTexture(GL_TEXTURE_2D, pattern.TextureName());
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 }

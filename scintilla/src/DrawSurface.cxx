@@ -160,7 +160,15 @@ void DrawSurface::FillRectangleAligned(PRectangle rc, Fill fill) {
 	FillRectangle(PixelAlign(rc, PixelDivisions()), fill);
 }
 
-void DrawSurface::FillRectangle(PRectangle, Surface &) {}
+void DrawSurface::FillRectangle(PRectangle rc, Surface &surfacePattern) {
+	EnsureRenderer();
+	auto *pattern = dynamic_cast<DrawSurface *>(&surfacePattern);
+	if (!pattern || !pattern->Buffer().Valid()) {
+		return;
+	}
+	BindDrawTarget();
+	renderer->FillRectanglePattern(rc, pattern->Buffer());
+}
 
 void DrawSurface::RoundedRectangle(PRectangle rc, FillStroke fillStroke) {
 	EnsureRenderer();
@@ -175,8 +183,24 @@ void DrawSurface::AlphaRectangle(PRectangle rc, XYPOSITION cornerSize, FillStrok
 	renderer->AlphaRectangle(rc, cornerSize, fillStroke);
 }
 
-void DrawSurface::GradientRectangle(PRectangle, const std::vector<ColourStop> &, GradientOptions) {}
-void DrawSurface::DrawRGBAImage(PRectangle, int, int, const unsigned char *) {}
+void DrawSurface::GradientRectangle(PRectangle rc, const std::vector<ColourStop> &stops,
+	GradientOptions options) {
+	EnsureRenderer();
+	BindDrawTarget();
+	const int opt = (options == GradientOptions::topToBottom)
+		? Renderer::kGradientTopToBottom
+		: Renderer::kGradientLeftToRight;
+	renderer->GradientRectangle(rc, stops, opt);
+}
+
+void DrawSurface::DrawRGBAImage(PRectangle rc, int width, int height, const unsigned char *pixelsImage) {
+	EnsureRenderer();
+	BindDrawTarget();
+	if (!pixelsImage || width <= 0 || height <= 0) {
+		return;
+	}
+	renderer->DrawRGBAImage(rc, width, height, pixelsImage);
+}
 
 void DrawSurface::Ellipse(PRectangle rc, FillStroke fillStroke) {
 	EnsureRenderer();
@@ -190,7 +214,15 @@ void DrawSurface::Stadium(PRectangle rc, FillStroke fillStroke, Ends ends) {
 	renderer->Stadium(rc, fillStroke, static_cast<int>(ends));
 }
 
-void DrawSurface::Copy(PRectangle, Point, Surface &) {}
+void DrawSurface::Copy(PRectangle rc, Point from, Surface &surfaceSource) {
+	EnsureRenderer();
+	auto *source = dynamic_cast<DrawSurface *>(&surfaceSource);
+	if (!source || !source->Buffer().Valid()) {
+		return;
+	}
+	BindDrawTarget();
+	renderer->Copy(rc, from, source->Buffer());
+}
 
 std::unique_ptr<IScreenLineLayout> DrawSurface::Layout(const IScreenLine *screenLine) {
 	return LayoutScreenLine(screenLine);
