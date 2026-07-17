@@ -55,27 +55,15 @@ const std::map<KeyModifiers, EditorCommand> &KeyMap::GetKeyMap() const noexcept 
 	return kmap;
 }
 
-#if PLAT_GTK_MACOSX
-#define OS_X_KEYS 1
-#else
-#define OS_X_KEYS 0
-#endif
-
 namespace {
 
 constexpr Keys Key(char ch) noexcept {
 	return static_cast<Keys>(ch);
 }
 
-// Modifier that is exactly Ctrl on non-macOS platforms. Most Ctrl bindings
-// map to Cmd (Meta) on macOS; bindings that must stay Ctrl use KeyMod::Ctrl.
-#if OS_X_KEYS
-constexpr KeyMod CtrlOrMeta = KeyMod::Meta;
-constexpr KeyMod CtrlOrMetaShift = KeyMod::Meta | KeyMod::Shift;
-#else
+// Ctrl is the primary modifier for key bindings on this Wayland host.
 constexpr KeyMod CtrlOrMeta = KeyMod::Ctrl;
 constexpr KeyMod CtrlOrMetaShift = KeyMod::Ctrl | KeyMod::Shift;
-#endif
 
 constexpr KeyMod CtrlShift = KeyMod::Ctrl | KeyMod::Shift;
 constexpr KeyMod AltShift = KeyMod::Alt | KeyMod::Shift;
@@ -83,17 +71,6 @@ constexpr KeyMod AltShift = KeyMod::Alt | KeyMod::Shift;
 }
 
 const KeyToCommand KeyMap::MapDefault[] = {
-
-#if OS_X_KEYS
-	{Keys::Down,		KeyMod::Ctrl,	EditorCommand::DocumentEnd},
-	{Keys::Down,		CtrlShift,	EditorCommand::DocumentEndExtend},
-	{Keys::Up,		KeyMod::Ctrl,	EditorCommand::DocumentStart},
-	{Keys::Up,		CtrlShift,	EditorCommand::DocumentStartExtend},
-	{Keys::Left,		KeyMod::Ctrl,	EditorCommand::VCHome},
-	{Keys::Left,		CtrlShift,	EditorCommand::VCHomeExtend},
-	{Keys::Right,		KeyMod::Ctrl,	EditorCommand::LineEnd},
-	{Keys::Right,		CtrlShift,	EditorCommand::LineEndExtend},
-#endif
 
 	{Keys::Down,		KeyMod::Norm,	EditorCommand::LineDown},
 	{Keys::Down,		KeyMod::Shift,	EditorCommand::LineDownExtend},
@@ -153,11 +130,7 @@ const KeyToCommand KeyMap::MapDefault[] = {
 	{Keys::Back,		KeyMod::Alt,	EditorCommand::Undo},
 	{Keys::Back,		CtrlShift,	EditorCommand::DelLineLeft},
 	{Key('Z'),		KeyMod::Ctrl,	EditorCommand::Undo},
-#if OS_X_KEYS
-	{Key('Z'),		CtrlShift,	EditorCommand::Redo},
-#else
 	{Key('Y'),		KeyMod::Ctrl,	EditorCommand::Redo},
-#endif
 	{Key('X'),		KeyMod::Ctrl,	EditorCommand::Cut},
 	{Key('C'),		KeyMod::Ctrl,	EditorCommand::Copy},
 	{Key('V'),		KeyMod::Ctrl,	EditorCommand::Paste},

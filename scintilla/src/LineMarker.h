@@ -36,10 +36,7 @@ public:
 	XYPOSITION strokeWidth = 1.0f;
 	std::unique_ptr<XPM> pxpm;
 	std::unique_ptr<RGBAImage> image;
-	/** Some platforms, notably PLAT_CURSES, do not support Scintilla's native
-	 * Draw function for drawing line markers. Allow those platforms to override
-	 * it instead of creating a new method(s) in the Surface class that existing
-	 * platforms must implement as empty. */
+	/** Optional override when the default marker drawing is not used. */
 	DrawLineMarkerFn customDraw = nullptr;
 
 	LineMarker() noexcept = default;

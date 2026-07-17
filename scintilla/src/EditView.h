@@ -101,10 +101,7 @@ public:
 	static constexpr int bytesPerLayoutThread = 1000;
 
 	int tabArrowHeight; // draw arrow heads this many pixels above/below line midpoint
-	/** Some platforms, notably PLAT_CURSES, do not support Scintilla's native
-	 * DrawTabArrow function for drawing tab characters. Allow those platforms to
-	 * override it instead of creating a new method in the Surface class that
-	 * existing platforms must implement as empty. */
+	/** Optional override for DrawTabArrow when the default drawing is not used. */
 	DrawTabArrowFn customDrawTabArrow;
 	DrawWrapMarkerFn customDrawWrapMarker;
 
