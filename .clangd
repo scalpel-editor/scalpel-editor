@@ -1,0 +1,3 @@
+# Point clangd at the normal development build tree (cmake --preset dev).
+CompileFlags:
+  CompilationDatabase: build
