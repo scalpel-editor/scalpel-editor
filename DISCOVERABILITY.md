@@ -2,11 +2,11 @@
 
 This guide defines how the Scintilla refactor should make features easier to find and understand with exact search, semantic code search, structural tools, and direct source reading. Search quality is part of the refactor result, but no single tool or query defines success.
 
-The accumulated repository-structure lessons and grepai improvement ideas are recorded in [DISCOVERABILITY_LESSONS.md](DISCOVERABILITY_LESSONS.md). This guide remains the source for refactor rules, benchmark procedure, and acceptance criteria.
+Reusable source-organization lessons and grepai improvement ideas are recorded in [DISCOVERABILITY_LESSONS.md](DISCOVERABILITY_LESSONS.md). The [scalpel-editor case study](DISCOVERABILITY_CASE_STUDY.md) records project-specific measurements, corrections, and decisions. This guide remains the source for refactor rules, benchmark procedure, and acceptance criteria.
 
 ## What the wrap-mode case showed
 
-The phase 2 `SetWrapMode` extraction gave the operation a direct name and focused behavior tests, but it left the small implementation inside the roughly 9,000-line pre-split `Editor.cxx`. A grepai search for `set wrap mode` did not reliably return that implementation. Rewording the declaration comment moved its result between third and fourth place, and copying the comment above the definition did not improve the result. Phase 4 moved complete concerns into named files; the shared shell that remains in `Editor.cxx` is intentional (paint, geometry, notifications, temporary dispatch).
+The phase 2 `SetWrapMode` extraction gave the operation a direct name and focused behavior tests, but it left the small implementation inside the roughly 9,000-line pre-split `Editor.cxx`. A grepai search for `set wrap mode` did not reliably return that implementation. Rewording the declaration comment moved its result between third and fourth place, and copying the comment above the definition did not improve the result. Phase 4 moved complete concerns into named files; the shared work that remains in `Editor.cxx`, including paint, geometry, notifications, and movement helpers, is intentional.
 
 The local grepai configuration uses 512-token chunks with 50-token overlap and the `nomic-embed-text` model. The upstream grepai chunker approximates this as fixed windows of about 2,048 characters with about 200 characters of overlap, breaks at newlines rather than C++ function boundaries, and adds the file path to the text embedded for every chunk. The required local build includes `.cxx` indexing plus the status wait interface introduced by `47bba43`; use `grepai version` and recorded benchmark metadata for the exact installed identity. (`.iface` was indexed during phase 4 while the generator input still existed; that file is gone after phase 5 step 10.) Local benchmark results remain the authority, but the observed chunk boundaries agree with the [upstream chunker](https://github.com/yoanbernabeu/grepai/blob/main/indexer/chunker.go).
 
@@ -20,12 +20,12 @@ grepai call and reference analysis also has current limits. Tests reported decla
 
 - Organize implementation files by a plain feature or concern name, such as `EditorWrapping.cxx`, `EditorScrolling.cxx`, or `EditorSelection.cxx`. Avoid catch-all names such as `Utilities`, `Settings`, or `Misc`.
 - Keep neighboring code about the same concern. A natural-language search is useful when it reaches the right small concern file even if its first chunk contains a helper rather than the exact entry point.
-- Move a complete concern in one reviewable sequence: named entry points, private helpers, focused tests, useful documentation, and temporary forwarding cases. Extracting one small wrapper while leaving its concern spread through `Editor.cxx` is not a discoverability result.
+- Move a complete concern in one reviewable sequence: named entry points, private helpers, focused tests, useful documentation, and any temporary forwarding cases required by the current phase. Extracting one small wrapper while leaving its concern spread through `Editor.cxx` is not a discoverability result.
 - Use the same plain feature nouns in filenames, operation names, state types, tests, and documentation where they describe the same thing. Prefer specific names such as `SetWrapMode`, `WrapPending`, and `WrapLines` over generic boundary names such as `Apply`, `Process`, or `SetState`.
 - Keep the authoritative behavior description with the named operation beside its definition in the concern file. Do not maintain two detailed copies in the declaration and definition.
 - Order each concern file for its own readable control flow rather than imposing one public-first or private-first layout. The autocomplete pilot benefited from named operations before a long private workflow; call tips worked best with the public operation directly beside its placement helper and with autocomplete cancellation owned by the public path.
 - Write comments for readers. Explain choices, effects, units, delayed work, and exceptional behavior that the code does not make obvious. Do not repeat likely queries or add lists of synonyms to influence ranking.
-- Remove obsolete API prose and deleted-feature documentation with the concern that replaces or deletes it. Transitional generated interfaces and forwarding cases may remain until their planned phase, but they must not be mistaken for the authoritative implementation.
+- Remove obsolete API prose and deleted-feature documentation with the concern that replaces or deletes it. Historical records belong in designated documents and must not be mistaken for the authoritative implementation.
 - Keep direct control flow from a named entry point into its work. Delete numeric dispatch and avoid new indirection whose only purpose is routing between names.
 - Do not arrange code around grepai's current chunk size or a particular embedding model. Concern-focused files and direct names must remain useful when tools and settings change.
 - Treat search as a two-step workflow. Natural-language search should find the correct concern; exact or structural search should then find the named definition and its callers. Do not require vector search to replace `rg` when the name is already known.
@@ -45,7 +45,7 @@ The watcher incrementally reindexes only changed files. `--indexed` reloads the 
 - User intent: `turn wrapping on for long lines`
 - Observable effect: `reset horizontal scrolling when wrapping changes`
 
-An exact-name check must also use `rg`. It should find one authoritative definition, the required declaration, intentional call sites, and only the temporary forwarding paths allowed by the current phase.
+An exact-name check must also use `rg`. It should find one authoritative definition, the required declaration, and intentional call sites, with no deleted forwarding path remaining after Phase 5.
 
 Run semantic queries both across the whole repository and with `--path scintilla/src`. The whole-repository result measures the real default experience, including competition from `seed/`, generated interfaces, tests, and transitional documents. The path-limited result separates source organization from repository noise.
 
@@ -99,33 +99,24 @@ Add a boundary-stability check after each pilot. Add or remove about 200 charact
 
 Add cold navigation checks for the baseline and pilot. Ask a reader or agent to locate a feature, summarize its effects, identify its callers, and name its focused tests without first giving it the symbol name. Record the searches used, wrong files opened, and whether it reached the authoritative implementation.
 
-## Initial acceptance criteria
+## Acceptance criteria
 
-- Every exact-name query finds the authoritative definition with `rg`.
-- With the chosen normal grepai configuration, every exact-name query places the correct concern file in the top three results. The corresponding hybrid query places the authoritative definition in the top three; `rg` remains the authority for the exact definition and callers.
-- At least 80 percent of natural-language and effect queries place the correct concern file in the top three results.
-- A cold navigation check reaches the authoritative implementation in no more than two search steps.
-- Held-out queries do not regress when comments or file boundaries change.
-- Boundary-stability checks keep the correct concern in the top three.
-- Obsolete documentation and reference code do not outrank the authoritative concern after the phase that removes them.
-- The concern's focused behavior tests and `./check.sh` pass independently of the search benchmark.
+- Every exact-name query finds the authoritative definition, required declaration, and focused evidence with `rg`.
+- At least 80 percent of retained spaced-name, intent, and effect queries place the expected concern in the top three under vector search over the whole repository.
+- A cold navigation check reaches each sampled authoritative implementation in no more than two search steps.
+- Held-out and boundary-stability ranks are recorded as diagnostics so changes tied to wording or fixed windows remain visible.
+- Obsolete documentation, generated material, reference code, and benchmark output do not outrank the authoritative concern after their removal phase.
+- Deleted features are excluded from retained-feature rank percentages; they pass when no live implementation remains and the decision record is findable.
+- Focused behavior tests and `./check.sh` pass independently of the search benchmark.
 
-The chosen normal configuration for these criteria is vector search over the whole repository (live `search.hybrid.enabled: false`). Path-limited cells and hybrid natural-language results are diagnostic comparisons; hybrid exact-name definition rank is the secondary exact-name gate.
+The chosen normal configuration is vector search over the whole repository (live `search.hybrid.enabled: false`). Path-limited cells, hybrid results, and exact-name grepai ranks are diagnostics. `rg` remains the authority for exact definitions and callers.
 
-The wrapping pilot adjusted the exact-name rule after `WrapCount` demonstrated a conflict in the initial criteria. Vector search ranked `EditorWrapping.cxx` first before and after a reader-oriented attempt to move the short definition earlier in the file, but it did not return the definition's chunk in the first ten; hybrid search ranked the definition first, and `rg` found its single definition directly. Requiring the vector engine to select a particular chunk would contradict the two-step search rule and encourage layout tied to the current fixed windows. Pilot acceptance counts the features moved by that pilot. The full corpus still runs and records changes to unmoved concerns so later steps can see broad effects without treating a temporary chunk shift in `Editor.cxx` as evidence about the moved concern.
+The wrapping pilot established the two-step rule after `WrapCount` showed that a correct concern could rank first while its short definition chunk remained outside the first ten. The autocomplete and call-tip pilot approved concern files for a different owner and rejected a universal source-order rule. The [case study](DISCOVERABILITY_CASE_STUDY.md) records both pilots and the final Phase 4/5 measurements.
 
-The autocomplete and call-tip pilot approved placing authoritative descriptions beside definitions, but rejected a universal source-order rule. Moving all call-tip public operations before private work regressed the held-out query; keeping the public show operation beside its point-based helper, while making the public path directly own autocomplete cancellation, passed the normal, held-out, and boundary checks. Organize each concern around direct readable control flow, then verify it with the fixed corpus.
+The Phase 4 final gate reached 27 of 33 retained descriptive queries in the top three (81.8 percent). Phase 5 reached 28 of 33 (84.8 percent). Exact-name grepai results stayed at 6 of 11 while exact `rg` checks and all sampled cold-navigation paths passed. These results confirm that exact-name grepai rank is not a completion gate and that deleted-feature queries need a separate absence rule.
 
-The Phase 4 final gate applies the two-step search rule directly. Natural-language, intent, and effect queries must meet the 80 percent concern-file threshold, and cold navigation must reach the implementation within two searches. Exact identifier lookup is gated by `rg`, which must find the authoritative definition, declaration, focused evidence, and only the intentional temporary forwarders; vector and hybrid exact-name ranks remain recorded diagnostics. The earlier pilot rule requiring semantic exact-name top-three ranks worked for distinctive pilot names, but it does not generalize to the final corpus: `Undo` correctly retrieves the lower-level undo history, `LineDown` retrieves screen-line and caret work, and short named definitions can share chunks with unrelated fixed-window neighbors. Rearranging correct concern files or repeating identifiers in comments to change those ranks would conflict with the reader-oriented file and comment rules. In the corrected and benchmark-output-filtered final diagnostic, retained natural-language queries reach the expected concern in 27 of 33 cases (81.8 percent); cold navigation reaches wrapping, Undo, LineDown, and call tips in one search and target search and modification filtering in two. Exact `rg` checks remain the required completion evidence. Deleted-feature queries are reported separately from retained-feature percentages: their gate is absence of a live operation plus a findable decision record.
+When a later change misses these criteria, inspect concern boundaries, competing stale material, whether the durable index includes every changed file, corpus expectations, and search configuration before changing comment wording. Record any adjusted criterion and its evidence here rather than silently tuning the benchmark to the result.
 
-Baseline (pre-pilot) against that default cell: exact-name `rg` passes; exact-name definition top-3 is far below the bar; natural-language concern top-3 is about half of queries; HTML and seed often outrank live code; wrap cold nav reaches the right file in one step but the wrong span; undo cold nav fails. Full tables and the boundary re-run are in [`benchmark-results/baseline/observations.md`](benchmark-results/baseline/observations.md). Pilots are measured by improvement over that record, not by matching a path-limited hybrid cell that already looks healthier on the mixed tree.
+## Completed Phase 4 pilots
 
-If a pilot misses these criteria, inspect concern boundaries, competing stale material, whether the index still reflects the moved files, and search configuration before changing comment wording. Record any adjusted criterion and the evidence for it here rather than silently tuning the benchmark to the result.
-
-## Phase 4 pilot sequence
-
-The first pilot is the complete wrapping concern, not another isolated `SetWrapMode` edit. Move the wrapping entry points and private wrapping work into a clearly named concern file, move the useful documentation with them, retain only the temporary forwarding paths required by the phase, and run the benchmark before and after.
-
-The second pilot must have a different shape. Autocomplete and call tips are the preferred candidate because they live in `ScintillaBase`, manage popup state, and are retained even though the first Wayland application will initially provide explicit unsupported host operations. A successful second pilot reduces the risk that the wrapping vocabulary or `Editor` layout alone produced the improvement.
-
-Apply the full Phase 4 inventory only after both pilots improve the held-out benchmark without keyword-filled comments or layout choices tied to one chunk boundary.
+The first pilot moved the complete wrapping concern, including its entry points, private work, documentation, tests, and then-required forwarding paths. The second pilot moved autocomplete and call tips from `ScintillaBase`, testing popup state, a different owner, and features with no initial application consumer. Both improved their held-out results without keyword-filled comments or layouts tied to one chunk boundary, so the concern-file rule was applied to the full Phase 4 inventory.

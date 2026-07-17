@@ -44,7 +44,7 @@ path_excluded() {
 		return 0 ;;
 	./tools/phase5-boundary.md|tools/phase5-boundary.md|./tools/check-no-message-layer.sh|tools/check-no-message-layer.sh)
 		return 0 ;;
-	./MESSAGE_REMOVAL.md|MESSAGE_REMOVAL.md|./ROADMAP.md|ROADMAP.md|./AGENTS.md|AGENTS.md|./DISCOVERABILITY.md|DISCOVERABILITY.md|./DISCOVERABILITY_LESSONS.md|DISCOVERABILITY_LESSONS.md)
+	./MESSAGE_REMOVAL.md|MESSAGE_REMOVAL.md|./ROADMAP.md|ROADMAP.md|./AGENTS.md|AGENTS.md|./DISCOVERABILITY.md|DISCOVERABILITY.md|./DISCOVERABILITY_LESSONS.md|DISCOVERABILITY_LESSONS.md|./DISCOVERABILITY_CASE_STUDY.md|DISCOVERABILITY_CASE_STUDY.md)
 		return 0 ;;
 	./tools/discoverability/*|tools/discoverability/*)
 		return 0 ;;
