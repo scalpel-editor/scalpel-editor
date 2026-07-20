@@ -28,7 +28,7 @@
 using namespace Scintilla;
 using namespace Scintilla::Internal;
 
-// Extra points added to the base style size when printing (can be negative).
+/// Extra points added to the base style size when printing (can be negative).
 void Editor::SetPrintMagnification(int magnification) {
 	view.printParameters.magnification = magnification;
 }
@@ -37,7 +37,7 @@ int Editor::GetPrintMagnification() const noexcept {
 	return view.printParameters.magnification;
 }
 
-// How colours are rendered for print output.
+/// How colours are rendered for print output.
 void Editor::SetPrintColourMode(PrintOption mode) {
 	view.printParameters.colourMode = mode;
 }
@@ -46,7 +46,7 @@ PrintOption Editor::GetPrintColourMode() const noexcept {
 	return view.printParameters.colourMode;
 }
 
-// Print layout wrap: Word or None (other wrap values collapse to None).
+/// Print layout wrap: Word or None (other wrap values collapse to None).
 void Editor::SetPrintWrapMode(Wrap wrapMode) {
 	view.printParameters.wrapState = (wrapMode == Wrap::Word) ? Wrap::Word : Wrap::None;
 }
@@ -55,8 +55,8 @@ Wrap Editor::GetPrintWrapMode() const noexcept {
 	return view.printParameters.wrapState;
 }
 
-// This is mostly copied from the Paint path but omits margin markers,
-// selection, and caret. An enabled line-number margin is printed.
+/// This is mostly copied from the Paint path but omits margin markers,
+/// selection, and caret. An enabled line-number margin is printed.
 Sci::Position Editor::FormatRange(bool draw, Sci::Position cpMin, Sci::Position cpMax,
 	PRectangle rc, Surface *surfaceDraw) {
 	std::unique_ptr<Surface> surfaceMeasure = CreateMeasurementSurface();

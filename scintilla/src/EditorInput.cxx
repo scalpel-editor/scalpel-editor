@@ -32,8 +32,8 @@
 using namespace Scintilla;
 using namespace Scintilla::Internal;
 
-// Report compositor keyboard focus to the editor. Changing focus redraws, notifies FocusIn or
-// FocusOut, cancels modal modes when focus is lost, and updates caret blink activity.
+/// Report compositor keyboard focus to the editor. Changing focus redraws, notifies FocusIn or
+/// FocusOut, cancels modal modes when focus is lost, and updates caret blink activity.
 void Editor::SetFocus(bool focusState) {
 	const bool changing = hasFocus != focusState;
 	hasFocus = focusState;
@@ -47,86 +47,86 @@ void Editor::SetFocus(bool focusState) {
 	ShowCaretAtCurrentPosition();
 }
 
-// True when the editor believes it has keyboard focus.
+/// True when the editor believes it has keyboard focus.
 bool Editor::HasFocus() const noexcept {
 	return hasFocus;
 }
 
-// How the platform IME should present composition: windowed (default) or inline.
+/// How the platform IME should present composition: windowed (default) or inline.
 void Editor::SetIMEInteraction(IMEInteraction imeInteraction_) {
 	imeInteraction = imeInteraction_;
 }
 
-// Current IME presentation mode.
+/// Current IME presentation mode.
 IMEInteraction Editor::GetIMEInteraction() const noexcept {
 	return imeInteraction;
 }
 
-// Milliseconds the pointer must stay still before a DwellStart notification.
-// Use a very large value to disable dwell (TimeForever).
+/// Milliseconds the pointer must stay still before a DwellStart notification.
+/// Use a very large value to disable dwell (TimeForever).
 void Editor::SetMouseDwellTime(int milliseconds) {
 	dwellDelay = milliseconds;
 	ticksToDwell = dwellDelay;
 }
 
-// Current dwell delay in milliseconds.
+/// Current dwell delay in milliseconds.
 int Editor::GetMouseDwellTime() const noexcept {
 	return dwellDelay;
 }
 
-// When true (default), a press inside the editor captures the mouse until release.
+/// When true (default), a press inside the editor captures the mouse until release.
 void Editor::SetMouseDownCaptures(bool captures) {
 	mouseDownCaptures = captures;
 }
 
-// True when mouse-down capture is enabled.
+/// True when mouse-down capture is enabled.
 bool Editor::GetMouseDownCaptures() const noexcept {
 	return mouseDownCaptures;
 }
 
-// When true (default), the editor may claim mouse-wheel events while focused.
+/// When true (default), the editor may claim mouse-wheel events while focused.
 void Editor::SetMouseWheelCaptures(bool captures) {
 	mouseWheelCaptures = captures;
 }
 
-// True when mouse-wheel capture is enabled.
+/// True when mouse-wheel capture is enabled.
 bool Editor::GetMouseWheelCaptures() const noexcept {
 	return mouseWheelCaptures;
 }
 
-// Force a cursor shape (for example Wait). Normal restores automatic text/arrow choice.
+/// Force a cursor shape (for example Wait). Normal restores automatic text/arrow choice.
 void Editor::SetCursor(CursorShape cursor) {
 	cursorMode = cursor;
 	DisplayCursor(Window::Cursor::text);
 }
 
-// Last cursor shape set with SetCursor, or Normal if never overridden.
+/// Last cursor shape set with SetCursor, or Normal if never overridden.
 CursorShape Editor::GetCursor() const noexcept {
 	return cursorMode;
 }
 
-// When true (default), dragging from a selection can start an internal text drag.
+/// When true (default), dragging from a selection can start an internal text drag.
 void Editor::SetDragDropEnabled(bool enabled) {
 	dragDropEnabled = enabled;
 }
 
-// True when internal text drag is enabled.
+/// True when internal text drag is enabled.
 bool Editor::GetDragDropEnabled() const noexcept {
 	return dragDropEnabled;
 }
 
-// Replace the text about to be inserted. Call only from an InsertCheck modification notification;
-// outside that window the change is ignored by the next insert. Length is the byte count of text.
+/// Replace the text about to be inserted. Call only from an InsertCheck modification notification;
+/// outside that window the change is ignored by the next insert. Length is the byte count of text.
 void Editor::ChangeInsertion(std::string_view text) {
 	pdoc->ChangeInsertion(text.data(), static_cast<Sci::Position>(text.length()));
 }
 
-// Context-menu policy: Never, All, or Text (not in the selection margin).
+/// Context-menu policy: Never, All, or Text (not in the selection margin).
 void ScintillaBase::UsePopUp(PopUp popUpMode) {
 	displayPopupMenu = popUpMode;
 }
 
-// Current context-menu policy.
+/// Current context-menu policy.
 PopUp ScintillaBase::GetUsePopUp() const noexcept {
 	return displayPopupMenu;
 }

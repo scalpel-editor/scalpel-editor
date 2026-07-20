@@ -31,20 +31,20 @@ using namespace Scintilla::Internal;
 
 // --- Application-facing selection surface ---
 
-// Caret position of the main selection, or of the rectangular caret when the
-// selection is rectangular.
+/// Caret position of the main selection, or of the rectangular caret when the
+/// selection is rectangular.
 Sci::Position Editor::GetCurrentPos() noexcept {
 	return sel.IsRectangular() ? sel.Rectangular().caret.Position() : sel.MainCaret();
 }
 
-// Anchor position of the main selection, or of the rectangular anchor when
-// rectangular.
+/// Anchor position of the main selection, or of the rectangular anchor when
+/// rectangular.
 Sci::Position Editor::GetAnchor() noexcept {
 	return sel.IsRectangular() ? sel.Rectangular().anchor.Position() : sel.MainAnchor();
 }
 
-// Moves the main caret (or rectangular caret) to pos without changing the
-// opposite end of the selection.
+/// Moves the main caret (or rectangular caret) to pos without changing the
+/// opposite end of the selection.
 void Editor::SetCurrentPos(Sci::Position pos) {
 	if (sel.IsRectangular()) {
 		sel.Rectangular().caret.SetPosition(pos);
@@ -55,8 +55,8 @@ void Editor::SetCurrentPos(Sci::Position pos) {
 	}
 }
 
-// Moves the main anchor (or rectangular anchor) to pos without changing the
-// caret end of the selection.
+/// Moves the main anchor (or rectangular anchor) to pos without changing the
+/// caret end of the selection.
 void Editor::SetAnchor(Sci::Position pos) {
 	if (sel.IsRectangular()) {
 		sel.Rectangular().anchor.SetPosition(pos);
@@ -67,31 +67,31 @@ void Editor::SetAnchor(Sci::Position pos) {
 	}
 }
 
-// Sets the lower bound of the main selection. The caret becomes max(caret, pos)
-// and the anchor becomes pos.
+/// Sets the lower bound of the main selection. The caret becomes max(caret, pos)
+/// and the anchor becomes pos.
 void Editor::SetSelectionStart(Sci::Position pos) {
 	SetSelection(std::max(sel.MainCaret(), pos), pos);
 }
 
-// Start of the main selection, or of the rectangular extent when rectangular.
+/// Start of the main selection, or of the rectangular extent when rectangular.
 Sci::Position Editor::GetSelectionStart() const noexcept {
 	return sel.LimitsForRectangularElseMain().start.Position();
 }
 
-// Sets the upper bound of the main selection. The caret becomes pos and the
-// anchor becomes min(anchor, pos).
+/// Sets the upper bound of the main selection. The caret becomes pos and the
+/// anchor becomes min(anchor, pos).
 void Editor::SetSelectionEnd(Sci::Position pos) {
 	SetSelection(pos, std::min(sel.MainAnchor(), pos));
 }
 
-// End of the main selection, or of the rectangular extent when rectangular.
+/// End of the main selection, or of the rectangular extent when rectangular.
 Sci::Position Editor::GetSelectionEnd() const noexcept {
 	return sel.LimitsForRectangularElseMain().end.Position();
 }
 
-// Replaces the selection with a stream range from start to end. A negative end
-// means the document end. A negative start collapses to an empty selection at
-// end. Ensures the caret is visible.
+/// Replaces the selection with a stream range from start to end. A negative end
+/// means the document end. A negative start collapses to an empty selection at
+/// end. Ensures the caret is visible.
 void Editor::SetSel(Sci::Position start, Sci::Position end) {
 	if (end < 0)
 		end = pdoc->Length();
@@ -104,8 +104,8 @@ void Editor::SetSel(Sci::Position start, Sci::Position end) {
 	EnsureCaretVisible();
 }
 
-// Text of the current selection(s), joined with the copy separator for multi
-// stream selections or the document EOL for rectangular selections.
+/// Text of the current selection(s), joined with the copy separator for multi
+/// stream selections or the document EOL for rectangular selections.
 std::string Editor::GetSelText() {
 	SelectionText selectedText;
 	CopySelectionRange(&selectedText);
@@ -115,13 +115,13 @@ std::string Editor::GetSelText() {
 	return std::string(selectedText.Data(), selectedText.Length());
 }
 
-// True when every selection range is empty (caret only).
+/// True when every selection range is empty (caret only).
 bool Editor::GetSelectionEmpty() const noexcept {
 	return sel.Empty();
 }
 
-// Move the caret without recording. Internal editing and folding operations use
-// this so only the application-facing GotoLine request is recorded.
+/// Move the caret without recording. Internal editing and folding operations use
+/// this so only the application-facing GotoLine request is recorded.
 void Editor::MoveCaretToLine(Sci::Line lineNo) {
 	if (lineNo > pdoc->LinesTotal())
 		lineNo = pdoc->LinesTotal();
@@ -132,16 +132,16 @@ void Editor::MoveCaretToLine(Sci::Line lineNo) {
 	EnsureCaretVisible();
 }
 
-// Moves an empty selection to the start of lineNo (clamped) and scrolls it into view.
-// When macro recording is on, emits RecordedGotoLine with the requested line
-// (before clamping) so replay applies the same call.
+/// Moves an empty selection to the start of lineNo (clamped) and scrolls it into view.
+/// When macro recording is on, emits RecordedGotoLine with the requested line
+/// (before clamping) so replay applies the same call.
 void Editor::GotoLine(Sci::Line lineNo) {
 	EmitRecordedAction(RecordedGotoLine{lineNo});
 	MoveCaretToLine(lineNo);
 }
 
-// Places an empty selection at pos and ensures the caret is visible.
-// When macro recording is on, emits RecordedGotoPos.
+/// Places an empty selection at pos and ensures the caret is visible.
+/// When macro recording is on, emits RecordedGotoPos.
 void Editor::GotoPos(Sci::Position pos) {
 	EmitRecordedAction(RecordedGotoPos{pos});
 	SetEmptySelection(pos);
@@ -151,29 +151,29 @@ void Editor::GotoPos(Sci::Position pos) {
 // --- Moved selection helpers ---
 
 
-// Hide or show the selection drawing without changing selection positions.
+/// Hide or show the selection drawing without changing selection positions.
 void Editor::HideSelection(bool hide) {
 	vs.selection.visible = !hide;
 	Redraw();
 }
 
-// True when selection drawing is suppressed (HideSelection).
+/// True when selection drawing is suppressed (HideSelection).
 bool Editor::GetSelectionHidden() const noexcept {
 	return !vs.selection.visible;
 }
 
-// Sets the search/replace target to the main selection range.
+/// Sets the search/replace target to the main selection range.
 void Editor::TargetFromSelection() {
 	targetRange.start = sel.RangeMain().Start();
 	targetRange.end = sel.RangeMain().End();
 }
 
-// True when the selection is rectangular.
+/// True when the selection is rectangular.
 bool Editor::SelectionIsRectangle() const noexcept {
 	return sel.selType == Selection::SelTypes::rectangle;
 }
 
-// Stream, Rectangle, Lines, or Thin selection mode.
+/// Stream, Rectangle, Lines, or Thin selection mode.
 SelectionMode Editor::GetSelectionMode() const noexcept {
 	switch (sel.selType) {
 	case Selection::SelTypes::stream:
@@ -189,86 +189,86 @@ SelectionMode Editor::GetSelectionMode() const noexcept {
 	}
 }
 
-// When true, caret moves extend the selection (like holding Shift).
+/// When true, caret moves extend the selection (like holding Shift).
 void Editor::SetMoveExtendsSelection(bool moveExtends) {
 	sel.SetMoveExtends(moveExtends);
 }
 
-// True when caret moves extend the selection.
+/// True when caret moves extend the selection.
 bool Editor::GetMoveExtendsSelection() const noexcept {
 	return sel.MoveExtends();
 }
 
-// When true, Alt+drag can switch a stream selection into rectangular.
+/// When true, Alt+drag can switch a stream selection into rectangular.
 void Editor::SetMouseSelectionRectangularSwitch(bool enable) {
 	mouseSelectionRectangularSwitch = enable;
 }
 
-// True when mouse may switch into rectangular selection.
+/// True when mouse may switch into rectangular selection.
 bool Editor::GetMouseSelectionRectangularSwitch() const noexcept {
 	return mouseSelectionRectangularSwitch;
 }
 
-// When true, multiple selections are allowed.
+/// When true, multiple selections are allowed.
 void Editor::SetMultipleSelection(bool enable) {
 	multipleSelection = enable;
 	InvalidateCaret();
 }
 
-// True when multiple selections are allowed.
+/// True when multiple selections are allowed.
 bool Editor::GetMultipleSelection() const noexcept {
 	return multipleSelection;
 }
 
-// When true, typing and deletion affect every selection, not only the main one.
+/// When true, typing and deletion affect every selection, not only the main one.
 void Editor::SetAdditionalSelectionTyping(bool enable) {
 	additionalSelectionTyping = enable;
 	InvalidateCaret();
 }
 
-// True when typing applies to every selection, not only the main one.
+/// True when typing applies to every selection, not only the main one.
 bool Editor::GetAdditionalSelectionTyping() const noexcept {
 	return additionalSelectionTyping;
 }
 
-// Number of selection ranges (at least 1).
+/// Number of selection ranges (at least 1).
 size_t Editor::GetSelections() const noexcept {
 	return sel.Count();
 }
 
-// Collapse to a single empty selection at the main caret.
+/// Collapse to a single empty selection at the main caret.
 void Editor::ClearSelections() {
 	sel.Clear();
 	ContainerNeedsUpdate(Update::Selection);
 	Redraw();
 }
 
-// SetSelection: replace the selection model with one stream range.
+/// SetSelection: replace the selection model with one stream range.
 void Editor::SetStreamSelection(Sci::Position caret, Sci::Position anchor) {
 	sel.SetSelection(SelectionRange(caret, anchor));
 	Redraw();
 }
 
-// Append a caret/anchor range and make it the main selection.
+/// Append a caret/anchor range and make it the main selection.
 void Editor::AddSelection(Sci::Position caret, Sci::Position anchor) {
 	sel.AddSelection(SelectionRange(caret, anchor));
 	ContainerNeedsUpdate(Update::Selection);
 	Redraw();
 }
 
-// Choose which selection range is main (receives typing and clipboard).
+/// Choose which selection range is main (receives typing and clipboard).
 void Editor::SetMainSelection(size_t selection) {
 	sel.SetMain(selection);
 	ContainerNeedsUpdate(Update::Selection);
 	Redraw();
 }
 
-// Index of the main selection range.
+/// Index of the main selection range.
 size_t Editor::GetMainSelection() const noexcept {
 	return sel.Main();
 }
 
-// Draw selection background on Base, UnderText, or OverText.
+/// Draw selection background on Base, UnderText, or OverText.
 void Editor::SetSelectionLayer(Layer layer) {
 	if (vs.selection.layer != layer) {
 		vs.selection.layer = layer;
@@ -277,22 +277,22 @@ void Editor::SetSelectionLayer(Layer layer) {
 	}
 }
 
-// Layer used to draw the selection background.
+/// Layer used to draw the selection background.
 Layer Editor::GetSelectionLayer() const noexcept {
 	return vs.selection.layer;
 }
 
-// Whether undo/redo restores selection (and optionally scroll position).
+/// Whether undo/redo restores selection (and optionally scroll position).
 void Editor::SetUndoSelectionHistory(UndoSelectionHistoryOption option) {
 	ChangeUndoSelectionHistory(option);
 }
 
-// Current undo selection-history mode.
+/// Current undo selection-history mode.
 UndoSelectionHistoryOption Editor::GetUndoSelectionHistory() const noexcept {
 	return undoSelectionHistoryOption;
 }
 
-// Restore selection ranges from a serialized string.
+/// Restore selection ranges from a serialized string.
 void Editor::SetSelectionSerialized(std::string_view serialized) {
 	sel = Selection(serialized);
 	sel.Truncate(pdoc->Length());
@@ -300,12 +300,12 @@ void Editor::SetSelectionSerialized(std::string_view serialized) {
 	Redraw();
 }
 
-// Serialize all selection ranges to a string.
+/// Serialize all selection ranges to a string.
 std::string Editor::GetSelectionSerialized() const {
 	return sel.ToString();
 }
 
-// Caret position of the rectangular selection.
+/// Caret position of the rectangular selection.
 void Editor::SetRectangularSelectionCaret(Sci::Position pos) {
 	if (!sel.IsRectangular())
 		sel.Clear();
@@ -315,12 +315,12 @@ void Editor::SetRectangularSelectionCaret(Sci::Position pos) {
 	Redraw();
 }
 
-// Caret position of the rectangular selection.
+/// Caret position of the rectangular selection.
 Sci::Position Editor::GetRectangularSelectionCaret() noexcept {
 	return sel.Rectangular().caret.Position();
 }
 
-// Anchor position of the rectangular selection.
+/// Anchor position of the rectangular selection.
 void Editor::SetRectangularSelectionAnchor(Sci::Position pos) {
 	if (!sel.IsRectangular())
 		sel.Clear();
@@ -330,12 +330,12 @@ void Editor::SetRectangularSelectionAnchor(Sci::Position pos) {
 	Redraw();
 }
 
-// Anchor position of the rectangular selection.
+/// Anchor position of the rectangular selection.
 Sci::Position Editor::GetRectangularSelectionAnchor() noexcept {
 	return sel.Rectangular().anchor.Position();
 }
 
-// Virtual space of the rectangular caret.
+/// Virtual space of the rectangular caret.
 void Editor::SetRectangularSelectionCaretVirtualSpace(Sci::Position space) {
 	if (!sel.IsRectangular())
 		sel.Clear();
@@ -345,12 +345,12 @@ void Editor::SetRectangularSelectionCaretVirtualSpace(Sci::Position space) {
 	Redraw();
 }
 
-// Virtual space of the rectangular caret.
+/// Virtual space of the rectangular caret.
 Sci::Position Editor::GetRectangularSelectionCaretVirtualSpace() noexcept {
 	return sel.Rectangular().caret.VirtualSpace();
 }
 
-// Virtual space of the rectangular anchor.
+/// Virtual space of the rectangular anchor.
 void Editor::SetRectangularSelectionAnchorVirtualSpace(Sci::Position space) {
 	if (!sel.IsRectangular())
 		sel.Clear();
@@ -360,52 +360,52 @@ void Editor::SetRectangularSelectionAnchorVirtualSpace(Sci::Position space) {
 	Redraw();
 }
 
-// Virtual space of the rectangular anchor.
+/// Virtual space of the rectangular anchor.
 Sci::Position Editor::GetRectangularSelectionAnchorVirtualSpace() noexcept {
 	return sel.Rectangular().anchor.VirtualSpace();
 }
 
-// Caret position of selection range selection.
+/// Caret position of selection range selection.
 Sci::Position Editor::GetSelectionNCaret(size_t selection) const noexcept {
 	return sel.Range(selection).caret.Position();
 }
 
-// Anchor position of selection range selection.
+/// Anchor position of selection range selection.
 Sci::Position Editor::GetSelectionNAnchor(size_t selection) const noexcept {
 	return sel.Range(selection).anchor.Position();
 }
 
-// Virtual space of caret for selection range selection.
+/// Virtual space of caret for selection range selection.
 Sci::Position Editor::GetSelectionNCaretVirtualSpace(size_t selection) const noexcept {
 	return sel.Range(selection).caret.VirtualSpace();
 }
 
-// Virtual space of anchor for selection range selection.
+/// Virtual space of anchor for selection range selection.
 Sci::Position Editor::GetSelectionNAnchorVirtualSpace(size_t selection) const noexcept {
 	return sel.Range(selection).anchor.VirtualSpace();
 }
 
-// Ordered start of selection range selection.
+/// Ordered start of selection range selection.
 Sci::Position Editor::GetSelectionNStart(size_t selection) const noexcept {
 	return sel.Range(selection).Start().Position();
 }
 
-// Virtual space at the start of selection range selection.
+/// Virtual space at the start of selection range selection.
 Sci::Position Editor::GetSelectionNStartVirtualSpace(size_t selection) const noexcept {
 	return sel.Range(selection).Start().VirtualSpace();
 }
 
-// Ordered end of selection range selection.
+/// Ordered end of selection range selection.
 Sci::Position Editor::GetSelectionNEnd(size_t selection) const noexcept {
 	return sel.Range(selection).End().Position();
 }
 
-// Virtual space at the end of selection range selection.
+/// Virtual space at the end of selection range selection.
 Sci::Position Editor::GetSelectionNEndVirtualSpace(size_t selection) const noexcept {
 	return sel.Range(selection).End().VirtualSpace();
 }
 
-// Set the main selection to the caret/anchor range (positions or SelectionPosition).
+/// Set the main selection to the caret/anchor range (positions or SelectionPosition).
 void Editor::SetSelection(SelectionPosition currentPos_, SelectionPosition anchor_) {
 	currentPos_ = ClampPositionIntoDocument(currentPos_);
 	anchor_ = ClampPositionIntoDocument(anchor_);
@@ -428,12 +428,12 @@ void Editor::SetSelection(SelectionPosition currentPos_, SelectionPosition ancho
 	QueueIdleWork(WorkItems::updateUI);
 }
 
-// Set the main selection to the caret/anchor range (positions or SelectionPosition).
+/// Set the main selection to the caret/anchor range (positions or SelectionPosition).
 void Editor::SetSelection(Sci::Position currentPos_, Sci::Position anchor_) {
 	SetSelection(SelectionPosition(currentPos_), SelectionPosition(anchor_));
 }
 
-// Just move the caret on the main selection
+/// Just move the caret on the main selection
 void Editor::SetSelection(SelectionPosition currentPos_) {
 	currentPos_ = ClampPositionIntoDocument(currentPos_);
 	const Sci::Line currentLine = pdoc->SciLineFromPosition(currentPos_.Position());
@@ -459,7 +459,7 @@ void Editor::SetSelection(SelectionPosition currentPos_) {
 	QueueIdleWork(WorkItems::updateUI);
 }
 
-// Collapse to an empty selection at caret (position or SelectionPosition).
+/// Collapse to an empty selection at caret (position or SelectionPosition).
 void Editor::SetEmptySelection(SelectionPosition currentPos_) {
 	const Sci::Line currentLine = pdoc->SciLineFromPosition(currentPos_.Position());
 	SelectionRange rangeNew(ClampPositionIntoDocument(currentPos_));
@@ -478,12 +478,12 @@ void Editor::SetEmptySelection(SelectionPosition currentPos_) {
 	QueueIdleWork(WorkItems::updateUI);
 }
 
-// Collapse to an empty selection at caret (position or SelectionPosition).
+/// Collapse to an empty selection at caret (position or SelectionPosition).
 void Editor::SetEmptySelection(Sci::Position currentPos_) {
 	SetEmptySelection(SelectionPosition(currentPos_));
 }
 
-// Add next or each occurrence of the main selection within the target.
+/// Add next or each occurrence of the main selection within the target.
 void Editor::MultipleSelectAdd(AddNumber addNumber) {
 	if (SelectionEmpty() || !multipleSelection) {
 		// Select word at caret
@@ -538,14 +538,14 @@ void Editor::MultipleSelectAdd(AddNumber addNumber) {
 	}
 }
 
-// Select the whole document as a single stream selection.
+/// Select the whole document as a single stream selection.
 void Editor::SelectAll() {
 	sel.Clear();
 	SetSelection(0, pdoc->Length());
 	Redraw();
 }
 
-// Update one selection range's endpoints and request redraw of the old and new spans.
+/// Update one selection range's endpoints and request redraw of the old and new spans.
 void Editor::SetSelectionNCaret(size_t selection, Sci::Position caret) {
 	if (selection >= sel.Count()) {
 		return;
@@ -606,13 +606,13 @@ void Editor::SetSelectionNEnd(size_t selection, Sci::Position pos) {
 	ContainerNeedsUpdate(Update::Selection);
 }
 
-// Modifier that turns a mouse drag into a rectangular selection (default Alt).
-// Hosts that use Ctrl for this gesture call SetRectangularSelectionModifier(KeyMod::Ctrl).
+/// Modifier that turns a mouse drag into a rectangular selection (default Alt).
+/// Hosts that use Ctrl for this gesture call SetRectangularSelectionModifier(KeyMod::Ctrl).
 void Editor::SetRectangularSelectionModifier(KeyMod modifier) {
 	rectangularSelectionModifier = modifier;
 }
 
-// Current rectangular mouse-selection modifier.
+/// Current rectangular mouse-selection modifier.
 KeyMod Editor::GetRectangularSelectionModifier() const noexcept {
 	return rectangularSelectionModifier;
 }
@@ -635,11 +635,11 @@ constexpr Selection::SelTypes SelTypeFromMode(SelectionMode mode) {
 
 }
 
-// Set stream/rectangle/lines/thin mode; may convert the current selection.
-// When macro recording is on and setMoveExtends is true (SetSelectionMode path),
-// emits RecordedSetSelectionMode. ChangeSelectionMode (setMoveExtends false) is
-// not recorded, matching the former numeric allowlist.
-// Replay uses setMoveExtends true to match the path that was recorded.
+/// Set stream/rectangle/lines/thin mode; may convert the current selection.
+/// When macro recording is on and setMoveExtends is true (SetSelectionMode path),
+/// emits RecordedSetSelectionMode. ChangeSelectionMode (setMoveExtends false) is
+/// not recorded, matching the former numeric allowlist.
+/// Replay uses setMoveExtends true to match the path that was recorded.
 void Editor::SetSelectionMode(SelectionMode mode, bool setMoveExtends) {
 	if (setMoveExtends) {
 		EmitRecordedAction(RecordedSetSelectionMode{mode});
@@ -662,7 +662,7 @@ void Editor::SetSelectionMode(SelectionMode mode, bool setMoveExtends) {
 	InvalidateWholeSelection();
 }
 
-// Selection index whose range contains the document point, or -1.
+/// Selection index whose range contains the document point, or -1.
 ptrdiff_t Editor::SelectionFromPoint(Point pt) {
 	// Prioritize checking inside non-empty selections since each character will be inside only 1
 	const SelectionPosition posChar = SPositionFromLocation(pt, true, true);
@@ -685,20 +685,20 @@ ptrdiff_t Editor::SelectionFromPoint(Point pt) {
 	return -1;
 }
 
-// Remove one selection range by index; keeps at least one range.
+/// Remove one selection range by index; keeps at least one range.
 void Editor::DropSelection(size_t part) {
 	sel.DropSelection(part);
 	ContainerNeedsUpdate(Update::Selection);
 	Redraw();
 }
 
-// Virtual-space policy for caret movement and rectangular selection (none,
-// rectangular only, user-accessible, and/or no wrap at line start).
+/// Virtual-space policy for caret movement and rectangular selection (none,
+/// rectangular only, user-accessible, and/or no wrap at line start).
 void Editor::SetVirtualSpaceOptions(VirtualSpace options) {
 	virtualSpaceOptions = options;
 }
 
-// Current virtual-space policy.
+/// Current virtual-space policy.
 VirtualSpace Editor::GetVirtualSpaceOptions() const noexcept {
 	return virtualSpaceOptions;
 }

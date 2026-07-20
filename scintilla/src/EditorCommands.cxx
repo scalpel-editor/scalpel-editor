@@ -356,8 +356,8 @@ int Editor::ExecuteCommand(EditorCommand command) {
 		return 0;
 }
 
-// When overtype is on, each typed character replaces the character to the right of the caret;
-// when off, characters are inserted. Toggling updates selection notifications and caret draw.
+/// When overtype is on, each typed character replaces the character to the right of the caret;
+/// when off, characters are inserted. Toggling updates selection notifications and caret draw.
 void Editor::SetOvertype(bool overtype) {
 	if (inOverstrike != overtype) {
 		inOverstrike = overtype;
@@ -367,22 +367,22 @@ void Editor::SetOvertype(bool overtype) {
 	}
 }
 
-// True when overtype (overstrike) mode is active.
+/// True when overtype (overstrike) mode is active.
 bool Editor::GetOvertype() const noexcept {
 	return inOverstrike;
 }
 
-// Bind a key chord to a command. EditorCommand::None clears the binding for that chord.
+/// Bind a key chord to a command. EditorCommand::None clears the binding for that chord.
 void Editor::AssignCmdKey(Keys key, KeyMod modifiers, EditorCommand command) {
 	kmap.AssignCmdKey(key, modifiers, command);
 }
 
-// Remove the binding for a key chord (same as assigning EditorCommand::None).
+/// Remove the binding for a key chord (same as assigning EditorCommand::None).
 void Editor::ClearCmdKey(Keys key, KeyMod modifiers) {
 	kmap.AssignCmdKey(key, modifiers, EditorCommand::None);
 }
 
-// Remove every key binding.
+/// Remove every key binding.
 void Editor::ClearAllCmdKeys() {
 	kmap.Clear();
 }

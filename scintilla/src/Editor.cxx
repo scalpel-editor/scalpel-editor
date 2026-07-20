@@ -1421,7 +1421,7 @@ void Editor::SetVerticalScrollPos() {
 	}
 }
 
-// Empty method is overridden on GTK+ to show / hide scrollbars
+/// Empty method is overridden on GTK+ to show / hide scrollbars
 void Editor::ReconfigureScrollBars() {}
 
 void Editor::ChangeScrollBars() {
@@ -1498,7 +1498,7 @@ void Editor::FilterSelections() {
 	}
 }
 
-// InsertCharacter inserts UTF-8 bytes into the document.
+/// InsertCharacter inserts UTF-8 bytes into the document.
 void Editor::InsertCharacter(std::string_view sv, CharacterSource charSource) {
 	if (sv.empty()) {
 		return;
@@ -1837,8 +1837,8 @@ void Editor::NotifyFocus(bool focus) {
 	NotifyParent(scn);
 }
 
-// Ask an external lexer to style through endStyleNeeded. Styling starts at the
-// beginning of the line containing the current end-styled position.
+/// Ask an external lexer to style through endStyleNeeded. Styling starts at the
+/// beginning of the line containing the current end-styled position.
 void Editor::NotifyStyleToNeeded(Sci::Position endStyleNeeded) {
 	NotificationData scn = {};
 	scn.code = Notification::StyleNeeded;
@@ -1861,9 +1861,9 @@ void Editor::NotifyGroupCompleted(Document *, void *) noexcept {
 	}
 }
 
-// Report an entered text character before it is styled. ch is its Unicode code
-// point, or its byte value for one-byte invalid UTF-8. characterSource identifies
-// direct, tentative, or completed IME input.
+/// Report an entered text character before it is styled. ch is its Unicode code
+/// point, or its byte value for one-byte invalid UTF-8. characterSource identifies
+/// direct, tentative, or completed IME input.
 void Editor::NotifyChar(int ch, CharacterSource charSource) {
 	NotificationData scn = {};
 	scn.code = Notification::CharAdded;
@@ -1872,8 +1872,8 @@ void Editor::NotifyChar(int ch, CharacterSource charSource) {
 	NotifyParent(scn);
 }
 
-// Report transitions into and out of the document save point so the host can
-// update its dirty indicator and command state.
+/// Report transitions into and out of the document save point so the host can
+/// update its dirty indicator and command state.
 void Editor::NotifySavePoint(bool isSavePoint) {
 	NotificationData scn = {};
 	if (isSavePoint) {
@@ -1887,14 +1887,14 @@ void Editor::NotifySavePoint(bool isSavePoint) {
 	NotifyParent(scn);
 }
 
-// Report an attempted text change rejected because the document is read-only.
+/// Report an attempted text change rejected because the document is read-only.
 void Editor::NotifyModifyAttempt() {
 	NotificationData scn = {};
 	scn.code = Notification::ModifyAttemptRO;
 	NotifyParent(scn);
 }
 
-// DoubleClick reports the document position, its line, and the held modifiers.
+/// DoubleClick reports the document position, its line, and the held modifiers.
 void Editor::NotifyDoubleClick(Point pt, KeyMod modifiers) {
 	NotificationData scn = {};
 	scn.code = Notification::DoubleClick;
@@ -1904,8 +1904,8 @@ void Editor::NotifyDoubleClick(Point pt, KeyMod modifiers) {
 	NotifyParent(scn);
 }
 
-// Hotspot click events report the document position and held modifiers. Release
-// reports only the Ctrl modifier because that is all the mouse path preserves.
+/// Hotspot click events report the document position and held modifiers. Release
+/// reports only the Ctrl modifier because that is all the mouse path preserves.
 void Editor::NotifyHotSpotDoubleClicked(Sci::Position position, KeyMod modifiers) {
 	NotificationData scn = {};
 	scn.code = Notification::HotSpotDoubleClick;
@@ -1930,8 +1930,8 @@ void Editor::NotifyHotSpotReleaseClick(Sci::Position position, KeyMod modifiers)
 	NotifyParent(scn);
 }
 
-// updated is the accumulated set of content, selection, and scroll changes
-// since the previous UpdateUI notification. A flag may be present conservatively.
+/// updated is the accumulated set of content, selection, and scroll changes
+/// since the previous UpdateUI notification. A flag may be present conservatively.
 bool Editor::NotifyUpdateUI() {
 	if (needUpdateUI != Update::None) {
 		NotificationData scn = {};
@@ -1950,8 +1950,8 @@ void Editor::NotifyPainted() {
 	NotifyParent(scn);
 }
 
-// Indicator click and release report the document position and held modifiers.
-// Release is sent only after a notified press.
+/// Indicator click and release report the document position and held modifiers.
+/// Release is sent only after a notified press.
 void Editor::NotifyIndicatorClick(bool click, Sci::Position position, KeyMod modifiers) {
 	const int mask = pdoc->decorations->AllOnFor(position);
 	if ((click && mask) || pdoc->decorations->ClickNotified()) {
@@ -1964,8 +1964,8 @@ void Editor::NotifyIndicatorClick(bool click, Sci::Position position, KeyMod mod
 	}
 }
 
-// Sensitive margin clicks report the margin number, the start position of the
-// clicked line, and held modifiers. Automatic fold clicks are handled directly.
+/// Sensitive margin clicks report the margin number, the start position of the
+/// clicked line, and held modifiers. Automatic fold clicks are handled directly.
 bool Editor::NotifyMarginClick(Point pt, KeyMod modifiers) {
 	const int marginClicked = vs.MarginFromLocation(pt);
 	if ((marginClicked >= 0) && vs.ms[marginClicked].sensitive) {
@@ -2018,8 +2018,8 @@ bool Editor::NotifyMarginRightClick(Point pt, KeyMod modifiers) {
 	return false;
 }
 
-// Ask the host to reveal the document range [pos, pos + len), normally after a
-// change affects text hidden by folding.
+/// Ask the host to reveal the document range [pos, pos + len), normally after a
+/// change affects text hidden by folding.
 void Editor::NotifyNeedShown(Sci::Position pos, Sci::Position len) {
 	NotificationData scn = {};
 	scn.code = Notification::NeedShown;
@@ -2028,8 +2028,8 @@ void Editor::NotifyNeedShown(Sci::Position pos, Sci::Position len) {
 	NotifyParent(scn);
 }
 
-// DwellStart and DwellEnd report the document position and editor-relative x/y
-// coordinates where the dwell began or ended.
+/// DwellStart and DwellEnd report the document position and editor-relative x/y
+/// coordinates where the dwell began or ended.
 void Editor::NotifyDwelling(Point pt, bool state) {
 	NotificationData scn = {};
 	scn.code = state ? Notification::DwellStart : Notification::DwellEnd;
@@ -2039,14 +2039,14 @@ void Editor::NotifyDwelling(Point pt, bool state) {
 	NotifyParent(scn);
 }
 
-// Report a zoom change after the display scale has changed; there is no payload.
+/// Report a zoom change after the display scale has changed; there is no payload.
 void Editor::NotifyZoom() {
 	NotificationData scn = {};
 	scn.code = Notification::Zoom;
 	NotifyParent(scn);
 }
 
-// Notifications from document
+/// Notifications from document
 void Editor::NotifyModifyAttempt(Document *, void *) {
 	//Platform::DebugPrintf("** Modify Attempt\n");
 	NotifyModifyAttempt();
@@ -2059,7 +2059,7 @@ void Editor::NotifySavePoint(Document *, void *, bool atSavePoint) {
 
 namespace {
 
-// Move a position so it is still after the same character as before the insertion.
+/// Move a position so it is still after the same character as before the insertion.
 constexpr Sci::Position MovePositionForInsertion(Sci::Position position, Sci::Position startInsertion, Sci::Position length) noexcept {
 	if (position > startInsertion) {
 		return position + length;
@@ -2067,8 +2067,8 @@ constexpr Sci::Position MovePositionForInsertion(Sci::Position position, Sci::Po
 	return position;
 }
 
-// Move a position so it is still after the same character as before the deletion if that
-// character is still present else after the previous surviving character.
+/// Move a position so it is still after the same character as before the deletion if that
+/// character is still present else after the previous surviving character.
 constexpr Sci::Position MovePositionForDeletion(Sci::Position position, Sci::Position startDeletion, Sci::Position length) noexcept {
 	if (position > startDeletion) {
 		const Sci::Position endDeletion = startDeletion + length;
@@ -2285,7 +2285,7 @@ void Editor::NotifyDeleted(Document *, void *) noexcept {
 	/* Do nothing */
 }
 
-// Something has changed that the container should know about
+/// Something has changed that the container should know about
 void Editor::ContainerNeedsUpdate(Update flags) noexcept {
 	needUpdateUI = needUpdateUI | flags;
 }
@@ -3173,7 +3173,7 @@ void Editor::Indent(bool forwards, bool lineIndent) {
 	ContainerNeedsUpdate(Update::Selection);
 }
 
-// UTF-8 Unicode case mapping (not locale-sensitive). Invalid UTF-8 bytes are left unchanged.
+/// UTF-8 Unicode case mapping (not locale-sensitive). Invalid UTF-8 bytes are left unchanged.
 std::string Editor::CaseMapString(const std::string &s, CaseMapping caseMapping) {
 	if (s.empty() || caseMapping == CaseMapping::same) {
 		return s;
@@ -4014,21 +4014,21 @@ void Editor::TickFor(TickReason reason) {
 	}
 }
 
-// FineTickerStart is be overridden by subclasses that support fine ticking so
-// this method should never be called.
+/// FineTickerStart is be overridden by subclasses that support fine ticking so
+/// this method should never be called.
 bool Editor::FineTickerRunning(TickReason) {
 	assert(false);
 	return false;
 }
 
-// FineTickerStart is be overridden by subclasses that support fine ticking so
-// this method should never be called.
+/// FineTickerStart is be overridden by subclasses that support fine ticking so
+/// this method should never be called.
 void Editor::FineTickerStart(TickReason, int, int) {
 	assert(false);
 }
 
-// FineTickerCancel is be overridden by subclasses that support fine ticking so
-// this method should never be called.
+/// FineTickerCancel is be overridden by subclasses that support fine ticking so
+/// this method should never be called.
 void Editor::FineTickerCancel(TickReason) {
 	assert(false);
 }

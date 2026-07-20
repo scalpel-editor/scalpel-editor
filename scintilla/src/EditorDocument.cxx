@@ -23,11 +23,11 @@
 using namespace Scintilla;
 using namespace Scintilla::Internal;
 
-// Replaces the whole document with text. One undo action. The selection becomes
-// empty at position 0. Unlike ClearAll, this does not clear annotations, margins,
-// or fold state. Bytes are stored as given, including invalid UTF-8 sequences.
-// When the document is read-only, the attempt notifies ModifyAttemptRO and leaves
-// the text unchanged.
+/// Replaces the whole document with text. One undo action. The selection becomes
+/// empty at position 0. Unlike ClearAll, this does not clear annotations, margins,
+/// or fold state. Bytes are stored as given, including invalid UTF-8 sequences.
+/// When the document is read-only, the attempt notifies ModifyAttemptRO and leaves
+/// the text unchanged.
 void Editor::SetText(std::string_view text) {
 	UndoGroup ug(pdoc);
 	pdoc->DeleteChars(0, pdoc->Length());
@@ -37,35 +37,35 @@ void Editor::SetText(std::string_view text) {
 	}
 }
 
-// Returns the whole document as bytes. No validation or rewriting of invalid UTF-8.
+/// Returns the whole document as bytes. No validation or rewriting of invalid UTF-8.
 std::string Editor::GetText() const {
 	return RangeText(0, pdoc->Length());
 }
 
-// Byte length of the document. Same as GetLength.
+/// Byte length of the document. Same as GetLength.
 Sci::Position Editor::GetTextLength() const noexcept {
 	return pdoc->Length();
 }
 
-// True when the document is not at its save point (has unsaved changes).
+/// True when the document is not at its save point (has unsaved changes).
 bool Editor::GetModify() const noexcept {
 	return !pdoc->IsSavePoint();
 }
 
-// When read-only is set, edits that would change text notify ModifyAttemptRO
-// and leave the document unchanged. The flag is on the owned document.
+/// When read-only is set, edits that would change text notify ModifyAttemptRO
+/// and leave the document unchanged. The flag is on the owned document.
 void Editor::SetReadOnly(bool readOnly) {
 	pdoc->SetReadOnly(readOnly);
 }
 
-// True when the owned document rejects edits.
+/// True when the owned document rejects edits.
 bool Editor::GetReadOnly() const noexcept {
 	return pdoc->IsReadOnly();
 }
 
-// Inserts text at the main caret and places an empty selection after the insert.
-// length is the byte count of text; embedded NULs are allowed.
-// When macro recording is on, emits RecordedAddText (including empty text).
+/// Inserts text at the main caret and places an empty selection after the insert.
+/// length is the byte count of text; embedded NULs are allowed.
+/// When macro recording is on, emits RecordedAddText (including empty text).
 void Editor::AddText(std::string_view text) {
 	EmitRecordedAction(RecordedAddText{std::string(text)});
 	if (text.empty()) {
@@ -75,10 +75,10 @@ void Editor::AddText(std::string_view text) {
 	SetEmptySelection(sel.MainCaret() + lengthInserted);
 }
 
-// Inserts text at pos, or at the main caret when pos is negative. If the caret
-// was after the insertion point it is moved with the surrounding text.
-// When macro recording is on, emits RecordedInsertText with the position as
-// passed (negative means caret at replay time via InsertText).
+/// Inserts text at pos, or at the main caret when pos is negative. If the caret
+/// was after the insertion point it is moved with the surrounding text.
+/// When macro recording is on, emits RecordedInsertText with the position as
+/// passed (negative means caret at replay time via InsertText).
 void Editor::InsertText(Sci::Position pos, std::string_view text) {
 	EmitRecordedAction(RecordedInsertText{pos, std::string(text)});
 	if (text.empty()) {
@@ -97,8 +97,8 @@ void Editor::InsertText(Sci::Position pos, std::string_view text) {
 	SetEmptySelection(newCurrent);
 }
 
-// Appends text at the end of the document. Selection and scroll position are unchanged.
-// When macro recording is on, emits RecordedAppendText (including empty text).
+/// Appends text at the end of the document. Selection and scroll position are unchanged.
+/// When macro recording is on, emits RecordedAppendText (including empty text).
 void Editor::AppendText(std::string_view text) {
 	EmitRecordedAction(RecordedAppendText{std::string(text)});
 	if (text.empty()) {
@@ -107,10 +107,10 @@ void Editor::AppendText(std::string_view text) {
 	pdoc->InsertString(pdoc->Length(), text);
 }
 
-// Deletes every character and, when writable, clears fold, annotation, EOL
-// annotation, and margin text state. Resets selection and vertical scroll, then
-// redraws. Tabstops in the view are also cleared.
-// When macro recording is on, emits RecordedClearAll.
+/// Deletes every character and, when writable, clears fold, annotation, EOL
+/// annotation, and margin text state. Resets selection and vertical scroll, then
+/// redraws. Tabstops in the view are also cleared.
+/// When macro recording is on, emits RecordedClearAll.
 void Editor::ClearAll() {
 	EmitRecordedAction(RecordedClearAll{});
 	{
@@ -134,13 +134,13 @@ void Editor::ClearAll() {
 	InvalidateStyleRedraw();
 }
 
-// Deletes lengthDelete bytes starting at start.
+/// Deletes lengthDelete bytes starting at start.
 void Editor::DeleteRange(Sci::Position start, Sci::Position lengthDelete) {
 	pdoc->DeleteChars(start, lengthDelete);
 }
 
-// Inserts length/2 character+style cells at the main caret: each cell is one
-// character byte followed by one style byte. Styles are applied after the insert.
+/// Inserts length/2 character+style cells at the main caret: each cell is one
+/// character byte followed by one style byte. Styles are applied after the insert.
 void Editor::AddStyledText(const char *buffer, Sci::Position appendLength) {
 	// The buffer consists of alternating character bytes and style bytes
 	const Sci::Position textLength = appendLength / 2;
@@ -157,19 +157,19 @@ void Editor::AddStyledText(const char *buffer, Sci::Position appendLength) {
 	SetEmptySelection(sel.MainCaret() + lengthInserted);
 }
 
-// Byte length of the document. Same as GetTextLength.
+/// Byte length of the document. Same as GetTextLength.
 Sci::Position Editor::GetLength() const noexcept {
 	return pdoc->Length();
 }
 
-// Byte at pos, or 0 when pos is outside the document.
+/// Byte at pos, or 0 when pos is outside the document.
 char Editor::GetCharAt(Sci::Position pos) const noexcept {
 	return pdoc->CharAt(pos);
 }
 
-// Copies [cpMin, cpMax) as alternating character and style bytes into buffer,
-// then two trailing NULs. buffer must hold at least 2*(cpMax-cpMin)+2 bytes.
-// Returns the number of data bytes written, not counting the trailing NULs.
+/// Copies [cpMin, cpMax) as alternating character and style bytes into buffer,
+/// then two trailing NULs. buffer must hold at least 2*(cpMax-cpMin)+2 bytes.
+/// Returns the number of data bytes written, not counting the trailing NULs.
 Sci::Position Editor::GetStyledText(char *buffer, Sci::Position cpMin, Sci::Position cpMax) const noexcept {
 	Sci::Position iPlace = 0;
 	for (Sci::Position iChar = cpMin; iChar < cpMax; iChar++) {
@@ -181,8 +181,8 @@ Sci::Position Editor::GetStyledText(char *buffer, Sci::Position cpMin, Sci::Posi
 	return iPlace;
 }
 
-// Copies [cpMin, cpMax) into buffer and NUL-terminates it. cpMax of -1 means the
-// end of the document. Returns the number of bytes copied, not counting the NUL.
+/// Copies [cpMin, cpMax) into buffer and NUL-terminates it. cpMax of -1 means the
+/// end of the document. Returns the number of bytes copied, not counting the NUL.
 Sci::Position Editor::GetTextRange(char *buffer, Sci::Position cpMin, Sci::Position cpMax) const {
 	const Sci::Position cpEnd = (cpMax == -1) ? pdoc->Length() : cpMax;
 	PLATFORM_ASSERT(cpEnd <= pdoc->Length());
@@ -193,24 +193,24 @@ Sci::Position Editor::GetTextRange(char *buffer, Sci::Position cpMin, Sci::Posit
 	return len; 	// Not including NUL
 }
 
-// Grows the document buffer capacity to at least bytes. Does not shrink.
+/// Grows the document buffer capacity to at least bytes. Does not shrink.
 void Editor::Allocate(Sci::Position bytes) {
 	pdoc->Allocate(bytes);
 }
 
-// Pointer into the document buffer for [start, start+rangeLength). Valid until
-// the next document mutation. Prefer ranges that do not cross the gap.
+/// Pointer into the document buffer for [start, start+rangeLength). Valid until
+/// the next document mutation. Prefer ranges that do not cross the gap.
 const char *Editor::GetRangePointer(Sci::Position start, Sci::Position rangeLength) {
 	return pdoc->RangePointer(start, rangeLength);
 }
 
-// Position of the movable gap in the document buffer.
+/// Position of the movable gap in the document buffer.
 Sci::Position Editor::GetGapPosition() const noexcept {
 	return pdoc->GapPosition();
 }
 
-// Keyboard Clear: delete the selection, or the character after each caret when
-// empty. Multiple selections do not delete line ends at the caret.
+/// Keyboard Clear: delete the selection, or the character after each caret when
+/// empty. Multiple selections do not delete line ends at the caret.
 void Editor::Clear() {
 	// If multiple selections, don't delete EOLS
 	if (sel.Empty()) {

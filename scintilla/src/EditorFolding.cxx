@@ -22,20 +22,20 @@
 using namespace Scintilla;
 using namespace Scintilla::Internal;
 
-// Display line for a document line when some lines are hidden or annotated.
-// Invisible lines share the display line of the previous visible line. When lines wrap, one document line can span several display lines.
+/// Display line for a document line when some lines are hidden or annotated.
+/// Invisible lines share the display line of the previous visible line. When lines wrap, one document line can span several display lines.
 Sci::Line Editor::VisibleFromDocLine(Sci::Line docLine) const noexcept {
 	return pcs->DisplayFromDoc(docLine);
 }
 
-// Document line for a display line (0 is the first line of the document).
-// displayLine <= 0 yields 0; past the last display line yields the last document line.
+/// Document line for a display line (0 is the first line of the document).
+/// displayLine <= 0 yields 0; past the last display line yields the last document line.
 Sci::Line Editor::DocLineFromVisible(Sci::Line displayLine) const noexcept {
 	return pcs->DocFromDisplay(displayLine);
 }
 
-// Fold level is a 32-bit value: number part (0..NumberMask) plus WhiteFlag / HeaderFlag.
-// Base is FoldLevel::Base so levels can be compared without underflow. Returns the previous level.
+/// Fold level is a 32-bit value: number part (0..NumberMask) plus WhiteFlag / HeaderFlag.
+/// Base is FoldLevel::Base so levels can be compared without underflow. Returns the previous level.
 int Editor::SetFoldLevel(Sci::Line line, FoldLevel level) {
 	const int prev = pdoc->SetLevel(line, static_cast<int>(level));
 	if (prev != static_cast<int>(level))
@@ -43,107 +43,107 @@ int Editor::SetFoldLevel(Sci::Line line, FoldLevel level) {
 	return prev;
 }
 
-// Fold level of line: number part plus WhiteFlag / HeaderFlag.
+/// Fold level of line: number part plus WhiteFlag / HeaderFlag.
 FoldLevel Editor::GetFoldLevel(Sci::Line line) const noexcept {
 	return pdoc->GetFoldLevel(line);
 }
 
-// Last line that would show or hide when toggling the fold at line.
-// When level is omitted, uses the fold level of line.
+/// Last line that would show or hide when toggling the fold at line.
+/// When level is omitted, uses the fold level of line.
 Sci::Line Editor::GetLastChild(Sci::Line line, std::optional<FoldLevel> level) const {
 	return pdoc->GetLastChild(line, level);
 }
 
-// Nearest header line above line with a lower fold level, or -1.
+/// Nearest header line above line with a lower fold level, or -1.
 Sci::Line Editor::GetFoldParent(Sci::Line line) const noexcept {
 	return pdoc->GetFoldParent(line);
 }
 
-// Mark a line range visible or invisible. Does not change fold levels or flags.
+/// Mark a line range visible or invisible. Does not change fold levels or flags.
 void Editor::ShowLines(Sci::Line lineStart, Sci::Line lineEnd) {
 	pcs->SetVisible(lineStart, lineEnd, true);
 	SetScrollBars();
 	Redraw();
 }
 
-// Mark a line range invisible. Does not change fold levels.
+/// Mark a line range invisible. Does not change fold levels.
 void Editor::HideLines(Sci::Line lineStart, Sci::Line lineEnd) {
 	pcs->SetVisible(lineStart, lineEnd, false);
 	SetScrollBars();
 	Redraw();
 }
 
-// True when no line is hidden in the contraction map.
+/// True when no line is hidden in the contraction map.
 bool Editor::GetAllLinesVisible() const noexcept {
 	return !pcs->HiddenLines();
 }
 
-// True when the fold header at lineDoc is expanded (children may be visible).
+/// True when the fold header at lineDoc is expanded (children may be visible).
 bool Editor::GetFoldExpanded(Sci::Line lineDoc) const noexcept {
 	return pcs->GetExpanded(lineDoc);
 }
 
-// AutomaticFold::Show expands folds that hold the caret or insertion; Click handles margin clicks; Change reacts to fold-level edits.
+/// AutomaticFold::Show expands folds that hold the caret or insertion; Click handles margin clicks; Change reacts to fold-level edits.
 void Editor::SetAutomaticFold(AutomaticFold automatic) {
 	foldAutomatic = automatic;
 }
 
-// AutomaticFold flags currently enabled.
+/// AutomaticFold flags currently enabled.
 AutomaticFold Editor::GetAutomaticFold() const noexcept {
 	return foldAutomatic;
 }
 
-// Draw fold lines before/after expanded or contracted headers, or show level/state debug in the margin.
+/// Draw fold lines before/after expanded or contracted headers, or show level/state debug in the margin.
 void Editor::SetFoldFlags(FoldFlag flags) {
 	foldFlags = flags;
 	Redraw();
 }
 
-// Toggle fold state for a header line. Optional per-line display text appears to the right of contracted text when display style is not Hidden.
+/// Toggle fold state for a header line. Optional per-line display text appears to the right of contracted text when display style is not Hidden.
 void Editor::ToggleFold(Sci::Line line) {
 	FoldLine(line, FoldAction::Toggle);
 }
 
-// Set per-line fold display text then toggle the fold at line.
-// text may be null to clear the per-line tag.
+/// Set per-line fold display text then toggle the fold at line.
+/// text may be null to clear the per-line tag.
 void Editor::ToggleFoldShowText(Sci::Line line, const char *text) {
 	pcs->SetFoldDisplayText(line, text);
 	FoldLine(line, FoldAction::Toggle);
 }
 
-// FoldDisplayTextStyle::Hidden (default), Standard, or Boxed.
+/// FoldDisplayTextStyle::Hidden (default), Standard, or Boxed.
 void Editor::FoldDisplayTextSetStyle(FoldDisplayTextStyle style) {
 	foldDisplayTextStyle = style;
 	Redraw();
 }
 
-// How contracted fold tags are drawn: Hidden, Standard, or Boxed.
+/// How contracted fold tags are drawn: Hidden, Standard, or Boxed.
 FoldDisplayTextStyle Editor::FoldDisplayTextGetStyle() const noexcept {
 	return foldDisplayTextStyle;
 }
 
-// Default tag shown for contracted headers that have no per-line text. Empty or null clears it.
+/// Default tag shown for contracted headers that have no per-line text. Empty or null clears it.
 void Editor::SetDefaultFoldDisplayText(const char *text) {
 	EditModel::SetDefaultFoldDisplayText(text);
 	Redraw();
 }
 
-// Expand or contract this header and every nested header under it.
+/// Expand or contract this header and every nested header under it.
 void Editor::FoldChildren(Sci::Line line, FoldAction action) {
 	FoldExpand(line, action, pdoc->GetFoldLevel(line));
 }
 
-// Expand every child of line down to the given fold level.
+/// Expand every child of line down to the given fold level.
 void Editor::ExpandChildren(Sci::Line line, FoldLevel level) {
 	FoldExpand(line, FoldAction::Expand, level);
 }
 
-// Ensure a document line is not under a contracted fold.
+/// Ensure a document line is not under a contracted fold.
 void Editor::EnsureVisible(Sci::Line line) {
 	EnsureLineVisible(line, false);
 }
 
-// Same as EnsureVisible, then scroll so the line is inside the visible-policy slop.
+/// Same as EnsureVisible, then scroll so the line is inside the visible-policy slop.
 void Editor::EnsureVisibleEnforcePolicy(Sci::Line line) {
 	EnsureLineVisible(line, true);
 }
@@ -174,16 +174,16 @@ Sci::Line Editor::ExpandLine(Sci::Line line) {
 	return lineMaxSubord;
 }
 
-// Set expanded state without walking children. Redraws the fold margin when it changes.
+/// Set expanded state without walking children. Redraws the fold margin when it changes.
 void Editor::SetFoldExpanded(Sci::Line lineDoc, bool expanded) {
 	if (pcs->SetExpanded(lineDoc, expanded)) {
 		RedrawSelMargin();
 	}
 }
 
-// Expand, contract, or toggle the fold containing line.
-// Toggle on a non-header walks up to the parent header. Contracting can move the caret
-// into view when it lay inside the hidden range; expanding ensures the header is visible.
+/// Expand, contract, or toggle the fold containing line.
+/// Toggle on a non-header walks up to the parent header. Contracting can move the caret
+/// into view when it lay inside the hidden range; expanding ensures the header is visible.
 void Editor::FoldLine(Sci::Line line, FoldAction action) {
 	if (line >= 0) {
 		if (action == FoldAction::Toggle) {
@@ -223,8 +223,8 @@ void Editor::FoldLine(Sci::Line line, FoldAction action) {
 	}
 }
 
-// Expand or contract line and set the same expanded flag on every nested header under it.
-// Child lines are made visible or hidden as a block down to the last subordinate.
+/// Expand or contract line and set the same expanded flag on every nested header under it.
+/// Child lines are made visible or hidden as a block down to the last subordinate.
 void Editor::FoldExpand(Sci::Line line, FoldAction action, FoldLevel level) {
 	bool expanding = action == FoldAction::Expand;
 	if (action == FoldAction::Toggle) {
@@ -251,7 +251,7 @@ void Editor::FoldExpand(Sci::Line line, FoldAction action, FoldLevel level) {
 	Redraw();
 }
 
-// Next contracted fold header at or after lineStart, or -1 when none remain.
+/// Next contracted fold header at or after lineStart, or -1 when none remain.
 Sci::Line Editor::ContractedFoldNext(Sci::Line lineStart) const noexcept {
 	for (Sci::Line line = lineStart; line<pdoc->LinesTotal();) {
 		if (!pcs->GetExpanded(line) && LevelIsHeader(pdoc->GetFoldLevel(line)))
@@ -323,8 +323,8 @@ void Editor::EnsureLineVisible(Sci::Line lineDoc, bool enforcePolicy) {
 	}
 }
 
-// Expand or contract the whole document. Toggle discovers state from the first header.
-// ContractEveryLevel contracts nested headers as well as top-level ones.
+/// Expand or contract the whole document. Toggle discovers state from the first header.
+/// ContractEveryLevel contracts nested headers as well as top-level ones.
 void Editor::FoldAll(FoldAction action) {
 	const Sci::Line maxLine = pdoc->LinesTotal();
 	const bool contractAll = FlagSet(action, FoldAction::ContractEveryLevel);
@@ -369,8 +369,8 @@ void Editor::FoldAll(FoldAction action) {
 	Redraw();
 }
 
-// React to a fold-level change at line so expansion and visibility stay consistent
-// when headers appear, disappear, or merge with neighbouring blocks.
+/// React to a fold-level change at line so expansion and visibility stay consistent
+/// when headers appear, disappear, or merge with neighbouring blocks.
 void Editor::FoldChanged(Sci::Line line, FoldLevel levelNow, FoldLevel levelPrev) {
 	if (LevelIsHeader(levelNow)) {
 		if (!LevelIsHeader(levelPrev)) {
@@ -421,8 +421,8 @@ void Editor::FoldChanged(Sci::Line line, FoldLevel levelNow, FoldLevel levelPrev
 	}
 }
 
-// When AutomaticFold::Show is set, expand folds covering [pos, pos+len).
-// Otherwise notify the host that the range needs to be shown.
+/// When AutomaticFold::Show is set, expand folds covering [pos, pos+len).
+/// Otherwise notify the host that the range needs to be shown.
 void Editor::NeedShown(Sci::Position pos, Sci::Position len) {
 	if (FlagSet(foldAutomatic, AutomaticFold::Show)) {
 		const Sci::Line lineStart = pdoc->SciLineFromPosition(pos);

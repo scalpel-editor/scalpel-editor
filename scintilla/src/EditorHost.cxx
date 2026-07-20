@@ -48,8 +48,8 @@ void Editor::NotifyErrorOccurred(Document *, void *, Status status) {
 	SetStatus(status);
 }
 
-// Query the active surface rather than predicting renderer capabilities in
-// the editor. The Phase 6 renderer supplies the fixed answers for Wayland.
+/// Query the active surface rather than predicting renderer capabilities in
+/// the editor. The Phase 6 renderer supplies the fixed answers for Wayland.
 int Editor::SupportsFeature(Supports feature) {
 	AutoSurface surface(this);
 	return surface->SupportsFeature(feature);

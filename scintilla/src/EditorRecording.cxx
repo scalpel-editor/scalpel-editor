@@ -30,28 +30,28 @@
 using namespace Scintilla;
 using namespace Scintilla::Internal;
 
-// Turn capture on. Nested start while already recording is a no-op.
+/// Turn capture on. Nested start while already recording is a no-op.
 void Editor::StartRecording() noexcept {
 	recording = true;
 }
 
-// Turn capture off.
+/// Turn capture off.
 void Editor::StopRecording() noexcept {
 	recording = false;
 }
 
-// True while StartRecording has been called and StopRecording has not.
+/// True while StartRecording has been called and StopRecording has not.
 bool Editor::IsRecording() const noexcept {
 	return recording;
 }
 
-// Install the host sink for typed recorded actions. Empty callback discards them.
+/// Install the host sink for typed recorded actions. Empty callback discards them.
 void Editor::SetRecordingCallback(RecordingCallback callback) {
 	recordingCallback = std::move(callback);
 }
 
-// Deliver one action when recording and not replaying. No-op if the host
-// installed no callback.
+/// Deliver one action when recording and not replaying. No-op if the host
+/// installed no callback.
 void Editor::EmitRecordedAction(const RecordedAction &action) {
 	if (!recording || replaying) {
 		return;
@@ -82,8 +82,8 @@ private:
 
 }
 
-// Apply one owned action through the named editor path that produced it.
-// Member function so protected document and selection operations are reachable.
+/// Apply one owned action through the named editor path that produced it.
+/// Member function so protected document and selection operations are reachable.
 void Editor::ApplyRecordedAction(const RecordedAction &action) {
 	if (const RecordedCommand *cmd = std::get_if<RecordedCommand>(&action)) {
 		ExecuteCommand(cmd->Command());
@@ -135,13 +135,13 @@ void Editor::ApplyRecordedAction(const RecordedAction &action) {
 	}
 }
 
-// Apply one recorded action without emitting new records.
+/// Apply one recorded action without emitting new records.
 void Editor::ReplayRecordedAction(const RecordedAction &action) {
 	const ReplayingGuard guard(replaying);
 	ApplyRecordedAction(action);
 }
 
-// Apply a sequence in order. Capture stays suppressed for the whole sequence.
+/// Apply a sequence in order. Capture stays suppressed for the whole sequence.
 void Editor::ReplayRecordedActions(const std::vector<RecordedAction> &actions) {
 	const ReplayingGuard guard(replaying);
 	for (const RecordedAction &action : actions) {

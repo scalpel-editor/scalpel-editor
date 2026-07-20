@@ -39,12 +39,12 @@ bool Editor::Wrapping() const noexcept {
 	return vs.wrap.state != Wrap::None;
 }
 
-// Sets how lines wider than the window wrap: Word breaks on word or style
-// boundaries, Char between any characters, Whitespace on whitespace, and None
-// disables wrapping. Char wrapping suits languages that do not separate words
-// with spaces. When a single word is wider than the window the break falls
-// after the last character that fits. The horizontal scroll bar is hidden while
-// wrapping is on.
+/// Sets how lines wider than the window wrap: Word breaks on word or style
+/// boundaries, Char between any characters, Whitespace on whitespace, and None
+/// disables wrapping. Char wrapping suits languages that do not separate words
+/// with spaces. When a single word is wider than the window the break falls
+/// after the last character that fits. The horizontal scroll bar is hidden while
+/// wrapping is on.
 void Editor::SetWrapMode(Wrap wrapMode) {
 	if (vs.SetWrapState(wrapMode)) {
 		xOffset = 0;
@@ -58,11 +58,11 @@ Wrap Editor::GetWrapMode() const noexcept {
 	return vs.wrap.state;
 }
 
-// Selects the visual flags (small arrows) drawn to indicate a wrapped line.
-// The bits combine WrapVisualFlag values: End draws a flag at the end of a
-// subline, Start draws one at the start of the next subline (which then keeps
-// at least one character of indent to make room for it), and Margin draws one
-// in the line-number margin.
+/// Selects the visual flags (small arrows) drawn to indicate a wrapped line.
+/// The bits combine WrapVisualFlag values: End draws a flag at the end of a
+/// subline, Start draws one at the start of the next subline (which then keeps
+/// at least one character of indent to make room for it), and Margin draws one
+/// in the line-number margin.
 void Editor::SetWrapVisualFlags(WrapVisualFlag wrapVisualFlags) {
 	if (vs.SetWrapVisualFlags(wrapVisualFlags)) {
 		InvalidateStyleRedraw();
@@ -74,9 +74,9 @@ WrapVisualFlag Editor::GetWrapVisualFlags() const noexcept {
 	return vs.wrap.visualFlags;
 }
 
-// Selects whether the wrap visual flags are drawn near the window border
-// (Default) or near the text. Bits set for End or Start place that flag by the
-// text.
+/// Selects whether the wrap visual flags are drawn near the window border
+/// (Default) or near the text. Bits set for End or Start place that flag by the
+/// text.
 void Editor::SetWrapVisualFlagsLocation(WrapVisualLocation wrapVisualFlagsLocation) {
 	if (vs.SetWrapVisualFlagsLocation(wrapVisualFlagsLocation)) {
 		InvalidateStyleRedraw();
@@ -87,10 +87,10 @@ WrapVisualLocation Editor::GetWrapVisualFlagsLocation() const noexcept {
 	return vs.wrap.visualFlagsLocation;
 }
 
-// Sets the indent of wrapped sublines, measured in average character widths of
-// the default style. Values below 0 or very large values may look wrong. The
-// indent is independent of the visual flags, but a Start visual flag forces an
-// indent of at least 1.
+/// Sets the indent of wrapped sublines, measured in average character widths of
+/// the default style. Values below 0 or very large values may look wrong. The
+/// indent is independent of the visual flags, but a Start visual flag forces an
+/// indent of at least 1.
 void Editor::SetWrapStartIndent(int wrapStartIndent) {
 	if (vs.SetWrapVisualStartIndent(wrapStartIndent)) {
 		InvalidateStyleRedraw();
@@ -102,10 +102,10 @@ int Editor::GetWrapStartIndent() const noexcept {
 	return vs.wrap.visualStartIndent;
 }
 
-// Selects how wrapped sublines are indented: Fixed aligns them to the left of
-// the window plus the amount from SetWrapStartIndent, Same aligns to the first
-// subline's indent, Indent adds one more indent level, and DeepIndent adds two.
-// The default is Fixed.
+/// Selects how wrapped sublines are indented: Fixed aligns them to the left of
+/// the window plus the amount from SetWrapStartIndent, Same aligns to the first
+/// subline's indent, Indent adds one more indent level, and DeepIndent adds two.
+/// The default is Fixed.
 void Editor::SetWrapIndentMode(WrapIndentMode wrapIndentMode) {
 	if (vs.SetWrapIndentMode(wrapIndentMode)) {
 		InvalidateStyleRedraw();
@@ -117,11 +117,11 @@ WrapIndentMode Editor::GetWrapIndentMode() const noexcept {
 	return vs.wrap.indentMode;
 }
 
-// Wrapping is deferred: a change queues the affected lines here, and the actual
-// layout happens later, during idle and paint, in WrapLines. Batching this way
-// lets a set of changes be wrapped and displayed once. A consequence is that a
-// scroll requested right after loading runs before wrapping and lands on the
-// wrong line; wait for the first Painted notification before scrolling.
+/// Wrapping is deferred: a change queues the affected lines here, and the actual
+/// layout happens later, during idle and paint, in WrapLines. Batching this way
+/// lets a set of changes be wrapped and displayed once. A consequence is that a
+/// scroll requested right after loading runs before wrapping and lands on the
+/// wrong line; wait for the first Painted notification before scrolling.
 void Editor::NeedWrapping(Sci::Line docLineStart, Sci::Line docLineEnd) {
 //Platform::DebugPrintf("\nNeedWrapping: %0d..%0d\n", docLineStart, docLineEnd);
 	if (wrapPending.AddRange(docLineStart, docLineEnd)) {
@@ -270,11 +270,11 @@ bool Editor::WrapBlock(Surface *surface, Sci::Line lineToWrap, Sci::Line lineToW
 	return wrapsDone > 0;
 }
 
-// Perform  wrapping for a subset of the lines needing wrapping.
-// wsAll: wrap all lines which need wrapping in this single call
-// wsVisible: wrap currently visible lines
-// wsIdle: wrap one page + 100 lines
-// Return true if wrapping occurred.
+/// Perform  wrapping for a subset of the lines needing wrapping.
+/// wsAll: wrap all lines which need wrapping in this single call
+/// wsVisible: wrap currently visible lines
+/// wsIdle: wrap one page + 100 lines
+/// Return true if wrapping occurred.
 bool Editor::WrapLines(WrapScope ws) {
 	Sci::Line goodTopLine = topLine;
 	bool wrapOccurred = false;
@@ -402,8 +402,8 @@ void Editor::CheckModificationForWrap(DocModification mh) {
 	}
 }
 
-// A document line can occupy more than one display line when it wraps; returns
-// the number of display lines the given document line needs.
+/// A document line can occupy more than one display line when it wraps; returns
+/// the number of display lines the given document line needs.
 Sci::Line Editor::WrapCount(Sci::Line line) {
 	AutoSurface surface(this);
 	std::shared_ptr<LineLayout> ll = view.RetrieveLineLayout(line, *this);

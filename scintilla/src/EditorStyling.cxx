@@ -48,7 +48,7 @@ using namespace Scintilla::Internal;
 
 // --- Document style bytes ----------------------------------------------------
 
-// Clear all style bytes to 0, drop lexer decorations, expand folds, clear fold levels, and refresh annotation heights. Does not change the text.
+/// Clear all style bytes to 0, drop lexer decorations, expand folds, clear fold levels, and refresh annotation heights. Does not change the text.
 void Editor::ClearDocumentStyle() {
 	pdoc->decorations->DeleteLexerDecorations();
 	pdoc->StartStyling(0);
@@ -58,32 +58,32 @@ void Editor::ClearDocumentStyle() {
 	pdoc->ClearLevels();
 }
 
-// Style byte at position, or 0 past the end of the document. Values are 0..255.
+/// Style byte at position, or 0 past the end of the document. Values are 0..255.
 int Editor::GetStyleAt(Sci::Position pos) const noexcept {
 	if (pos >= pdoc->Length())
 		return 0;
 	return pdoc->StyleAt(pos);
 }
 
-// Same as GetStyleAt but always returns the style index as an integer in 0..255.
+/// Same as GetStyleAt but always returns the style index as an integer in 0..255.
 int Editor::GetStyleIndexAt(Sci::Position pos) const noexcept {
 	if (pos >= pdoc->Length())
 		return 0;
 	return pdoc->StyleIndexAt(pos);
 }
 
-// Last position believed styled correctly. Moves forward when styles are applied and backward when text before it changes. Drawing may request more styling from here.
+/// Last position believed styled correctly. Moves forward when styles are applied and backward when text before it changes. Drawing may request more styling from here.
 Sci::Position Editor::GetEndStyled() const noexcept {
 	return pdoc->GetEndStyled();
 }
 
-// Prepare to apply styles starting at start. Call SetStyling or SetStylingEx for each run.
+/// Prepare to apply styles starting at start. Call SetStyling or SetStylingEx for each run.
 void Editor::StartStyling(Sci::Position start) {
 	pdoc->StartStyling(start);
 }
 
-// Apply style to the next length bytes from the styling position, then advance that position by length.
-// Negative length sets errorStatus to Failure and does nothing.
+/// Apply style to the next length bytes from the styling position, then advance that position by length.
+/// Negative length sets errorStatus to Failure and does nothing.
 void Editor::SetStyling(Sci::Position length, int style) {
 	if (length < 0)
 		errorStatus = Status::Failure;
@@ -91,41 +91,41 @@ void Editor::SetStyling(Sci::Position length, int style) {
 		pdoc->SetStyleFor(length, static_cast<char>(style));
 }
 
-// Apply one style byte per document byte for length bytes from the styling position, then advance.
-// styles must point at length bytes; a null pointer is ignored.
+/// Apply one style byte per document byte for length bytes from the styling position, then advance.
+/// styles must point at length bytes; a null pointer is ignored.
 void Editor::SetStylingEx(Sci::Position length, const char *styles) {
 	if (!styles)
 		return;
 	pdoc->SetStyles(length, styles);
 }
 
-// When and how much to style in idle time. None (default) styles the visible area before paint.
-// ToVisible styles a little before display then continues in idle; AfterVisible styles past the view in idle; All does both.
-// Has no effect while wrapping is on because wrapping already uses idle time and requires styles.
+/// When and how much to style in idle time. None (default) styles the visible area before paint.
+/// ToVisible styles a little before display then continues in idle; AfterVisible styles past the view in idle; All does both.
+/// Has no effect while wrapping is on because wrapping already uses idle time and requires styles.
 void Editor::SetIdleStyling(IdleStyling idleStyling_) {
 	idleStyling = idleStyling_;
 }
 
-// Current idle-styling mode.
+/// Current idle-styling mode.
 IdleStyling Editor::GetIdleStyling() const noexcept {
 	return idleStyling;
 }
 
 // --- Style definition --------------------------------------------------------
 
-// Copy STYLE_DEFAULT into all styles and redraw. Use after setting the default style when many styles should match it.
+/// Copy STYLE_DEFAULT into all styles and redraw. Use after setting the default style when many styles should match it.
 void Editor::StyleClearAll() {
 	vs.ClearStyles();
 	InvalidateStyleRedraw();
 }
 
-// Reset STYLE_DEFAULT to Scintilla's built-in default face, size, and colours, then redraw.
+/// Reset STYLE_DEFAULT to Scintilla's built-in default face, size, and colours, then redraw.
 void Editor::StyleResetDefault() {
 	vs.ResetDefaultStyle();
 	InvalidateStyleRedraw();
 }
 
-// Foreground colour of style (opaque RGB).
+/// Foreground colour of style (opaque RGB).
 void Editor::StyleSetFore(int style, int rgb) {
 	vs.EnsureStyle(static_cast<size_t>(style));
 	vs.styles[style].fore = ColourRGBA::FromIpRGB(rgb);
@@ -137,7 +137,7 @@ int Editor::StyleGetFore(int style) {
 	return vs.styles[style].fore.OpaqueRGB();
 }
 
-// Background colour of style (opaque RGB).
+/// Background colour of style (opaque RGB).
 void Editor::StyleSetBack(int style, int rgb) {
 	vs.EnsureStyle(static_cast<size_t>(style));
 	vs.styles[style].back = ColourRGBA::FromIpRGB(rgb);
@@ -149,7 +149,7 @@ int Editor::StyleGetBack(int style) {
 	return vs.styles[style].back.OpaqueRGB();
 }
 
-// Bold weight (true → FontWeight::Bold, false → Normal). Prefer StyleSetWeight for finer control.
+/// Bold weight (true → FontWeight::Bold, false → Normal). Prefer StyleSetWeight for finer control.
 void Editor::StyleSetBold(int style, bool bold) {
 	vs.EnsureStyle(static_cast<size_t>(style));
 	vs.styles[style].weight = bold ? FontWeight::Bold : FontWeight::Normal;
@@ -161,7 +161,7 @@ bool Editor::StyleGetBold(int style) {
 	return vs.styles[style].weight > FontWeight::Normal;
 }
 
-// Font weight (100..1000 scale used by FontWeight).
+/// Font weight (100..1000 scale used by FontWeight).
 void Editor::StyleSetWeight(int style, FontWeight weight) {
 	vs.EnsureStyle(static_cast<size_t>(style));
 	vs.styles[style].weight = weight;
@@ -173,7 +173,7 @@ FontWeight Editor::StyleGetWeight(int style) {
 	return vs.styles[style].weight;
 }
 
-// Font stretch (ultra-condensed … ultra-expanded).
+/// Font stretch (ultra-condensed … ultra-expanded).
 void Editor::StyleSetStretch(int style, FontStretch stretch) {
 	vs.EnsureStyle(static_cast<size_t>(style));
 	vs.styles[style].stretch = stretch;
@@ -185,7 +185,7 @@ FontStretch Editor::StyleGetStretch(int style) {
 	return vs.styles[style].stretch;
 }
 
-// Italic face.
+/// Italic face.
 void Editor::StyleSetItalic(int style, bool italic) {
 	vs.EnsureStyle(static_cast<size_t>(style));
 	vs.styles[style].italic = italic;
@@ -197,7 +197,7 @@ bool Editor::StyleGetItalic(int style) {
 	return vs.styles[style].italic;
 }
 
-// When true, the style's background fills to the right margin on that line.
+/// When true, the style's background fills to the right margin on that line.
 void Editor::StyleSetEOLFilled(int style, bool eolFilled) {
 	vs.EnsureStyle(static_cast<size_t>(style));
 	vs.styles[style].eolFilled = eolFilled;
@@ -209,7 +209,7 @@ bool Editor::StyleGetEOLFilled(int style) {
 	return vs.styles[style].eolFilled;
 }
 
-// Point size as a whole number (stored as size * FontSizeMultiplier).
+/// Point size as a whole number (stored as size * FontSizeMultiplier).
 void Editor::StyleSetSize(int style, int sizePoints) {
 	vs.EnsureStyle(static_cast<size_t>(style));
 	vs.styles[style].size = sizePoints * FontSizeMultiplier;
@@ -221,7 +221,7 @@ int Editor::StyleGetSize(int style) {
 	return vs.styles[style].size / FontSizeMultiplier;
 }
 
-// Fractional point size in hundredths of a point (FontSizeMultiplier units).
+/// Fractional point size in hundredths of a point (FontSizeMultiplier units).
 void Editor::StyleSetSizeFractional(int style, int sizeHundredthPoints) {
 	vs.EnsureStyle(static_cast<size_t>(style));
 	vs.styles[style].size = sizeHundredthPoints;
@@ -233,7 +233,7 @@ int Editor::StyleGetSizeFractional(int style) {
 	return vs.styles[style].size;
 }
 
-// Font family name. Null is ignored.
+/// Font family name. Null is ignored.
 void Editor::StyleSetFont(int style, const char *fontName) {
 	if (!fontName)
 		return;
@@ -242,7 +242,7 @@ void Editor::StyleSetFont(int style, const char *fontName) {
 	InvalidateStyleRedraw();
 }
 
-// Copies the font name into buffer when non-null; returns the length of the name.
+/// Copies the font name into buffer when non-null; returns the length of the name.
 int Editor::StyleGetFont(int style, char *buffer) {
 	vs.EnsureStyle(static_cast<size_t>(style));
 	const char *name = vs.styles[style].fontName;
@@ -256,7 +256,7 @@ int Editor::StyleGetFont(int style, char *buffer) {
 	return static_cast<int>(len);
 }
 
-// Underline.
+/// Underline.
 void Editor::StyleSetUnderline(int style, bool underline) {
 	vs.EnsureStyle(static_cast<size_t>(style));
 	vs.styles[style].underline = underline;
@@ -268,7 +268,7 @@ bool Editor::StyleGetUnderline(int style) {
 	return vs.styles[style].underline;
 }
 
-// Case force: mixed, upper, lower, or camel.
+/// Case force: mixed, upper, lower, or camel.
 void Editor::StyleSetCase(int style, CaseVisible caseVisible) {
 	vs.EnsureStyle(static_cast<size_t>(style));
 	vs.styles[style].caseForce = static_cast<Style::CaseForce>(caseVisible);
@@ -280,7 +280,7 @@ CaseVisible Editor::StyleGetCase(int style) {
 	return static_cast<CaseVisible>(vs.styles[style].caseForce);
 }
 
-// Character set for the face. Changing it drops the case-fold cache.
+/// Character set for the face. Changing it drops the case-fold cache.
 void Editor::StyleSetCharacterSet(int style, CharacterSet characterSet) {
 	vs.EnsureStyle(static_cast<size_t>(style));
 	vs.styles[style].characterSet = characterSet;
@@ -293,7 +293,7 @@ CharacterSet Editor::StyleGetCharacterSet(int style) {
 	return vs.styles[style].characterSet;
 }
 
-// Visible text for this style. Invisible styles still take horizontal space unless combined with other settings.
+/// Visible text for this style. Invisible styles still take horizontal space unless combined with other settings.
 void Editor::StyleSetVisible(int style, bool visible) {
 	vs.EnsureStyle(static_cast<size_t>(style));
 	vs.styles[style].visible = visible;
@@ -305,7 +305,7 @@ bool Editor::StyleGetVisible(int style) {
 	return vs.styles[style].visible;
 }
 
-// When false, the style's text is protected from editing (selection and typing skip it where enforced).
+/// When false, the style's text is protected from editing (selection and typing skip it where enforced).
 void Editor::StyleSetChangeable(int style, bool changeable) {
 	vs.EnsureStyle(static_cast<size_t>(style));
 	vs.styles[style].changeable = changeable;
@@ -317,7 +317,7 @@ bool Editor::StyleGetChangeable(int style) {
 	return vs.styles[style].changeable;
 }
 
-// Hotspot: clickable style that can raise hotspot notifications and use hotspot colours.
+/// Hotspot: clickable style that can raise hotspot notifications and use hotspot colours.
 void Editor::StyleSetHotSpot(int style, bool hotspot) {
 	vs.EnsureStyle(static_cast<size_t>(style));
 	vs.styles[style].hotspot = hotspot;
@@ -329,7 +329,7 @@ bool Editor::StyleGetHotSpot(int style) {
 	return vs.styles[style].hotspot;
 }
 
-// Ask the platform to treat the face as monospaced when measuring if true.
+/// Ask the platform to treat the face as monospaced when measuring if true.
 void Editor::StyleSetCheckMonospaced(int style, bool checkMonospaced) {
 	vs.EnsureStyle(static_cast<size_t>(style));
 	vs.styles[style].checkMonospaced = checkMonospaced;
@@ -341,7 +341,7 @@ bool Editor::StyleGetCheckMonospaced(int style) {
 	return vs.styles[style].checkMonospaced;
 }
 
-// UTF-8 text drawn instead of the real characters when the style is invisible. Invalid UTF-8 is ignored; null clears.
+/// UTF-8 text drawn instead of the real characters when the style is invisible. Invalid UTF-8 is ignored; null clears.
 void Editor::StyleSetInvisibleRepresentation(int style, const char *utf8) {
 	vs.EnsureStyle(static_cast<size_t>(style));
 	char *rep = vs.styles[style].invisibleRepresentation;
@@ -360,7 +360,7 @@ void Editor::StyleSetInvisibleRepresentation(int style, const char *utf8) {
 	InvalidateStyleRedraw();
 }
 
-// Copies the invisible representation into buffer when non-null; returns its byte length.
+/// Copies the invisible representation into buffer when non-null; returns its byte length.
 int Editor::StyleGetInvisibleRepresentation(int style, char *buffer) {
 	vs.EnsureStyle(static_cast<size_t>(style));
 	const char *rep = vs.styles[style].invisibleRepresentation;
@@ -372,36 +372,36 @@ int Editor::StyleGetInvisibleRepresentation(int style, char *buffer) {
 
 // --- Element colours ---------------------------------------------------------
 
-// Override the colour of a visual element (selection, whitespace, caret, …). Alpha is used when the element allows translucency.
+/// Override the colour of a visual element (selection, whitespace, caret, …). Alpha is used when the element allows translucency.
 void Editor::SetElementColour(Element element, int colourAlpha) {
 	if (vs.SetElementColour(element, ColourRGBA(colourAlpha))) {
 		InvalidateStyleRedraw();
 	}
 }
 
-// Current override colour as colouralpha integer, or 0 when unset.
+/// Current override colour as colouralpha integer, or 0 when unset.
 int Editor::GetElementColour(Element element) const {
 	return vs.ElementColour(element).value_or(ColourRGBA()).AsInteger();
 }
 
-// Remove the override so the default or system colour is used again.
+/// Remove the override so the default or system colour is used again.
 void Editor::ResetElementColour(Element element) {
 	if (vs.ResetElement(element)) {
 		InvalidateStyleRedraw();
 	}
 }
 
-// True when an override colour is set for the element (not merely a base/default colour).
+/// True when an override colour is set for the element (not merely a base/default colour).
 bool Editor::GetElementIsSet(Element element) const {
 	return vs.ElementIsSet(element);
 }
 
-// True when the element accepts a translucent alpha channel.
+/// True when the element accepts a translucent alpha channel.
 bool Editor::GetElementAllowsTranslucent(Element element) const {
 	return vs.ElementAllowsTranslucent(element);
 }
 
-// Base/default colour for the element before overrides.
+/// Base/default colour for the element before overrides.
 int Editor::GetElementBaseColour(Element element) const {
 	const auto it = vs.elementBaseColours.find(element);
 	if (it == vs.elementBaseColours.end())
@@ -411,7 +411,7 @@ int Editor::GetElementBaseColour(Element element) const {
 
 // --- Font locale and measurement ---------------------------------------------
 
-// Locale used when realising fonts (OpenType features, etc.). Null is ignored.
+/// Locale used when realising fonts (OpenType features, etc.). Null is ignored.
 void Editor::SetFontLocale(const char *localeName) {
 	if (!localeName)
 		return;
@@ -419,7 +419,7 @@ void Editor::SetFontLocale(const char *localeName) {
 	InvalidateStyleRedraw();
 }
 
-// Copies the locale name into buffer when non-null; returns its length.
+/// Copies the locale name into buffer when non-null; returns its length.
 int Editor::GetFontLocale(char *buffer) const {
 	const size_t len = vs.localeName.size();
 	if (buffer) {
@@ -428,8 +428,8 @@ int Editor::GetFontLocale(char *buffer) const {
 	return static_cast<int>(len);
 }
 
-// Pixel width of text measured in the given style after refreshing style data.
-// Useful for sizing the line-number margin. Returns 1 if no measurement surface is available.
+/// Pixel width of text measured in the given style after refreshing style data.
+/// Useful for sizing the line-number margin. Returns 1 if no measurement surface is available.
 long Editor::TextWidth(int style, std::string_view text) {
 	RefreshStyleData();
 	AutoSurface surface(this);
@@ -439,8 +439,8 @@ long Editor::TextWidth(int style, std::string_view text) {
 	return 1;
 }
 
-// How many line layouts to cache: None, Caret (default, one line), Page (visible + caret), or Document.
-// Higher levels speed wrapping and scrolling at the cost of memory.
+/// How many line layouts to cache: None, Caret (default, one line), Page (visible + caret), or Document.
+/// Higher levels speed wrapping and scrolling at the cost of memory.
 void Editor::SetLayoutCache(LineCache cacheMode) {
 	if (cacheMode <= LineCache::Document) {
 		view.llc.SetLevel(cacheMode);
@@ -451,7 +451,7 @@ LineCache Editor::GetLayoutCache() const noexcept {
 	return view.llc.GetLevel();
 }
 
-// Entries in the short-string width cache used while laying out lines.
+/// Entries in the short-string width cache used while laying out lines.
 void Editor::SetPositionCache(int size) {
 	view.posCache->SetSize(static_cast<size_t>(size));
 }
@@ -460,7 +460,7 @@ int Editor::GetPositionCache() const noexcept {
 	return static_cast<int>(view.posCache->GetSize());
 }
 
-// Worker threads for layout. Large requests are clamped to a reasonable platform maximum.
+/// Worker threads for layout. Large requests are clamped to a reasonable platform maximum.
 void Editor::SetLayoutThreads(unsigned int threads) {
 	view.SetLayoutThreads(threads);
 }
@@ -469,7 +469,7 @@ unsigned int Editor::GetLayoutThreads() const noexcept {
 	return view.GetLayoutThreads();
 }
 
-// Drawing phases: one phase (base only) or multiple (back then text/indicators). Multi-phase reduces overdraw artefacts.
+/// Drawing phases: one phase (base only) or multiple (back then text/indicators). Multi-phase reduces overdraw artefacts.
 void Editor::SetPhasesDraw(int phases) {
 	if (view.SetPhasesDraw(phases))
 		InvalidateStyleRedraw();
@@ -479,7 +479,7 @@ int Editor::GetPhasesDraw() const noexcept {
 	return static_cast<int>(view.phasesDraw);
 }
 
-// Extra pixels above each line's text, increasing line height without changing the font size.
+/// Extra pixels above each line's text, increasing line height without changing the font size.
 void Editor::SetExtraAscent(int extraAscent) {
 	vs.extraAscent = extraAscent;
 	InvalidateStyleRedraw();
@@ -489,7 +489,7 @@ int Editor::GetExtraAscent() const noexcept {
 	return vs.extraAscent;
 }
 
-// Extra pixels below each line's text.
+/// Extra pixels below each line's text.
 void Editor::SetExtraDescent(int extraDescent) {
 	vs.extraDescent = extraDescent;
 	InvalidateStyleRedraw();
@@ -499,7 +499,7 @@ int Editor::GetExtraDescent() const noexcept {
 	return vs.extraDescent;
 }
 
-// Pixel size of the next RGBA image registered for markers or autocomplete.
+/// Pixel size of the next RGBA image registered for markers or autocomplete.
 void Editor::RGBAImageSetWidth(int width) {
 	sizeRGBAImage.x = static_cast<XYPOSITION>(width);
 }
@@ -508,12 +508,12 @@ void Editor::RGBAImageSetHeight(int height) {
 	sizeRGBAImage.y = static_cast<XYPOSITION>(height);
 }
 
-// Scale percent for the next RGBA image (100 = 1:1).
+/// Scale percent for the next RGBA image (100 = 1:1).
 void Editor::RGBAImageSetScale(int scalePercent) {
 	scaleRGBAImage = static_cast<float>(scalePercent);
 }
 
-// Bidirectional layout mode. Default is Disabled. Stores the mode and invalidates layout so measurement and paint can react. Platform subclasses that cannot lay out bidi text may override this virtual method to leave the mode disabled (or to accept only modes they implement). Full screen-line reordering is not on the current roadmap; the flag and shaped-run path stay so a later platform can turn it on.
+/// Bidirectional layout mode. Default is Disabled. Stores the mode and invalidates layout so measurement and paint can react. Platform subclasses that cannot lay out bidi text may override this virtual method to leave the mode disabled (or to accept only modes they implement). Full screen-line reordering is not on the current roadmap; the flag and shaped-run path stay so a later platform can turn it on.
 void Editor::SetBidirectional(Bidirectional bidirectional_) {
 	if (bidirectional == bidirectional_)
 		return;
@@ -528,7 +528,7 @@ Bidirectional Editor::GetBidirectional() const noexcept {
 
 // --- Whitespace view ---------------------------------------------------------
 
-// How space and tab are drawn: Invisible (default), VisibleAlways, VisibleAfterIndent, or VisibleOnlyInIndent.
+/// How space and tab are drawn: Invisible (default), VisibleAlways, VisibleAfterIndent, or VisibleOnlyInIndent.
 void Editor::SetViewWS(WhiteSpace viewWS) {
 	vs.viewWhitespace = viewWS;
 	Redraw();
@@ -538,21 +538,21 @@ WhiteSpace Editor::GetViewWS() const noexcept {
 	return vs.viewWhitespace;
 }
 
-// Colour of visible whitespace marks when useSetting is true; otherwise clear the override.
+/// Colour of visible whitespace marks when useSetting is true; otherwise clear the override.
 void Editor::SetWhitespaceFore(bool useSetting, int rgb) {
 	if (vs.SetElementColourOptional(Element::WhiteSpace, useSetting, rgb)) {
 		InvalidateStyleRedraw();
 	}
 }
 
-// Background behind whitespace marks when useSetting is true; otherwise clear the override.
+/// Background behind whitespace marks when useSetting is true; otherwise clear the override.
 void Editor::SetWhitespaceBack(bool useSetting, int rgb) {
 	if (vs.SetElementColourOptional(Element::WhiteSpaceBack, useSetting, rgb)) {
 		InvalidateStyleRedraw();
 	}
 }
 
-// Size of the dots used for visible space characters.
+/// Size of the dots used for visible space characters.
 void Editor::SetWhitespaceSize(int size) {
 	vs.whitespaceSize = size;
 	Redraw();
@@ -564,14 +564,14 @@ int Editor::GetWhitespaceSize() const noexcept {
 
 // --- Selection colours (layer and EOL fill live elsewhere) -------------------
 
-// Selection (and additional-selection) text colour when useSetting is true; otherwise clear both overrides.
+/// Selection (and additional-selection) text colour when useSetting is true; otherwise clear both overrides.
 void Editor::SetSelFore(bool useSetting, int rgb) {
 	vs.elementColours[Element::SelectionText] = OptionalColour(useSetting, rgb);
 	vs.elementColours[Element::SelectionAdditionalText] = OptionalColour(useSetting, rgb);
 	InvalidateStyleRedraw();
 }
 
-// Selection (and additional-selection) background when useSetting is true; otherwise clear both overrides.
+/// Selection (and additional-selection) background when useSetting is true; otherwise clear both overrides.
 void Editor::SetSelBack(bool useSetting, int rgb) {
 	if (useSetting) {
 		vs.SetElementRGB(Element::SelectionBack, rgb);
@@ -583,7 +583,7 @@ void Editor::SetSelBack(bool useSetting, int rgb) {
 	InvalidateStyleRedraw();
 }
 
-// Selection translucency. Alpha::NoAlpha places the selection on the base layer; other values use OverText and set alpha on selection backgrounds.
+/// Selection translucency. Alpha::NoAlpha places the selection on the base layer; other values use OverText and set alpha on selection backgrounds.
 void Editor::SetSelAlpha(int alpha) {
 	const Layer layerNew = (static_cast<Alpha>(alpha) == Alpha::NoAlpha) ? Layer::Base : Layer::OverText;
 	if (vs.selection.layer != layerNew) {
@@ -597,26 +597,26 @@ void Editor::SetSelAlpha(int alpha) {
 	InvalidateStyleRedraw();
 }
 
-// Current selection alpha, or Alpha::NoAlpha when the selection is on the base layer.
+/// Current selection alpha, or Alpha::NoAlpha when the selection is on the base layer.
 int Editor::GetSelAlpha() const {
 	if (vs.selection.layer == Layer::Base)
 		return static_cast<int>(Alpha::NoAlpha);
 	return vs.ElementColourForced(Element::SelectionBack).GetAlpha();
 }
 
-// Foreground of additional selections (multi-select).
+/// Foreground of additional selections (multi-select).
 void Editor::SetAdditionalSelFore(int rgb) {
 	vs.elementColours[Element::SelectionAdditionalText] = ColourRGBA::FromIpRGB(rgb);
 	InvalidateStyleRedraw();
 }
 
-// Background of additional selections.
+/// Background of additional selections.
 void Editor::SetAdditionalSelBack(int rgb) {
 	vs.SetElementRGB(Element::SelectionAdditionalBack, rgb);
 	InvalidateStyleRedraw();
 }
 
-// Alpha of additional selection background.
+/// Alpha of additional selection background.
 void Editor::SetAdditionalSelAlpha(int alpha) {
 	vs.SetElementAlpha(Element::SelectionAdditionalBack, alpha);
 	InvalidateStyleRedraw();
@@ -630,7 +630,7 @@ int Editor::GetAdditionalSelAlpha() const {
 
 // --- Highlight guide, edges, zoom, extended styles ---------------------------
 
-// Column of the vertical indentation guide highlight, or 0 to turn it off. Redraws when the column changes or is forced on.
+/// Column of the vertical indentation guide highlight, or 0 to turn it off. Redraws when the column changes or is forced on.
 void Editor::SetHighlightGuide(int column) {
 	if ((highlightGuideColumn != column) || (column > 0)) {
 		highlightGuideColumn = column;
@@ -642,7 +642,7 @@ int Editor::GetHighlightGuide() const noexcept {
 	return highlightGuideColumn;
 }
 
-// Long-line marker mode: None, Line (vertical line at the edge column), Background, or MultiLine.
+/// Long-line marker mode: None, Line (vertical line at the edge column), Background, or MultiLine.
 void Editor::SetEdgeMode(EdgeVisualStyle edgeMode) {
 	vs.edgeState = edgeMode;
 	InvalidateStyleRedraw();
@@ -652,7 +652,7 @@ EdgeVisualStyle Editor::GetEdgeMode() const noexcept {
 	return vs.edgeState;
 }
 
-// Colour of the single long-line edge (Line or Background modes).
+/// Colour of the single long-line edge (Line or Background modes).
 void Editor::SetEdgeColour(int rgb) {
 	vs.theEdge.colour = ColourRGBA::FromIpRGB(rgb);
 	InvalidateStyleRedraw();
@@ -662,44 +662,44 @@ int Editor::GetEdgeColour() const noexcept {
 	return vs.theEdge.colour.OpaqueRGB();
 }
 
-// Add a multi-edge vertical line at column with colour. Use with EdgeVisualStyle::MultiLine.
+/// Add a multi-edge vertical line at column with colour. Use with EdgeVisualStyle::MultiLine.
 void Editor::MultiEdgeAddLine(int column, int rgb) {
 	vs.AddMultiEdge(column, ColourRGBA::FromIpRGB(rgb));
 	InvalidateStyleRedraw();
 }
 
-// Remove all multi-edge lines.
+/// Remove all multi-edge lines.
 void Editor::MultiEdgeClearAll() {
 	std::vector<EdgeProperties>().swap(vs.theMultiEdge);
 	InvalidateStyleRedraw();
 }
 
-// Zoom in whole points added to every style size. Displayed size never goes below 2 points.
-// ZoomIn/ZoomOut commands clamp to about -10..+60; this setter accepts any int. Change notifies the host via NotifyZoom.
+/// Zoom in whole points added to every style size. Displayed size never goes below 2 points.
+/// ZoomIn/ZoomOut commands clamp to about -10..+60; this setter accepts any int. Change notifies the host via NotifyZoom.
 void Editor::SetZoom(int zoomInPoints) {
 	if (SetAppearance(vs.zoomLevel, zoomInPoints)) {
 		NotifyZoom();
 	}
 }
 
-// Current zoom in points (may be negative).
+/// Current zoom in points (may be negative).
 int Editor::GetZoom() const noexcept {
 	return vs.zoomLevel;
 }
 
-// Drop all extended (beyond 0..255) style numbers so they can be reallocated.
+/// Drop all extended (beyond 0..255) style numbers so they can be reallocated.
 void Editor::ReleaseAllExtendedStyles() {
 	vs.ReleaseAllExtendedStyles();
 }
 
-// Reserve numberStyles consecutive extended style numbers; returns the first index.
+/// Reserve numberStyles consecutive extended style numbers; returns the first index.
 int Editor::AllocateExtendedStyles(int numberStyles) {
 	return vs.AllocateExtendedStyles(numberStyles);
 }
 
 // --- Private idle / paint styling helpers ------------------------------------
 
-// Style to a position within the view. If the style at the end of the last line changes, style the rest of the window (multiline constructs).
+/// Style to a position within the view. If the style at the end of the last line changes, style the rest of the window (multiline constructs).
 void Editor::StyleToPositionInView(Sci::Position pos) {
 	Sci::Position endWindow = PositionAfterArea(GetClientDrawingRectangle());
 	if (pos > endWindow)
@@ -716,7 +716,7 @@ void Editor::StyleToPositionInView(Sci::Position pos) {
 	}
 }
 
-// Cap how far styling runs in one burst so interaction stays smooth. Scrolling allows less time.
+/// Cap how far styling runs in one burst so interaction stays smooth. Scrolling allows less time.
 Sci::Position Editor::PositionAfterMaxStyling(Sci::Position posMax, bool scrolling) const {
 	if (SynchronousStylingToVisible()) {
 		// Both states do not limit styling
@@ -736,7 +736,7 @@ Sci::Position Editor::PositionAfterMaxStyling(Sci::Position posMax, bool scrolli
 	return std::min(pdoc->LineStart(stylingMaxLine), posMax);
 }
 
-// Request idle work when more of the document still needs styling under the current idle mode.
+/// Request idle work when more of the document still needs styling under the current idle mode.
 void Editor::StartIdleStyling(bool truncatedLastStyling) {
 	if (AnyOf(idleStyling, IdleStyling::All, IdleStyling::AfterVisible)) {
 		if (pdoc->GetEndStyled() < pdoc->Length()) {
@@ -752,7 +752,7 @@ void Editor::StartIdleStyling(bool truncatedLastStyling) {
 	}
 }
 
-// Style for a paint area but bound the amount of work; schedule idle for the rest when truncated.
+/// Style for a paint area but bound the amount of work; schedule idle for the rest when truncated.
 void Editor::StyleAreaBounded(PRectangle rcArea, bool scrolling) {
 	const Sci::Position posAfterArea = PositionAfterArea(rcArea);
 	const Sci::Position posAfterMax = PositionAfterMaxStyling(posAfterArea, scrolling);
@@ -767,7 +767,7 @@ void Editor::StyleAreaBounded(PRectangle rcArea, bool scrolling) {
 	StartIdleStyling(posAfterMax < posAfterArea);
 }
 
-// Idle-time styling step toward the visible area or the whole document depending on idleStyling.
+/// Idle-time styling step toward the visible area or the whole document depending on idleStyling.
 void Editor::IdleStyle() {
 	const Sci::Position posAfterArea = PositionAfterArea(GetClientRectangle());
 	const Sci::Position endGoal = (idleStyling >= IdleStyling::AfterVisible) ?

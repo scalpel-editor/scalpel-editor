@@ -20,15 +20,15 @@
 using namespace Scintilla;
 using namespace Scintilla::Internal;
 
-// True when the document is not read-only and the selection is not protected.
-// Used for menu enablement; the host may still refuse Paste if the clipboard
-// is empty.
+/// True when the document is not read-only and the selection is not protected.
+/// Used for menu enablement; the host may still refuse Paste if the clipboard
+/// is empty.
 bool Editor::CanPaste() {
 	return !pdoc->IsReadOnly() && !SelectionContainsProtected();
 }
 
-// Copies the selection (or current line when empty and allowLineCopy is true)
-// to the host clipboard, then deletes the selection when cut is allowed.
+/// Copies the selection (or current line when empty and allowLineCopy is true)
+/// to the host clipboard, then deletes the selection when cut is allowed.
 void Editor::Cut() {
 	pdoc->CheckReadOnly();
 	if (!pdoc->IsReadOnly() && !SelectionContainsProtected()) {
@@ -37,16 +37,16 @@ void Editor::Cut() {
 	}
 }
 
-// Like Copy, but when the selection is empty copies the whole line that
-// contains the caret.
+/// Like Copy, but when the selection is empty copies the whole line that
+/// contains the caret.
 void Editor::CopyAllowLine() {
 	SelectionText selectedText;
 	CopySelectionRange(&selectedText, true);
 	CopyToClipboard(selectedText);
 }
 
-// Like Cut, but when the selection is empty cuts the whole line that contains
-// the caret.
+/// Like Cut, but when the selection is empty cuts the whole line that contains
+/// the caret.
 void Editor::CutAllowLine() {
 	if (sel.Empty()) {
 		pdoc->CheckReadOnly();
@@ -62,10 +62,10 @@ void Editor::CutAllowLine() {
 	}
 }
 
-// Builds clipboard text from the current selection into ss. For a rectangular
-// selection, ranges are ordered and separated by the document EOL. For multiple
-// stream selections, ranges are joined with the copy separator. When the
-// selection is empty and allowLineCopy is true, copies the caret's line.
+/// Builds clipboard text from the current selection into ss. For a rectangular
+/// selection, ranges are ordered and separated by the document EOL. For multiple
+/// stream selections, ranges are joined with the copy separator. When the
+/// selection is empty and allowLineCopy is true, copies the caret's line.
 void Editor::CopySelectionRange(SelectionText *ss, bool allowLineCopy) {
 	if (sel.Empty()) {
 		if (allowLineCopy) {
@@ -88,7 +88,7 @@ void Editor::CopySelectionRange(SelectionText *ss, bool allowLineCopy) {
 	}
 }
 
-// Copies [start, end) to the host clipboard without changing the selection.
+/// Copies [start, end) to the host clipboard without changing the selection.
 void Editor::CopyRangeToClipboard(Sci::Position start, Sci::Position end) {
 	start = pdoc->ClampPositionIntoDocument(start);
 	end = pdoc->ClampPositionIntoDocument(end);
@@ -98,42 +98,42 @@ void Editor::CopyRangeToClipboard(Sci::Position start, Sci::Position end) {
 	CopyToClipboard(selectedText);
 }
 
-// Places an arbitrary string on the host clipboard.
+/// Places an arbitrary string on the host clipboard.
 void Editor::CopyText(std::string_view text) {
 	SelectionText selectedText;
 	selectedText.Copy(std::string(text), false, false);
 	CopyToClipboard(selectedText);
 }
 
-// How paste inserts into multiple selections: Once pastes only into the main
-// selection, Each pastes into every selection.
+/// How paste inserts into multiple selections: Once pastes only into the main
+/// selection, Each pastes into every selection.
 void Editor::SetMultiPaste(MultiPaste multiPaste) {
 	multiPasteMode = multiPaste;
 }
 
-// Current multi-paste mode (Once or Each).
+/// Current multi-paste mode (Once or Each).
 MultiPaste Editor::GetMultiPaste() const noexcept {
 	return multiPasteMode;
 }
 
-// When true, paste converts line endings in the clipboard text to the document
-// EOL mode before inserting.
+/// When true, paste converts line endings in the clipboard text to the document
+/// EOL mode before inserting.
 void Editor::SetPasteConvertEndings(bool convert) {
 	convertPastes = convert;
 }
 
-// True when paste rewrites line endings to the document EOL mode.
+/// True when paste rewrites line endings to the document EOL mode.
 bool Editor::GetPasteConvertEndings() const noexcept {
 	return convertPastes;
 }
 
-// Separator string inserted between parts when copying a multiple stream
-// selection (not used for rectangular selections, which use the document EOL).
+/// Separator string inserted between parts when copying a multiple stream
+/// selection (not used for rectangular selections, which use the document EOL).
 void Editor::SetCopySeparator(std::string_view separator) {
 	copySeparator = std::string(separator);
 }
 
-// Separator string used between parts of a multi-stream copy.
+/// Separator string used between parts of a multi-stream copy.
 std::string Editor::GetCopySeparator() const {
 	return copySeparator;
 }

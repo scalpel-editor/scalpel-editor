@@ -20,17 +20,17 @@
 using namespace Scintilla;
 using namespace Scintilla::Internal;
 
-// First document line shown at the top of the view.
+/// First document line shown at the top of the view.
 Sci::Line Editor::GetFirstVisibleLine() const noexcept {
 	return topLine;
 }
 
-// Scroll so the given document line is the first visible line.
+/// Scroll so the given document line is the first visible line.
 void Editor::SetFirstVisibleLine(Sci::Line line) {
 	ScrollTo(line);
 }
 
-// Horizontal pixel offset of the view.
+/// Horizontal pixel offset of the view.
 void Editor::SetXOffset(int offset) {
 	xOffset = offset;
 	ContainerNeedsUpdate(Update::HScroll);
@@ -38,18 +38,18 @@ void Editor::SetXOffset(int offset) {
 	Redraw();
 }
 
-// Horizontal pixel offset of the view.
+/// Horizontal pixel offset of the view.
 int Editor::GetXOffset() const noexcept {
 	return xOffset;
 }
 
-// Scroll by columns (wParam) and lines (lParam) relative to the current origin.
+/// Scroll by columns (wParam) and lines (lParam) relative to the current origin.
 void Editor::LineScroll(Sci::Position columns, Sci::Line lines) {
 	ScrollTo(topLine + lines);
 	HorizontalScrollTo(xOffset + static_cast<int>(columns * vs.spaceWidth));
 }
 
-// Scroll so that docLine's display sub-line is at the top (or record wrap intent).
+/// Scroll so that docLine's display sub-line is at the top (or record wrap intent).
 void Editor::ScrollVertical(Sci::Line docLine, Sci::Line displayLine) {
 	if (Wrapping()) {
 		scrollToAfterWrap = { docLine, displayLine };
@@ -59,7 +59,7 @@ void Editor::ScrollVertical(Sci::Line docLine, Sci::Line displayLine) {
 	ScrollTo(pcs->DisplayFromDocSub(docLine, displayLine));
 }
 
-// Show or hide the horizontal scrollbar and reconfigure scroll ranges.
+/// Show or hide the horizontal scrollbar and reconfigure scroll ranges.
 void Editor::SetHScrollBar(bool visible) {
 	if (horizontalScrollBarVisible != visible) {
 		horizontalScrollBarVisible = visible;
@@ -68,12 +68,12 @@ void Editor::SetHScrollBar(bool visible) {
 	}
 }
 
-// True when the horizontal scrollbar is enabled.
+/// True when the horizontal scrollbar is enabled.
 bool Editor::GetHScrollBar() const noexcept {
 	return horizontalScrollBarVisible;
 }
 
-// Show or hide the vertical scrollbar and reconfigure scroll ranges.
+/// Show or hide the vertical scrollbar and reconfigure scroll ranges.
 void Editor::SetVScrollBar(bool visible) {
 	if (verticalScrollBarVisible != visible) {
 		verticalScrollBarVisible = visible;
@@ -84,12 +84,12 @@ void Editor::SetVScrollBar(bool visible) {
 	}
 }
 
-// True when the vertical scrollbar is enabled.
+/// True when the vertical scrollbar is enabled.
 bool Editor::GetVScrollBar() const noexcept {
 	return verticalScrollBarVisible;
 }
 
-// Assumed document width in pixels for horizontal scrolling when not tracking line width.
+/// Assumed document width in pixels for horizontal scrolling when not tracking line width.
 void Editor::SetScrollWidth(int width) {
 	PLATFORM_ASSERT(width > 0);
 	if ((width > 0) && (width != scrollWidth)) {
@@ -99,23 +99,23 @@ void Editor::SetScrollWidth(int width) {
 	}
 }
 
-// Current assumed scroll width in pixels.
+/// Current assumed scroll width in pixels.
 int Editor::GetScrollWidth() const noexcept {
 	return scrollWidth;
 }
 
-// When true, scroll width grows with the widest measured line instead of a fixed width.
+/// When true, scroll width grows with the widest measured line instead of a fixed width.
 void Editor::SetScrollWidthTracking(bool tracking) {
 	trackLineWidth = tracking;
 }
 
-// True when scroll width tracks measured line widths.
+/// True when scroll width tracks measured line widths.
 bool Editor::GetScrollWidthTracking() const noexcept {
 	return trackLineWidth;
 }
 
-// When true (default), the last line can scroll only to the bottom of the view.
-// When false, the last line may scroll to the top.
+/// When true (default), the last line can scroll only to the bottom of the view.
+/// When false, the last line may scroll to the top.
 void Editor::SetEndAtLastLine(bool endAtLast) {
 	if (endAtLastLine != endAtLast) {
 		endAtLastLine = endAtLast;
@@ -123,23 +123,23 @@ void Editor::SetEndAtLastLine(bool endAtLast) {
 	}
 }
 
-// Whether scrolling stops with the last line at the bottom of the view.
+/// Whether scrolling stops with the last line at the bottom of the view.
 bool Editor::GetEndAtLastLine() const noexcept {
 	return endAtLastLine;
 }
 
-// Pixel height of one text line after refreshing style data.
+/// Pixel height of one text line after refreshing style data.
 int Editor::TextHeightPixels() {
 	RefreshStyleData();
 	return vs.lineHeight;
 }
 
-// Policy used by EnsureVisibleEnforcePolicy: VisiblePolicy::Slop / Strict and a line slop.
+/// Policy used by EnsureVisibleEnforcePolicy: VisiblePolicy::Slop / Strict and a line slop.
 void Editor::SetVisiblePolicy(VisiblePolicy policy, int slop) {
 	visiblePolicy = VisiblePolicySlop(policy, slop);
 }
 
-// View-relative x pixel of pos, or 0 when pos is negative.
+/// View-relative x pixel of pos, or 0 when pos is negative.
 int Editor::PointXFromPosition(Sci::Position pos) {
 	if (pos < 0) return 0;
 	const Point pt = LocationFromPosition(pos);
@@ -147,7 +147,7 @@ int Editor::PointXFromPosition(Sci::Position pos) {
 	return static_cast<int>(pt.x) - vs.textStart + vs.fixedColumnWidth;
 }
 
-// View-relative y pixel of pos, or 0 when pos is negative.
+/// View-relative y pixel of pos, or 0 when pos is negative.
 int Editor::PointYFromPosition(Sci::Position pos) {
 	if (pos < 0) return 0;
 	return static_cast<int>(LocationFromPosition(pos).y);

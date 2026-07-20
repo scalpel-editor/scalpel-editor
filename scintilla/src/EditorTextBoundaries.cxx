@@ -34,74 +34,74 @@
 using namespace Scintilla;
 using namespace Scintilla::Internal;
 
-// Byte position of the start of the character before pos (or 0).
+/// Byte position of the start of the character before pos (or 0).
 Sci::Position Editor::PositionBefore(Sci::Position pos) const {
 	return pdoc->MovePositionOutsideChar(pos - 1, -1, true);
 }
 
-// Byte position of the start of the character after pos (or Length).
+/// Byte position of the start of the character after pos (or Length).
 Sci::Position Editor::PositionAfter(Sci::Position pos) const {
 	return pdoc->MovePositionOutsideChar(pos + 1, 1, true);
 }
 
-// Move relativeCharacters document characters from pos; clamp to [0, Length].
+/// Move relativeCharacters document characters from pos; clamp to [0, Length].
 Sci::Position Editor::PositionRelative(Sci::Position pos, Sci::Position relativeCharacters) const {
 	return std::clamp<Sci::Position>(
 		pdoc->GetRelativePosition(pos, relativeCharacters),
 		0, pdoc->Length());
 }
 
-// Move relativeUTF16Units UTF-16 code units from pos; clamp to [0, Length].
+/// Move relativeUTF16Units UTF-16 code units from pos; clamp to [0, Length].
 Sci::Position Editor::PositionRelativeCodeUnits(Sci::Position pos, Sci::Position relativeUTF16Units) const {
 	return std::clamp<Sci::Position>(
 		pdoc->GetRelativePositionUTF16(pos, relativeUTF16Units),
 		0, pdoc->Length());
 }
 
-// Restore default word, whitespace, and punctuation character classes.
+/// Restore default word, whitespace, and punctuation character classes.
 void Editor::SetCharsDefault() {
 	pdoc->SetDefaultCharClasses(true);
 }
 
-// How many characters the category map precomputes for classification. Values
-// below 256 use the minimum 256-entry map.
+/// How many characters the category map precomputes for classification. Values
+/// below 256 use the minimum 256-entry map.
 void Editor::SetCharacterCategoryOptimization(int countCharacters) {
 	pdoc->SetCharacterCategoryOptimization(countCharacters);
 }
 
-// Current category-map precompute count.
+/// Current category-map precompute count.
 int Editor::GetCharacterCategoryOptimization() const noexcept {
 	return pdoc->CharacterCategoryOptimization();
 }
 
-// Contiguous pointer to the whole document buffer with a trailing NUL. May move
-// the gap. Any editor or UI call may invalidate the pointer, so reacquire it after
-// every such call.
+/// Contiguous pointer to the whole document buffer with a trailing NUL. May move
+/// the gap. Any editor or UI call may invalidate the pointer, so reacquire it after
+/// every such call.
 const char *Editor::GetCharacterPointer() const {
 	return pdoc->BufferPointer();
 }
 
-// Start of the word containing or before pos. When onlyWordCharacters is true,
-// non-word characters do not count as a word.
+/// Start of the word containing or before pos. When onlyWordCharacters is true,
+/// non-word characters do not count as a word.
 Sci::Position Editor::WordStartPosition(Sci::Position pos, bool onlyWordCharacters) const {
 	return pdoc->ExtendWordSelect(pos, -1, onlyWordCharacters);
 }
 
-// End of the word containing or after pos.
+/// End of the word containing or after pos.
 Sci::Position Editor::WordEndPosition(Sci::Position pos, bool onlyWordCharacters) const {
 	return pdoc->ExtendWordSelect(pos, 1, onlyWordCharacters);
 }
 
-// True when start is a word-start transition and end is a word-end transition.
-// The range may contain spaces and multiple words.
+/// True when start is a word-start transition and end is a word-end transition.
+/// The range may contain spaces and multiple words.
 bool Editor::IsRangeWord(Sci::Position start, Sci::Position end) const {
 	return pdoc->IsWordAt(start, end);
 }
 
-// Copy the document line that contains the main caret into buffer (including the
-// line end). When buffer is null, returns the byte length of that line (including
-// the line end, not including a trailing NUL). When buffer is non-null, writes up
-// to bufferLength bytes plus a NUL and returns the caret's offset within the line.
+/// Copy the document line that contains the main caret into buffer (including the
+/// line end). When buffer is null, returns the byte length of that line (including
+/// the line end, not including a trailing NUL). When buffer is non-null, writes up
+/// to bufferLength bytes plus a NUL and returns the caret's offset within the line.
 Sci::Position Editor::GetCurLine(char *buffer, Sci::Position bufferLength) const {
 	const Sci::Line lineCurrentPos = pdoc->SciLineFromPosition(sel.MainCaret());
 	const Sci::Position lineStart = pdoc->LineStart(lineCurrentPos);
@@ -115,12 +115,12 @@ Sci::Position Editor::GetCurLine(char *buffer, Sci::Position bufferLength) const
 	return sel.MainCaret() - lineStart;
 }
 
-// Document line for a position in an allocated line character index.
+/// Document line for a position in an allocated line character index.
 Sci::Line Editor::LineFromIndexPosition(Sci::Position pos, LineCharacterIndexType lineCharacterIndex) const {
 	return pdoc->LineFromPositionIndex(pos, lineCharacterIndex);
 }
 
-// Byte position of the start of line in an allocated line character index.
+/// Byte position of the start of line in an allocated line character index.
 Sci::Position Editor::IndexPositionFromLine(Sci::Line line, LineCharacterIndexType lineCharacterIndex) const {
 	return pdoc->IndexLineStart(line, lineCharacterIndex);
 }
