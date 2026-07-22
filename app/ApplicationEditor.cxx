@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <stdexcept>
 #include <string>
@@ -95,6 +96,52 @@ void ApplicationEditor::HandleKeyboardInput(const KeyboardInput &input) {
 	if (!consumed && !input.text.empty() &&
 		(input.modifiers & commandModifiers) == Scintilla::KeyMod::Norm) {
 		InsertCharacter(input.text, Scintilla::CharacterSource::DirectInput);
+	}
+}
+
+void ApplicationEditor::HandlePointerInput(const PointerInput &input) {
+	const Scintilla::Internal::Point point(input.x, input.y);
+	switch (input.action) {
+	case PointerAction::Move:
+		ButtonMoveWithModifiers(point, input.time, input.modifiers);
+		break;
+	case PointerAction::Leave:
+		MouseLeave();
+		break;
+	case PointerAction::Press:
+		if (input.button == 0) {
+			ButtonDownWithModifiers(point, input.time, input.modifiers);
+		} else if (input.button == 1) {
+			RightButtonDownWithModifiers(point, input.time, input.modifiers);
+		}
+		break;
+	case PointerAction::Release:
+		if (input.button == 0) {
+			ButtonUpWithModifiers(point, input.time, input.modifiers);
+		}
+		break;
+	case PointerAction::Scroll: {
+		const bool shift = (input.modifiers & Scintilla::KeyMod::Shift) !=
+			Scintilla::KeyMod::Norm;
+		if (shift || std::abs(input.deltaX) > std::abs(input.deltaY)) {
+			const double amount = std::abs(input.deltaX) > std::abs(input.deltaY) ?
+				input.deltaX : input.deltaY;
+			horizontalWheelRemainder += amount * 4.0;
+			const int pixels = static_cast<int>(horizontalWheelRemainder);
+			horizontalWheelRemainder -= pixels;
+			if (pixels != 0) {
+				HorizontalScrollTo(xOffset + pixels);
+			}
+		} else {
+			verticalWheelRemainder += input.deltaY * 0.3;
+			const Scintilla::Line lines = static_cast<Scintilla::Line>(verticalWheelRemainder);
+			verticalWheelRemainder -= lines;
+			if (lines != 0) {
+				ScrollTo(topLine + lines);
+			}
+		}
+		break;
+	}
 	}
 }
 

@@ -9,6 +9,8 @@
 #include <stdexcept>
 #include <utility>
 
+#include <linux/input-event-codes.h>
+#include <wayland-client-protocol.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
 #include <xkbcommon/xkbcommon-names.h>
 #include <xkbcommon/xkbcommon.h>
@@ -83,6 +85,19 @@ Scintilla::Keys KeyFromKeysym(xkb_keysym_t keysym) noexcept {
 
 bool ModifierActive(xkb_state *state, const char *name) noexcept {
 	return xkb_state_mod_name_is_active(state, name, XKB_STATE_MODS_EFFECTIVE) > 0;
+}
+
+int PointerButton(uint32_t button) noexcept {
+	switch (button) {
+	case BTN_LEFT:
+		return 0;
+	case BTN_RIGHT:
+		return 1;
+	case BTN_MIDDLE:
+		return 2;
+	default:
+		return -1;
+	}
 }
 
 }
@@ -167,11 +182,43 @@ void WaylandInput::RecordKey(uint32_t time, uint32_t key, bool pressed) {
 			input.text.resize(static_cast<size_t>(length));
 		}
 	}
-	keyboardInputs.push_back(std::move(input));
+	inputs.emplace_back(std::move(input));
 }
 
-std::vector<KeyboardInput> WaylandInput::TakeKeyboardInputs() {
-	return std::exchange(keyboardInputs, {});
+void WaylandInput::RecordPointerMotion(uint32_t time, double x, double y) {
+	pointerX = x;
+	pointerY = y;
+	inputs.emplace_back(PointerInput{
+		PointerAction::Move, CurrentModifiers(), x, y, 0, 0, time, -1});
+}
+
+void WaylandInput::RecordPointerLeave() {
+	inputs.emplace_back(PointerInput{
+		PointerAction::Leave, CurrentModifiers(), pointerX, pointerY});
+}
+
+void WaylandInput::RecordPointerButton(uint32_t time, uint32_t button, bool pressed) {
+	const int translatedButton = PointerButton(button);
+	if (translatedButton < 0) {
+		return;
+	}
+	inputs.emplace_back(PointerInput{
+		pressed ? PointerAction::Press : PointerAction::Release,
+		CurrentModifiers(), pointerX, pointerY, 0, 0, time, translatedButton});
+}
+
+void WaylandInput::RecordPointerAxis(uint32_t time, uint32_t axis, double value) {
+	if (axis != WL_POINTER_AXIS_HORIZONTAL_SCROLL && axis != WL_POINTER_AXIS_VERTICAL_SCROLL) {
+		return;
+	}
+	inputs.emplace_back(PointerInput{
+		PointerAction::Scroll, CurrentModifiers(), pointerX, pointerY,
+		axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL ? value : 0,
+		axis == WL_POINTER_AXIS_VERTICAL_SCROLL ? value : 0, time, -1});
+}
+
+std::vector<InputEvent> WaylandInput::TakeInputs() {
+	return std::exchange(inputs, {});
 }
 
 Scintilla::KeyMod WaylandInput::CurrentModifiers() const {

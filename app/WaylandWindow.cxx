@@ -42,6 +42,20 @@ const wl_keyboard_listener WaylandWindow::keyboardListener = {
 	WaylandWindow::KeyboardRepeatInfo,
 };
 
+const wl_pointer_listener WaylandWindow::pointerListener = {
+	WaylandWindow::PointerEnter,
+	WaylandWindow::PointerLeave,
+	WaylandWindow::PointerMotion,
+	WaylandWindow::PointerButton,
+	WaylandWindow::PointerAxis,
+	WaylandWindow::PointerFrame,
+	WaylandWindow::PointerAxisSource,
+	WaylandWindow::PointerAxisStop,
+	WaylandWindow::PointerAxisDiscrete,
+	WaylandWindow::PointerAxisValue120,
+	WaylandWindow::PointerAxisRelativeDirection,
+};
+
 const xdg_wm_base_listener WaylandWindow::wmBaseListener = {
 	WaylandWindow::WmBasePing,
 };
@@ -141,6 +155,9 @@ void WaylandWindow::Destroy() noexcept {
 	if (keyboard) {
 		wl_keyboard_destroy(keyboard);
 	}
+	if (pointer) {
+		wl_pointer_destroy(pointer);
+	}
 	if (seat) {
 		wl_seat_destroy(seat);
 	}
@@ -161,6 +178,7 @@ void WaylandWindow::Destroy() noexcept {
 	shellSurface = nullptr;
 	surface = nullptr;
 	keyboard = nullptr;
+	pointer = nullptr;
 	seat = nullptr;
 	wmBase = nullptr;
 	compositor = nullptr;
@@ -275,6 +293,21 @@ void WaylandWindow::RegistryGlobalRemove(void *, wl_registry *, uint32_t) {
 void WaylandWindow::SeatCapabilities(void *data, wl_seat *seat_, uint32_t capabilities) {
 	auto &window = *static_cast<WaylandWindow *>(data);
 	const bool hasKeyboard = capabilities & WL_SEAT_CAPABILITY_KEYBOARD;
+	const bool hasPointer = capabilities & WL_SEAT_CAPABILITY_POINTER;
+	if (hasPointer && !window.pointer) {
+		window.pointer = wl_seat_get_pointer(seat_);
+		if (!window.pointer || wl_pointer_add_listener(
+			window.pointer, &pointerListener, &window) != 0) {
+			if (window.pointer) {
+				wl_pointer_destroy(window.pointer);
+				window.pointer = nullptr;
+			}
+			window.callbackFailed = true;
+		}
+	} else if (!hasPointer && window.pointer) {
+		wl_pointer_destroy(window.pointer);
+		window.pointer = nullptr;
+	}
 	if (hasKeyboard && !window.keyboard) {
 		window.keyboard = wl_seat_get_keyboard(seat_);
 		if (!window.keyboard || wl_keyboard_add_listener(window.keyboard, &keyboardListener, &window) != 0) {
@@ -351,6 +384,59 @@ void WaylandWindow::KeyboardModifiers(void *data, wl_keyboard *, uint32_t, uint3
 
 void WaylandWindow::KeyboardRepeatInfo(void *, wl_keyboard *, int32_t, int32_t) {
 	// Key repeat belongs to phase 7.
+}
+
+void WaylandWindow::PointerEnter(void *data, wl_pointer *, uint32_t,
+	wl_surface *surface_, int32_t x, int32_t y) {
+	auto &window = *static_cast<WaylandWindow *>(data);
+	if (surface_ == window.surface) {
+		window.input.RecordPointerMotion(0, wl_fixed_to_double(x), wl_fixed_to_double(y));
+	}
+}
+
+void WaylandWindow::PointerLeave(void *data, wl_pointer *, uint32_t, wl_surface *surface_) {
+	auto &window = *static_cast<WaylandWindow *>(data);
+	if (surface_ == window.surface) {
+		window.input.RecordPointerLeave();
+	}
+}
+
+void WaylandWindow::PointerMotion(void *data, wl_pointer *, uint32_t time,
+	int32_t x, int32_t y) {
+	static_cast<WaylandWindow *>(data)->input.RecordPointerMotion(
+		time, wl_fixed_to_double(x), wl_fixed_to_double(y));
+}
+
+void WaylandWindow::PointerButton(void *data, wl_pointer *, uint32_t, uint32_t time,
+	uint32_t button, uint32_t state) {
+	if (state == WL_POINTER_BUTTON_STATE_PRESSED || state == WL_POINTER_BUTTON_STATE_RELEASED) {
+		static_cast<WaylandWindow *>(data)->input.RecordPointerButton(
+			time, button, state == WL_POINTER_BUTTON_STATE_PRESSED);
+	}
+}
+
+void WaylandWindow::PointerAxis(void *data, wl_pointer *, uint32_t time,
+	uint32_t axis, int32_t value) {
+	static_cast<WaylandWindow *>(data)->input.RecordPointerAxis(
+		time, axis, wl_fixed_to_double(value));
+}
+
+void WaylandWindow::PointerFrame(void *, wl_pointer *) {
+}
+
+void WaylandWindow::PointerAxisSource(void *, wl_pointer *, uint32_t) {
+}
+
+void WaylandWindow::PointerAxisStop(void *, wl_pointer *, uint32_t, uint32_t) {
+}
+
+void WaylandWindow::PointerAxisDiscrete(void *, wl_pointer *, uint32_t, int32_t) {
+}
+
+void WaylandWindow::PointerAxisValue120(void *, wl_pointer *, uint32_t, int32_t) {
+}
+
+void WaylandWindow::PointerAxisRelativeDirection(void *, wl_pointer *, uint32_t, uint32_t) {
 }
 
 void WaylandWindow::WmBasePing(void *, xdg_wm_base *wmBase_, uint32_t serial) {

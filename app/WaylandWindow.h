@@ -17,6 +17,8 @@ struct wl_display;
 struct wl_egl_window;
 struct wl_keyboard;
 struct wl_keyboard_listener;
+struct wl_pointer;
+struct wl_pointer_listener;
 struct wl_registry;
 struct wl_registry_listener;
 struct wl_seat;
@@ -60,7 +62,7 @@ public:
 	[[nodiscard]] bool CallbackFailed() const noexcept { return callbackFailed; }
 	[[nodiscard]] std::optional<WindowSize> TakeResize() noexcept { return lifecycle.TakeResize(); }
 	[[nodiscard]] std::optional<bool> TakeKeyboardFocus() noexcept { return lifecycle.TakeKeyboardFocus(); }
-	[[nodiscard]] std::vector<KeyboardInput> TakeKeyboardInputs() { return input.TakeKeyboardInputs(); }
+	[[nodiscard]] std::vector<InputEvent> TakeInputs() { return input.TakeInputs(); }
 
 	/** Complete one request/event round trip, throwing on display failure. */
 	void RoundTrip();
@@ -89,6 +91,25 @@ private:
 		uint32_t depressed, uint32_t latched, uint32_t locked, uint32_t group);
 	static void KeyboardRepeatInfo(void *data, wl_keyboard *keyboard, int32_t rate,
 		int32_t delay);
+	static void PointerEnter(void *data, wl_pointer *pointer, uint32_t serial,
+		wl_surface *surface, int32_t x, int32_t y);
+	static void PointerLeave(void *data, wl_pointer *pointer, uint32_t serial,
+		wl_surface *surface);
+	static void PointerMotion(void *data, wl_pointer *pointer, uint32_t time,
+		int32_t x, int32_t y);
+	static void PointerButton(void *data, wl_pointer *pointer, uint32_t serial,
+		uint32_t time, uint32_t button, uint32_t state);
+	static void PointerAxis(void *data, wl_pointer *pointer, uint32_t time,
+		uint32_t axis, int32_t value);
+	static void PointerFrame(void *data, wl_pointer *pointer);
+	static void PointerAxisSource(void *data, wl_pointer *pointer, uint32_t source);
+	static void PointerAxisStop(void *data, wl_pointer *pointer, uint32_t time, uint32_t axis);
+	static void PointerAxisDiscrete(void *data, wl_pointer *pointer, uint32_t axis,
+		int32_t discrete);
+	static void PointerAxisValue120(void *data, wl_pointer *pointer, uint32_t axis,
+		int32_t value120);
+	static void PointerAxisRelativeDirection(void *data, wl_pointer *pointer,
+		uint32_t axis, uint32_t direction);
 	static void WmBasePing(void *data, xdg_wm_base *wmBase, uint32_t serial);
 	static void SurfaceConfigure(void *data, xdg_surface *shellSurface, uint32_t serial);
 	static void ToplevelConfigure(void *data, xdg_toplevel *toplevel, int32_t width,
@@ -102,6 +123,7 @@ private:
 	static const wl_registry_listener registryListener;
 	static const wl_seat_listener seatListener;
 	static const wl_keyboard_listener keyboardListener;
+	static const wl_pointer_listener pointerListener;
 	static const xdg_wm_base_listener wmBaseListener;
 	static const xdg_surface_listener surfaceListener;
 	static const xdg_toplevel_listener toplevelListener;
@@ -111,6 +133,7 @@ private:
 	wl_compositor *compositor = nullptr;
 	wl_seat *seat = nullptr;
 	wl_keyboard *keyboard = nullptr;
+	wl_pointer *pointer = nullptr;
 	xdg_wm_base *wmBase = nullptr;
 	wl_surface *surface = nullptr;
 	wl_egl_window *eglWindow = nullptr;

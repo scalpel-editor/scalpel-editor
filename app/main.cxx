@@ -21,14 +21,18 @@ int main() {
 			"The first application frame is rendered in an xdg-toplevel.\n";
 		editor.LoadInitialBuffer(initialText);
 		while (!window.CloseRequested()) {
-			for (const Scalpel::KeyboardInput &input : window.TakeKeyboardInputs()) {
-				editor.HandleKeyboardInput(input);
-			}
 			if (const std::optional<Scalpel::WindowSize> resize = window.TakeResize()) {
 				editor.Resize(resize->width, resize->height);
 			}
 			if (const std::optional<bool> focused = window.TakeKeyboardFocus()) {
 				editor.SetKeyboardFocus(*focused);
+			}
+			for (const Scalpel::InputEvent &input : window.TakeInputs()) {
+				if (const auto *keyboard = std::get_if<Scalpel::KeyboardInput>(&input)) {
+					editor.HandleKeyboardInput(*keyboard);
+				} else {
+					editor.HandlePointerInput(std::get<Scalpel::PointerInput>(input));
+				}
 			}
 			editor.RunPendingWork();
 			if (editor.NeedsRedraw()) {

@@ -14,7 +14,7 @@ Owners used in the tables:
 | **Phase 7** | Compose, key repeat, IME, clipboard and primary selection transfers, cursor themes, frame pacing, presentation feedback, optional-protocol fallback, scale and buffer-scale, robust global and seat removal, hot-plugged seats. |
 | **Debug only** | Assert and debug-print helpers used by the core; not part of the user-visible editor surface. |
 
-Steps 7–10 are complete: `Surface::Allocate` is measure-only `DrawSurface` in `scintilla_render`; `Font::Allocate` is `FontPlatform` (fixture paths via `UseTestFontPaths` in `editorTest`); `editorTest` paints with `CreateDrawSurface` on a host-owned headless `GlContext`/`Renderer`. `TestPlatform` still owns Window, inspectable ListBox, Menu logs, and Platform chrome helpers for the fixture. The production `ApplicationEditor` owns the application Window helpers, editor host callbacks, injected renderer, unsupported-service log, monotonic ticker deadlines, idle work, invalidation state, and executable. `WaylandWindow` owns the configured xdg-toplevel and `wl_egl_window`, coalesced resize and keyboard-focus changes, and the blocking display wait; window-mode `GlContext` owns EGL objects and the editor paints to framebuffer 0. The current seat's `wl_keyboard` exists in step 10 only to receive focus enter and leave; its keymap descriptor is closed and key events are deliberately ignored until step 11. Production ListBox/Menu stubs are `scintilla_platform_popups` (not linked by `editorTest`).
+Steps 7–11 are complete: `Surface::Allocate` is measure-only `DrawSurface` in `scintilla_render`; `Font::Allocate` is `FontPlatform` (fixture paths via `UseTestFontPaths` in `editorTest`); `editorTest` paints with `CreateDrawSurface` on a host-owned headless `GlContext`/`Renderer`. `TestPlatform` still owns Window, inspectable ListBox, Menu logs, and Platform chrome helpers for the fixture. The production `ApplicationEditor` owns the application Window helpers, editor host callbacks, injected renderer, unsupported-service log, monotonic ticker deadlines, idle work, invalidation state, input delivery, and executable. `WaylandWindow` owns the configured xdg-toplevel and `wl_egl_window`, coalesced resize and keyboard-focus changes, the blocking display wait, and the current seat's keyboard and pointer. `WaylandInput` owns xkbcommon state and retains ordered keyboard and pointer events for the application loop; window-mode `GlContext` owns EGL objects and the editor paints to framebuffer 0. Production ListBox/Menu stubs are `scintilla_platform_popups` (not linked by `editorTest`).
 
 ## Opaque IDs (`Platform.h`)
 
@@ -150,15 +150,15 @@ These pure or virtual methods are how the core talks to the application host. St
 | `Initialise` / `Finalise` | Host lifetime | 8 |
 | `GetClientRectangle` / client size | Layout and paint bounds | 8–10 |
 | `SetHorizontalScrollPos` / `SetVerticalScrollPos` / `ModifyScrollBars` / `ReconfigureScrollBars` | Scrollbar policy | 8; chrome scrollbars are phase 8 product UI — host may track values without drawing chrome |
-| `SetMouseCapture` / `HaveMouseCapture` | Pointer capture during drag | 8, 11 |
+| `SetMouseCapture` / `HaveMouseCapture` | Pointer capture during drag | 8, 11 ✅ Wayland's implicit button grab keeps motion and release routed while the editor records capture |
 | `FineTickerStart` / `Cancel` / `Running` / `TickFor` | Caret blink, dwell, scroll, wrap widen | 8, 10 ✅ monotonic deadlines with capped catch-up |
 | `SetIdle` / `IdleWork` / `QueueIdleWork` | Idle styling and deferred work | 8, 10 ✅ zero-delay loop work until complete |
 | `NotifyChange` / `NotifyParent` / `NotifyFocus` | Application notifications | 8 |
 | `CreateMeasurementSurface` / `CreateDrawingSurface` | Defaults allocate `Surface`; override only if needed | 5–8 |
 | `DisplayCursor` (default uses `wMain.SetCursor`) | Cursor shape | 8; themes phase 7 |
 | `Paint` path driven by shell after invalidate | Redraw | 8–10 ✅ present only while invalidated |
-| Key → `InsertCharacter` / `EditorCommand` / `KeyDown` path | Keyboard | 11 |
-| Pointer → `ButtonDownWithModifiers`, move, up, wheel | Pointer | 11 |
+| Key → `InsertCharacter` / `EditorCommand` / `KeyDown` path | Keyboard | 11 ✅ xkbcommon keymap, modifiers, commands before unconsumed UTF-8 text, explicit non-editing releases |
+| Pointer → `ButtonDownWithModifiers`, move, up, wheel | Pointer | 11 ✅ surface-local motion, left/right buttons, captured drags, leave, and horizontal/vertical axes |
 
 ### Popup-related host hooks (stubs)
 

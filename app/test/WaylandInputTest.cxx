@@ -2,6 +2,7 @@
 #include <string>
 
 #include <linux/input-event-codes.h>
+#include <wayland-client-protocol.h>
 #include <xkbcommon/xkbcommon-names.h>
 #include <xkbcommon/xkbcommon.h>
 
@@ -51,17 +52,19 @@ TEST_CASE("Wayland keyboard translates presses and releases") {
 
 	input.RecordKey(15, KEY_A, true);
 	input.RecordKey(16, KEY_A, false);
-	const std::vector<Scalpel::KeyboardInput> events = input.TakeKeyboardInputs();
+	const std::vector<Scalpel::InputEvent> events = input.TakeInputs();
 	REQUIRE(events.size() == 2);
-	CHECK(events[0].key == static_cast<Scintilla::Keys>('A'));
-	CHECK(events[0].modifiers == Scintilla::KeyMod::Norm);
-	CHECK(events[0].text == "a");
-	CHECK(events[0].time == 15);
-	CHECK(events[0].pressed);
-	CHECK(events[1].key == static_cast<Scintilla::Keys>('A'));
-	CHECK(events[1].text.empty());
-	CHECK_FALSE(events[1].pressed);
-	CHECK(input.TakeKeyboardInputs().empty());
+	const auto &press = std::get<Scalpel::KeyboardInput>(events[0]);
+	const auto &release = std::get<Scalpel::KeyboardInput>(events[1]);
+	CHECK(press.key == static_cast<Scintilla::Keys>('A'));
+	CHECK(press.modifiers == Scintilla::KeyMod::Norm);
+	CHECK(press.text == "a");
+	CHECK(press.time == 15);
+	CHECK(press.pressed);
+	CHECK(release.key == static_cast<Scintilla::Keys>('A'));
+	CHECK(release.text.empty());
+	CHECK_FALSE(release.pressed);
+	CHECK(input.TakeInputs().empty());
 }
 
 TEST_CASE("Wayland keyboard applies modifiers and maps command keys") {
@@ -73,12 +76,46 @@ TEST_CASE("Wayland keyboard applies modifiers and maps command keys") {
 	input.RecordKey(20, KEY_A, true);
 	input.UpdateModifiers(keymap.controlMask, 0, 0, 0);
 	input.RecordKey(21, KEY_LEFT, true);
-	const std::vector<Scalpel::KeyboardInput> events = input.TakeKeyboardInputs();
+	const std::vector<Scalpel::InputEvent> events = input.TakeInputs();
 	REQUIRE(events.size() == 2);
-	CHECK(events[0].key == static_cast<Scintilla::Keys>('A'));
-	CHECK(events[0].modifiers == Scintilla::KeyMod::Shift);
-	CHECK(events[0].text == "A");
-	CHECK(events[1].key == Scintilla::Keys::Left);
-	CHECK(events[1].modifiers == Scintilla::KeyMod::Ctrl);
-	CHECK(events[1].text.empty());
+	const auto &shifted = std::get<Scalpel::KeyboardInput>(events[0]);
+	const auto &controlled = std::get<Scalpel::KeyboardInput>(events[1]);
+	CHECK(shifted.key == static_cast<Scintilla::Keys>('A'));
+	CHECK(shifted.modifiers == Scintilla::KeyMod::Shift);
+	CHECK(shifted.text == "A");
+	CHECK(controlled.key == Scintilla::Keys::Left);
+	CHECK(controlled.modifiers == Scintilla::KeyMod::Ctrl);
+	CHECK(controlled.text.empty());
+}
+
+TEST_CASE("Wayland pointer retains coordinates modifiers buttons and axes") {
+	const TestKeymap keymap = MakeTestKeymap();
+	Scalpel::WaylandInput input;
+	REQUIRE(input.SetKeymap(keymap.text));
+	input.UpdateModifiers(keymap.shiftMask, 0, 0, 0);
+
+	input.RecordPointerMotion(30, 12.5, 18.25);
+	input.RecordPointerButton(31, BTN_LEFT, true);
+	input.RecordPointerAxis(32, WL_POINTER_AXIS_VERTICAL_SCROLL, 10.0);
+	input.RecordPointerButton(33, BTN_LEFT, false);
+	input.RecordPointerLeave();
+	const std::vector<Scalpel::InputEvent> events = input.TakeInputs();
+	REQUIRE(events.size() == 5);
+	const auto &motion = std::get<Scalpel::PointerInput>(events[0]);
+	CHECK(motion.action == Scalpel::PointerAction::Move);
+	CHECK(motion.modifiers == Scintilla::KeyMod::Shift);
+	CHECK(motion.x == 12.5);
+	CHECK(motion.y == 18.25);
+	const auto &press = std::get<Scalpel::PointerInput>(events[1]);
+	CHECK(press.action == Scalpel::PointerAction::Press);
+	CHECK(press.button == 0);
+	CHECK(press.time == 31);
+	const auto &scroll = std::get<Scalpel::PointerInput>(events[2]);
+	CHECK(scroll.action == Scalpel::PointerAction::Scroll);
+	CHECK(scroll.deltaX == 0);
+	CHECK(scroll.deltaY == 10.0);
+	CHECK(std::get<Scalpel::PointerInput>(events[3]).action ==
+		Scalpel::PointerAction::Release);
+	CHECK(std::get<Scalpel::PointerInput>(events[4]).action ==
+		Scalpel::PointerAction::Leave);
 }

@@ -92,6 +92,7 @@ public:
 	void Resize(int width, int height);
 	void SetKeyboardFocus(bool focused);
 	void HandleKeyboardInput(const KeyboardInput &input);
+	void HandlePointerInput(const PointerInput &input);
 	void SetPointerCapture(bool captured);
 	void RequestClipboardCopy();
 	[[nodiscard]] bool ClipboardPasteAvailable();
@@ -151,6 +152,8 @@ private:
 	bool idleRequested = false;
 	bool queuedIdleWork = false;
 	NowFunction now;
+	double horizontalWheelRemainder = 0;
+	double verticalWheelRemainder = 0;
 };
 
 }
