@@ -106,6 +106,26 @@ TEST_CASE("Wayland keyboard retains focus and key event order") {
 	CHECK_FALSE(std::get<Scalpel::KeyboardFocusInput>(events[2]).focused);
 }
 
+TEST_CASE("Wayland keyboard teardown removes stale input and reports focus loss") {
+	const TestKeymap keymap = MakeTestKeymap();
+	Scalpel::WaylandInput input;
+	REQUIRE(input.SetKeymap(keymap.text));
+
+	input.RecordKeyboardFocus(true);
+	input.UpdateModifiers(keymap.shiftMask, 0, 0, 0);
+	input.RecordKey(25, KEY_A, true);
+	input.ResetKeyboardDevice();
+	const std::vector<Scalpel::InputEvent> events = input.TakeInputs();
+	REQUIRE(events.size() == 1);
+	CHECK_FALSE(std::get<Scalpel::KeyboardFocusInput>(events[0]).focused);
+	input.RecordKey(26, KEY_A, true);
+	CHECK(input.TakeInputs().empty());
+
+	input.RecordPointerMotion(30, 12.5, 18.25);
+	const auto pointer = std::get<Scalpel::PointerInput>(input.TakeInputs().front());
+	CHECK(pointer.modifiers == Scintilla::KeyMod::Norm);
+}
+
 TEST_CASE("Wayland pointer retains coordinates modifiers buttons and axes") {
 	const TestKeymap keymap = MakeTestKeymap();
 	Scalpel::WaylandInput input;
@@ -135,5 +155,29 @@ TEST_CASE("Wayland pointer retains coordinates modifiers buttons and axes") {
 	CHECK(std::get<Scalpel::PointerInput>(events[3]).action ==
 		Scalpel::PointerAction::Release);
 	CHECK(std::get<Scalpel::PointerInput>(events[4]).action ==
+		Scalpel::PointerAction::Leave);
+}
+
+TEST_CASE("Wayland pointer teardown removes stale input and reports leave") {
+	Scalpel::WaylandInput input;
+	input.RecordPointerMotion(30, 12.5, 18.25);
+	input.RecordPointerButton(31, BTN_LEFT, true);
+	input.ResetPointerDevice();
+	const std::vector<Scalpel::InputEvent> events = input.TakeInputs();
+	REQUIRE(events.size() == 1);
+	const auto &leave = std::get<Scalpel::PointerInput>(events[0]);
+	CHECK(leave.action == Scalpel::PointerAction::Leave);
+	CHECK(leave.x == 12.5);
+	CHECK(leave.y == 18.25);
+
+	input.ResetPointerDevice();
+	CHECK(input.TakeInputs().empty());
+
+	input.RecordPointerMotion(32, 20, 25);
+	input.RecordPointerLeave();
+	input.ResetPointerDevice();
+	const std::vector<Scalpel::InputEvent> pendingLeave = input.TakeInputs();
+	REQUIRE(pendingLeave.size() == 1);
+	CHECK(std::get<Scalpel::PointerInput>(pendingLeave[0]).action ==
 		Scalpel::PointerAction::Leave);
 }

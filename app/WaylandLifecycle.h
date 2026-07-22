@@ -26,6 +26,7 @@ enum class WaylandGlobalKind {
 	Compositor,
 	WmBase,
 	Output,
+	Seat,
 };
 
 enum class WaylandLifecycleActionType {
@@ -33,6 +34,12 @@ enum class WaylandLifecycleActionType {
 	BindWmBase,
 	BindOutput,
 	ReleaseOutput,
+	BindSeat,
+	ReleaseSeat,
+	CreatePointer,
+	ReleasePointer,
+	CreateKeyboard,
+	ReleaseKeyboard,
 	Close,
 };
 
@@ -56,6 +63,8 @@ public:
 	[[nodiscard]] std::vector<WaylandLifecycleAction> AddGlobal(
 		WaylandGlobalKind kind, uint32_t name, uint32_t version);
 	[[nodiscard]] std::vector<WaylandLifecycleAction> RemoveGlobal(uint32_t name);
+	[[nodiscard]] std::vector<WaylandLifecycleAction> UpdateSeatCapabilities(
+		uint32_t name, bool hasPointer, bool hasKeyboard);
 	void EnterOutput(uint32_t name) noexcept;
 	void LeaveOutput(uint32_t name) noexcept;
 
@@ -70,6 +79,10 @@ public:
 	[[nodiscard]] size_t OutputCount() const noexcept;
 	[[nodiscard]] size_t EnteredOutputCount() const noexcept;
 	[[nodiscard]] bool OutputEntered(uint32_t name) const noexcept;
+	[[nodiscard]] size_t SeatCount() const noexcept;
+	[[nodiscard]] std::optional<uint32_t> ActiveSeat() const noexcept { return activeSeatName; }
+	[[nodiscard]] bool PointerActive() const noexcept;
+	[[nodiscard]] bool KeyboardActive() const noexcept;
 
 private:
 	struct Global {
@@ -77,6 +90,8 @@ private:
 		uint32_t name;
 		uint32_t version;
 		bool entered = false;
+		bool hasPointer = false;
+		bool hasKeyboard = false;
 	};
 
 	[[nodiscard]] bool HasGlobal(uint32_t name) const noexcept;
@@ -87,6 +102,7 @@ private:
 	std::vector<Global> globals;
 	std::optional<uint32_t> compositorName;
 	std::optional<uint32_t> wmBaseName;
+	std::optional<uint32_t> activeSeatName;
 	bool closeRequested = false;
 };
 

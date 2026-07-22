@@ -105,3 +105,78 @@ TEST_CASE("Wayland lifecycle tracks hot-plugged output membership") {
 	CHECK(lifecycle.OutputCount() == 1);
 	CHECK(lifecycle.EnteredOutputCount() == 0);
 }
+
+TEST_CASE("Wayland lifecycle selects one hot-plugged seat") {
+	Scalpel::WaylandLifecycle lifecycle(800, 600);
+	CHECK(lifecycle.SeatCount() == 0);
+	CHECK_FALSE(lifecycle.ActiveSeat().has_value());
+
+	const auto first = lifecycle.AddGlobal(Scalpel::WaylandGlobalKind::Seat, 40, 9);
+	REQUIRE(first.size() == 1);
+	CHECK(first.front() == Scalpel::WaylandLifecycleAction{
+		Scalpel::WaylandLifecycleActionType::BindSeat, 40, 9});
+	CHECK(lifecycle.ActiveSeat() == 40);
+	CHECK(lifecycle.AddGlobal(Scalpel::WaylandGlobalKind::Seat, 41, 7).empty());
+	CHECK(lifecycle.AddGlobal(Scalpel::WaylandGlobalKind::Seat, 41, 7).empty());
+	CHECK(lifecycle.SeatCount() == 2);
+	CHECK(lifecycle.ActiveSeat() == 40);
+
+	CHECK(lifecycle.RemoveGlobal(41).empty());
+	CHECK(lifecycle.SeatCount() == 1);
+	CHECK(lifecycle.ActiveSeat() == 40);
+}
+
+TEST_CASE("Wayland lifecycle recreates devices after capability changes") {
+	Scalpel::WaylandLifecycle lifecycle(800, 600);
+	(void)lifecycle.AddGlobal(Scalpel::WaylandGlobalKind::Seat, 40, 9);
+
+	const auto added = lifecycle.UpdateSeatCapabilities(40, true, true);
+	REQUIRE(added.size() == 2);
+	CHECK(added[0].type == Scalpel::WaylandLifecycleActionType::CreatePointer);
+	CHECK(added[1].type == Scalpel::WaylandLifecycleActionType::CreateKeyboard);
+	CHECK(lifecycle.PointerActive());
+	CHECK(lifecycle.KeyboardActive());
+	CHECK(lifecycle.UpdateSeatCapabilities(40, true, true).empty());
+	CHECK(lifecycle.UpdateSeatCapabilities(999, false, false).empty());
+
+	const auto removed = lifecycle.UpdateSeatCapabilities(40, false, false);
+	REQUIRE(removed.size() == 2);
+	CHECK(removed[0].type == Scalpel::WaylandLifecycleActionType::ReleasePointer);
+	CHECK(removed[1].type == Scalpel::WaylandLifecycleActionType::ReleaseKeyboard);
+	CHECK_FALSE(lifecycle.PointerActive());
+	CHECK_FALSE(lifecycle.KeyboardActive());
+
+	const auto regained = lifecycle.UpdateSeatCapabilities(40, true, true);
+	REQUIRE(regained.size() == 2);
+	CHECK(regained[0].type == Scalpel::WaylandLifecycleActionType::CreatePointer);
+	CHECK(regained[1].type == Scalpel::WaylandLifecycleActionType::CreateKeyboard);
+}
+
+TEST_CASE("Wayland lifecycle promotes a fresh seat after active removal") {
+	Scalpel::WaylandLifecycle lifecycle(800, 600);
+	(void)lifecycle.AddGlobal(Scalpel::WaylandGlobalKind::Seat, 40, 9);
+	(void)lifecycle.AddGlobal(Scalpel::WaylandGlobalKind::Seat, 41, 7);
+	(void)lifecycle.UpdateSeatCapabilities(40, true, true);
+
+	const auto actions = lifecycle.RemoveGlobal(40);
+	REQUIRE(actions.size() == 4);
+	CHECK(actions[0].type == Scalpel::WaylandLifecycleActionType::ReleasePointer);
+	CHECK(actions[1].type == Scalpel::WaylandLifecycleActionType::ReleaseKeyboard);
+	CHECK(actions[2].type == Scalpel::WaylandLifecycleActionType::ReleaseSeat);
+	CHECK(actions[3] == Scalpel::WaylandLifecycleAction{
+		Scalpel::WaylandLifecycleActionType::BindSeat, 41, 7});
+	CHECK(lifecycle.ActiveSeat() == 41);
+	CHECK_FALSE(lifecycle.PointerActive());
+	CHECK_FALSE(lifecycle.KeyboardActive());
+
+	const auto last = lifecycle.RemoveGlobal(41);
+	REQUIRE(last.size() == 1);
+	CHECK(last.front().type == Scalpel::WaylandLifecycleActionType::ReleaseSeat);
+	CHECK_FALSE(lifecycle.ActiveSeat().has_value());
+	CHECK(lifecycle.SeatCount() == 0);
+
+	const auto replacement = lifecycle.AddGlobal(
+		Scalpel::WaylandGlobalKind::Seat, 40, 5);
+	REQUIRE(replacement.size() == 1);
+	CHECK(replacement.front().type == Scalpel::WaylandLifecycleActionType::BindSeat);
+}

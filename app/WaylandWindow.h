@@ -42,8 +42,9 @@ namespace Scalpel {
  * Construction performs the required initial commit without a buffer and
  * waits for xdg_surface.configure before returning. It coalesces later resize
  * events, then translates and queues keyboard and pointer events for the
- * application loop. Robust global and seat removal, key repeat, compose, and
- * related input work remain in phase 7.
+ * application loop. Registry, output, and seat changes pass through testable
+ * lifecycle state. Key repeat, compose, and related input work remain in
+ * phase 7.
  */
 class WaylandWindow final {
 public:
@@ -78,6 +79,7 @@ private:
 	void DispatchUntilConfigured();
 	void ApplyLifecycleActions(const std::vector<WaylandLifecycleAction> &actions);
 	[[nodiscard]] std::optional<uint32_t> OutputName(wl_output *output) const noexcept;
+	[[nodiscard]] std::optional<uint32_t> RegistryNameForSeat(wl_seat *seat) const noexcept;
 
 	static void RegistryGlobal(void *data, wl_registry *registry, uint32_t name,
 		const char *interface, uint32_t version);

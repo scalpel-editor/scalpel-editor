@@ -33,6 +33,12 @@ std::vector<WaylandLifecycleAction> WaylandLifecycle::AddGlobal(
 		break;
 	case WaylandGlobalKind::Output:
 		return {{WaylandLifecycleActionType::BindOutput, name, version}};
+	case WaylandGlobalKind::Seat:
+		if (!activeSeatName) {
+			activeSeatName = name;
+			return {{WaylandLifecycleActionType::BindSeat, name, version}};
+		}
+		break;
 	}
 	return {};
 }
@@ -43,17 +49,64 @@ std::vector<WaylandLifecycleAction> WaylandLifecycle::RemoveGlobal(uint32_t name
 	if (found == globals.end()) {
 		return {};
 	}
-	const WaylandGlobalKind kind = found->kind;
+	const Global removed = *found;
 	globals.erase(found);
 	if ((compositorName && *compositorName == name) ||
 		(wmBaseName && *wmBaseName == name)) {
 		RequestClose();
 		return {{WaylandLifecycleActionType::Close, name}};
 	}
-	if (kind == WaylandGlobalKind::Output) {
+	if (removed.kind == WaylandGlobalKind::Output) {
 		return {{WaylandLifecycleActionType::ReleaseOutput, name}};
 	}
+	if (removed.kind == WaylandGlobalKind::Seat && activeSeatName == name) {
+		std::vector<WaylandLifecycleAction> actions;
+		if (removed.hasPointer) {
+			actions.push_back({WaylandLifecycleActionType::ReleasePointer, name});
+		}
+		if (removed.hasKeyboard) {
+			actions.push_back({WaylandLifecycleActionType::ReleaseKeyboard, name});
+		}
+		actions.push_back({WaylandLifecycleActionType::ReleaseSeat, name});
+		activeSeatName.reset();
+		const auto replacement = std::find_if(globals.begin(), globals.end(),
+			[](const Global &global) { return global.kind == WaylandGlobalKind::Seat; });
+		if (replacement != globals.end()) {
+			activeSeatName = replacement->name;
+			actions.push_back({WaylandLifecycleActionType::BindSeat,
+				replacement->name, replacement->version});
+		}
+		return actions;
+	}
 	return {};
+}
+
+std::vector<WaylandLifecycleAction> WaylandLifecycle::UpdateSeatCapabilities(
+	uint32_t name, bool hasPointer, bool hasKeyboard) {
+	if (activeSeatName != name) {
+		return {};
+	}
+	const auto found = std::find_if(globals.begin(), globals.end(),
+		[name](const Global &global) { return global.name == name; });
+	if (found == globals.end() || found->kind != WaylandGlobalKind::Seat) {
+		return {};
+	}
+	std::vector<WaylandLifecycleAction> actions;
+	if (found->hasPointer && !hasPointer) {
+		actions.push_back({WaylandLifecycleActionType::ReleasePointer, name});
+	}
+	if (found->hasKeyboard && !hasKeyboard) {
+		actions.push_back({WaylandLifecycleActionType::ReleaseKeyboard, name});
+	}
+	if (!found->hasPointer && hasPointer) {
+		actions.push_back({WaylandLifecycleActionType::CreatePointer, name});
+	}
+	if (!found->hasKeyboard && hasKeyboard) {
+		actions.push_back({WaylandLifecycleActionType::CreateKeyboard, name});
+	}
+	found->hasPointer = hasPointer;
+	found->hasKeyboard = hasKeyboard;
+	return actions;
 }
 
 void WaylandLifecycle::EnterOutput(uint32_t name) noexcept {
@@ -115,6 +168,29 @@ bool WaylandLifecycle::OutputEntered(uint32_t name) const noexcept {
 	const auto found = std::find_if(globals.begin(), globals.end(),
 		[name](const Global &global) { return global.name == name; });
 	return found != globals.end() && found->kind == WaylandGlobalKind::Output && found->entered;
+}
+
+size_t WaylandLifecycle::SeatCount() const noexcept {
+	return static_cast<size_t>(std::count_if(globals.begin(), globals.end(),
+		[](const Global &global) { return global.kind == WaylandGlobalKind::Seat; }));
+}
+
+bool WaylandLifecycle::PointerActive() const noexcept {
+	if (!activeSeatName) {
+		return false;
+	}
+	const auto found = std::find_if(globals.begin(), globals.end(),
+		[this](const Global &global) { return global.name == *activeSeatName; });
+	return found != globals.end() && found->hasPointer;
+}
+
+bool WaylandLifecycle::KeyboardActive() const noexcept {
+	if (!activeSeatName) {
+		return false;
+	}
+	const auto found = std::find_if(globals.begin(), globals.end(),
+		[this](const Global &global) { return global.name == *activeSeatName; });
+	return found != globals.end() && found->hasKeyboard;
 }
 
 bool WaylandLifecycle::HasGlobal(uint32_t name) const noexcept {

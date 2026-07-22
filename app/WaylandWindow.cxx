@@ -116,7 +116,7 @@ void WaylandWindow::Initialise(const char *title) {
 	}
 	RoundTrip();
 	if (CallbackFailed()) {
-		throw std::runtime_error("could not listen for Wayland keyboard focus");
+		throw std::runtime_error("could not initialise Wayland globals");
 	}
 
 	if (!compositor || !wmBase) {
@@ -149,7 +149,7 @@ void WaylandWindow::Initialise(const char *title) {
 	wl_surface_commit(surface);
 	DispatchUntilConfigured();
 	if (CallbackFailed()) {
-		throw std::runtime_error("could not initialise Wayland keyboard focus");
+		throw std::runtime_error("could not initialise Wayland listeners");
 	}
 	eglWindow = wl_egl_window_create(surface, Width(), Height());
 	if (!eglWindow) {
@@ -180,13 +180,25 @@ void WaylandWindow::Destroy() noexcept {
 	}
 	outputs.clear();
 	if (keyboard) {
-		wl_keyboard_destroy(keyboard);
+		if (wl_keyboard_get_version(keyboard) >= WL_KEYBOARD_RELEASE_SINCE_VERSION) {
+			wl_keyboard_release(keyboard);
+		} else {
+			wl_keyboard_destroy(keyboard);
+		}
 	}
 	if (pointer) {
-		wl_pointer_destroy(pointer);
+		if (wl_pointer_get_version(pointer) >= WL_POINTER_RELEASE_SINCE_VERSION) {
+			wl_pointer_release(pointer);
+		} else {
+			wl_pointer_destroy(pointer);
+		}
 	}
 	if (seat) {
-		wl_seat_destroy(seat);
+		if (wl_seat_get_version(seat) >= WL_SEAT_RELEASE_SINCE_VERSION) {
+			wl_seat_release(seat);
+		} else {
+			wl_seat_destroy(seat);
+		}
 	}
 	if (wmBase) {
 		xdg_wm_base_destroy(wmBase);
@@ -256,10 +268,90 @@ void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleActi
 			}
 			break;
 		}
+		case WaylandLifecycleActionType::BindSeat:
+			seat = static_cast<wl_seat *>(wl_registry_bind(
+				registry, action.name, &wl_seat_interface, std::min(action.version, 5U)));
+			if (!seat || wl_seat_add_listener(seat, &seatListener, this) != 0) {
+				if (seat) {
+					if (wl_seat_get_version(seat) >= WL_SEAT_RELEASE_SINCE_VERSION) {
+						wl_seat_release(seat);
+					} else {
+						wl_seat_destroy(seat);
+					}
+					seat = nullptr;
+				}
+				callbackFailed = true;
+			}
+			break;
+		case WaylandLifecycleActionType::ReleaseSeat:
+			if (seat) {
+				if (wl_seat_get_version(seat) >= WL_SEAT_RELEASE_SINCE_VERSION) {
+					wl_seat_release(seat);
+				} else {
+					wl_seat_destroy(seat);
+				}
+				seat = nullptr;
+			}
+			break;
+		case WaylandLifecycleActionType::CreatePointer:
+			pointer = wl_seat_get_pointer(seat);
+			if (!pointer || wl_pointer_add_listener(pointer, &pointerListener, this) != 0) {
+				if (pointer) {
+					if (wl_pointer_get_version(pointer) >= WL_POINTER_RELEASE_SINCE_VERSION) {
+						wl_pointer_release(pointer);
+					} else {
+						wl_pointer_destroy(pointer);
+					}
+					pointer = nullptr;
+				}
+				callbackFailed = true;
+			}
+			break;
+		case WaylandLifecycleActionType::ReleasePointer:
+			input.ResetPointerDevice();
+			if (pointer) {
+				if (wl_pointer_get_version(pointer) >= WL_POINTER_RELEASE_SINCE_VERSION) {
+					wl_pointer_release(pointer);
+				} else {
+					wl_pointer_destroy(pointer);
+				}
+				pointer = nullptr;
+			}
+			break;
+		case WaylandLifecycleActionType::CreateKeyboard:
+			keyboard = wl_seat_get_keyboard(seat);
+			if (!keyboard || wl_keyboard_add_listener(
+				keyboard, &keyboardListener, this) != 0) {
+				if (keyboard) {
+					if (wl_keyboard_get_version(keyboard) >= WL_KEYBOARD_RELEASE_SINCE_VERSION) {
+						wl_keyboard_release(keyboard);
+					} else {
+						wl_keyboard_destroy(keyboard);
+					}
+					keyboard = nullptr;
+				}
+				callbackFailed = true;
+			}
+			break;
+		case WaylandLifecycleActionType::ReleaseKeyboard:
+			input.ResetKeyboardDevice();
+			if (keyboard) {
+				if (wl_keyboard_get_version(keyboard) >= WL_KEYBOARD_RELEASE_SINCE_VERSION) {
+					wl_keyboard_release(keyboard);
+				} else {
+					wl_keyboard_destroy(keyboard);
+				}
+				keyboard = nullptr;
+			}
+			break;
 		case WaylandLifecycleActionType::Close:
 			break;
 		}
 	}
+}
+
+std::optional<uint32_t> WaylandWindow::RegistryNameForSeat(wl_seat *seat_) const noexcept {
+	return seat_ == seat ? lifecycle.ActiveSeat() : std::nullopt;
 }
 
 std::optional<uint32_t> WaylandWindow::OutputName(wl_output *output) const noexcept {
@@ -342,7 +434,7 @@ void WaylandWindow::WaitForEvents(std::optional<std::chrono::milliseconds> timeo
 			throw std::runtime_error("Wayland display dispatch failed");
 		}
 		if (CallbackFailed()) {
-			throw std::runtime_error("Wayland input listener failed");
+			throw std::runtime_error("Wayland listener failed");
 		}
 		if (!recoveringBlockedFlush) {
 			break;
@@ -350,7 +442,7 @@ void WaylandWindow::WaitForEvents(std::optional<std::chrono::milliseconds> timeo
 	}
 }
 
-void WaylandWindow::RegistryGlobal(void *data, wl_registry *registry_, uint32_t name,
+void WaylandWindow::RegistryGlobal(void *data, wl_registry *, uint32_t name,
 	const char *interface, uint32_t version) {
 	auto &window = *static_cast<WaylandWindow *>(data);
 	if (std::strcmp(interface, wl_compositor_interface.name) == 0) {
@@ -362,12 +454,9 @@ void WaylandWindow::RegistryGlobal(void *data, wl_registry *registry_, uint32_t 
 	} else if (std::strcmp(interface, wl_output_interface.name) == 0) {
 		window.ApplyLifecycleActions(window.lifecycle.AddGlobal(
 			WaylandGlobalKind::Output, name, version));
-	} else if (std::strcmp(interface, wl_seat_interface.name) == 0 && !window.seat) {
-		window.seat = static_cast<wl_seat *>(wl_registry_bind(
-			registry_, name, &wl_seat_interface, std::min(version, 1U)));
-		if (!window.seat || wl_seat_add_listener(window.seat, &seatListener, &window) != 0) {
-			window.callbackFailed = true;
-		}
+	} else if (std::strcmp(interface, wl_seat_interface.name) == 0) {
+		window.ApplyLifecycleActions(window.lifecycle.AddGlobal(
+			WaylandGlobalKind::Seat, name, version));
 	}
 }
 
@@ -378,36 +467,10 @@ void WaylandWindow::RegistryGlobalRemove(void *data, wl_registry *, uint32_t nam
 
 void WaylandWindow::SeatCapabilities(void *data, wl_seat *seat_, uint32_t capabilities) {
 	auto &window = *static_cast<WaylandWindow *>(data);
-	const bool hasKeyboard = capabilities & WL_SEAT_CAPABILITY_KEYBOARD;
-	const bool hasPointer = capabilities & WL_SEAT_CAPABILITY_POINTER;
-	if (hasPointer && !window.pointer) {
-		window.pointer = wl_seat_get_pointer(seat_);
-		if (!window.pointer || wl_pointer_add_listener(
-			window.pointer, &pointerListener, &window) != 0) {
-			if (window.pointer) {
-				wl_pointer_destroy(window.pointer);
-				window.pointer = nullptr;
-			}
-			window.callbackFailed = true;
-		}
-	} else if (!hasPointer && window.pointer) {
-		wl_pointer_destroy(window.pointer);
-		window.pointer = nullptr;
-	}
-	if (hasKeyboard && !window.keyboard) {
-		window.keyboard = wl_seat_get_keyboard(seat_);
-		if (!window.keyboard || wl_keyboard_add_listener(window.keyboard, &keyboardListener, &window) != 0) {
-			if (window.keyboard) {
-				wl_keyboard_destroy(window.keyboard);
-				window.keyboard = nullptr;
-			}
-			window.callbackFailed = true;
-		}
-	} else if (!hasKeyboard && window.keyboard) {
-		wl_keyboard_destroy(window.keyboard);
-		window.keyboard = nullptr;
-		window.input.RecordKeyboardFocus(false);
-		window.input.ResetKeyboardState();
+	if (const std::optional<uint32_t> name = window.RegistryNameForSeat(seat_)) {
+		window.ApplyLifecycleActions(window.lifecycle.UpdateSeatCapabilities(*name,
+			capabilities & WL_SEAT_CAPABILITY_POINTER,
+			capabilities & WL_SEAT_CAPABILITY_KEYBOARD));
 	}
 }
 

@@ -5,6 +5,7 @@
 
 #include "WaylandInput.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <stdexcept>
 #include <utility>
@@ -157,6 +158,47 @@ void WaylandInput::ResetKeyboardState() {
 	state = newState;
 }
 
+void WaylandInput::ResetKeyboardDevice() {
+	const bool reportFocusLoss = keyboardFocused || std::any_of(
+		inputs.begin(), inputs.end(), [](const InputEvent &input) {
+			const auto *focus = std::get_if<KeyboardFocusInput>(&input);
+			return focus && !focus->focused;
+		});
+	inputs.erase(std::remove_if(inputs.begin(), inputs.end(), [](const InputEvent &input) {
+		return std::holds_alternative<KeyboardFocusInput>(input) ||
+			std::holds_alternative<KeyboardInput>(input);
+	}), inputs.end());
+	keyboardFocused = false;
+	if (reportFocusLoss) {
+		inputs.emplace_back(KeyboardFocusInput{false});
+	}
+	if (state) {
+		xkb_state_unref(state);
+		state = nullptr;
+	}
+	if (keymap) {
+		xkb_keymap_unref(keymap);
+		keymap = nullptr;
+	}
+}
+
+void WaylandInput::ResetPointerDevice() {
+	const bool reportLeave = pointerFocused || std::any_of(
+		inputs.begin(), inputs.end(), [](const InputEvent &input) {
+			const auto *pointer = std::get_if<PointerInput>(&input);
+			return pointer && pointer->action == PointerAction::Leave;
+		});
+	inputs.erase(std::remove_if(inputs.begin(), inputs.end(), [](const InputEvent &input) {
+		return std::holds_alternative<PointerInput>(input);
+	}), inputs.end());
+	if (reportLeave) {
+		pointerFocused = true;
+		RecordPointerLeave();
+	}
+	pointerX = 0;
+	pointerY = 0;
+}
+
 void WaylandInput::RecordKeyboardFocus(bool focused) {
 	if (focused != keyboardFocused) {
 		keyboardFocused = focused;
@@ -193,6 +235,7 @@ void WaylandInput::RecordKey(uint32_t time, uint32_t key, bool pressed) {
 }
 
 void WaylandInput::RecordPointerMotion(uint32_t time, double x, double y) {
+	pointerFocused = true;
 	pointerX = x;
 	pointerY = y;
 	inputs.emplace_back(PointerInput{
@@ -200,6 +243,10 @@ void WaylandInput::RecordPointerMotion(uint32_t time, double x, double y) {
 }
 
 void WaylandInput::RecordPointerLeave() {
+	if (!pointerFocused) {
+		return;
+	}
+	pointerFocused = false;
 	inputs.emplace_back(PointerInput{
 		PointerAction::Leave, CurrentModifiers(), pointerX, pointerY});
 }

@@ -2,7 +2,7 @@
 
 Recorded before the minimal Phase 6 shell grows into the complete standalone shell. [ROADMAP.md](../ROADMAP.md) phase 7 lists the ordered work. This document fixes the globals, protocols, dependencies, application hooks, coordinate spaces, retained source references, and license rules that those steps must cover.
 
-The current baseline is deliberately small. `WaylandWindow` owns one display, registry, compositor, xdg-toplevel, current seat, keyboard, pointer, surface, and `wl_egl_window`; its callbacks feed `WaylandLifecycle` and `WaylandInput`. `ApplicationEditor` owns Scintilla host state, drawing, invalidation, editor deadlines, idle work, and visible unsupported-service reports. `main.cxx` moves resize and input events from the shell to the editor and waits only on the Wayland display plus the next editor deadline.
+The shell now has robust core-global, output, and seat lifetimes. `WaylandWindow` owns the display, registry, required globals, xdg-toplevel, bound outputs, active seat devices, surface, and `wl_egl_window`; thin callbacks feed deterministic registry, output-membership, seat-capability, window, and input state. `ApplicationEditor` owns Scintilla host state, drawing, invalidation, editor deadlines, idle work, and visible unsupported-service reports. `main.cxx` moves resize and input events from the shell to the editor and waits only on the Wayland display plus the next editor deadline.
 
 Phase 7 keeps one direct shell. New state may be split by concern when that makes lifetime or testing clear, but it must not become a reusable window toolkit or protocol wrapper library.
 
@@ -42,7 +42,7 @@ Only globals required to create and keep the main surface are fatal when absent 
 | `wp_fractional_scale_manager_v1` | Optional protocol paired with viewporter | Supplies preferred scale in 120ths. Ignore fractional-scale support unless `wp_viewporter` is also present. | 10 |
 | `zxdg_exporter_v2` | Optional protocol | Exports the toplevel handle used to parent a later portal dialog. An absent exporter leaves Phase 8 able to request an unparented portal dialog. | 11 |
 
-Registry removal is matched by the numeric name delivered at bind time, not only by interface. Removal first cancels dependent activity and clears queued application state, then destroys child objects and the bound global. A later advertisement creates fresh objects and listeners; stale serials, focus, pressed keys, repeat state, pointer coordinates, offers, sources, text-input batches, callbacks, and scale membership do not cross that boundary.
+Registry removal is matched by the numeric name delivered at bind time, not only by interface. The earliest advertised seat stays active until removal, when the earliest remaining seat is bound as a fresh replacement; capability loss alone does not switch seats. Removal first cancels dependent activity and clears queued application state, then destroys child objects and the bound global. A later advertisement creates fresh objects and listeners; stale serials, focus, pressed keys, repeat state, pointer coordinates, offers, sources, text-input batches, callbacks, and scale membership do not cross that boundary.
 
 The implementation binds no version higher than both the advertised version and the newest request or event it handles. Phase 7 raises the Phase 6 `wl_seat` and xdg-shell bindings as needed for keyboard repeat information, pointer frame events, current axis values, release requests, and retained toplevel state; callbacks newer than the bound version are never assumed to arrive.
 
@@ -81,7 +81,7 @@ No thread library or generic asynchronous library is added. Wayland, transfer fi
 
 ## Deterministic test boundary
 
-The Phase 6 tests stop below the protocol-object boundary. `waylandLifecycleTest` covers resize and close state, `waylandInputTest` covers translated key and pointer events, and `applicationTest` covers host behavior. Registry callbacks, proxy replacement, optional-global fallback, pointer-axis frames, transfer file descriptors, text-input batches, frame pacing, and scale conversion currently live in or would otherwise be added directly to `WaylandWindow`, where they cannot be driven without a compositor. That is a framework deficiency Phase 7 must remove as each concern is implemented.
+`waylandLifecycleTest` now covers resize, close, registry identity, required-global loss, output membership, active-seat replacement, and device-capability actions; `waylandInputTest` covers translated events and stale-event clearing on device teardown; `applicationTest` covers host behavior. Optional-global fallback, pointer-axis frames, transfer file descriptors, text-input batches, frame pacing, and scale conversion still live in or would otherwise be added directly to `WaylandWindow`, where they cannot be driven without a compositor. That remaining framework deficiency is removed concern by concern in the later Phase 7 steps.
 
 Protocol listeners remain thin adapters. They validate and copy callback arguments into plain application-owned state, ask that state for the next actions, and perform the resulting Wayland create, destroy, acknowledge, or commit calls. Tests drive the plain state and inspect its actions; they do not construct fake Wayland proxy objects or duplicate generated listener structures. A live compositor check covers the small adapter layer and real object ordering.
 
@@ -170,3 +170,7 @@ Generated Wayland protocol files remain build artifacts. Preserve the notices em
 ## Step 1 completion
 
 This freeze inventories every Phase 7 roadmap concern, assigns its globals and protocols, fixes the application and coordinate boundaries, records dependencies and retained source obligations, and gives steps 2–12 deterministic and live verification paths. Later steps update this document when an implementation changes a recorded choice; they do not leave it describing an earlier shell.
+
+## Step 2 completion
+
+Registry, output, and active-seat decisions now live in `WaylandLifecycle` and return narrow actions executed by `WaylandWindow`. The state ignores duplicate announcements, tracks every output and its surface membership, closes on active required-global loss, keeps one stable active seat, promotes a remaining seat after removal, and recreates keyboard and pointer objects after capability regain. `WaylandInput` discards queued events from a disappearing device, reports focus or pointer loss, and resets modifier state before the proxy is released. Deterministic tests cover startup without seats or outputs, duplicates, multiple devices, removal, replacement, capability loss and regain, and stale-event clearing.

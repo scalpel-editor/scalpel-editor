@@ -16,7 +16,7 @@ struct xkb_state;
 namespace Scalpel {
 
 /**
- * xkbcommon state and translated events for one current Wayland seat.
+ * xkbcommon state and translated events for the active Wayland seat.
  *
  * Key repeat and compose state deliberately stay out of this phase-6 type.
  */
@@ -33,6 +33,8 @@ public:
 	/** Load a Wayland keymap buffer whose size includes its trailing NUL. */
 	[[nodiscard]] bool SetKeymap(std::string_view keymapText);
 	void ResetKeyboardState();
+	void ResetKeyboardDevice();
+	void ResetPointerDevice();
 	void RecordKeyboardFocus(bool focused);
 	void UpdateModifiers(uint32_t depressed, uint32_t latched, uint32_t locked,
 		uint32_t group);
@@ -52,6 +54,7 @@ private:
 	double pointerX = 0;
 	double pointerY = 0;
 	bool keyboardFocused = false;
+	bool pointerFocused = false;
 	std::vector<InputEvent> inputs;
 };
 
