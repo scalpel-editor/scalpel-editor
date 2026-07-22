@@ -4,9 +4,12 @@
 #define APPLICATIONEDITOR_H
 
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -27,6 +30,12 @@ struct TickerRequest {
 	int reason = 0;
 	int milliseconds = 0;
 	int tolerance = 0;
+	bool running = false;
+};
+
+struct FineTickerState {
+	std::chrono::steady_clock::time_point nextFire{};
+	std::chrono::milliseconds period{};
 	bool running = false;
 };
 
@@ -63,9 +72,13 @@ protected:
  */
 class ApplicationEditor final : private ApplicationResources, public Scintilla::Internal::ScintillaBase {
 public:
-	explicit ApplicationEditor(int width = 800, int height = 600);
+	using Clock = std::chrono::steady_clock;
+	using NowFunction = std::function<Clock::time_point()>;
+
+	explicit ApplicationEditor(int width = 800, int height = 600,
+		NowFunction now = Clock::now);
 	ApplicationEditor(std::unique_ptr<Scintilla::Internal::GlContext> context,
-		int width, int height);
+		int width, int height, NowFunction now = Clock::now);
 	~ApplicationEditor() override;
 
 	ApplicationEditor(const ApplicationEditor &) = delete;
@@ -83,6 +96,8 @@ public:
 	void RenderFrame();
 	void PresentFrame();
 	void RunPendingWork();
+	[[nodiscard]] std::optional<std::chrono::milliseconds> TimeUntilNextWork() const;
+	[[nodiscard]] bool NeedsRedraw() const noexcept;
 
 	[[nodiscard]] std::vector<uint8_t> FramePixels() const;
 	[[nodiscard]] int FrameWidth() const noexcept;
@@ -126,13 +141,14 @@ private:
 
 	ScrollState scrollbars;
 	static constexpr std::size_t tickerReasonCount = static_cast<std::size_t>(TickReason::platform) + 1;
-	std::array<bool, tickerReasonCount> tickers{};
+	std::array<FineTickerState, tickerReasonCount> tickers{};
 	std::vector<TickerRequest> tickerRequests;
 	std::vector<Scintilla::Notification> notifications;
 	std::vector<std::string> unsupportedRequests;
 	int changeNotifications = 0;
 	bool idleRequested = false;
 	bool queuedIdleWork = false;
+	NowFunction now;
 };
 
 }

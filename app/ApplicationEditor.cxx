@@ -1,6 +1,7 @@
 // Production ScintillaBase host used by the standalone application.
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <stdexcept>
 #include <string>
@@ -36,12 +37,20 @@ ApplicationResources::ApplicationResources(
 
 ApplicationResources::~ApplicationResources() = default;
 
-ApplicationEditor::ApplicationEditor(int width, int height) : ApplicationResources(width, height) {
+ApplicationEditor::ApplicationEditor(int width, int height, NowFunction now_) :
+	ApplicationResources(width, height), now(std::move(now_)) {
+	if (!now) {
+		throw std::invalid_argument("ApplicationEditor requires a clock");
+	}
 	wMain = static_cast<Scintilla::Internal::WindowID>(&window);
 }
 
 ApplicationEditor::ApplicationEditor(std::unique_ptr<Scintilla::Internal::GlContext> context,
-	int width, int height) : ApplicationResources(std::move(context), width, height) {
+	int width, int height, NowFunction now_) :
+	ApplicationResources(std::move(context), width, height), now(std::move(now_)) {
+	if (!now) {
+		throw std::invalid_argument("ApplicationEditor requires a clock");
+	}
 	wMain = static_cast<Scintilla::Internal::WindowID>(&window);
 }
 
@@ -117,6 +126,19 @@ void ApplicationEditor::PresentFrame() {
 }
 
 void ApplicationEditor::RunPendingWork() {
+	const Clock::time_point current = now();
+	for (size_t index = 0; index < tickers.size(); index++) {
+		FineTickerState &ticker = tickers[index];
+		int fires = 0;
+		while (ticker.running && current >= ticker.nextFire && fires < 8) {
+			ticker.nextFire += ticker.period;
+			fires++;
+			TickFor(static_cast<TickReason>(index));
+		}
+		if (ticker.running && current >= ticker.nextFire) {
+			ticker.nextFire = current + ticker.period;
+		}
+	}
 	if (queuedIdleWork) {
 		IdleWork();
 		queuedIdleWork = false;
@@ -124,6 +146,31 @@ void ApplicationEditor::RunPendingWork() {
 	if (idleRequested) {
 		idleRequested = Idle();
 	}
+}
+
+std::optional<std::chrono::milliseconds> ApplicationEditor::TimeUntilNextWork() const {
+	using std::chrono::ceil;
+	using std::chrono::milliseconds;
+	if (queuedIdleWork || idleRequested) {
+		return milliseconds::zero();
+	}
+
+	const Clock::time_point current = now();
+	std::optional<Clock::duration> shortest;
+	for (const FineTickerState &ticker : tickers) {
+		if (!ticker.running) {
+			continue;
+		}
+		const Clock::duration remaining = std::max(Clock::duration::zero(), ticker.nextFire - current);
+		if (!shortest || remaining < *shortest) {
+			shortest = remaining;
+		}
+	}
+	return shortest ? std::optional<milliseconds>(ceil<milliseconds>(*shortest)) : std::nullopt;
+}
+
+bool ApplicationEditor::NeedsRedraw() const noexcept {
+	return !window.invalidatedRectangles.empty();
 }
 
 std::vector<uint8_t> ApplicationEditor::FramePixels() const {
@@ -214,18 +261,21 @@ void ApplicationEditor::AddToPopUp(const char *label, int command, bool enabled)
 }
 
 bool ApplicationEditor::FineTickerRunning(TickReason reason) {
-	return tickers[static_cast<size_t>(reason)];
+	return tickers[static_cast<size_t>(reason)].running;
 }
 
 void ApplicationEditor::FineTickerStart(TickReason reason, int milliseconds, int tolerance) {
 	const size_t index = static_cast<size_t>(reason);
-	tickers[index] = true;
+	FineTickerState &ticker = tickers[index];
+	ticker.running = true;
+	ticker.period = std::chrono::milliseconds(std::max(1, milliseconds));
+	ticker.nextFire = now() + ticker.period;
 	tickerRequests.push_back({static_cast<int>(index), milliseconds, tolerance, true});
 }
 
 void ApplicationEditor::FineTickerCancel(TickReason reason) {
 	const size_t index = static_cast<size_t>(reason);
-	tickers[index] = false;
+	tickers[index].running = false;
 	tickerRequests.push_back({static_cast<int>(index), 0, 0, false});
 }
 

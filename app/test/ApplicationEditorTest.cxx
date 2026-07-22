@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -62,6 +63,43 @@ TEST_CASE("production editor host exposes shell state") {
 	CHECK(resizedClient.bottom == 120);
 	editor.RenderFrame();
 	CHECK(editor.Scrollbars().changes > 0);
+}
+
+TEST_CASE("production editor host schedules tickers against a monotonic clock") {
+	using namespace std::chrono_literals;
+	Scalpel::ApplicationEditor::Clock::time_point now{};
+	Scalpel::ApplicationEditor editor(240, 120, [&now] { return now; });
+	editor.LoadInitialBuffer("caret timer\n");
+	CHECK(editor.TimeUntilNextWork() == 0ms);
+	editor.RunPendingWork();
+	CHECK_FALSE(editor.IdleRequested());
+	editor.SetKeyboardFocus(true);
+
+	REQUIRE_FALSE(editor.TickerRequests().empty());
+	const int period = editor.TickerRequests().back().milliseconds;
+	REQUIRE(period > 0);
+	CHECK(editor.TimeUntilNextWork() == std::chrono::milliseconds(period));
+	editor.RenderFrame();
+	CHECK_FALSE(editor.NeedsRedraw());
+
+	now += std::chrono::milliseconds(period - 1);
+	editor.RunPendingWork();
+	CHECK_FALSE(editor.NeedsRedraw());
+	CHECK(editor.TimeUntilNextWork() == 1ms);
+
+	now += 1ms;
+	editor.RunPendingWork();
+	CHECK(editor.NeedsRedraw());
+	CHECK(editor.TimeUntilNextWork() == std::chrono::milliseconds(period));
+
+	editor.RenderFrame();
+	now += std::chrono::milliseconds(period * 20);
+	editor.RunPendingWork();
+	CHECK(editor.WindowState().invalidatedRectangles.size() <= 8);
+	CHECK(editor.TimeUntilNextWork() == std::chrono::milliseconds(period));
+
+	editor.SetKeyboardFocus(false);
+	CHECK_FALSE(editor.TimeUntilNextWork().has_value());
 }
 
 TEST_CASE("deferred application services fail visibly") {
