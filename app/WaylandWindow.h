@@ -17,6 +17,8 @@ struct wl_display;
 struct wl_egl_window;
 struct wl_keyboard;
 struct wl_keyboard_listener;
+struct wl_output;
+struct wl_output_listener;
 struct wl_pointer;
 struct wl_pointer_listener;
 struct wl_registry;
@@ -24,6 +26,7 @@ struct wl_registry_listener;
 struct wl_seat;
 struct wl_seat_listener;
 struct wl_surface;
+struct wl_surface_listener;
 struct xdg_surface;
 struct xdg_surface_listener;
 struct xdg_toplevel;
@@ -73,6 +76,8 @@ private:
 	void Initialise(const char *title);
 	void Destroy() noexcept;
 	void DispatchUntilConfigured();
+	void ApplyLifecycleActions(const std::vector<WaylandLifecycleAction> &actions);
+	[[nodiscard]] std::optional<uint32_t> OutputName(wl_output *output) const noexcept;
 
 	static void RegistryGlobal(void *data, wl_registry *registry, uint32_t name,
 		const char *interface, uint32_t version);
@@ -110,6 +115,21 @@ private:
 		int32_t value120);
 	static void PointerAxisRelativeDirection(void *data, wl_pointer *pointer,
 		uint32_t axis, uint32_t direction);
+	static void OutputGeometry(void *data, wl_output *output, int32_t x, int32_t y,
+		int32_t physicalWidth, int32_t physicalHeight, int32_t subpixel,
+		const char *make, const char *model, int32_t transform);
+	static void OutputMode(void *data, wl_output *output, uint32_t flags,
+		int32_t width, int32_t height, int32_t refresh);
+	static void OutputDone(void *data, wl_output *output);
+	static void OutputScale(void *data, wl_output *output, int32_t factor);
+	static void OutputName(void *data, wl_output *output, const char *name);
+	static void OutputDescription(void *data, wl_output *output, const char *description);
+	static void WaylandSurfaceEnter(void *data, wl_surface *surface, wl_output *output);
+	static void WaylandSurfaceLeave(void *data, wl_surface *surface, wl_output *output);
+	static void WaylandSurfacePreferredBufferScale(void *data, wl_surface *surface,
+		int32_t factor);
+	static void WaylandSurfacePreferredBufferTransform(void *data, wl_surface *surface,
+		uint32_t transform);
 	static void WmBasePing(void *data, xdg_wm_base *wmBase, uint32_t serial);
 	static void SurfaceConfigure(void *data, xdg_surface *shellSurface, uint32_t serial);
 	static void ToplevelConfigure(void *data, xdg_toplevel *toplevel, int32_t width,
@@ -124,6 +144,8 @@ private:
 	static const wl_seat_listener seatListener;
 	static const wl_keyboard_listener keyboardListener;
 	static const wl_pointer_listener pointerListener;
+	static const wl_output_listener outputListener;
+	static const wl_surface_listener waylandSurfaceListener;
 	static const xdg_wm_base_listener wmBaseListener;
 	static const xdg_surface_listener surfaceListener;
 	static const xdg_toplevel_listener toplevelListener;
@@ -131,6 +153,11 @@ private:
 	wl_display *display = nullptr;
 	wl_registry *registry = nullptr;
 	wl_compositor *compositor = nullptr;
+	struct Output {
+		uint32_t name;
+		wl_output *proxy;
+	};
+	std::vector<Output> outputs;
 	wl_seat *seat = nullptr;
 	wl_keyboard *keyboard = nullptr;
 	wl_pointer *pointer = nullptr;

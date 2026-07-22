@@ -56,6 +56,22 @@ const wl_pointer_listener WaylandWindow::pointerListener = {
 	WaylandWindow::PointerAxisRelativeDirection,
 };
 
+const wl_output_listener WaylandWindow::outputListener = {
+	WaylandWindow::OutputGeometry,
+	WaylandWindow::OutputMode,
+	WaylandWindow::OutputDone,
+	WaylandWindow::OutputScale,
+	WaylandWindow::OutputName,
+	WaylandWindow::OutputDescription,
+};
+
+const wl_surface_listener WaylandWindow::waylandSurfaceListener = {
+	WaylandWindow::WaylandSurfaceEnter,
+	WaylandWindow::WaylandSurfaceLeave,
+	WaylandWindow::WaylandSurfacePreferredBufferScale,
+	WaylandWindow::WaylandSurfacePreferredBufferTransform,
+};
+
 const xdg_wm_base_listener WaylandWindow::wmBaseListener = {
 	WaylandWindow::WmBasePing,
 };
@@ -114,6 +130,9 @@ void WaylandWindow::Initialise(const char *title) {
 	if (!surface) {
 		throw std::runtime_error("could not create the Wayland surface");
 	}
+	if (wl_surface_add_listener(surface, &waylandSurfaceListener, this) != 0) {
+		throw std::runtime_error("could not listen for Wayland surface output changes");
+	}
 	shellSurface = xdg_wm_base_get_xdg_surface(wmBase, surface);
 	if (!shellSurface || xdg_surface_add_listener(shellSurface, &surfaceListener, this) != 0) {
 		throw std::runtime_error("could not create the xdg_surface");
@@ -152,6 +171,14 @@ void WaylandWindow::Destroy() noexcept {
 	if (surface) {
 		wl_surface_destroy(surface);
 	}
+	for (const Output &output : outputs) {
+		if (wl_output_get_version(output.proxy) >= WL_OUTPUT_RELEASE_SINCE_VERSION) {
+			wl_output_release(output.proxy);
+		} else {
+			wl_output_destroy(output.proxy);
+		}
+	}
+	outputs.clear();
 	if (keyboard) {
 		wl_keyboard_destroy(keyboard);
 	}
@@ -184,6 +211,61 @@ void WaylandWindow::Destroy() noexcept {
 	compositor = nullptr;
 	registry = nullptr;
 	display = nullptr;
+}
+
+void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleAction> &actions) {
+	for (const WaylandLifecycleAction &action : actions) {
+		switch (action.type) {
+		case WaylandLifecycleActionType::BindCompositor:
+			compositor = static_cast<wl_compositor *>(wl_registry_bind(
+				registry, action.name, &wl_compositor_interface, std::min(action.version, 4U)));
+			if (!compositor) {
+				callbackFailed = true;
+			}
+			break;
+		case WaylandLifecycleActionType::BindWmBase:
+			wmBase = static_cast<xdg_wm_base *>(wl_registry_bind(
+				registry, action.name, &xdg_wm_base_interface, std::min(action.version, 1U)));
+			if (!wmBase) {
+				callbackFailed = true;
+			}
+			break;
+		case WaylandLifecycleActionType::BindOutput: {
+			wl_output *output = static_cast<wl_output *>(wl_registry_bind(
+				registry, action.name, &wl_output_interface, std::min(action.version, 2U)));
+			if (!output || wl_output_add_listener(output, &outputListener, this) != 0) {
+				if (output) {
+					wl_output_destroy(output);
+				}
+				callbackFailed = true;
+				break;
+			}
+			outputs.push_back(Output{action.name, output});
+			break;
+		}
+		case WaylandLifecycleActionType::ReleaseOutput: {
+			const auto found = std::find_if(outputs.begin(), outputs.end(),
+				[&action](const Output &output) { return output.name == action.name; });
+			if (found != outputs.end()) {
+				if (wl_output_get_version(found->proxy) >= WL_OUTPUT_RELEASE_SINCE_VERSION) {
+					wl_output_release(found->proxy);
+				} else {
+					wl_output_destroy(found->proxy);
+				}
+				outputs.erase(found);
+			}
+			break;
+		}
+		case WaylandLifecycleActionType::Close:
+			break;
+		}
+	}
+}
+
+std::optional<uint32_t> WaylandWindow::OutputName(wl_output *output) const noexcept {
+	const auto found = std::find_if(outputs.begin(), outputs.end(),
+		[output](const Output &candidate) { return candidate.proxy == output; });
+	return found == outputs.end() ? std::nullopt : std::optional<uint32_t>{found->name};
 }
 
 void WaylandWindow::DispatchUntilConfigured() {
@@ -271,12 +353,15 @@ void WaylandWindow::WaitForEvents(std::optional<std::chrono::milliseconds> timeo
 void WaylandWindow::RegistryGlobal(void *data, wl_registry *registry_, uint32_t name,
 	const char *interface, uint32_t version) {
 	auto &window = *static_cast<WaylandWindow *>(data);
-	if (std::strcmp(interface, wl_compositor_interface.name) == 0 && !window.compositor) {
-		window.compositor = static_cast<wl_compositor *>(wl_registry_bind(
-			registry_, name, &wl_compositor_interface, std::min(version, 4U)));
-	} else if (std::strcmp(interface, xdg_wm_base_interface.name) == 0 && !window.wmBase) {
-		window.wmBase = static_cast<xdg_wm_base *>(wl_registry_bind(
-			registry_, name, &xdg_wm_base_interface, std::min(version, 1U)));
+	if (std::strcmp(interface, wl_compositor_interface.name) == 0) {
+		window.ApplyLifecycleActions(window.lifecycle.AddGlobal(
+			WaylandGlobalKind::Compositor, name, version));
+	} else if (std::strcmp(interface, xdg_wm_base_interface.name) == 0) {
+		window.ApplyLifecycleActions(window.lifecycle.AddGlobal(
+			WaylandGlobalKind::WmBase, name, version));
+	} else if (std::strcmp(interface, wl_output_interface.name) == 0) {
+		window.ApplyLifecycleActions(window.lifecycle.AddGlobal(
+			WaylandGlobalKind::Output, name, version));
 	} else if (std::strcmp(interface, wl_seat_interface.name) == 0 && !window.seat) {
 		window.seat = static_cast<wl_seat *>(wl_registry_bind(
 			registry_, name, &wl_seat_interface, std::min(version, 1U)));
@@ -286,8 +371,9 @@ void WaylandWindow::RegistryGlobal(void *data, wl_registry *registry_, uint32_t 
 	}
 }
 
-void WaylandWindow::RegistryGlobalRemove(void *, wl_registry *, uint32_t) {
-	// Robust removal and hot-plugged seats belong to phase 7.
+void WaylandWindow::RegistryGlobalRemove(void *data, wl_registry *, uint32_t name) {
+	auto &window = *static_cast<WaylandWindow *>(data);
+	window.ApplyLifecycleActions(window.lifecycle.RemoveGlobal(name));
 }
 
 void WaylandWindow::SeatCapabilities(void *data, wl_seat *seat_, uint32_t capabilities) {
@@ -438,6 +524,50 @@ void WaylandWindow::PointerAxisValue120(void *, wl_pointer *, uint32_t, int32_t)
 }
 
 void WaylandWindow::PointerAxisRelativeDirection(void *, wl_pointer *, uint32_t, uint32_t) {
+}
+
+void WaylandWindow::OutputGeometry(void *, wl_output *, int32_t, int32_t, int32_t,
+	int32_t, int32_t, const char *, const char *, int32_t) {
+}
+
+void WaylandWindow::OutputMode(void *, wl_output *, uint32_t, int32_t, int32_t, int32_t) {
+}
+
+void WaylandWindow::OutputDone(void *, wl_output *) {
+}
+
+void WaylandWindow::OutputScale(void *, wl_output *, int32_t) {
+	// Output scale becomes application-visible in phase 7 step 10.
+}
+
+void WaylandWindow::OutputName(void *, wl_output *, const char *) {
+}
+
+void WaylandWindow::OutputDescription(void *, wl_output *, const char *) {
+}
+
+void WaylandWindow::WaylandSurfaceEnter(void *data, wl_surface *surface_, wl_output *output) {
+	auto &window = *static_cast<WaylandWindow *>(data);
+	if (surface_ == window.surface) {
+		if (const std::optional<uint32_t> name = window.OutputName(output)) {
+			window.lifecycle.EnterOutput(*name);
+		}
+	}
+}
+
+void WaylandWindow::WaylandSurfaceLeave(void *data, wl_surface *surface_, wl_output *output) {
+	auto &window = *static_cast<WaylandWindow *>(data);
+	if (surface_ == window.surface) {
+		if (const std::optional<uint32_t> name = window.OutputName(output)) {
+			window.lifecycle.LeaveOutput(*name);
+		}
+	}
+}
+
+void WaylandWindow::WaylandSurfacePreferredBufferScale(void *, wl_surface *, int32_t) {
+}
+
+void WaylandWindow::WaylandSurfacePreferredBufferTransform(void *, wl_surface *, uint32_t) {
 }
 
 void WaylandWindow::WmBasePing(void *, xdg_wm_base *wmBase_, uint32_t serial) {

@@ -3,7 +3,10 @@
 #ifndef WAYLANDLIFECYCLE_H
 #define WAYLANDLIFECYCLE_H
 
+#include <cstddef>
+#include <cstdint>
 #include <optional>
+#include <vector>
 
 namespace Scalpel {
 
@@ -19,10 +22,42 @@ struct WindowSize {
 	}
 };
 
+enum class WaylandGlobalKind {
+	Compositor,
+	WmBase,
+	Output,
+};
+
+enum class WaylandLifecycleActionType {
+	BindCompositor,
+	BindWmBase,
+	BindOutput,
+	ReleaseOutput,
+	Close,
+};
+
+struct WaylandLifecycleAction {
+	WaylandLifecycleActionType type;
+	uint32_t name = 0;
+	uint32_t version = 0;
+
+	friend constexpr bool operator==(const WaylandLifecycleAction &left,
+		const WaylandLifecycleAction &right) noexcept {
+		return left.type == right.type && left.name == right.name &&
+			left.version == right.version;
+	}
+};
+
 /** Coalesces protocol callbacks into changes consumed by the application loop. */
 class WaylandLifecycle final {
 public:
 	WaylandLifecycle(int width, int height);
+
+	[[nodiscard]] std::vector<WaylandLifecycleAction> AddGlobal(
+		WaylandGlobalKind kind, uint32_t name, uint32_t version);
+	[[nodiscard]] std::vector<WaylandLifecycleAction> RemoveGlobal(uint32_t name);
+	void EnterOutput(uint32_t name) noexcept;
+	void LeaveOutput(uint32_t name) noexcept;
 
 	void ProposeSize(int width, int height) noexcept;
 	[[nodiscard]] std::optional<WindowSize> CommitConfigure() noexcept;
@@ -32,11 +67,26 @@ public:
 	[[nodiscard]] int Width() const noexcept { return currentSize.width; }
 	[[nodiscard]] int Height() const noexcept { return currentSize.height; }
 	[[nodiscard]] bool CloseRequested() const noexcept { return closeRequested; }
+	[[nodiscard]] size_t OutputCount() const noexcept;
+	[[nodiscard]] size_t EnteredOutputCount() const noexcept;
+	[[nodiscard]] bool OutputEntered(uint32_t name) const noexcept;
 
 private:
+	struct Global {
+		WaylandGlobalKind kind;
+		uint32_t name;
+		uint32_t version;
+		bool entered = false;
+	};
+
+	[[nodiscard]] bool HasGlobal(uint32_t name) const noexcept;
+
 	WindowSize currentSize;
 	std::optional<WindowSize> proposedSize;
 	std::optional<WindowSize> pendingResize;
+	std::vector<Global> globals;
+	std::optional<uint32_t> compositorName;
+	std::optional<uint32_t> wmBaseName;
 	bool closeRequested = false;
 };
 
