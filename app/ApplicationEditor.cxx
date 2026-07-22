@@ -269,6 +269,8 @@ void ApplicationEditor::FineTickerStart(TickReason reason, int milliseconds, int
 	FineTickerState &ticker = tickers[index];
 	ticker.running = true;
 	ticker.period = std::chrono::milliseconds(std::max(1, milliseconds));
+	// The host currently keeps exact deadlines. Retain tolerance in the request
+	// record for callers and tests until the event loop coalesces timer wakeups.
 	ticker.nextFire = now() + ticker.period;
 	tickerRequests.push_back({static_cast<int>(index), milliseconds, tolerance, true});
 }

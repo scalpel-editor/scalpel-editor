@@ -4,6 +4,14 @@
 #include "catch.hpp"
 
 #include "WaylandLifecycle.h"
+#include "WaylandWindow.h"
+
+TEST_CASE("Wayland window reports the constructor argument it rejects") {
+	CHECK_THROWS_WITH(Scalpel::WaylandWindow(nullptr, 800, 600),
+		"WaylandWindow requires a title");
+	CHECK_THROWS_WITH(Scalpel::WaylandWindow("scalpel-editor", 0, 600),
+		"WaylandLifecycle requires a positive size");
+}
 
 TEST_CASE("Wayland lifecycle coalesces configured sizes") {
 	Scalpel::WaylandLifecycle lifecycle(800, 600);

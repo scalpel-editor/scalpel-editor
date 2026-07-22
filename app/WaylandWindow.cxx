@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <climits>
+#include <cstdint>
 #include <cstring>
 #include <stdexcept>
 
@@ -57,7 +58,7 @@ const xdg_toplevel_listener WaylandWindow::toplevelListener = {
 WaylandWindow::WaylandWindow(const char *title, int width_, int height_) :
 	lifecycle(width_, height_) {
 	if (!title) {
-		throw std::invalid_argument("WaylandWindow requires a title and positive size");
+		throw std::invalid_argument("WaylandWindow requires a title");
 	}
 	try {
 		Initialise(title);
