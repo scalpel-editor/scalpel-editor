@@ -240,20 +240,20 @@ Seed CMake (`seed/cmake/DependenciesForBackends.cmake`) still finds decoration, 
 
 ## Source references (mine, do not build on)
 
-These paths teach techniques. Useful logic is rewritten as direct code under this project's layout; seed files are deleted only when step 12 (or phase 7) says so.
+These paths taught or still teach techniques. Useful logic is rewritten as direct code under this project's layout; absorbed files are removed at the step assigned below even though the retained reference snapshot is not buildable.
 
 | Path | What to take | Absorbed by | Delete when |
 | --- | --- | --- | --- |
-| `seed/editor/PlatOWUI.cxx` / `.h` | LTR surface wiring over a foreign font engine; **not** HarfBuzz screen-line layout (unimplemented there) | Steps 2–7 | Step 12 |
-| `seed/backends/OnlyWayUi_Renderer_GL3.cpp` / `.h` | GL setup, transforms, clipping, geometry, textures, layers — techniques only, not RmlUi interfaces | Steps 5–6 | Step 12 |
+| Removed `seed/editor/PlatOWUI.cxx` / `.h` | LTR surface wiring over a foreign font engine; **not** HarfBuzz screen-line layout (unimplemented there) | Steps 2–7 | Step 12 ✅ |
+| Removed `seed/backends/OnlyWayUi_Renderer_GL3.cpp` / `.h` | GL setup, transforms, clipping, geometry, textures, layers — techniques only, not RmlUi interfaces | Steps 5–6 | Step 12 ✅ |
 | `seed/backends/OnlyWayUi_Platform_Wayland.cpp` / `.h` | Connection, xdg-shell, seat, EGL window patterns; frame and presentation patterns for **phase 7** | Steps 9–11 (subset) | After phase 7 absorbs the rest |
-| `seed/backends/OnlyWayUi_Backend*` / `OnlyWayUi_Include_GL3.h` | How the sample ties platform and renderer | Reference | With backends when unused |
-| `seed/sample/` | Shape of a text-editor main loop over a hosted Scintilla | Steps 8–11 | When no longer needed as reference |
+| `seed/backends/OnlyWayUi_Backend*` / `OnlyWayUi_Include_GL3.h` | Historical tie between the sample, platform, and removed renderer | Reference | With backends when unused |
+| `seed/sample/` | Historical shape of a text-editor main loop over a hosted Scintilla | Steps 8–11 | When no longer needed as reference |
 | `seed/cmake/DependenciesForBackends.cmake` | Example pkg-config and scanner wiring (trim to phase 6 set) | CMake in early code steps | Keep or replace when production CMake exists |
 | OnlyWayUi `Samples/basic/harfbuzz/` (external tree; see [ORIGINS.md](../ORIGINS.md)) | FreeType + HarfBuzz integration ideas | Step 3 | External; not vendored |
 | `scintilla/test/editor/TestPlatform.*` | Contract completeness and host-observation patterns | Steps 7–8 | Host observation only after step 7; drawing is `DrawSurface` |
 
-`ORIGINS.md` records that PlatOWUI does not provide per-input-byte measurements from shaped clusters. Phase 6 must build that mapping (step 3) and use it for measure, caret, selection, and draw (steps 4–6).
+`ORIGINS.md` records that the removed PlatOWUI did not provide per-input-byte measurements from shaped clusters. Phase 6 built that mapping in step 3 and uses it for measure, caret, selection, and draw from steps 4–6 onward.
 
 ## Licenses
 

@@ -1,5 +1,5 @@
-# Generate only the stable xdg-shell client contract needed by the phase 6
-# toplevel. Later protocols stay out of this target until their roadmap steps.
+# Generate only the stable xdg-shell client contract needed by the current
+# toplevel. Optional shell protocols stay out until their Phase 7 steps.
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(WAYLAND_CLIENT REQUIRED IMPORTED_TARGET wayland-client)
 pkg_check_modules(WAYLAND_EGL REQUIRED IMPORTED_TARGET wayland-egl)
