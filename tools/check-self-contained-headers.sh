@@ -1,8 +1,8 @@
 #!/bin/sh
-# Fail when listed Scintilla headers do not compile alone (IWYU prerequisite).
+# Fail when listed production headers do not compile alone (IWYU prerequisite).
 #
 # Usage:
-#   tools/check-self-contained-headers.sh              # every scintilla/src/*.h and include/*.h
+#   tools/check-self-contained-headers.sh              # every app/ and Scintilla production header
 #   tools/check-self-contained-headers.sh path/to/H.h  # one or more headers
 #   tools/check-self-contained-headers.sh --all-src    # every scintilla/src/*.h only (legacy alias)
 #
@@ -26,18 +26,31 @@ if [ -z "$compile_db" ]; then
 	exit 2
 fi
 
-# Flags from the Editor.cxx command so -I / -std match the library.
-flags=$(python3 - "$compile_db" <<'PY'
+# Print the flags for the target that owns a header. Application headers use
+# their matching translation unit when one exists, then the target's main
+# translation unit; Scintilla headers use Editor.cxx.
+flags_for_header() {
+	python3 - "$compile_db" "$1" <<'PY'
 import json, shlex, sys
 from pathlib import Path
 db = json.loads(Path(sys.argv[1]).read_text())
-entry = next(e for e in db if e["file"].replace("\\", "/").endswith("/Editor.cxx"))
+header = Path(sys.argv[2])
+if header.parts[0] == "app":
+    candidates = [header.with_suffix(".cxx").name]
+    candidates.append("WaylandWindow.cxx" if header.name.startswith("Wayland") else "ApplicationEditor.cxx")
+else:
+    candidates = ["Editor.cxx"]
+entry = next(
+    e for candidate in candidates
+    for e in db
+    if e["file"].replace("\\", "/").endswith(f"/{candidate}")
+)
 parts = shlex.split(entry["command"])
 out = []
 i = 0
 while i < len(parts):
 	p = parts[i]
-	if i == 0 or p.endswith("Editor.cxx"):
+	if i == 0 or p == entry["file"] or any(p.endswith(f"/{candidate}") for candidate in candidates):
 		i += 1
 		continue
 	if p in ("-c", "-o"):
@@ -47,10 +60,12 @@ while i < len(parts):
 	i += 1
 print(" ".join(out))
 PY
-)
 
-# Default: every production header under scintilla/src and Lexilla-facing include/.
+}
+
+# Default: every application, Scintilla, and Lexilla-facing production header.
 list_default_headers() {
+	find app -maxdepth 1 -name '*.h' | sort
 	find scintilla/src -maxdepth 1 -name '*.h' | sort
 	find scintilla/include -maxdepth 1 -name '*.h' | sort
 }
@@ -76,6 +91,7 @@ for path in $headers; do
 		fail=$((fail + 1))
 		continue
 	fi
+	flags=$(flags_for_header "$path")
 	name=$(basename -- "$path")
 	# shellcheck disable=SC2086
 	if printf '#include "%s"\n' "$name" | clang++ -c -x c++ - -o /tmp/self-contained-hdr.o $flags >/tmp/self-contained-hdr.err 2>&1; then

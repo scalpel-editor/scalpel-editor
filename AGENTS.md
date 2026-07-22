@@ -61,6 +61,10 @@ For failure details, run a test binary directly: `./build/scintilla/test/unit/un
 - Do not write code that calls an external API without reading the relevant source or local headers first. This includes Wayland, EGL, xkbcommon, FreeType, and the Scintilla core itself. If the needed source is not available, stop and ask for it. Do not guess signatures, types, ownership rules, or lifecycle rules.
 - Prefer deleting indirection over adding abstraction. When tempted to make something more generally useful, stop and make it do its one job better instead.
 
+### Includes
+
+Production headers under `app/`, `scintilla/src/`, and `scintilla/include/` must compile alone. After changing header includes, run `tools/check-self-contained-headers.sh`; it uses the configured development tree's compile database to select flags for the target that owns each header.
+
 ## Documentation guidance
 
 Do not leave documentation describing a state the code no longer has. When a change removes or alters something the docs describe, update or delete that description in the same commit.
