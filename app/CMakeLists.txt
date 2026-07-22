@@ -59,7 +59,7 @@ target_link_libraries(scalpel_application PUBLIC
 target_compile_options(scalpel_application PRIVATE -Wall -Wextra)
 
 add_executable(scalpel-editor main.cxx)
-target_link_libraries(scalpel-editor PRIVATE scalpel_application)
+target_link_libraries(scalpel-editor PRIVATE scalpel_application scalpel_wayland)
 target_compile_options(scalpel-editor PRIVATE -Wall -Wextra)
 
 add_subdirectory(test)
