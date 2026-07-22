@@ -6,9 +6,12 @@
 #include "WaylandWindow.h"
 
 #include <algorithm>
+#include <cerrno>
+#include <climits>
 #include <cstring>
 #include <stdexcept>
 
+#include <poll.h>
 #include <unistd.h>
 #include <wayland-client.h>
 #include <wayland-egl.h>
@@ -109,6 +112,9 @@ void WaylandWindow::Initialise(const char *title) {
 	// has been answered with xdg_surface.configure and acknowledged.
 	wl_surface_commit(surface);
 	DispatchUntilConfigured();
+	if (CallbackFailed()) {
+		throw std::runtime_error("could not initialise Wayland keyboard focus");
+	}
 	eglWindow = wl_egl_window_create(surface, Width(), Height());
 	if (!eglWindow) {
 		throw std::runtime_error("could not create the Wayland EGL window");
@@ -170,6 +176,61 @@ void WaylandWindow::DispatchUntilConfigured() {
 void WaylandWindow::RoundTrip() {
 	if (!display || wl_display_roundtrip(display) < 0) {
 		throw std::runtime_error("Wayland display round trip failed");
+	}
+}
+
+void WaylandWindow::WaitForEvents(std::optional<std::chrono::milliseconds> timeout) {
+	if (!display) {
+		throw std::runtime_error("Wayland event wait requires a display");
+	}
+	while (wl_display_prepare_read(display) != 0) {
+		if (wl_display_dispatch_pending(display) < 0 || wl_display_get_error(display) != 0) {
+			throw std::runtime_error("Wayland display dispatch failed");
+		}
+	}
+
+	short events = POLLIN;
+	if (wl_display_flush(display) < 0) {
+		if (errno != EAGAIN) {
+			wl_display_cancel_read(display);
+			throw std::runtime_error("Wayland display flush failed");
+		}
+		events |= POLLOUT;
+	}
+
+	const int timeoutMilliseconds = timeout ? static_cast<int>(std::clamp<int64_t>(
+		timeout->count(), 0, INT_MAX)) : -1;
+	pollfd displayPoll{wl_display_get_fd(display), events, 0};
+	const int pollResult = poll(&displayPoll, 1, timeoutMilliseconds);
+	if (pollResult < 0) {
+		wl_display_cancel_read(display);
+		if (errno == EINTR) {
+			return;
+		}
+		throw std::runtime_error("Wayland display poll failed");
+	}
+
+	if (pollResult > 0 && (displayPoll.revents & POLLIN)) {
+		if (wl_display_read_events(display) < 0) {
+			throw std::runtime_error("Wayland display read failed");
+		}
+	} else {
+		wl_display_cancel_read(display);
+	}
+
+	if (displayPoll.revents & (POLLERR | POLLHUP | POLLNVAL)) {
+		throw std::runtime_error("Wayland display connection failed");
+	}
+
+	int dispatched = 0;
+	do {
+		dispatched = wl_display_dispatch_pending(display);
+	} while (dispatched > 0);
+	if (dispatched < 0 || wl_display_get_error(display) != 0) {
+		throw std::runtime_error("Wayland display dispatch failed");
+	}
+	if (CallbackFailed()) {
+		throw std::runtime_error("Wayland input listener failed");
 	}
 }
 

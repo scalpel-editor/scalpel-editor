@@ -1,6 +1,7 @@
 #include <exception>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <string_view>
 
 #include "ApplicationEditor.h"
@@ -19,11 +20,21 @@ int main() {
 			"A direct Scintilla editor for Wayland.\n"
 			"The first application frame is rendered in an xdg-toplevel.\n";
 		editor.LoadInitialBuffer(initialText);
-		editor.RunPendingWork();
-		editor.PresentFrame();
-		window.RoundTrip();
-		std::cout << "Presented " << editor.FrameWidth() << 'x' << editor.FrameHeight()
-			<< " editor frame to Wayland.\n";
+		while (!window.CloseRequested()) {
+			if (const std::optional<Scalpel::WindowSize> resize = window.TakeResize()) {
+				editor.Resize(resize->width, resize->height);
+			}
+			if (const std::optional<bool> focused = window.TakeKeyboardFocus()) {
+				editor.SetKeyboardFocus(*focused);
+			}
+			editor.RunPendingWork();
+			if (editor.NeedsRedraw()) {
+				editor.PresentFrame();
+			}
+			if (!window.CloseRequested()) {
+				window.WaitForEvents(editor.TimeUntilNextWork());
+			}
+		}
 		return 0;
 	} catch (const std::exception &error) {
 		std::cerr << "scalpel-editor: " << error.what() << '\n';

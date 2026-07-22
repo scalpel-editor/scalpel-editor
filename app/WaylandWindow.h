@@ -3,6 +3,7 @@
 #ifndef WAYLANDWINDOW_H
 #define WAYLANDWINDOW_H
 
+#include <chrono>
 #include <cstdint>
 #include <optional>
 
@@ -60,6 +61,8 @@ public:
 
 	/** Complete one request/event round trip, throwing on display failure. */
 	void RoundTrip();
+	/** Wait for display activity or the optional editor-work deadline. */
+	void WaitForEvents(std::optional<std::chrono::milliseconds> timeout);
 
 private:
 	void Initialise(const char *title);
