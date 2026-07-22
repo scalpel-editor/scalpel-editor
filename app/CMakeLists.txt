@@ -33,7 +33,11 @@ target_link_libraries(scalpel_xdg_shell PUBLIC PkgConfig::WAYLAND_CLIENT)
 
 add_library(scalpel_wayland STATIC WaylandWindow.cxx)
 target_include_directories(scalpel_wayland PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(scalpel_wayland PUBLIC scalpel_xdg_shell PkgConfig::WAYLAND_CLIENT)
+target_link_libraries(scalpel_wayland PUBLIC
+  scalpel_xdg_shell
+  PkgConfig::WAYLAND_CLIENT
+  PkgConfig::WAYLAND_EGL
+)
 target_compile_options(scalpel_wayland PRIVATE -Wall -Wextra)
 add_dependencies(scalpel_wayland scalpel_xdg_shell)
 

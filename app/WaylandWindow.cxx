@@ -11,6 +11,7 @@
 #include <string>
 
 #include <wayland-client.h>
+#include <wayland-egl.h>
 
 #include "xdg-shell-client-protocol.h"
 
@@ -91,9 +92,16 @@ void WaylandWindow::Initialise(const char *title) {
 	// has been answered with xdg_surface.configure and acknowledged.
 	wl_surface_commit(surface);
 	DispatchUntilConfigured();
+	eglWindow = wl_egl_window_create(surface, width, height);
+	if (!eglWindow) {
+		throw std::runtime_error("could not create the Wayland EGL window");
+	}
 }
 
 void WaylandWindow::Destroy() noexcept {
+	if (eglWindow) {
+		wl_egl_window_destroy(eglWindow);
+	}
 	if (toplevel) {
 		xdg_toplevel_destroy(toplevel);
 	}
@@ -119,6 +127,7 @@ void WaylandWindow::Destroy() noexcept {
 		wl_display_disconnect(display);
 	}
 	toplevel = nullptr;
+	eglWindow = nullptr;
 	shellSurface = nullptr;
 	surface = nullptr;
 	seat = nullptr;

@@ -1,4 +1,4 @@
-// scalpel-editor headless OpenGL context via EGL (no Wayland/X11 display).
+// scalpel-editor OpenGL context via EGL for headless and Wayland targets.
 
 #include "GlContext.h"
 
@@ -150,7 +150,7 @@ GlContext::GlContext() {
 				"EGL_NO_SURFACE MakeCurrent failed and eglCreatePbufferSurface failed "
 				"(egl error " + EglErrorHex() + ")");
 		}
-		pbuffer = surf;
+		surface = surf;
 		if (!eglMakeCurrent(dpy, surf, surf, ctx)) {
 			Destroy();
 			throw std::runtime_error(
@@ -158,9 +158,91 @@ GlContext::GlContext() {
 		}
 	}
 
+	try {
+		ConfigureCurrentContext();
+	} catch (...) {
+		Destroy();
+		throw;
+	}
+}
+
+GlContext::GlContext(void *nativeDisplay, void *nativeWindow) {
+	if (!nativeDisplay || !nativeWindow) {
+		throw std::invalid_argument("window GlContext requires native display and window handles");
+	}
+
+	EGLDisplay dpy = eglGetDisplay(reinterpret_cast<EGLNativeDisplayType>(nativeDisplay));
+	if (dpy == EGL_NO_DISPLAY) {
+		throw std::runtime_error("eglGetDisplay for Wayland failed (egl error " + EglErrorHex() + ")");
+	}
+	display = dpy;
+	if (!eglInitialize(dpy, nullptr, nullptr)) {
+		Destroy();
+		throw std::runtime_error("eglInitialize for Wayland failed (egl error " + EglErrorHex() + ")");
+	}
+	if (!eglBindAPI(EGL_OPENGL_API)) {
+		Destroy();
+		throw std::runtime_error("eglBindAPI(EGL_OPENGL_API) failed (egl error " + EglErrorHex() + ")");
+	}
+
+	const EGLint configAttributes[] = {
+		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+		EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
+		EGL_RED_SIZE, 8,
+		EGL_GREEN_SIZE, 8,
+		EGL_BLUE_SIZE, 8,
+		EGL_ALPHA_SIZE, 8,
+		EGL_NONE,
+	};
+	EGLConfig cfg{};
+	EGLint configCount = 0;
+	if (!eglChooseConfig(dpy, configAttributes, &cfg, 1, &configCount) || configCount < 1) {
+		Destroy();
+		throw std::runtime_error("eglChooseConfig for Wayland RGBA8 failed (egl error " + EglErrorHex() + ")");
+	}
+
+	const EGLint contextAttributes[] = {
+		EGL_CONTEXT_MAJOR_VERSION, 3,
+		EGL_CONTEXT_MINOR_VERSION, 3,
+		EGL_CONTEXT_OPENGL_PROFILE_MASK, EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,
+		EGL_NONE,
+	};
+	EGLContext ctx = eglCreateContext(dpy, cfg, EGL_NO_CONTEXT, contextAttributes);
+	if (ctx == EGL_NO_CONTEXT) {
+		Destroy();
+		throw std::runtime_error("eglCreateContext for Wayland failed (egl error " + EglErrorHex() + ")");
+	}
+	context = ctx;
+	majorVersion = 3;
+	minorVersion = 3;
+
+	EGLSurface window = eglCreateWindowSurface(dpy, cfg,
+		reinterpret_cast<EGLNativeWindowType>(nativeWindow), nullptr);
+	if (window == EGL_NO_SURFACE) {
+		Destroy();
+		throw std::runtime_error("eglCreateWindowSurface failed (egl error " + EglErrorHex() + ")");
+	}
+	surface = window;
+	windowSurface = true;
+	if (!eglMakeCurrent(dpy, window, window, ctx)) {
+		Destroy();
+		throw std::runtime_error("eglMakeCurrent for Wayland failed (egl error " + EglErrorHex() + ")");
+	}
+	if (!eglSwapInterval(dpy, 0)) {
+		Destroy();
+		throw std::runtime_error("eglSwapInterval(0) failed (egl error " + EglErrorHex() + ")");
+	}
+	try {
+		ConfigureCurrentContext();
+	} catch (...) {
+		Destroy();
+		throw;
+	}
+}
+
+void GlContext::ConfigureCurrentContext() {
 	const char *glVersion = reinterpret_cast<const char *>(glGetString(GL_VERSION));
 	if (!glVersion) {
-		Destroy();
 		throw std::runtime_error("glGetString(GL_VERSION) returned null after MakeCurrent");
 	}
 	// Require at least 3.3 for core shaders used by the renderer.
@@ -168,7 +250,6 @@ GlContext::GlContext() {
 	int reportedMinor = 0;
 	if (std::sscanf(glVersion, "%d.%d", &reportedMajor, &reportedMinor) < 2 ||
 		reportedMajor < 3 || (reportedMajor == 3 && reportedMinor < 3)) {
-		Destroy();
 		throw std::runtime_error(
 			std::string("OpenGL 3.3 required, got GL_VERSION=") + glVersion);
 	}
@@ -191,7 +272,7 @@ GlContext::~GlContext() noexcept {
 void GlContext::Destroy() noexcept {
 	EGLDisplay dpy = static_cast<EGLDisplay>(display);
 	EGLContext ctx = static_cast<EGLContext>(context);
-	EGLSurface surf = static_cast<EGLSurface>(pbuffer);
+	EGLSurface surf = static_cast<EGLSurface>(surface);
 
 	if (dpy != nullptr && dpy != EGL_NO_DISPLAY) {
 		if (eglGetCurrentContext() == ctx) {
@@ -207,7 +288,8 @@ void GlContext::Destroy() noexcept {
 	}
 	display = nullptr;
 	context = nullptr;
-	pbuffer = nullptr;
+	surface = nullptr;
+	windowSurface = false;
 	majorVersion = 0;
 	minorVersion = 0;
 }
@@ -218,10 +300,19 @@ void GlContext::MakeCurrent() {
 	}
 	EGLDisplay dpy = static_cast<EGLDisplay>(display);
 	EGLContext ctx = static_cast<EGLContext>(context);
-	EGLSurface surf = pbuffer ? static_cast<EGLSurface>(pbuffer) : EGL_NO_SURFACE;
+	EGLSurface surf = surface ? static_cast<EGLSurface>(surface) : EGL_NO_SURFACE;
 	if (!eglMakeCurrent(dpy, surf, surf, ctx)) {
 		throw std::runtime_error(
 			"GlContext::MakeCurrent failed (egl error " + EglErrorHex() + ")");
+	}
+}
+
+void GlContext::SwapBuffers() {
+	if (!windowSurface || !display || !surface) {
+		throw std::runtime_error("GlContext::SwapBuffers requires a window surface");
+	}
+	if (!eglSwapBuffers(static_cast<EGLDisplay>(display), static_cast<EGLSurface>(surface))) {
+		throw std::runtime_error("eglSwapBuffers failed (egl error " + EglErrorHex() + ")");
 	}
 }
 

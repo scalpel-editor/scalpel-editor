@@ -22,10 +22,11 @@ namespace Scintilla::Internal {
 /**
  * One Surface implementation for measure and draw.
  *
- * Drawing surfaces hold a ColourBuffer in the parent Renderer context. Measure-
- * only surfaces have no buffer and still answer MeasureWidths, WidthText,
- * Layout, and font metrics; DrawText* is a no-op without a Renderer. Pixmaps
- * share the parent Renderer (same GL context).
+ * Offscreen drawing surfaces hold a ColourBuffer in the parent Renderer
+ * context. A window surface instead targets a non-owning framebuffer.
+ * Measure-only surfaces have no target and still answer MeasureWidths,
+ * WidthText, Layout, and font metrics; DrawText* is a no-op without a Renderer.
+ * Pixmaps share the parent Renderer (same GL context).
  */
 class DrawSurface final : public Surface {
 public:
@@ -47,6 +48,8 @@ public:
 
 	/** Bind this surface's colour buffer as the renderer draw target. */
 	void BindDrawTarget();
+	/** Use a non-owning framebuffer target, including window framebuffer 0. */
+	void SetExternalDrawTarget(unsigned framebuffer, int width, int height);
 
 	void Init(WindowID wid) override;
 	void Init(SurfaceID sid, WindowID wid) override;
@@ -108,11 +111,19 @@ private:
 	ShapedRunCache runCache;
 	std::vector<std::shared_ptr<FontFace>> fallbacks;
 	std::vector<PRectangle> clipStack;
+	unsigned externalFramebuffer = 0;
+	int externalWidth = 0;
+	int externalHeight = 0;
+	bool hasExternalTarget = false;
 };
 
 /** Drawing surface with an offscreen colour buffer of the given size. */
 std::unique_ptr<DrawSurface> CreateDrawSurface(Renderer &renderer, int width, int height,
 	std::vector<std::shared_ptr<FontFace>> fallbacks = {});
+
+/** Drawing surface for a framebuffer owned by EGL or another caller. */
+std::unique_ptr<DrawSurface> CreateExternalDrawSurface(Renderer &renderer, unsigned framebuffer,
+	int width, int height, std::vector<std::shared_ptr<FontFace>> fallbacks = {});
 
 /** Measure-only surface (no GL buffer). Same measure path as drawing surfaces. */
 std::unique_ptr<DrawSurface> CreateMeasureOnlySurface(

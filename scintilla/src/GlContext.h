@@ -1,4 +1,4 @@
-// scalpel-editor headless OpenGL context via EGL (no Wayland/X11 display).
+// scalpel-editor OpenGL context via EGL for headless and Wayland targets.
 //
 // Offscreen tests and application hosts each own their own GlContext. The same
 // Renderer implementation is constructed per context; GL objects are never
@@ -12,16 +12,16 @@
 namespace Scintilla::Internal {
 
 /**
- * Desktop OpenGL context for drawing without a window system surface.
+ * Desktop OpenGL context for the offscreen test path or a native window.
  *
  * Creation prefers the Mesa surfaceless EGL platform so tests do not open a
  * compositor. The context is made current with EGL_NO_SURFACE when the
  * implementation allows it; otherwise a 1x1 pbuffer is used only to satisfy
- * MakeCurrent. Drawing targets are FBOs owned by the renderer/surfaces, not
- * the EGL surface.
+ * MakeCurrent. The window constructor instead makes an EGL window surface
+ * current so the renderer can target its default framebuffer.
  *
- * Destroy order: release current, destroy pbuffer (if any), destroy context,
- * terminate display.
+ * Destroy order: release current, destroy the EGL surface (if any), destroy
+ * the context, then terminate the EGL display.
  */
 class GlContext {
 public:
@@ -32,6 +32,8 @@ public:
 	 * eglGetDisplay(EGL_DEFAULT_DISPLAY).
 	 */
 	GlContext();
+	/** Create a GL 3.3 context and EGL window surface for native handles. */
+	GlContext(void *nativeDisplay, void *nativeWindow);
 	~GlContext() noexcept;
 
 	GlContext(const GlContext &) = delete;
@@ -45,7 +47,11 @@ public:
 	/** Detach the current context if it is this one. */
 	void ReleaseCurrent() noexcept;
 
+	/** Submit the current window surface. Throws for a headless context. */
+	void SwapBuffers();
+
 	[[nodiscard]] bool IsCurrent() const noexcept;
+	[[nodiscard]] bool HasWindowSurface() const noexcept { return windowSurface; }
 
 	/** GL_VERSION string while current; empty if not current. */
 	[[nodiscard]] std::string VersionString() const;
@@ -58,11 +64,13 @@ public:
 	[[nodiscard]] int MinorVersion() const noexcept { return minorVersion; }
 
 private:
+	void ConfigureCurrentContext();
 	void Destroy() noexcept;
 
 	void *display = nullptr;   // EGLDisplay
 	void *context = nullptr;   // EGLContext
-	void *pbuffer = nullptr;   // EGLSurface or null for EGL_NO_SURFACE path
+	void *surface = nullptr;   // EGLSurface or null for EGL_NO_SURFACE path
+	bool windowSurface = false;
 	int majorVersion = 0;
 	int minorVersion = 0;
 };

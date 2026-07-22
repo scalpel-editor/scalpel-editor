@@ -38,18 +38,31 @@ void DrawSurface::EnsureRenderer() const {
 
 void DrawSurface::BindDrawTarget() {
 	EnsureRenderer();
-	if (!buffer.Valid()) {
-		throw std::runtime_error("DrawSurface::BindDrawTarget without a colour buffer");
+	const unsigned framebuffer = buffer.Valid() ? buffer.FramebufferName() : externalFramebuffer;
+	const int width = buffer.Valid() ? buffer.Width() : externalWidth;
+	const int height = buffer.Valid() ? buffer.Height() : externalHeight;
+	if (!buffer.Valid() && !hasExternalTarget) {
+		throw std::runtime_error("DrawSurface::BindDrawTarget without a framebuffer");
 	}
-	const bool targetChanged = renderer->TargetFramebuffer() != buffer.FramebufferName() ||
-		renderer->TargetWidth() != buffer.Width() || renderer->TargetHeight() != buffer.Height();
-	renderer->SetDrawTarget(buffer.FramebufferName(), buffer.Width(), buffer.Height());
+	const bool targetChanged = renderer->TargetFramebuffer() != framebuffer ||
+		renderer->TargetWidth() != width || renderer->TargetHeight() != height;
+	renderer->SetDrawTarget(framebuffer, width, height);
 	if (targetChanged) {
 		for (const PRectangle rc : clipStack) {
 			renderer->SetClip(rc);
 		}
 	}
 	renderer->BindCurrentTarget();
+}
+
+void DrawSurface::SetExternalDrawTarget(unsigned framebuffer, int width, int height) {
+	if (width <= 0 || height <= 0) {
+		throw std::invalid_argument("external draw target requires a positive size");
+	}
+	externalFramebuffer = framebuffer;
+	externalWidth = width;
+	externalHeight = height;
+	hasExternalTarget = true;
 }
 
 void DrawSurface::Init(WindowID) {
@@ -89,6 +102,7 @@ void DrawSurface::Release() noexcept {
 	}
 	initialised = false;
 	clipStack.clear();
+	hasExternalTarget = false;
 }
 
 int DrawSurface::SupportsFeature(Scintilla::Supports feature) noexcept {
@@ -378,6 +392,16 @@ std::unique_ptr<DrawSurface> CreateDrawSurface(Renderer &renderer, int width, in
 	surface->Init(WindowID{});
 	renderer.MakeCurrent();
 	surface->Buffer().Resize(width, height);
+	surface->BindDrawTarget();
+	return surface;
+}
+
+std::unique_ptr<DrawSurface> CreateExternalDrawSurface(Renderer &renderer, unsigned framebuffer,
+	int width, int height, std::vector<std::shared_ptr<FontFace>> fallbacks) {
+	auto surface = std::make_unique<DrawSurface>(&renderer, std::move(fallbacks));
+	surface->Init(WindowID{});
+	surface->SetExternalDrawTarget(framebuffer, width, height);
+	renderer.MakeCurrent();
 	surface->BindDrawTarget();
 	return surface;
 }

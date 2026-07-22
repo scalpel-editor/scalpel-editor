@@ -16,19 +16,32 @@ namespace Scalpel {
 using Scintilla::Internal::DrawSurface;
 using Scintilla::Internal::PRectangle;
 
-ApplicationResources::ApplicationResources(int width, int height) {
+ApplicationResources::ApplicationResources(int width, int height) :
+	ApplicationResources(std::make_unique<Scintilla::Internal::GlContext>(), width, height) {
+}
+
+ApplicationResources::ApplicationResources(
+	std::unique_ptr<Scintilla::Internal::GlContext> context, int width, int height) {
 	if (width <= 0 || height <= 0) {
 		throw std::invalid_argument("ApplicationEditor requires a positive size");
 	}
+	if (!context) {
+		throw std::invalid_argument("ApplicationEditor requires a GL context");
+	}
 	window.rectangle = PRectangle(0, 0, width, height);
 	window.visible = true;
-	glContext = std::make_unique<Scintilla::Internal::GlContext>();
+	glContext = std::move(context);
 	renderer = std::make_unique<Scintilla::Internal::Renderer>(*glContext);
 }
 
 ApplicationResources::~ApplicationResources() = default;
 
 ApplicationEditor::ApplicationEditor(int width, int height) : ApplicationResources(width, height) {
+	wMain = static_cast<Scintilla::Internal::WindowID>(&window);
+}
+
+ApplicationEditor::ApplicationEditor(std::unique_ptr<Scintilla::Internal::GlContext> context,
+	int width, int height) : ApplicationResources(std::move(context), width, height) {
 	wMain = static_cast<Scintilla::Internal::WindowID>(&window);
 }
 
@@ -86,6 +99,20 @@ void ApplicationEditor::RenderFrame() {
 	window.invalidatedRectangles.clear();
 }
 
+void ApplicationEditor::PresentFrame() {
+	const int width = FrameWidth();
+	const int height = FrameHeight();
+	frame = Scintilla::Internal::CreateExternalDrawSurface(*renderer, 0, width, height);
+	paintState = PaintState::painting;
+	rcPaint = GetClientRectangle();
+	paintingAllText = true;
+	Paint(frame.get(), rcPaint);
+	paintState = PaintState::notPainting;
+	paintingAllText = false;
+	window.invalidatedRectangles.clear();
+	glContext->SwapBuffers();
+}
+
 void ApplicationEditor::RunPendingWork() {
 	if (queuedIdleWork) {
 		IdleWork();
@@ -97,7 +124,7 @@ void ApplicationEditor::RunPendingWork() {
 }
 
 std::vector<uint8_t> ApplicationEditor::FramePixels() const {
-	if (!frame) {
+	if (!frame || !frame->Buffer().Valid()) {
 		return {};
 	}
 	renderer->MakeCurrent();

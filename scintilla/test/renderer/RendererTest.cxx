@@ -24,6 +24,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -98,6 +99,8 @@ InkBounds FindInkBounds(const ColourBuffer &buffer, ColourRGBA bg) {
 TEST_CASE("headless GlContext creates OpenGL 3.3 without a window system display") {
 	GlContext context;
 	REQUIRE(context.IsCurrent());
+	CHECK_FALSE(context.HasWindowSurface());
+	CHECK_THROWS_AS(context.SwapBuffers(), std::runtime_error);
 	REQUIRE(context.MajorVersion() == 3);
 	REQUIRE(context.MinorVersion() == 3);
 
@@ -150,6 +153,22 @@ TEST_CASE("clear fills ColourBuffer; readback is top-to-bottom RGBA") {
 	const ColourRGBA blue(0, 0, 255, 255);
 	renderer.Clear(blue);
 	REQUIRE(ExactColour(buffer.ReadPixel(2, 1), blue));
+}
+
+TEST_CASE("DrawSurface paints into a caller-owned framebuffer") {
+	GlContext context;
+	Renderer renderer(context);
+	ColourBuffer target;
+	target.Resize(7, 5);
+
+	std::unique_ptr<DrawSurface> surface = CreateExternalDrawSurface(
+		renderer, target.FramebufferName(), target.Width(), target.Height());
+	CHECK_FALSE(surface->Buffer().Valid());
+	surface->FillRectangle(PRectangle::FromInts(0, 0, 7, 5),
+		Fill(ColourRGBA(20, 40, 60, 255)));
+
+	CHECK(ExactColour(target.ReadPixel(0, 0), ColourRGBA(20, 40, 60, 255)));
+	CHECK(ExactColour(target.ReadPixel(6, 4), ColourRGBA(20, 40, 60, 255)));
 }
 
 TEST_CASE("DrawSurface measures through shaped runs; measure-only text is a no-op") {

@@ -44,6 +44,8 @@ struct ScrollState {
 class ApplicationResources {
 protected:
 	ApplicationResources(int width, int height);
+	ApplicationResources(std::unique_ptr<Scintilla::Internal::GlContext> context,
+		int width, int height);
 	~ApplicationResources();
 
 	ApplicationWindow window;
@@ -53,16 +55,17 @@ protected:
 };
 
 /**
- * The application-facing editor host before the Wayland shell is attached.
+ * The application-facing editor host used by both test and Wayland targets.
  *
- * It owns the editor window state and the headless EGL renderer. Step 9 will
- * replace the headless target with the Wayland EGL target without changing
- * the core callbacks collected here. ApplicationResources is the first base
- * so it is destroyed after ScintillaBase releases its cached drawing objects.
+ * It owns the editor window state and an injected or default headless EGL
+ * renderer. ApplicationResources is the first base so it is destroyed after
+ * ScintillaBase releases its cached drawing objects.
  */
 class ApplicationEditor final : private ApplicationResources, public Scintilla::Internal::ScintillaBase {
 public:
 	explicit ApplicationEditor(int width = 800, int height = 600);
+	ApplicationEditor(std::unique_ptr<Scintilla::Internal::GlContext> context,
+		int width, int height);
 	~ApplicationEditor() override;
 
 	ApplicationEditor(const ApplicationEditor &) = delete;
@@ -78,6 +81,7 @@ public:
 	void RequestClipboardCopy();
 	[[nodiscard]] bool ClipboardPasteAvailable();
 	void RenderFrame();
+	void PresentFrame();
 	void RunPendingWork();
 
 	[[nodiscard]] std::vector<uint8_t> FramePixels() const;

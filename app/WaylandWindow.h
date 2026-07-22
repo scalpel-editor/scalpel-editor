@@ -8,6 +8,7 @@
 struct wl_array;
 struct wl_compositor;
 struct wl_display;
+struct wl_egl_window;
 struct wl_registry;
 struct wl_registry_listener;
 struct wl_seat;
@@ -41,6 +42,7 @@ public:
 
 	[[nodiscard]] wl_display *Display() const noexcept { return display; }
 	[[nodiscard]] wl_surface *Surface() const noexcept { return surface; }
+	[[nodiscard]] wl_egl_window *EglWindow() const noexcept { return eglWindow; }
 	[[nodiscard]] wl_seat *Seat() const noexcept { return seat; }
 	[[nodiscard]] int Width() const noexcept { return width; }
 	[[nodiscard]] int Height() const noexcept { return height; }
@@ -79,6 +81,7 @@ private:
 	wl_seat *seat = nullptr;
 	xdg_wm_base *wmBase = nullptr;
 	wl_surface *surface = nullptr;
+	wl_egl_window *eglWindow = nullptr;
 	xdg_surface *shellSurface = nullptr;
 	xdg_toplevel *toplevel = nullptr;
 	int width;
