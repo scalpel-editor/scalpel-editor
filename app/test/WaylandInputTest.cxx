@@ -88,6 +88,22 @@ TEST_CASE("Wayland keyboard applies modifiers and maps command keys") {
 	CHECK(controlled.text.empty());
 }
 
+TEST_CASE("Wayland keyboard retains focus and key event order") {
+	const TestKeymap keymap = MakeTestKeymap();
+	Scalpel::WaylandInput input;
+	REQUIRE(input.SetKeymap(keymap.text));
+
+	input.RecordKeyboardFocus(true);
+	input.RecordKey(25, KEY_A, true);
+	input.RecordKeyboardFocus(false);
+	input.RecordKeyboardFocus(false);
+	const std::vector<Scalpel::InputEvent> events = input.TakeInputs();
+	REQUIRE(events.size() == 3);
+	CHECK(std::get<Scalpel::KeyboardFocusInput>(events[0]).focused);
+	CHECK(std::get<Scalpel::KeyboardInput>(events[1]).time == 25);
+	CHECK_FALSE(std::get<Scalpel::KeyboardFocusInput>(events[2]).focused);
+}
+
 TEST_CASE("Wayland pointer retains coordinates modifiers buttons and axes") {
 	const TestKeymap keymap = MakeTestKeymap();
 	Scalpel::WaylandInput input;

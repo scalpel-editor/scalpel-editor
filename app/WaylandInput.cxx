@@ -157,6 +157,13 @@ void WaylandInput::ResetKeyboardState() {
 	state = newState;
 }
 
+void WaylandInput::RecordKeyboardFocus(bool focused) {
+	if (focused != keyboardFocused) {
+		keyboardFocused = focused;
+		inputs.emplace_back(KeyboardFocusInput{focused});
+	}
+}
+
 void WaylandInput::UpdateModifiers(uint32_t depressed, uint32_t latched,
 	uint32_t locked, uint32_t group) {
 	if (state) {

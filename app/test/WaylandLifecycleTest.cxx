@@ -31,18 +31,6 @@ TEST_CASE("Wayland lifecycle coalesces configured sizes") {
 	CHECK_FALSE(lifecycle.CommitConfigure().has_value());
 }
 
-TEST_CASE("Wayland lifecycle reports focus transitions once") {
-	Scalpel::WaylandLifecycle lifecycle(800, 600);
-
-	lifecycle.RecordKeyboardFocus(true);
-	CHECK(lifecycle.TakeKeyboardFocus() == true);
-	CHECK_FALSE(lifecycle.TakeKeyboardFocus().has_value());
-	lifecycle.RecordKeyboardFocus(true);
-	CHECK_FALSE(lifecycle.TakeKeyboardFocus().has_value());
-	lifecycle.RecordKeyboardFocus(false);
-	CHECK(lifecycle.TakeKeyboardFocus() == false);
-}
-
 TEST_CASE("Wayland lifecycle retains a close request") {
 	Scalpel::WaylandLifecycle lifecycle(800, 600);
 

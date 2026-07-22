@@ -26,11 +26,9 @@ public:
 
 	void ProposeSize(int width, int height) noexcept;
 	[[nodiscard]] std::optional<WindowSize> CommitConfigure() noexcept;
-	void RecordKeyboardFocus(bool focused) noexcept;
 	void RequestClose() noexcept;
 
 	[[nodiscard]] std::optional<WindowSize> TakeResize() noexcept;
-	[[nodiscard]] std::optional<bool> TakeKeyboardFocus() noexcept;
 	[[nodiscard]] int Width() const noexcept { return currentSize.width; }
 	[[nodiscard]] int Height() const noexcept { return currentSize.height; }
 	[[nodiscard]] bool CloseRequested() const noexcept { return closeRequested; }
@@ -39,8 +37,6 @@ private:
 	WindowSize currentSize;
 	std::optional<WindowSize> proposedSize;
 	std::optional<WindowSize> pendingResize;
-	std::optional<bool> pendingKeyboardFocus;
-	bool keyboardFocused = false;
 	bool closeRequested = false;
 };
 

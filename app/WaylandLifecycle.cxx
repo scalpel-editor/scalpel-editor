@@ -30,23 +30,12 @@ std::optional<WindowSize> WaylandLifecycle::CommitConfigure() noexcept {
 	return committed;
 }
 
-void WaylandLifecycle::RecordKeyboardFocus(bool focused) noexcept {
-	if (focused != keyboardFocused) {
-		keyboardFocused = focused;
-		pendingKeyboardFocus = focused;
-	}
-}
-
 void WaylandLifecycle::RequestClose() noexcept {
 	closeRequested = true;
 }
 
 std::optional<WindowSize> WaylandLifecycle::TakeResize() noexcept {
 	return std::exchange(pendingResize, std::nullopt);
-}
-
-std::optional<bool> WaylandLifecycle::TakeKeyboardFocus() noexcept {
-	return std::exchange(pendingKeyboardFocus, std::nullopt);
 }
 
 }

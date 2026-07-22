@@ -15,9 +15,9 @@
 #include <vector>
 
 #include "ApplicationPlatform.h"
+#include "ApplicationInput.h"
 #include "EditorNotifications.h"
 #include "ScintillaBase.h"
-#include "WaylandInput.h"
 
 namespace Scintilla::Internal {
 class DrawSurface;

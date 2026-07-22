@@ -320,7 +320,8 @@ void WaylandWindow::SeatCapabilities(void *data, wl_seat *seat_, uint32_t capabi
 	} else if (!hasKeyboard && window.keyboard) {
 		wl_keyboard_destroy(window.keyboard);
 		window.keyboard = nullptr;
-		window.lifecycle.RecordKeyboardFocus(false);
+		window.input.RecordKeyboardFocus(false);
+		window.input.ResetKeyboardState();
 	}
 }
 
@@ -356,14 +357,14 @@ void WaylandWindow::KeyboardKeymap(void *data, wl_keyboard *, uint32_t format,
 void WaylandWindow::KeyboardEnter(void *data, wl_keyboard *, uint32_t, wl_surface *surface_, wl_array *) {
 	auto &window = *static_cast<WaylandWindow *>(data);
 	if (surface_ == window.surface) {
-		window.lifecycle.RecordKeyboardFocus(true);
+		window.input.RecordKeyboardFocus(true);
 	}
 }
 
 void WaylandWindow::KeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surface *surface_) {
 	auto &window = *static_cast<WaylandWindow *>(data);
 	if (surface_ == window.surface) {
-		window.lifecycle.RecordKeyboardFocus(false);
+		window.input.RecordKeyboardFocus(false);
 		window.input.ResetKeyboardState();
 	}
 }

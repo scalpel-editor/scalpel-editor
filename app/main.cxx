@@ -24,11 +24,10 @@ int main() {
 			if (const std::optional<Scalpel::WindowSize> resize = window.TakeResize()) {
 				editor.Resize(resize->width, resize->height);
 			}
-			if (const std::optional<bool> focused = window.TakeKeyboardFocus()) {
-				editor.SetKeyboardFocus(*focused);
-			}
 			for (const Scalpel::InputEvent &input : window.TakeInputs()) {
-				if (const auto *keyboard = std::get_if<Scalpel::KeyboardInput>(&input)) {
+				if (const auto *focus = std::get_if<Scalpel::KeyboardFocusInput>(&input)) {
+					editor.SetKeyboardFocus(focus->focused);
+				} else if (const auto *keyboard = std::get_if<Scalpel::KeyboardInput>(&input)) {
 					editor.HandleKeyboardInput(*keyboard);
 				} else {
 					editor.HandlePointerInput(std::get<Scalpel::PointerInput>(input));

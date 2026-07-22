@@ -61,7 +61,6 @@ public:
 	[[nodiscard]] bool CloseRequested() const noexcept { return lifecycle.CloseRequested(); }
 	[[nodiscard]] bool CallbackFailed() const noexcept { return callbackFailed; }
 	[[nodiscard]] std::optional<WindowSize> TakeResize() noexcept { return lifecycle.TakeResize(); }
-	[[nodiscard]] std::optional<bool> TakeKeyboardFocus() noexcept { return lifecycle.TakeKeyboardFocus(); }
 	[[nodiscard]] std::vector<InputEvent> TakeInputs() { return input.TakeInputs(); }
 
 	/** Complete one request/event round trip, throwing on display failure. */
