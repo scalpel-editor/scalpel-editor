@@ -115,14 +115,14 @@ Step 12 must not claim an optional live path was exercised when the compositor d
 
 | Existing hook or state | Phase 7 connection | Step |
 | --- | --- | --- |
-| `ApplicationWindowData::cursor` and `Window::SetCursor` | Preserve the requested Scintilla cursor even before pointer entry or cursor-service availability, then apply it whenever pointer, serial, theme, or scale changes. | 5 |
+| `ApplicationWindow::cursor` and `Window::SetCursor` | Preserve the requested Scintilla cursor even before pointer entry or cursor-service availability, then apply it whenever pointer, serial, theme, or scale changes. | 5 |
 | `ApplicationEditor::Copy`, `CopyToClipboard`, and `RequestClipboardCopy` | Publish UTF-8 selection text through a data source and report whether ownership was accepted or cancelled. | 6 |
-| `ApplicationEditor::Paste`, `CanPaste`, and `ClipboardPasteAvailable` | Start an asynchronous preferred-MIME read; call `InsertPaste` only after successful completion against the still-live document. | 6 |
+| `ApplicationEditor::Paste`, `ClipboardPasteAvailable`, and `Editor::InsertPaste` | Start an asynchronous preferred-MIME read; call `InsertPaste` only after successful completion against the still-live document. | 6 |
 | `ApplicationEditor::ClaimSelection` | Publish the current selection through primary selection when supported; selection changes do not overwrite the ordinary clipboard. | 7 |
 | Pointer middle-button input | Request primary-selection text and insert it at the editor's middle-click position when available. | 7 |
 | `ScintillaBase::MoveImeCarets`, `DrawImeIndicator`, `Editor::SetIMEInteraction`, tentative input, and `InsertCharacter` | Apply text-input-v3 delete, pre-edit, and commit batches in protocol order; cancellation removes tentative input without recording an edit. | 8 |
 | `Editor::NotifyCaretMove`, `UpdateSystemCaret`, selection, and client geometry | Refresh surrounding text, cursor position, and the surface-local cursor rectangle before text-input commits that need them. | 8 |
-| `ApplicationEditor::NeedsRedraw`, invalidation rectangles, `PaintFrame`, and `PresentFrame` | Retain damage while a frame callback is outstanding, paint only when submission is allowed, and preserve invalidation that arrives during paint or swap. | 9 |
+| `ApplicationEditor::NeedsRedraw`, invalidation rectangles, `RenderFrame`, and `PresentFrame` | Retain damage while a frame callback is outstanding, paint only when submission is allowed, and preserve invalidation that arrives during paint or swap. | 9 |
 | `ApplicationEditor::Resize`, renderer target size, and `WaylandLifecycle` configure state | Apply one coherent logical size and buffer scale before painting the next frame. | 10 |
 | `ApplicationEditor::TimeUntilNextWork` and `WaylandWindow::WaitForEvents` | Merge editor, repeat, D-Bus, and safety deadlines and monitor all enabled file descriptors without busy waits. | 4, 6, 11 |
 
@@ -152,9 +152,9 @@ The seed tree is reference material and does not build. Code is rewritten for th
 | Retained path | Useful Phase 7 material | Missing or unsuitable material | Delete when |
 | --- | --- | --- | --- |
 | `seed/backends/OnlyWayUi_Platform_Wayland.cpp` and `.h` | Clipboard offers and sources, nonblocking file descriptors, cursor theme loading, keymap handling, and presentation clock reporting. | No compose, primary selection, text-input-v3, output tracking, fractional scale, viewporter, or robust global removal; interfaces are tied to OnlyWayUi. | Step 12 after direct replacements exist. |
-| `seed/backends/OnlyWayUi_Backend_Wayland_GL3.cpp` | Decoration, presentation, xdg-foreign, frame callback, buffer-age damage, blocked-flush recovery, D-Bus watch and timeout, and portal-parent patterns. | Registry removal is empty; one seat is assumed; scale is fixed; portal calls include blocking setup that must not enter this event loop. | Step 12 after direct replacements exist. |
+| `seed/backends/OnlyWayUi_Backend_Wayland_GL3.cpp` | Decoration, presentation, xdg-foreign, frame callback, buffer-age damage, blocked-flush recovery, key-repeat scheduling and cancellation, D-Bus watch and timeout, and portal-parent patterns. | Registry removal is empty; one seat is assumed; scale is fixed; portal calls include blocking setup that must not enter this event loop. | Step 12 after direct replacements exist. |
 | `seed/backends/OnlyWayUi_Backend.h` | Observable close and asynchronous dialog contract ideas. | Generic backend interface and file-dialog policy do not belong in the shell. | Step 12 with the backend snapshot. |
-| `seed/backends/OnlyWayUi_Include_GL3.h` | Historical include connection only. | Names the already removed renderer and has no behavior to absorb. | Step 12 with the backend snapshot. |
+| `seed/backends/OnlyWayUi_Include_GL3.h` | Historical include connection only. | Leftover OpenGL function-loader include for the removed renderer path, with no behavior to absorb. | Step 12 with the backend snapshot. |
 | `seed/backends/OnlyWayUi_Portal_Uri.cpp` and `.h` | File-URI conversion needed by Phase 8 dialog results. | Not needed for Phase 7 shell behavior. | Retain through Phase 8 unless replaced earlier. |
 | `seed/backends/CMakeLists.txt` and `seed/cmake/DependenciesForBackends.cmake` | Protocol-generation paths and dependency names. | Broad historical target names removed files and must not be copied. | Remove when no retained seed file needs them as context. |
 | `seed/editor/` and `seed/sample/` | Historical asynchronous clipboard callback and editor-loop behavior. | RmlUi ownership and product UI are not the project architecture. | Remove at the Phase 7 gate if no Phase 8 work still needs them; otherwise record the remaining owner. |
