@@ -38,8 +38,9 @@ namespace Scalpel {
  *
  * Construction performs the required initial commit without a buffer and
  * waits for xdg_surface.configure before returning. It coalesces later resize
- * events and reports keyboard focus changes. Key translation, pointer input,
- * and robust global removal belong to the following phase 6 and phase 7 steps.
+ * events, then translates and queues keyboard and pointer events for the
+ * application loop. Robust global and seat removal, key repeat, compose, and
+ * related input work remain in phase 7.
  */
 class WaylandWindow final {
 public:

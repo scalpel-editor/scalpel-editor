@@ -30,6 +30,7 @@ TestKeymap MakeTestKeymap() {
 	REQUIRE(text);
 	TestKeymap result;
 	result.text = text;
+	result.text.push_back('\0');
 	std::free(text);
 	const xkb_mod_index_t shift = xkb_keymap_mod_get_index(keymap, XKB_MOD_NAME_SHIFT);
 	const xkb_mod_index_t control = xkb_keymap_mod_get_index(keymap, XKB_MOD_NAME_CTRL);
@@ -48,6 +49,7 @@ TEST_CASE("Wayland keyboard translates presses and releases") {
 	const TestKeymap keymap = MakeTestKeymap();
 	Scalpel::WaylandInput input;
 	CHECK_FALSE(input.SetKeymap({}));
+	CHECK_FALSE(input.SetKeymap(std::string_view(keymap.text.data(), keymap.text.size() - 1)));
 	REQUIRE(input.SetKeymap(keymap.text));
 
 	input.RecordKey(15, KEY_A, true);

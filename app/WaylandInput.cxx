@@ -119,11 +119,11 @@ WaylandInput::~WaylandInput() noexcept {
 }
 
 bool WaylandInput::SetKeymap(std::string_view keymapText) {
-	if (keymapText.empty()) {
+	if (keymapText.empty() || keymapText.back() != '\0') {
 		return false;
 	}
 	xkb_keymap *newKeymap = xkb_keymap_new_from_buffer(context, keymapText.data(),
-		keymapText.size(), XKB_KEYMAP_FORMAT_TEXT_V1, XKB_KEYMAP_COMPILE_NO_FLAGS);
+		keymapText.size() - 1, XKB_KEYMAP_FORMAT_TEXT_V1, XKB_KEYMAP_COMPILE_NO_FLAGS);
 	if (!newKeymap) {
 		return false;
 	}

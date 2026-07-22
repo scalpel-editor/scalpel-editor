@@ -30,6 +30,7 @@ public:
 	WaylandInput &operator=(const WaylandInput &) = delete;
 	WaylandInput &operator=(WaylandInput &&) = delete;
 
+	/** Load a Wayland keymap buffer whose size includes its trailing NUL. */
 	[[nodiscard]] bool SetKeymap(std::string_view keymapText);
 	void ResetKeyboardState();
 	void RecordKeyboardFocus(bool focused);
