@@ -1,0 +1,11 @@
+#!/bin/sh
+
+awk '
+length($0) > 72 {
+    printf "commit message line %d exceeds 72 characters (%d)\n", NR, length($0)
+    failed = 1
+}
+END {
+    exit failed
+}
+' "$1"
