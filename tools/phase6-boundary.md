@@ -14,7 +14,7 @@ Owners used in the tables:
 | **Phase 7** | Compose, key repeat, IME, clipboard and primary selection transfers, cursor themes, frame pacing, presentation feedback, optional-protocol fallback, scale and buffer-scale, robust global and seat removal, hot-plugged seats. |
 | **Debug only** | Assert and debug-print helpers used by the core; not part of the user-visible editor surface. |
 
-Steps 7–9 are complete: `Surface::Allocate` is measure-only `DrawSurface` in `scintilla_render`; `Font::Allocate` is `FontPlatform` (fixture paths via `UseTestFontPaths` in `editorTest`); `editorTest` paints with `CreateDrawSurface` on a host-owned headless `GlContext`/`Renderer`. `TestPlatform` still owns Window, inspectable ListBox, Menu logs, and Platform chrome helpers for the fixture. The production `ApplicationEditor` owns the application Window helpers, editor host callbacks, injected renderer, unsupported-service log, and executable. `WaylandWindow` owns the configured xdg-toplevel and `wl_egl_window`; window-mode `GlContext` owns EGL objects and the editor paints to framebuffer 0. Production ListBox/Menu stubs are `scintilla_platform_popups` (not linked by `editorTest`).
+Steps 7–10 are complete: `Surface::Allocate` is measure-only `DrawSurface` in `scintilla_render`; `Font::Allocate` is `FontPlatform` (fixture paths via `UseTestFontPaths` in `editorTest`); `editorTest` paints with `CreateDrawSurface` on a host-owned headless `GlContext`/`Renderer`. `TestPlatform` still owns Window, inspectable ListBox, Menu logs, and Platform chrome helpers for the fixture. The production `ApplicationEditor` owns the application Window helpers, editor host callbacks, injected renderer, unsupported-service log, monotonic ticker deadlines, idle work, invalidation state, and executable. `WaylandWindow` owns the configured xdg-toplevel and `wl_egl_window`, coalesced resize and keyboard-focus changes, and the blocking display wait; window-mode `GlContext` owns EGL objects and the editor paints to framebuffer 0. The current seat's `wl_keyboard` exists in step 10 only to receive focus enter and leave; its keymap descriptor is closed and key events are deliberately ignored until step 11. Production ListBox/Menu stubs are `scintilla_platform_popups` (not linked by `editorTest`).
 
 ## Opaque IDs (`Platform.h`)
 
@@ -23,8 +23,8 @@ Steps 7–9 are complete: `Surface::Allocate` is measure-only `DrawSurface` in `
 | `SurfaceID` | Optional handle for `Surface::Init` drawing overload | **Renderer** | Still typed as `void *`; `DrawSurface::Init` ignores it when the surface already owns a colour buffer. `FormatRange` no longer takes SurfaceIDs. |
 | `WindowID` | Handle behind `Window` and `Surface::Init` measure path | **Minimal shell** | Main editor window, margin pixmap window, call-tip and list-box windows when those exist. |
 | `MenuID` | Handle behind `Menu` | **Popup stub** | No real menu in phase 6. |
-| `TickerID` | Declared; fine tickers use virtuals on `Editor`, not this typedef | **Minimal shell** | Host implements `FineTickerStart` / `Cancel` / `Running` (step 8 / 10). |
-| `IdlerID` | Declared; idle uses `SetIdle` virtual on `Editor` | **Minimal shell** | Step 8 / 10. |
+| `TickerID` | Declared; fine tickers use virtuals on `Editor`, not this typedef | **Minimal shell** | Host implements `FineTickerStart` / `Cancel` / `Running`; step 10 schedules their deadlines and calls `TickFor`. |
+| `IdlerID` | Declared; idle uses `SetIdle` virtual on `Editor` | **Minimal shell** | Step 10 runs requested idle and queued work before waiting. |
 | `Function` | Declared; unused by current core call sites inventoried here | Drop or unused | Not required by the concrete platform. |
 
 ## Multi-platform macros (`Platform.h`)
@@ -151,12 +151,12 @@ These pure or virtual methods are how the core talks to the application host. St
 | `GetClientRectangle` / client size | Layout and paint bounds | 8–10 |
 | `SetHorizontalScrollPos` / `SetVerticalScrollPos` / `ModifyScrollBars` / `ReconfigureScrollBars` | Scrollbar policy | 8; chrome scrollbars are phase 8 product UI — host may track values without drawing chrome |
 | `SetMouseCapture` / `HaveMouseCapture` | Pointer capture during drag | 8, 11 |
-| `FineTickerStart` / `Cancel` / `Running` / `TickFor` | Caret blink, dwell, scroll, wrap widen | 8, 10 |
-| `SetIdle` / `IdleWork` / `QueueIdleWork` | Idle styling and deferred work | 8, 10 |
+| `FineTickerStart` / `Cancel` / `Running` / `TickFor` | Caret blink, dwell, scroll, wrap widen | 8, 10 ✅ monotonic deadlines with capped catch-up |
+| `SetIdle` / `IdleWork` / `QueueIdleWork` | Idle styling and deferred work | 8, 10 ✅ zero-delay loop work until complete |
 | `NotifyChange` / `NotifyParent` / `NotifyFocus` | Application notifications | 8 |
 | `CreateMeasurementSurface` / `CreateDrawingSurface` | Defaults allocate `Surface`; override only if needed | 5–8 |
 | `DisplayCursor` (default uses `wMain.SetCursor`) | Cursor shape | 8; themes phase 7 |
-| `Paint` path driven by shell after invalidate | Redraw | 8–10 |
+| `Paint` path driven by shell after invalidate | Redraw | 8–10 ✅ present only while invalidated |
 | Key → `InsertCharacter` / `EditorCommand` / `KeyDown` path | Keyboard | 11 |
 | Pointer → `ButtonDownWithModifiers`, move, up, wheel | Pointer | 11 |
 
