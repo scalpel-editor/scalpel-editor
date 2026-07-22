@@ -1,0 +1,6 @@
+interface:
+  display_name: "Plan Session"
+  short_description: "Plan one roadmap session by commit"
+  default_prompt: "Use $plan-session p6s11 to propose a commit-sequenced plan."
+policy:
+  allow_implicit_invocation: false
