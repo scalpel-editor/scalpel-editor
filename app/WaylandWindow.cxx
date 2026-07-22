@@ -9,6 +9,7 @@
 #include <cstring>
 #include <stdexcept>
 
+#include <unistd.h>
 #include <wayland-client.h>
 #include <wayland-egl.h>
 
@@ -19,6 +20,20 @@ namespace Scalpel {
 const wl_registry_listener WaylandWindow::registryListener = {
 	WaylandWindow::RegistryGlobal,
 	WaylandWindow::RegistryGlobalRemove,
+};
+
+const wl_seat_listener WaylandWindow::seatListener = {
+	WaylandWindow::SeatCapabilities,
+	WaylandWindow::SeatName,
+};
+
+const wl_keyboard_listener WaylandWindow::keyboardListener = {
+	WaylandWindow::KeyboardKeymap,
+	WaylandWindow::KeyboardEnter,
+	WaylandWindow::KeyboardLeave,
+	WaylandWindow::KeyboardKey,
+	WaylandWindow::KeyboardModifiers,
+	WaylandWindow::KeyboardRepeatInfo,
 };
 
 const xdg_wm_base_listener WaylandWindow::wmBaseListener = {
@@ -37,8 +52,8 @@ const xdg_toplevel_listener WaylandWindow::toplevelListener = {
 };
 
 WaylandWindow::WaylandWindow(const char *title, int width_, int height_) :
-	width(width_), height(height_) {
-	if (!title || width <= 0 || height <= 0) {
+	lifecycle(width_, height_) {
+	if (!title) {
 		throw std::invalid_argument("WaylandWindow requires a title and positive size");
 	}
 	try {
@@ -64,6 +79,9 @@ void WaylandWindow::Initialise(const char *title) {
 		throw std::runtime_error("could not listen for Wayland globals");
 	}
 	RoundTrip();
+	if (CallbackFailed()) {
+		throw std::runtime_error("could not listen for Wayland keyboard focus");
+	}
 
 	if (!compositor || !wmBase) {
 		throw std::runtime_error("Wayland compositor and xdg_wm_base are required");
@@ -91,10 +109,11 @@ void WaylandWindow::Initialise(const char *title) {
 	// has been answered with xdg_surface.configure and acknowledged.
 	wl_surface_commit(surface);
 	DispatchUntilConfigured();
-	eglWindow = wl_egl_window_create(surface, width, height);
+	eglWindow = wl_egl_window_create(surface, Width(), Height());
 	if (!eglWindow) {
 		throw std::runtime_error("could not create the Wayland EGL window");
 	}
+	(void)lifecycle.TakeResize();
 }
 
 void WaylandWindow::Destroy() noexcept {
@@ -109,6 +128,9 @@ void WaylandWindow::Destroy() noexcept {
 	}
 	if (surface) {
 		wl_surface_destroy(surface);
+	}
+	if (keyboard) {
+		wl_keyboard_destroy(keyboard);
 	}
 	if (seat) {
 		wl_seat_destroy(seat);
@@ -129,6 +151,7 @@ void WaylandWindow::Destroy() noexcept {
 	eglWindow = nullptr;
 	shellSurface = nullptr;
 	surface = nullptr;
+	keyboard = nullptr;
 	seat = nullptr;
 	wmBase = nullptr;
 	compositor = nullptr;
@@ -162,11 +185,69 @@ void WaylandWindow::RegistryGlobal(void *data, wl_registry *registry_, uint32_t 
 	} else if (std::strcmp(interface, wl_seat_interface.name) == 0 && !window.seat) {
 		window.seat = static_cast<wl_seat *>(wl_registry_bind(
 			registry_, name, &wl_seat_interface, std::min(version, 1U)));
+		if (!window.seat || wl_seat_add_listener(window.seat, &seatListener, &window) != 0) {
+			window.callbackFailed = true;
+		}
 	}
 }
 
 void WaylandWindow::RegistryGlobalRemove(void *, wl_registry *, uint32_t) {
 	// Robust removal and hot-plugged seats belong to phase 7.
+}
+
+void WaylandWindow::SeatCapabilities(void *data, wl_seat *seat_, uint32_t capabilities) {
+	auto &window = *static_cast<WaylandWindow *>(data);
+	const bool hasKeyboard = capabilities & WL_SEAT_CAPABILITY_KEYBOARD;
+	if (hasKeyboard && !window.keyboard) {
+		window.keyboard = wl_seat_get_keyboard(seat_);
+		if (!window.keyboard || wl_keyboard_add_listener(window.keyboard, &keyboardListener, &window) != 0) {
+			if (window.keyboard) {
+				wl_keyboard_destroy(window.keyboard);
+				window.keyboard = nullptr;
+			}
+			window.callbackFailed = true;
+		}
+	} else if (!hasKeyboard && window.keyboard) {
+		wl_keyboard_destroy(window.keyboard);
+		window.keyboard = nullptr;
+		window.lifecycle.RecordKeyboardFocus(false);
+	}
+}
+
+void WaylandWindow::SeatName(void *, wl_seat *, const char *) {
+}
+
+void WaylandWindow::KeyboardKeymap(void *, wl_keyboard *, uint32_t, int32_t descriptor, uint32_t) {
+	if (descriptor >= 0) {
+		close(descriptor);
+	}
+}
+
+void WaylandWindow::KeyboardEnter(void *data, wl_keyboard *, uint32_t, wl_surface *surface_, wl_array *) {
+	auto &window = *static_cast<WaylandWindow *>(data);
+	if (surface_ == window.surface) {
+		window.lifecycle.RecordKeyboardFocus(true);
+	}
+}
+
+void WaylandWindow::KeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surface *surface_) {
+	auto &window = *static_cast<WaylandWindow *>(data);
+	if (surface_ == window.surface) {
+		window.lifecycle.RecordKeyboardFocus(false);
+	}
+}
+
+void WaylandWindow::KeyboardKey(void *, wl_keyboard *, uint32_t, uint32_t, uint32_t, uint32_t) {
+	// Key translation and delivery belong to phase 6 step 11.
+}
+
+void WaylandWindow::KeyboardModifiers(void *, wl_keyboard *, uint32_t, uint32_t, uint32_t,
+	uint32_t, uint32_t) {
+	// Modifier state belongs to phase 6 step 11.
+}
+
+void WaylandWindow::KeyboardRepeatInfo(void *, wl_keyboard *, int32_t, int32_t) {
+	// Key repeat belongs to phase 7.
 }
 
 void WaylandWindow::WmBasePing(void *, xdg_wm_base *wmBase_, uint32_t serial) {
@@ -176,20 +257,21 @@ void WaylandWindow::WmBasePing(void *, xdg_wm_base *wmBase_, uint32_t serial) {
 void WaylandWindow::SurfaceConfigure(void *data, xdg_surface *shellSurface_, uint32_t serial) {
 	auto &window = *static_cast<WaylandWindow *>(data);
 	xdg_surface_ack_configure(shellSurface_, serial);
+	if (const std::optional<WindowSize> resize = window.lifecycle.CommitConfigure();
+		resize && window.eglWindow) {
+		wl_egl_window_resize(window.eglWindow, resize->width, resize->height, 0, 0);
+	}
 	window.configured = true;
 }
 
 void WaylandWindow::ToplevelConfigure(void *data, xdg_toplevel *, int32_t width_,
 	int32_t height_, wl_array *) {
 	auto &window = *static_cast<WaylandWindow *>(data);
-	if (width_ > 0 && height_ > 0) {
-		window.width = width_;
-		window.height = height_;
-	}
+	window.lifecycle.ProposeSize(width_, height_);
 }
 
 void WaylandWindow::ToplevelClose(void *data, xdg_toplevel *) {
-	static_cast<WaylandWindow *>(data)->closeRequested = true;
+	static_cast<WaylandWindow *>(data)->lifecycle.RequestClose();
 }
 
 void WaylandWindow::ToplevelConfigureBounds(void *, xdg_toplevel *, int32_t, int32_t) {

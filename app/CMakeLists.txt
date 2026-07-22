@@ -31,7 +31,10 @@ add_library(scalpel_xdg_shell STATIC "${XDG_SHELL_PRIVATE_CODE}")
 target_include_directories(scalpel_xdg_shell PUBLIC "${WAYLAND_PROTOCOL_OUTPUT_DIR}")
 target_link_libraries(scalpel_xdg_shell PUBLIC PkgConfig::WAYLAND_CLIENT)
 
-add_library(scalpel_wayland STATIC WaylandWindow.cxx)
+add_library(scalpel_wayland STATIC
+  WaylandLifecycle.cxx
+  WaylandWindow.cxx
+)
 target_include_directories(scalpel_wayland PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(scalpel_wayland PUBLIC
   scalpel_xdg_shell
