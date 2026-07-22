@@ -33,6 +33,9 @@ struct xdg_toplevel;
 struct xdg_toplevel_listener;
 struct xdg_wm_base;
 struct xdg_wm_base_listener;
+struct zxdg_decoration_manager_v1;
+struct zxdg_toplevel_decoration_v1;
+struct zxdg_toplevel_decoration_v1_listener;
 
 namespace Scalpel {
 
@@ -78,6 +81,7 @@ private:
 	void Destroy() noexcept;
 	void DispatchUntilConfigured();
 	void ApplyLifecycleActions(const std::vector<WaylandLifecycleAction> &actions);
+	void CreateDecoration();
 	[[nodiscard]] std::optional<uint32_t> OutputName(wl_output *output) const noexcept;
 	[[nodiscard]] std::optional<uint32_t> RegistryNameForSeat(wl_seat *seat) const noexcept;
 
@@ -141,6 +145,8 @@ private:
 		int32_t width, int32_t height);
 	static void ToplevelWmCapabilities(void *data, xdg_toplevel *toplevel,
 		wl_array *capabilities);
+	static void DecorationConfigure(void *data,
+		zxdg_toplevel_decoration_v1 *decoration, uint32_t mode);
 
 	static const wl_registry_listener registryListener;
 	static const wl_seat_listener seatListener;
@@ -151,6 +157,7 @@ private:
 	static const xdg_wm_base_listener wmBaseListener;
 	static const xdg_surface_listener surfaceListener;
 	static const xdg_toplevel_listener toplevelListener;
+	static const zxdg_toplevel_decoration_v1_listener decorationListener;
 
 	wl_display *display = nullptr;
 	wl_registry *registry = nullptr;
@@ -168,6 +175,8 @@ private:
 	wl_egl_window *eglWindow = nullptr;
 	xdg_surface *shellSurface = nullptr;
 	xdg_toplevel *toplevel = nullptr;
+	zxdg_decoration_manager_v1 *decorationManager = nullptr;
+	zxdg_toplevel_decoration_v1 *decoration = nullptr;
 	WaylandLifecycle lifecycle;
 	WaylandInput input;
 	bool callbackFailed = false;

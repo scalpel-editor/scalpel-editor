@@ -25,6 +25,7 @@ struct WindowSize {
 enum class WaylandGlobalKind {
 	Compositor,
 	WmBase,
+	DecorationManager,
 	Output,
 	Seat,
 };
@@ -32,6 +33,8 @@ enum class WaylandGlobalKind {
 enum class WaylandLifecycleActionType {
 	BindCompositor,
 	BindWmBase,
+	BindDecorationManager,
+	ReleaseDecorationManager,
 	BindOutput,
 	ReleaseOutput,
 	BindSeat,
@@ -41,6 +44,19 @@ enum class WaylandLifecycleActionType {
 	CreateKeyboard,
 	ReleaseKeyboard,
 	Close,
+};
+
+struct WaylandToplevelState {
+	std::optional<WindowSize> configureBounds;
+	bool maximized = false;
+	bool fullscreen = false;
+	bool resizing = false;
+	bool activated = false;
+	bool windowMenuAvailable = false;
+	bool maximizeAvailable = false;
+	bool fullscreenAvailable = false;
+	bool minimizeAvailable = false;
+	bool serverSideDecoration = false;
 };
 
 struct WaylandLifecycleAction {
@@ -69,6 +85,11 @@ public:
 	void LeaveOutput(uint32_t name) noexcept;
 
 	void ProposeSize(int width, int height) noexcept;
+	void ProposeToplevel(int width, int height,
+		const std::vector<uint32_t> &states) noexcept;
+	void ProposeConfigureBounds(int width, int height) noexcept;
+	void ProposeWmCapabilities(const std::vector<uint32_t> &capabilities) noexcept;
+	void ProposeDecoration(bool serverSide) noexcept;
 	[[nodiscard]] std::optional<WindowSize> CommitConfigure() noexcept;
 	void RequestClose() noexcept;
 
@@ -76,6 +97,9 @@ public:
 	[[nodiscard]] int Width() const noexcept { return currentSize.width; }
 	[[nodiscard]] int Height() const noexcept { return currentSize.height; }
 	[[nodiscard]] bool CloseRequested() const noexcept { return closeRequested; }
+	[[nodiscard]] const WaylandToplevelState &ToplevelState() const noexcept {
+		return toplevelState;
+	}
 	[[nodiscard]] size_t OutputCount() const noexcept;
 	[[nodiscard]] size_t EnteredOutputCount() const noexcept;
 	[[nodiscard]] bool OutputEntered(uint32_t name) const noexcept;
@@ -102,7 +126,10 @@ private:
 	std::vector<Global> globals;
 	std::optional<uint32_t> compositorName;
 	std::optional<uint32_t> wmBaseName;
+	std::optional<uint32_t> decorationManagerName;
 	std::optional<uint32_t> activeSeatName;
+	WaylandToplevelState toplevelState;
+	std::optional<WaylandToplevelState> proposedToplevelState;
 	bool closeRequested = false;
 };
 

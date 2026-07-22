@@ -20,6 +20,7 @@
 #include <wayland-egl.h>
 
 #include "xdg-shell-client-protocol.h"
+#include "xdg-decoration-client-protocol.h"
 
 namespace Scalpel {
 
@@ -87,6 +88,10 @@ const xdg_toplevel_listener WaylandWindow::toplevelListener = {
 	WaylandWindow::ToplevelWmCapabilities,
 };
 
+const zxdg_toplevel_decoration_v1_listener WaylandWindow::decorationListener = {
+	WaylandWindow::DecorationConfigure,
+};
+
 WaylandWindow::WaylandWindow(const char *title, int width_, int height_) :
 	lifecycle(width_, height_) {
 	if (!title) {
@@ -143,6 +148,7 @@ void WaylandWindow::Initialise(const char *title) {
 	}
 	xdg_toplevel_set_title(toplevel, title);
 	xdg_toplevel_set_app_id(toplevel, "scalpel-editor");
+	CreateDecoration();
 
 	// xdg-shell forbids attaching a buffer before this empty initial commit
 	// has been answered with xdg_surface.configure and acknowledged.
@@ -161,6 +167,9 @@ void WaylandWindow::Initialise(const char *title) {
 void WaylandWindow::Destroy() noexcept {
 	if (eglWindow) {
 		wl_egl_window_destroy(eglWindow);
+	}
+	if (decoration) {
+		zxdg_toplevel_decoration_v1_destroy(decoration);
 	}
 	if (toplevel) {
 		xdg_toplevel_destroy(toplevel);
@@ -203,6 +212,9 @@ void WaylandWindow::Destroy() noexcept {
 	if (wmBase) {
 		xdg_wm_base_destroy(wmBase);
 	}
+	if (decorationManager) {
+		zxdg_decoration_manager_v1_destroy(decorationManager);
+	}
 	if (compositor) {
 		wl_compositor_destroy(compositor);
 	}
@@ -213,6 +225,8 @@ void WaylandWindow::Destroy() noexcept {
 		wl_display_disconnect(display);
 	}
 	toplevel = nullptr;
+	decoration = nullptr;
+	decorationManager = nullptr;
 	eglWindow = nullptr;
 	shellSurface = nullptr;
 	surface = nullptr;
@@ -237,9 +251,29 @@ void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleActi
 			break;
 		case WaylandLifecycleActionType::BindWmBase:
 			wmBase = static_cast<xdg_wm_base *>(wl_registry_bind(
-				registry, action.name, &xdg_wm_base_interface, std::min(action.version, 1U)));
+				registry, action.name, &xdg_wm_base_interface, std::min(action.version, 5U)));
 			if (!wmBase) {
 				callbackFailed = true;
+			}
+			break;
+		case WaylandLifecycleActionType::BindDecorationManager:
+			if (decorationManager) {
+				callbackFailed = true;
+				break;
+			}
+			decorationManager = static_cast<zxdg_decoration_manager_v1 *>(wl_registry_bind(
+				registry, action.name, &zxdg_decoration_manager_v1_interface,
+				std::min(action.version, 1U)));
+			if (!decorationManager) {
+				callbackFailed = true;
+			} else if (toplevel && !configured) {
+				CreateDecoration();
+			}
+			break;
+		case WaylandLifecycleActionType::ReleaseDecorationManager:
+			if (decorationManager) {
+				zxdg_decoration_manager_v1_destroy(decorationManager);
+				decorationManager = nullptr;
 			}
 			break;
 		case WaylandLifecycleActionType::BindOutput: {
@@ -362,6 +396,25 @@ void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleActi
 	}
 }
 
+void WaylandWindow::CreateDecoration() {
+	if (!decorationManager || !toplevel || decoration) {
+		return;
+	}
+	decoration = zxdg_decoration_manager_v1_get_toplevel_decoration(
+		decorationManager, toplevel);
+	if (!decoration || zxdg_toplevel_decoration_v1_add_listener(
+		decoration, &decorationListener, this) != 0) {
+		if (decoration) {
+			zxdg_toplevel_decoration_v1_destroy(decoration);
+			decoration = nullptr;
+		}
+		callbackFailed = true;
+		return;
+	}
+	zxdg_toplevel_decoration_v1_set_mode(
+		decoration, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+}
+
 std::optional<uint32_t> WaylandWindow::RegistryNameForSeat(wl_seat *seat_) const noexcept {
 	return seat_ == seat ? lifecycle.ActiveSeat() : std::nullopt;
 }
@@ -463,6 +516,9 @@ void WaylandWindow::RegistryGlobal(void *data, wl_registry *, uint32_t name,
 	} else if (std::strcmp(interface, xdg_wm_base_interface.name) == 0) {
 		window.ApplyLifecycleActions(window.lifecycle.AddGlobal(
 			WaylandGlobalKind::WmBase, name, version));
+	} else if (std::strcmp(interface, zxdg_decoration_manager_v1_interface.name) == 0) {
+		window.ApplyLifecycleActions(window.lifecycle.AddGlobal(
+			WaylandGlobalKind::DecorationManager, name, version));
 	} else if (std::strcmp(interface, wl_output_interface.name) == 0) {
 		window.ApplyLifecycleActions(window.lifecycle.AddGlobal(
 			WaylandGlobalKind::Output, name, version));
@@ -660,19 +716,41 @@ void WaylandWindow::SurfaceConfigure(void *data, xdg_surface *shellSurface_, uin
 }
 
 void WaylandWindow::ToplevelConfigure(void *data, xdg_toplevel *, int32_t width_,
-	int32_t height_, wl_array *) {
+	int32_t height_, wl_array *states) {
 	auto &window = *static_cast<WaylandWindow *>(data);
-	window.lifecycle.ProposeSize(width_, height_);
+	std::vector<uint32_t> copiedStates;
+	if (states && states->size > 0) {
+		const auto *begin = static_cast<const uint32_t *>(states->data);
+		copiedStates.assign(begin, begin + states->size / sizeof(uint32_t));
+	}
+	window.lifecycle.ProposeToplevel(width_, height_, copiedStates);
 }
 
 void WaylandWindow::ToplevelClose(void *data, xdg_toplevel *) {
 	static_cast<WaylandWindow *>(data)->lifecycle.RequestClose();
 }
 
-void WaylandWindow::ToplevelConfigureBounds(void *, xdg_toplevel *, int32_t, int32_t) {
+void WaylandWindow::ToplevelConfigureBounds(void *data, xdg_toplevel *,
+	int32_t width_, int32_t height_) {
+	static_cast<WaylandWindow *>(data)->lifecycle.ProposeConfigureBounds(width_, height_);
 }
 
-void WaylandWindow::ToplevelWmCapabilities(void *, xdg_toplevel *, wl_array *) {
+void WaylandWindow::ToplevelWmCapabilities(void *data, xdg_toplevel *,
+	wl_array *capabilities) {
+	std::vector<uint32_t> copiedCapabilities;
+	if (capabilities && capabilities->size > 0) {
+		const auto *begin = static_cast<const uint32_t *>(capabilities->data);
+		copiedCapabilities.assign(
+			begin, begin + capabilities->size / sizeof(uint32_t));
+	}
+	static_cast<WaylandWindow *>(data)->lifecycle.ProposeWmCapabilities(
+		copiedCapabilities);
+}
+
+void WaylandWindow::DecorationConfigure(void *data,
+	zxdg_toplevel_decoration_v1 *, uint32_t mode) {
+	static_cast<WaylandWindow *>(data)->lifecycle.ProposeDecoration(
+		mode == ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
 }
 
 }

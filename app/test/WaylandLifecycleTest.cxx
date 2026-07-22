@@ -31,6 +31,46 @@ TEST_CASE("Wayland lifecycle coalesces configured sizes") {
 	CHECK_FALSE(lifecycle.CommitConfigure().has_value());
 }
 
+TEST_CASE("Wayland lifecycle commits retained toplevel state") {
+	Scalpel::WaylandLifecycle lifecycle(800, 600);
+
+	lifecycle.ProposeConfigureBounds(1600, 1000);
+	CHECK_FALSE(lifecycle.ToplevelState().serverSideDecoration);
+	lifecycle.ProposeWmCapabilities({1, 2, 3, 4, 999});
+	lifecycle.ProposeDecoration(true);
+	lifecycle.ProposeToplevel(1024, 768, {1, 2, 4, 999});
+	CHECK_FALSE(lifecycle.ToplevelState().configureBounds.has_value());
+	REQUIRE(lifecycle.CommitConfigure() == Scalpel::WindowSize{1024, 768});
+	const Scalpel::WaylandToplevelState &configured = lifecycle.ToplevelState();
+	CHECK(configured.configureBounds == Scalpel::WindowSize{1600, 1000});
+	CHECK(configured.maximized);
+	CHECK(configured.fullscreen);
+	CHECK_FALSE(configured.resizing);
+	CHECK(configured.activated);
+	CHECK(configured.windowMenuAvailable);
+	CHECK(configured.maximizeAvailable);
+	CHECK(configured.fullscreenAvailable);
+	CHECK(configured.minimizeAvailable);
+	CHECK(configured.serverSideDecoration);
+
+	lifecycle.ProposeConfigureBounds(0, 0);
+	lifecycle.ProposeWmCapabilities({});
+	lifecycle.ProposeDecoration(false);
+	lifecycle.ProposeToplevel(0, 0, {3});
+	CHECK_FALSE(lifecycle.CommitConfigure().has_value());
+	const Scalpel::WaylandToplevelState &updated = lifecycle.ToplevelState();
+	CHECK_FALSE(updated.configureBounds.has_value());
+	CHECK_FALSE(updated.maximized);
+	CHECK_FALSE(updated.fullscreen);
+	CHECK(updated.resizing);
+	CHECK_FALSE(updated.activated);
+	CHECK_FALSE(updated.windowMenuAvailable);
+	CHECK_FALSE(updated.maximizeAvailable);
+	CHECK_FALSE(updated.fullscreenAvailable);
+	CHECK_FALSE(updated.minimizeAvailable);
+	CHECK_FALSE(updated.serverSideDecoration);
+}
+
 TEST_CASE("Wayland lifecycle retains a close request") {
 	Scalpel::WaylandLifecycle lifecycle(800, 600);
 
@@ -57,6 +97,32 @@ TEST_CASE("Wayland registry binds each global only once") {
 	REQUIRE(wmBase.size() == 1);
 	CHECK(wmBase.front() == Scalpel::WaylandLifecycleAction{
 		Scalpel::WaylandLifecycleActionType::BindWmBase, 20, 7});
+}
+
+TEST_CASE("Wayland registry replaces a removed decoration manager") {
+	Scalpel::WaylandLifecycle lifecycle(800, 600);
+
+	const auto first = lifecycle.AddGlobal(
+		Scalpel::WaylandGlobalKind::DecorationManager, 25, 1);
+	REQUIRE(first.size() == 1);
+	CHECK(first.front() == Scalpel::WaylandLifecycleAction{
+		Scalpel::WaylandLifecycleActionType::BindDecorationManager, 25, 1});
+	CHECK(lifecycle.AddGlobal(
+		Scalpel::WaylandGlobalKind::DecorationManager, 26, 1).empty());
+
+	const auto replacement = lifecycle.RemoveGlobal(25);
+	REQUIRE(replacement.size() == 2);
+	CHECK(replacement[0] == Scalpel::WaylandLifecycleAction{
+		Scalpel::WaylandLifecycleActionType::ReleaseDecorationManager, 25});
+	CHECK(replacement[1] == Scalpel::WaylandLifecycleAction{
+		Scalpel::WaylandLifecycleActionType::BindDecorationManager, 26, 1});
+	lifecycle.ProposeDecoration(true);
+	(void)lifecycle.CommitConfigure();
+	const auto removed = lifecycle.RemoveGlobal(26);
+	REQUIRE(removed.size() == 1);
+	CHECK(removed.front().type ==
+		Scalpel::WaylandLifecycleActionType::ReleaseDecorationManager);
+	CHECK(lifecycle.ToplevelState().serverSideDecoration);
 }
 
 TEST_CASE("Wayland registry closes when an active required global disappears") {

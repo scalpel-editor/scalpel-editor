@@ -6,6 +6,20 @@
 
 namespace Scalpel {
 
+namespace {
+
+constexpr uint32_t ToplevelMaximized = 1;
+constexpr uint32_t ToplevelFullscreen = 2;
+constexpr uint32_t ToplevelResizing = 3;
+constexpr uint32_t ToplevelActivated = 4;
+
+constexpr uint32_t WindowMenuCapability = 1;
+constexpr uint32_t MaximizeCapability = 2;
+constexpr uint32_t FullscreenCapability = 3;
+constexpr uint32_t MinimizeCapability = 4;
+
+}
+
 WaylandLifecycle::WaylandLifecycle(int width, int height) : currentSize{width, height} {
 	if (width <= 0 || height <= 0) {
 		throw std::invalid_argument("WaylandLifecycle requires a positive size");
@@ -29,6 +43,12 @@ std::vector<WaylandLifecycleAction> WaylandLifecycle::AddGlobal(
 		if (!wmBaseName) {
 			wmBaseName = name;
 			return {{WaylandLifecycleActionType::BindWmBase, name, version}};
+		}
+		break;
+	case WaylandGlobalKind::DecorationManager:
+		if (!decorationManagerName) {
+			decorationManagerName = name;
+			return {{WaylandLifecycleActionType::BindDecorationManager, name, version}};
 		}
 		break;
 	case WaylandGlobalKind::Output:
@@ -58,6 +78,22 @@ std::vector<WaylandLifecycleAction> WaylandLifecycle::RemoveGlobal(uint32_t name
 	}
 	if (removed.kind == WaylandGlobalKind::Output) {
 		return {{WaylandLifecycleActionType::ReleaseOutput, name}};
+	}
+	if (removed.kind == WaylandGlobalKind::DecorationManager &&
+		decorationManagerName == name) {
+		std::vector<WaylandLifecycleAction> actions = {
+			{WaylandLifecycleActionType::ReleaseDecorationManager, name}};
+		decorationManagerName.reset();
+		const auto replacement = std::find_if(globals.begin(), globals.end(),
+			[](const Global &global) {
+				return global.kind == WaylandGlobalKind::DecorationManager;
+			});
+		if (replacement != globals.end()) {
+			decorationManagerName = replacement->name;
+			actions.push_back({WaylandLifecycleActionType::BindDecorationManager,
+				replacement->name, replacement->version});
+		}
+		return actions;
 	}
 	if (removed.kind == WaylandGlobalKind::Seat && activeSeatName == name) {
 		std::vector<WaylandLifecycleAction> actions;
@@ -126,11 +162,81 @@ void WaylandLifecycle::LeaveOutput(uint32_t name) noexcept {
 }
 
 void WaylandLifecycle::ProposeSize(int width, int height) noexcept {
+	ProposeToplevel(width, height, {});
+}
+
+void WaylandLifecycle::ProposeToplevel(int width, int height,
+	const std::vector<uint32_t> &states) noexcept {
 	if (width > 0 && height > 0) {
 		proposedSize = WindowSize{width, height};
 	} else {
 		proposedSize.reset();
 	}
+	WaylandToplevelState proposed = proposedToplevelState.value_or(toplevelState);
+	proposed.maximized = false;
+	proposed.fullscreen = false;
+	proposed.resizing = false;
+	proposed.activated = false;
+	for (const uint32_t state : states) {
+		switch (state) {
+		case ToplevelMaximized:
+			proposed.maximized = true;
+			break;
+		case ToplevelFullscreen:
+			proposed.fullscreen = true;
+			break;
+		case ToplevelResizing:
+			proposed.resizing = true;
+			break;
+		case ToplevelActivated:
+			proposed.activated = true;
+			break;
+		default:
+			break;
+		}
+	}
+	proposedToplevelState = proposed;
+}
+
+void WaylandLifecycle::ProposeConfigureBounds(int width, int height) noexcept {
+	WaylandToplevelState proposed = proposedToplevelState.value_or(toplevelState);
+	proposed.configureBounds = width > 0 && height > 0 ?
+		std::optional<WindowSize>{WindowSize{width, height}} : std::nullopt;
+	proposedToplevelState = proposed;
+}
+
+void WaylandLifecycle::ProposeWmCapabilities(
+	const std::vector<uint32_t> &capabilities) noexcept {
+	WaylandToplevelState proposed = proposedToplevelState.value_or(toplevelState);
+	proposed.windowMenuAvailable = false;
+	proposed.maximizeAvailable = false;
+	proposed.fullscreenAvailable = false;
+	proposed.minimizeAvailable = false;
+	for (const uint32_t capability : capabilities) {
+		switch (capability) {
+		case WindowMenuCapability:
+			proposed.windowMenuAvailable = true;
+			break;
+		case MaximizeCapability:
+			proposed.maximizeAvailable = true;
+			break;
+		case FullscreenCapability:
+			proposed.fullscreenAvailable = true;
+			break;
+		case MinimizeCapability:
+			proposed.minimizeAvailable = true;
+			break;
+		default:
+			break;
+		}
+	}
+	proposedToplevelState = proposed;
+}
+
+void WaylandLifecycle::ProposeDecoration(bool serverSide) noexcept {
+	WaylandToplevelState proposed = proposedToplevelState.value_or(toplevelState);
+	proposed.serverSideDecoration = serverSide;
+	proposedToplevelState = proposed;
 }
 
 std::optional<WindowSize> WaylandLifecycle::CommitConfigure() noexcept {
@@ -141,6 +247,10 @@ std::optional<WindowSize> WaylandLifecycle::CommitConfigure() noexcept {
 		committed = currentSize;
 	}
 	proposedSize.reset();
+	if (proposedToplevelState) {
+		toplevelState = *proposedToplevelState;
+		proposedToplevelState.reset();
+	}
 	return committed;
 }
 
