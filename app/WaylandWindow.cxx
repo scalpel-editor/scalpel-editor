@@ -269,6 +269,10 @@ void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleActi
 			break;
 		}
 		case WaylandLifecycleActionType::BindSeat:
+			if (seat) {
+				callbackFailed = true;
+				break;
+			}
 			seat = static_cast<wl_seat *>(wl_registry_bind(
 				registry, action.name, &wl_seat_interface, std::min(action.version, 5U)));
 			if (!seat || wl_seat_add_listener(seat, &seatListener, this) != 0) {
@@ -294,6 +298,10 @@ void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleActi
 			}
 			break;
 		case WaylandLifecycleActionType::CreatePointer:
+			if (!seat || pointer) {
+				callbackFailed = true;
+				break;
+			}
 			pointer = wl_seat_get_pointer(seat);
 			if (!pointer || wl_pointer_add_listener(pointer, &pointerListener, this) != 0) {
 				if (pointer) {
@@ -319,6 +327,10 @@ void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleActi
 			}
 			break;
 		case WaylandLifecycleActionType::CreateKeyboard:
+			if (!seat || keyboard) {
+				callbackFailed = true;
+				break;
+			}
 			keyboard = wl_seat_get_keyboard(seat);
 			if (!keyboard || wl_keyboard_add_listener(
 				keyboard, &keyboardListener, this) != 0) {

@@ -14,19 +14,19 @@ WaylandLifecycle::WaylandLifecycle(int width, int height) : currentSize{width, h
 
 std::vector<WaylandLifecycleAction> WaylandLifecycle::AddGlobal(
 	WaylandGlobalKind kind, uint32_t name, uint32_t version) {
-	if (HasGlobal(name)) {
+	if (closeRequested || HasGlobal(name)) {
 		return {};
 	}
 	globals.push_back(Global{kind, name, version});
 	switch (kind) {
 	case WaylandGlobalKind::Compositor:
-		if (!compositorName && !closeRequested) {
+		if (!compositorName) {
 			compositorName = name;
 			return {{WaylandLifecycleActionType::BindCompositor, name, version}};
 		}
 		break;
 	case WaylandGlobalKind::WmBase:
-		if (!wmBaseName && !closeRequested) {
+		if (!wmBaseName) {
 			wmBaseName = name;
 			return {{WaylandLifecycleActionType::BindWmBase, name, version}};
 		}

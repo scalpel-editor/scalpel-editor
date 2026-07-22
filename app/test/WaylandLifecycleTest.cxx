@@ -73,6 +73,12 @@ TEST_CASE("Wayland registry closes when an active required global disappears") {
 	CHECK(lifecycle.CloseRequested());
 	CHECK(lifecycle.AddGlobal(
 		Scalpel::WaylandGlobalKind::Compositor, 12, 4).empty());
+	CHECK(lifecycle.AddGlobal(
+		Scalpel::WaylandGlobalKind::Output, 30, 4).empty());
+	CHECK(lifecycle.AddGlobal(
+		Scalpel::WaylandGlobalKind::Seat, 40, 9).empty());
+	CHECK(lifecycle.OutputCount() == 0);
+	CHECK(lifecycle.SeatCount() == 0);
 }
 
 TEST_CASE("Wayland lifecycle tracks hot-plugged output membership") {
