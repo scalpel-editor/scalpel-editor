@@ -14,7 +14,7 @@ Owners used in the tables:
 | **Phase 7** | Compose, key repeat, IME, clipboard and primary selection transfers, cursor themes, frame pacing, presentation feedback, optional-protocol fallback, scale and buffer-scale, robust global and seat removal, hot-plugged seats. |
 | **Debug only** | Assert and debug-print helpers used by the core; not part of the user-visible editor surface. |
 
-Step 7 is complete: `Surface::Allocate` is measure-only `DrawSurface` in `scintilla_render`; `Font::Allocate` is `FontPlatform` (fixture paths via `UseTestFontPaths` in `editorTest`); `editorTest` paints with `CreateDrawSurface` on a host-owned headless `GlContext`/`Renderer`. `TestPlatform` still owns Window, inspectable ListBox, Menu logs, and Platform chrome helpers for the fixture. Production ListBox/Menu stubs are `scintilla_platform_popups` (not linked by `editorTest`).
+Steps 7 and 8 are complete: `Surface::Allocate` is measure-only `DrawSurface` in `scintilla_render`; `Font::Allocate` is `FontPlatform` (fixture paths via `UseTestFontPaths` in `editorTest`); `editorTest` paints with `CreateDrawSurface` on a host-owned headless `GlContext`/`Renderer`. `TestPlatform` still owns Window, inspectable ListBox, Menu logs, and Platform chrome helpers for the fixture. The production `ApplicationEditor` owns the application Window helpers, editor host callbacks, headless renderer, unsupported-service log, and first executable; production ListBox/Menu stubs are `scintilla_platform_popups` (not linked by `editorTest`).
 
 ## Opaque IDs (`Platform.h`)
 
