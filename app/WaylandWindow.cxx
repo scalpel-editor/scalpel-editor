@@ -1,4 +1,4 @@
-// Minimal xdg-shell toplevel for the phase 6 vertical slice.
+// Wayland xdg-shell toplevel and input connection.
 //
 // The connection, configure handshake, and cleanup order were informed by
 // OnlyWayUi's Wayland backend. Its MIT notice is retained in seed/LICENSE.txt.
@@ -308,7 +308,7 @@ void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleActi
 				break;
 			}
 			seat = static_cast<wl_seat *>(wl_registry_bind(
-				registry, action.name, &wl_seat_interface, std::min(action.version, 5U)));
+				registry, action.name, &wl_seat_interface, std::min(action.version, 9U)));
 			if (!seat || wl_seat_add_listener(seat, &seatListener, this) != 0) {
 				if (seat) {
 					if (wl_seat_get_version(seat) >= WL_SEAT_RELEASE_SINCE_VERSION) {
@@ -347,6 +347,8 @@ void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleActi
 					pointer = nullptr;
 				}
 				callbackFailed = true;
+			} else {
+				input.SetPointerVersion(wl_pointer_get_version(pointer));
 			}
 			break;
 		case WaylandLifecycleActionType::ReleasePointer:
@@ -639,22 +641,33 @@ void WaylandWindow::PointerAxis(void *data, wl_pointer *, uint32_t time,
 		time, axis, wl_fixed_to_double(value));
 }
 
-void WaylandWindow::PointerFrame(void *, wl_pointer *) {
+void WaylandWindow::PointerFrame(void *data, wl_pointer *) {
+	static_cast<WaylandWindow *>(data)->input.RecordPointerFrame();
 }
 
-void WaylandWindow::PointerAxisSource(void *, wl_pointer *, uint32_t) {
+void WaylandWindow::PointerAxisSource(void *data, wl_pointer *, uint32_t source) {
+	static_cast<WaylandWindow *>(data)->input.RecordPointerAxisSource(source);
 }
 
-void WaylandWindow::PointerAxisStop(void *, wl_pointer *, uint32_t, uint32_t) {
+void WaylandWindow::PointerAxisStop(void *data, wl_pointer *, uint32_t time,
+	uint32_t axis) {
+	static_cast<WaylandWindow *>(data)->input.RecordPointerAxisStop(time, axis);
 }
 
-void WaylandWindow::PointerAxisDiscrete(void *, wl_pointer *, uint32_t, int32_t) {
+void WaylandWindow::PointerAxisDiscrete(void *data, wl_pointer *, uint32_t axis,
+	int32_t discrete) {
+	static_cast<WaylandWindow *>(data)->input.RecordPointerAxisDiscrete(axis, discrete);
 }
 
-void WaylandWindow::PointerAxisValue120(void *, wl_pointer *, uint32_t, int32_t) {
+void WaylandWindow::PointerAxisValue120(void *data, wl_pointer *, uint32_t axis,
+	int32_t value120) {
+	static_cast<WaylandWindow *>(data)->input.RecordPointerAxisValue120(axis, value120);
 }
 
-void WaylandWindow::PointerAxisRelativeDirection(void *, wl_pointer *, uint32_t, uint32_t) {
+void WaylandWindow::PointerAxisRelativeDirection(void *data, wl_pointer *,
+	uint32_t axis, uint32_t direction) {
+	static_cast<WaylandWindow *>(data)->input.RecordPointerAxisRelativeDirection(
+		axis, direction);
 }
 
 void WaylandWindow::OutputGeometry(void *, wl_output *, int32_t, int32_t, int32_t,

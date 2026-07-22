@@ -20,6 +20,8 @@ namespace Scalpel {
 
 namespace {
 
+constexpr double PointerAxisStep = 10.0;
+
 Scintilla::Keys KeyFromKeysym(xkb_keysym_t keysym) noexcept {
 	switch (keysym) {
 	case XKB_KEY_Down:
@@ -205,6 +207,13 @@ void WaylandInput::ResetPointerDevice() {
 		pointerX = 0;
 		pointerY = 0;
 	}
+	pointerFrames = false;
+	ResetPointerFrame();
+}
+
+void WaylandInput::SetPointerVersion(uint32_t version) noexcept {
+	pointerFrames = version >= WL_POINTER_FRAME_SINCE_VERSION;
+	ResetPointerFrame();
 }
 
 void WaylandInput::RecordKeyboardFocus(bool focused) {
@@ -271,13 +280,88 @@ void WaylandInput::RecordPointerButton(uint32_t time, uint32_t button, bool pres
 }
 
 void WaylandInput::RecordPointerAxis(uint32_t time, uint32_t axis, double value) {
-	if (axis != WL_POINTER_AXIS_HORIZONTAL_SCROLL && axis != WL_POINTER_AXIS_VERTICAL_SCROLL) {
+	const std::optional<size_t> index = PointerAxisIndex(axis);
+	if (!index) {
+		return;
+	}
+	if (pointerFrames) {
+		PointerAxisState &state = pointerAxes[*index];
+		state.continuous += value;
+		state.hasContinuous = true;
+		pointerAxisTime = time;
 		return;
 	}
 	inputs.emplace_back(PointerInput{
 		PointerAction::Scroll, CurrentModifiers(), pointerX, pointerY,
 		axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL ? value : 0,
 		axis == WL_POINTER_AXIS_VERTICAL_SCROLL ? value : 0, time, -1});
+}
+
+void WaylandInput::RecordPointerFrame() {
+	if (!pointerFrames) {
+		return;
+	}
+	std::array<double, 2> deltas{};
+	for (size_t axis = 0; axis < pointerAxes.size(); axis++) {
+		const PointerAxisState &state = pointerAxes[axis];
+		// Wheel metadata describes the same motion as the continuous axis
+		// value, so choose the most current form instead of adding them.
+		if (state.hasValue120) {
+			deltas[axis] = static_cast<double>(state.value120) * PointerAxisStep / 120.0;
+		} else if (state.hasDiscrete) {
+			deltas[axis] = static_cast<double>(state.discrete) * PointerAxisStep;
+		} else if (state.hasContinuous) {
+			deltas[axis] = state.continuous;
+		}
+	}
+	if (deltas[0] != 0 || deltas[1] != 0) {
+		inputs.emplace_back(PointerInput{
+			PointerAction::Scroll, CurrentModifiers(), pointerX, pointerY,
+			deltas[1], deltas[0], pointerAxisTime, -1});
+	}
+	ResetPointerFrame();
+}
+
+void WaylandInput::RecordPointerAxisSource(uint32_t source) noexcept {
+	if (pointerFrames) {
+		pointerAxisSource = source;
+	}
+}
+
+void WaylandInput::RecordPointerAxisStop(uint32_t time, uint32_t axis) noexcept {
+	if (pointerFrames) {
+		if (const std::optional<size_t> index = PointerAxisIndex(axis)) {
+			pointerAxes[*index].stopped = true;
+			pointerAxisTime = time;
+		}
+	}
+}
+
+void WaylandInput::RecordPointerAxisDiscrete(uint32_t axis, int32_t discrete) noexcept {
+	if (pointerFrames && discrete != 0) {
+		if (const std::optional<size_t> index = PointerAxisIndex(axis)) {
+			pointerAxes[*index].discrete += discrete;
+			pointerAxes[*index].hasDiscrete = true;
+		}
+	}
+}
+
+void WaylandInput::RecordPointerAxisValue120(uint32_t axis, int32_t value120) noexcept {
+	if (pointerFrames && value120 != 0) {
+		if (const std::optional<size_t> index = PointerAxisIndex(axis)) {
+			pointerAxes[*index].value120 += value120;
+			pointerAxes[*index].hasValue120 = true;
+		}
+	}
+}
+
+void WaylandInput::RecordPointerAxisRelativeDirection(
+	uint32_t axis, uint32_t direction) noexcept {
+	if (pointerFrames) {
+		if (const std::optional<size_t> index = PointerAxisIndex(axis)) {
+			pointerAxes[*index].relativeDirection = direction;
+		}
+	}
 }
 
 std::vector<InputEvent> WaylandInput::TakeInputs() {
@@ -294,6 +378,23 @@ Scintilla::KeyMod WaylandInput::CurrentModifiers() const {
 		ModifierActive(state, XKB_MOD_NAME_ALT),
 		false,
 		ModifierActive(state, XKB_MOD_NAME_LOGO));
+}
+
+std::optional<size_t> WaylandInput::PointerAxisIndex(uint32_t axis) noexcept {
+	switch (axis) {
+	case WL_POINTER_AXIS_VERTICAL_SCROLL:
+		return 0;
+	case WL_POINTER_AXIS_HORIZONTAL_SCROLL:
+		return 1;
+	default:
+		return std::nullopt;
+	}
+}
+
+void WaylandInput::ResetPointerFrame() noexcept {
+	pointerAxes = {};
+	pointerAxisSource.reset();
+	pointerAxisTime = 0;
 }
 
 }

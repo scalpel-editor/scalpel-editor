@@ -1,4 +1,4 @@
-// Minimal xdg-shell toplevel for the phase 6 vertical slice.
+// Wayland xdg-shell toplevel and input connection.
 
 #ifndef WAYLANDWINDOW_H
 #define WAYLANDWINDOW_H
@@ -45,9 +45,10 @@ namespace Scalpel {
  * Construction performs the required initial commit without a buffer and
  * waits for xdg_surface.configure before returning. It coalesces later resize
  * events, then translates and queues keyboard and pointer events for the
- * application loop. Registry, output, and seat changes pass through testable
- * lifecycle state. Key repeat, compose, and related input work remain in
- * phase 7.
+ * application loop. Registry, output, seat, decoration, and retained
+ * toplevel changes pass through testable lifecycle state. Pointer-axis
+ * callbacks are coalesced into one scroll event per protocol frame. Key
+ * repeat, compose, and related input work remain in Phase 7.
  */
 class WaylandWindow final {
 public:

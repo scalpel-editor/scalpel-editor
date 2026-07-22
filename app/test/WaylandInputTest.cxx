@@ -158,6 +158,84 @@ TEST_CASE("Wayland pointer retains coordinates modifiers buttons and axes") {
 		Scalpel::PointerAction::Leave);
 }
 
+TEST_CASE("Wayland pointer coalesces current axis frames") {
+	Scalpel::WaylandInput input;
+	input.SetPointerVersion(9);
+	input.RecordPointerMotion(30, 12.5, 18.25);
+	REQUIRE(input.TakeInputs().size() == 1);
+
+	input.RecordPointerAxisSource(WL_POINTER_AXIS_SOURCE_WHEEL);
+	input.RecordPointerAxis(31, WL_POINTER_AXIS_HORIZONTAL_SCROLL, 40.0);
+	input.RecordPointerAxisDiscrete(WL_POINTER_AXIS_HORIZONTAL_SCROLL, 2);
+	input.RecordPointerAxisValue120(WL_POINTER_AXIS_HORIZONTAL_SCROLL, 120);
+	input.RecordPointerAxisRelativeDirection(WL_POINTER_AXIS_HORIZONTAL_SCROLL,
+		WL_POINTER_AXIS_RELATIVE_DIRECTION_INVERTED);
+	input.RecordPointerAxis(32, WL_POINTER_AXIS_VERTICAL_SCROLL, -30.0);
+	input.RecordPointerAxisValue120(WL_POINTER_AXIS_VERTICAL_SCROLL, -60);
+	CHECK(input.TakeInputs().empty());
+	input.RecordPointerFrame();
+
+	const std::vector<Scalpel::InputEvent> events = input.TakeInputs();
+	REQUIRE(events.size() == 1);
+	const auto &scroll = std::get<Scalpel::PointerInput>(events.front());
+	CHECK(scroll.action == Scalpel::PointerAction::Scroll);
+	CHECK(scroll.x == 12.5);
+	CHECK(scroll.y == 18.25);
+	CHECK(scroll.deltaX == 10.0);
+	CHECK(scroll.deltaY == -5.0);
+	CHECK(scroll.time == 32);
+}
+
+TEST_CASE("Wayland pointer uses discrete and continuous frame fallbacks") {
+	Scalpel::WaylandInput input;
+	input.SetPointerVersion(7);
+	input.RecordPointerAxis(40, WL_POINTER_AXIS_HORIZONTAL_SCROLL, 3.0);
+	input.RecordPointerAxis(41, WL_POINTER_AXIS_HORIZONTAL_SCROLL, 4.0);
+	input.RecordPointerAxisDiscrete(WL_POINTER_AXIS_HORIZONTAL_SCROLL, 2);
+	input.RecordPointerAxis(42, WL_POINTER_AXIS_VERTICAL_SCROLL, 8.0);
+	input.RecordPointerAxis(42, WL_POINTER_AXIS_VERTICAL_SCROLL, 2.0);
+	input.RecordPointerFrame();
+
+	std::vector<Scalpel::InputEvent> events = input.TakeInputs();
+	REQUIRE(events.size() == 1);
+	const auto &scroll = std::get<Scalpel::PointerInput>(events.front());
+	CHECK(scroll.deltaX == 20.0);
+	CHECK(scroll.deltaY == 10.0);
+	CHECK(scroll.time == 42);
+
+	input.RecordPointerAxisStop(43, WL_POINTER_AXIS_VERTICAL_SCROLL);
+	input.RecordPointerAxisSource(WL_POINTER_AXIS_SOURCE_FINGER);
+	input.RecordPointerFrame();
+	CHECK(input.TakeInputs().empty());
+	input.RecordPointerAxis(44, WL_POINTER_AXIS_VERTICAL_SCROLL, 6.0);
+	input.RecordPointerFrame();
+	events = input.TakeInputs();
+	REQUIRE(events.size() == 1);
+	CHECK(std::get<Scalpel::PointerInput>(events.front()).deltaY == 6.0);
+}
+
+TEST_CASE("Wayland pointer keeps legacy axis delivery immediate") {
+	Scalpel::WaylandInput input;
+	input.SetPointerVersion(4);
+	input.RecordPointerAxis(50, WL_POINTER_AXIS_VERTICAL_SCROLL, 10.0);
+	REQUIRE(input.TakeInputs().size() == 1);
+	input.RecordPointerFrame();
+	CHECK(input.TakeInputs().empty());
+}
+
+TEST_CASE("Wayland pointer teardown drops an unfinished axis frame") {
+	Scalpel::WaylandInput input;
+	input.SetPointerVersion(9);
+	input.RecordPointerMotion(60, 20, 25);
+	REQUIRE(input.TakeInputs().size() == 1);
+	input.RecordPointerAxis(61, WL_POINTER_AXIS_VERTICAL_SCROLL, 10.0);
+	input.ResetPointerDevice();
+	const std::vector<Scalpel::InputEvent> events = input.TakeInputs();
+	REQUIRE(events.size() == 1);
+	CHECK(std::get<Scalpel::PointerInput>(events.front()).action ==
+		Scalpel::PointerAction::Leave);
+}
+
 TEST_CASE("Wayland pointer teardown removes stale input and reports leave") {
 	Scalpel::WaylandInput input;
 	input.RecordPointerMotion(30, 12.5, 18.25);
