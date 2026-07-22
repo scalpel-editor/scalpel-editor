@@ -8,7 +8,6 @@
 #include <algorithm>
 #include <cstring>
 #include <stdexcept>
-#include <string>
 
 #include <wayland-client.h>
 #include <wayland-egl.h>

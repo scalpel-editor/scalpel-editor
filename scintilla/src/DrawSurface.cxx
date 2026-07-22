@@ -103,6 +103,9 @@ void DrawSurface::Release() noexcept {
 	initialised = false;
 	clipStack.clear();
 	hasExternalTarget = false;
+	externalFramebuffer = 0;
+	externalWidth = 0;
+	externalHeight = 0;
 }
 
 int DrawSurface::SupportsFeature(Scintilla::Supports feature) noexcept {

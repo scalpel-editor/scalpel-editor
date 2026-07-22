@@ -28,6 +28,14 @@ TEST_CASE("production editor host constructs and renders its initial buffer") {
 	CHECK_FALSE(editor.Notifications().empty());
 }
 
+TEST_CASE("production editor host rejects presentation without a window surface") {
+	Scalpel::ApplicationEditor editor(320, 180);
+
+	CHECK_THROWS_WITH(editor.PresentFrame(),
+		"ApplicationEditor::PresentFrame requires a window surface");
+	CHECK(editor.FramePixels().empty());
+}
+
 TEST_CASE("production editor host exposes shell state") {
 	Scalpel::ApplicationEditor editor(240, 120);
 	editor.LoadInitialBuffer("one\ntwo\nthree\n");

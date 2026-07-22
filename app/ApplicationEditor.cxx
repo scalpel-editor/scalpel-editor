@@ -100,6 +100,9 @@ void ApplicationEditor::RenderFrame() {
 }
 
 void ApplicationEditor::PresentFrame() {
+	if (!glContext->HasWindowSurface()) {
+		throw std::runtime_error("ApplicationEditor::PresentFrame requires a window surface");
+	}
 	const int width = FrameWidth();
 	const int height = FrameHeight();
 	frame = Scintilla::Internal::CreateExternalDrawSurface(*renderer, 0, width, height);

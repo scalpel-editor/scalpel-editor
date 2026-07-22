@@ -228,10 +228,9 @@ GlContext::GlContext(void *nativeDisplay, void *nativeWindow) {
 		Destroy();
 		throw std::runtime_error("eglMakeCurrent for Wayland failed (egl error " + EglErrorHex() + ")");
 	}
-	if (!eglSwapInterval(dpy, 0)) {
-		Destroy();
-		throw std::runtime_error("eglSwapInterval(0) failed (egl error " + EglErrorHex() + ")");
-	}
+	// Disabling synchronization is optional; keep the usable window context
+	// when the EGL implementation only supports a non-zero interval.
+	eglSwapInterval(dpy, 0);
 	try {
 		ConfigureCurrentContext();
 	} catch (...) {
