@@ -118,3 +118,26 @@ TEST_CASE("deferred application services fail visibly") {
 	CHECK(editor.UnsupportedRequests()[requestsBeforeExplicitClipboardUse] == "clipboard copy");
 	CHECK(editor.UnsupportedRequests()[requestsBeforeExplicitClipboardUse + 1] == "clipboard paste availability");
 }
+
+TEST_CASE("production editor keyboard runs commands and inserts UTF-8 text") {
+	Scalpel::ApplicationEditor editor(240, 120);
+	editor.LoadInitialBuffer("ab");
+
+	editor.HandleKeyboardInput({Scintilla::Keys::End, Scintilla::KeyMod::Ctrl, {}, 1, true});
+	editor.HandleKeyboardInput({Scintilla::Keys::Back, Scintilla::KeyMod::Norm, {}, 2, false});
+	CHECK(editor.Text() == "ab");
+	editor.HandleKeyboardInput({Scintilla::Keys::Back, Scintilla::KeyMod::Norm, {}, 3, true});
+	CHECK(editor.Text() == "a");
+	editor.HandleKeyboardInput({static_cast<Scintilla::Keys>(0), Scintilla::KeyMod::Norm,
+		"\xE2\x98\x83", 4, true});
+	CHECK(editor.Text() == "a\xE2\x98\x83");
+
+	editor.HandleKeyboardInput({static_cast<Scintilla::Keys>('A'), Scintilla::KeyMod::Ctrl,
+		"\x01", 5, true});
+	editor.HandleKeyboardInput({static_cast<Scintilla::Keys>('Z'), Scintilla::KeyMod::Norm,
+		"z", 6, true});
+	CHECK(editor.Text() == "z");
+	editor.HandleKeyboardInput({static_cast<Scintilla::Keys>('Q'), Scintilla::KeyMod::Ctrl,
+		"q", 7, true});
+	CHECK(editor.Text() == "z");
+}

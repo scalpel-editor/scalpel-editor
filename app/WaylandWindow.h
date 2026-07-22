@@ -6,7 +6,9 @@
 #include <chrono>
 #include <cstdint>
 #include <optional>
+#include <vector>
 
+#include "WaylandInput.h"
 #include "WaylandLifecycle.h"
 
 struct wl_array;
@@ -58,6 +60,7 @@ public:
 	[[nodiscard]] bool CallbackFailed() const noexcept { return callbackFailed; }
 	[[nodiscard]] std::optional<WindowSize> TakeResize() noexcept { return lifecycle.TakeResize(); }
 	[[nodiscard]] std::optional<bool> TakeKeyboardFocus() noexcept { return lifecycle.TakeKeyboardFocus(); }
+	[[nodiscard]] std::vector<KeyboardInput> TakeKeyboardInputs() { return input.TakeKeyboardInputs(); }
 
 	/** Complete one request/event round trip, throwing on display failure. */
 	void RoundTrip();
@@ -114,6 +117,7 @@ private:
 	xdg_surface *shellSurface = nullptr;
 	xdg_toplevel *toplevel = nullptr;
 	WaylandLifecycle lifecycle;
+	WaylandInput input;
 	bool callbackFailed = false;
 	bool configured = false;
 };

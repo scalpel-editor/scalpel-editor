@@ -21,6 +21,9 @@ int main() {
 			"The first application frame is rendered in an xdg-toplevel.\n";
 		editor.LoadInitialBuffer(initialText);
 		while (!window.CloseRequested()) {
+			for (const Scalpel::KeyboardInput &input : window.TakeKeyboardInputs()) {
+				editor.HandleKeyboardInput(input);
+			}
 			if (const std::optional<Scalpel::WindowSize> resize = window.TakeResize()) {
 				editor.Resize(resize->width, resize->height);
 			}

@@ -17,3 +17,13 @@ target_link_libraries(waylandLifecycleTest PRIVATE scalpel_wayland)
 target_compile_options(waylandLifecycleTest PRIVATE -Wall -Wextra)
 
 add_test(NAME wayland-lifecycle COMMAND waylandLifecycleTest)
+
+add_executable(waylandInputTest WaylandInputTest.cxx)
+target_include_directories(waylandInputTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(waylandInputTest PRIVATE scalpel_wayland)
+target_compile_options(waylandInputTest PRIVATE -Wall -Wextra)
+
+add_test(NAME wayland-input COMMAND waylandInputTest)

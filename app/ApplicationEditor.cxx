@@ -82,6 +82,22 @@ void ApplicationEditor::SetKeyboardFocus(bool focused) {
 	SetFocus(focused);
 }
 
+void ApplicationEditor::HandleKeyboardInput(const KeyboardInput &input) {
+	if (!input.pressed) {
+		return;
+	}
+	bool consumed = false;
+	if (input.key != static_cast<Scintilla::Keys>(0)) {
+		KeyDownWithModifiers(input.key, input.modifiers, &consumed);
+	}
+	const Scintilla::KeyMod commandModifiers = Scintilla::KeyMod::Ctrl |
+		Scintilla::KeyMod::Alt | Scintilla::KeyMod::Super | Scintilla::KeyMod::Meta;
+	if (!consumed && !input.text.empty() &&
+		(input.modifiers & commandModifiers) == Scintilla::KeyMod::Norm) {
+		InsertCharacter(input.text, Scintilla::CharacterSource::DirectInput);
+	}
+}
+
 void ApplicationEditor::SetPointerCapture(bool captured) {
 	ChangeMouseCapture(captured);
 }

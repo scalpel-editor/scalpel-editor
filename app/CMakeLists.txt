@@ -4,6 +4,7 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(WAYLAND_CLIENT REQUIRED IMPORTED_TARGET wayland-client)
 pkg_check_modules(WAYLAND_EGL REQUIRED IMPORTED_TARGET wayland-egl)
 pkg_check_modules(WAYLAND_PROTOCOLS REQUIRED wayland-protocols)
+pkg_check_modules(XKBCOMMON REQUIRED IMPORTED_TARGET xkbcommon)
 
 find_program(WAYLAND_SCANNER_EXECUTABLE wayland-scanner REQUIRED)
 pkg_get_variable(WAYLAND_PROTOCOLS_DATA_DIR wayland-protocols pkgdatadir)
@@ -32,14 +33,19 @@ target_include_directories(scalpel_xdg_shell PUBLIC "${WAYLAND_PROTOCOL_OUTPUT_D
 target_link_libraries(scalpel_xdg_shell PUBLIC PkgConfig::WAYLAND_CLIENT)
 
 add_library(scalpel_wayland STATIC
+  WaylandInput.cxx
   WaylandLifecycle.cxx
   WaylandWindow.cxx
 )
-target_include_directories(scalpel_wayland PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(scalpel_wayland PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${PROJECT_SOURCE_DIR}/scintilla/src
+)
 target_link_libraries(scalpel_wayland PUBLIC
   scalpel_xdg_shell
   PkgConfig::WAYLAND_CLIENT
   PkgConfig::WAYLAND_EGL
+  PkgConfig::XKBCOMMON
 )
 target_compile_options(scalpel_wayland PRIVATE -Wall -Wextra)
 add_dependencies(scalpel_wayland scalpel_xdg_shell)

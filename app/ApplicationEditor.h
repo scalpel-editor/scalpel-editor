@@ -17,6 +17,7 @@
 #include "ApplicationPlatform.h"
 #include "EditorNotifications.h"
 #include "ScintillaBase.h"
+#include "WaylandInput.h"
 
 namespace Scintilla::Internal {
 class DrawSurface;
@@ -90,6 +91,7 @@ public:
 	[[nodiscard]] std::string Text() const;
 	void Resize(int width, int height);
 	void SetKeyboardFocus(bool focused);
+	void HandleKeyboardInput(const KeyboardInput &input);
 	void SetPointerCapture(bool captured);
 	void RequestClipboardCopy();
 	[[nodiscard]] bool ClipboardPasteAvailable();

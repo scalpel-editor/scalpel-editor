@@ -11,7 +11,9 @@
 #include <cstdint>
 #include <cstring>
 #include <stdexcept>
+#include <string_view>
 
+#include <sys/mman.h>
 #include <poll.h>
 #include <unistd.h>
 #include <wayland-client.h>
@@ -292,9 +294,29 @@ void WaylandWindow::SeatCapabilities(void *data, wl_seat *seat_, uint32_t capabi
 void WaylandWindow::SeatName(void *, wl_seat *, const char *) {
 }
 
-void WaylandWindow::KeyboardKeymap(void *, wl_keyboard *, uint32_t, int32_t descriptor, uint32_t) {
-	if (descriptor >= 0) {
+void WaylandWindow::KeyboardKeymap(void *data, wl_keyboard *, uint32_t format,
+	int32_t descriptor, uint32_t size) {
+	auto &window = *static_cast<WaylandWindow *>(data);
+	if (descriptor < 0) {
+		window.callbackFailed = true;
+		return;
+	}
+	if (format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1 || size == 0) {
 		close(descriptor);
+		window.callbackFailed = true;
+		return;
+	}
+	void *mapped = mmap(nullptr, size, PROT_READ, MAP_PRIVATE, descriptor, 0);
+	close(descriptor);
+	if (mapped == MAP_FAILED) {
+		window.callbackFailed = true;
+		return;
+	}
+	const bool loaded = window.input.SetKeymap(
+		std::string_view(static_cast<const char *>(mapped), size));
+	munmap(mapped, size);
+	if (!loaded) {
+		window.callbackFailed = true;
 	}
 }
 
@@ -309,16 +331,22 @@ void WaylandWindow::KeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surfac
 	auto &window = *static_cast<WaylandWindow *>(data);
 	if (surface_ == window.surface) {
 		window.lifecycle.RecordKeyboardFocus(false);
+		window.input.ResetKeyboardState();
 	}
 }
 
-void WaylandWindow::KeyboardKey(void *, wl_keyboard *, uint32_t, uint32_t, uint32_t, uint32_t) {
-	// Key translation and delivery belong to phase 6 step 11.
+void WaylandWindow::KeyboardKey(void *data, wl_keyboard *, uint32_t, uint32_t time,
+	uint32_t key, uint32_t state) {
+	auto &window = *static_cast<WaylandWindow *>(data);
+	if (state == WL_KEYBOARD_KEY_STATE_PRESSED || state == WL_KEYBOARD_KEY_STATE_RELEASED) {
+		window.input.RecordKey(time, key, state == WL_KEYBOARD_KEY_STATE_PRESSED);
+	}
 }
 
-void WaylandWindow::KeyboardModifiers(void *, wl_keyboard *, uint32_t, uint32_t, uint32_t,
-	uint32_t, uint32_t) {
-	// Modifier state belongs to phase 6 step 11.
+void WaylandWindow::KeyboardModifiers(void *data, wl_keyboard *, uint32_t, uint32_t depressed,
+	uint32_t latched, uint32_t locked, uint32_t group) {
+	static_cast<WaylandWindow *>(data)->input.UpdateModifiers(
+		depressed, latched, locked, group);
 }
 
 void WaylandWindow::KeyboardRepeatInfo(void *, wl_keyboard *, int32_t, int32_t) {
