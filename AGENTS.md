@@ -1,34 +1,14 @@
 # AGENTS
 
-This document is the working guide for coding agents and contributors in this repository.
-
 ## What this project is
 
-scalpel-editor is a Wayland-only text editor built from a refactored Scintilla core. It is not a general UI toolkit, not cross-platform, and not designed for embedding. It does one thing: edit text in one window on Wayland.
-
-The editor itself is personal utility — SciTE already gives Wayland users the full Scintilla feature set through GTK, so a lightweight alternative is not the value here. The value beyond personal utility lies in two artifacts. First, a Scintilla core refactored until both humans and AI models can read it: every feature findable by name, documentation next to implementation, no layer that exists only to serve platforms or uses this project does not have. Second, a worked example of a C++ Wayland application built without a GUI toolkit. Judge changes against these.
-
-## Direction principles
-
-- One platform (Wayland), one encoding (UTF-8), one renderer. Delete layers and generality that serve absent platforms; keep Scintilla's editing features intact even when this editor does not use them yet, so the refactored core stays useful to others (see the roadmap scope principle).
-- A feature's name, documentation, and implementation belong in one greppable place. No numeric message dispatch, no indirection that severs the link between a name and its code.
-- Prefer deleting indirection over adding abstraction. When tempted to make something more generally useful, stop and make it do its one job better instead.
-- Keep the tree small enough to hold in one head.
-- Refactor in behavior-preserving steps with tests green, and make each step small enough to review as a diff. When deliberately reducing scope, state the removed behavior and test what remains.
+scalpel-editor is a Wayland-only text editor built from a refactored Scintilla core that transformed the message system and 9000 line switch statement into methods grouped in files by concern.
 
 ## Repository layout
 
 - `scintilla/` — the Scintilla 5.6.4 core, imported verbatim. `scintilla/UPSTREAM.md` records the release identity and the byte-for-byte verification of the import. This code is now this project's to change; the verbatim import commit is the baseline, and git history from that commit is the record of divergence. Do not update `UPSTREAM.md` as the code diverges — it describes the import, not the current state.
 - `seed/` — working reference code copied from OnlyWayUi (see `ORIGINS.md`). It shows a Scintilla-on-Wayland editor built through RmlUi's abstractions. Mine it, do not build on it: absorb what a piece teaches into direct code, then delete the piece. It does not compile in this repository and that is expected.
 - `ROADMAP.md` — the phase plan. Update it when a phase completes or the plan changes.
-
-## Change rules for scintilla/
-
-- Keep `scintilla/test/unit` green through every refactoring step. These upstream tests cover the platform-free document and container code; they are not evidence that `Editor` behavior is unchanged.
-- Before dissolving a message, classify it as an application-facing method, private editor operation, keyboard command, retained type or notification, or feature to delete. Deletion is reserved for platform-only material and the message layer itself. Do not automatically turn messages into public methods.
-- Keep a short authoritative description beside each named operation's definition. The former `ScintillaDoc.html` catalog was deleted in phase 5 step 10 after that move. When a feature is deleted, delete its documentation in the same change.
-- Add a focused editor test before moving behavior that the current tests do not exercise. Prefer assertions on visible effects such as document state, selection, invalidation, notifications, and scrollbar changes over relying on a mechanical-looking diff.
-- The "concrete test editor" is the test-only `ScintillaBase` subclass and deterministic host described in roadmap phase 2. Keep its callbacks observable, keep its clock and external state under test control, and do not make it depend on the seed code or the real Wayland and rendering stack.
 
 ## Build and test
 
@@ -69,23 +49,11 @@ The ASan test preset sets `ASAN_OPTIONS=detect_leaks=0` because this development
 
 For failure details, run a test binary directly: `./build/scintilla/test/unit/unitTest` for the upstream platform-free tests or `./build/scintilla/test/editor/editorTest` for the concrete editor tests (Catch2 v2; pass a test name pattern to run one case). The core builds as a static library, `scintilla_core`. The unit executable links only the platform-free objects it calls. `editorTest` links the editor concern translation units (`Editor*.cxx`, `ScintillaBase.cxx`, and their required core objects) against the deterministic test-only `Platform.h` implementation, so missing editor definitions fail the build. Named feature work lives in concern files such as `EditorWrapping.cxx` and `EditorDocument.cxx`; `Editor.cxx` keeps shared paint, geometry, notifications, and document-watcher work. The first application with a real platform implementation arrives in roadmap phase 6.
 
-## Source reading rule
+## Development
 
-Do not write code that calls an external API without reading the relevant source or local headers first. This includes Wayland, EGL, xkbcommon, FreeType, and the Scintilla core itself. If the needed source is not available, stop and ask for it. Do not guess signatures, types, ownership rules, or lifecycle rules.
-
-## Style
-
-Use simple, direct names and explanations. Favor code that shows lifetime, ownership, and control flow clearly. Avoid vague framework jargon in code, comments, commit messages, and docs — describe the concrete behavior.
-
-New code follows the naming and layout of the file it lives in. The Scintilla core keeps its existing conventions; do not restyle code while refactoring it.
-
-### Includes
-
-Headers under `scintilla/src` and `scintilla/include` must compile alone: `#include "Name.h"` is a valid translation unit with the same flags as `scintilla_core`. Do not restore a shared mega-preamble in `.cxx` files. A translation unit includes only what it uses; prefer include-what-you-use (`iwyu_tool.py` / `fix_includes.py`) over hand-copying include lists.
-
-After changing header includes, run `tools/check-self-contained-headers.sh` (needs `build/compile_commands.json` from `cmake --preset dev`). Pass each changed header path for a narrow change, for example `tools/check-self-contained-headers.sh scintilla/src/FontPlatform.h`. Run it without paths, which checks every `scintilla/src/*.h` and `scintilla/include/*.h`, only after broad include-graph or header-check tooling changes or when a full-tree check is specifically required.
-
-IWYU baseline flags for this tree: `iwyu_tool.py -p build <sources> -- -Xiwyu --no_fwd_decls`, then review and apply with `fix_includes.py --nosafe_headers --nocomments --reorder` when bulk-fixing `.cxx` files. Prefer a complete include when a header's own interface needs a complete type; keep a forward declaration when the header only names a pointer, reference, or incomplete type in a signature. Do not accept IWYU suggestions that pull a private implementation header into a public header solely to replace such a forward declaration.
+- If you spot a flaw or deficiency in the existing framework while implementing something, explicitly communicate its existence, rather than just working around it.
+- Do not write code that calls an external API without reading the relevant source or local headers first. This includes Wayland, EGL, xkbcommon, FreeType, and the Scintilla core itself. If the needed source is not available, stop and ask for it. Do not guess signatures, types, ownership rules, or lifecycle rules.
+- Prefer deleting indirection over adding abstraction. When tempted to make something more generally useful, stop and make it do its one job better instead.
 
 ## Documentation guidance
 
@@ -93,8 +61,18 @@ Do not leave documentation describing a state the code no longer has. When a cha
 
 In Markdown files, do not hard-wrap prose. Write each paragraph and each list item as a single line and let the editor soft-wrap it.
 
-## Tooling notes
+### C++ code discovery
 
-- grepai (semantic search): make sure the index includes `.cxx` files — a missing extension silently returns no results for most of the Scintilla core.
-- Use `grepai status --wait` instead of sleeps or watcher-log scraping. After changing a file that must be present in the durable index, run `grepai status --wait --steady --indexed path/to/file.cxx --after "$(stat -c %Y path/to/file.cxx)" --timeout 2m`; repeat for each changed file that matters to the next search or snapshot. `--indexed` polls the persisted store, while `--steady` also requires an idle watcher. Indexed mtimes have one-second resolution, so make sure the final edit has a different Unix-second mtime from the previously indexed version; otherwise an older version can satisfy `--after`. Plain `grepai status --no-ui` and `grepai status --json` report watcher state, pending work, durable save time and generation, effective configuration and match checks, project and index paths, and the last failure. Sandboxed status can read the host watcher's recorded state.
-- Do not add a `.*/` pattern to `.gitignore`. grepai's ignore matcher mis-reads it as "every directory" and indexes nothing. The checked-in `.gitignore` avoids it deliberately; keep it that way or list hidden directories explicitly.
+See /.agents/skills/scalps-code-search/SKILL.md
+
+## Creating plans
+
+A roadmap phase should be broken down into sessions a coding agent will handle.
+
+At the beginning of a session, a plan should be created as a sequence of commits. Those commits should be made at the appropriate points during implementation.
+
+## Commits
+
+The extended message should contain a concise description of what changed and why.
+
+Commit messages should be hard-wrapped.
