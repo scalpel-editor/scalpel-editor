@@ -81,4 +81,4 @@ At the beginning of a session, a plan should be created as a sequence of commits
 
 The extended message should contain a concise description of what changed and why.
 
-Commit messages should be hard-wrapped.
+Hard-wrap commit messages at 68 characters. The commit hook enforces an absolute maximum of 72 characters.
