@@ -24,7 +24,7 @@ After selecting a result, print its indexed definition with the qualified name r
 scalps context "<qualified name>"
 ```
 
-Use `--before 1` or `--after 1` when whole neighboring definitions help explain the target. If an overloaded name is ambiguous, use the reported `--file` and `--line` selectors to choose the intended definition. If context reports stale source, reindex before retrying.
+Use `--before 1` or `--after 1` when whole neighboring definitions help explain the target. If an overloaded name is ambiguous, use the reported `--file` and `--line` selectors to choose the intended definition. If context reports stale source, run `scalps index` and retry the context command before falling back to other tools.
 
 If the first search is weak, refine it once by using a more precise operation, adding the affected object or concern, or trying a likely identifier-shaped term.
 

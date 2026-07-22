@@ -54,4 +54,4 @@ Make each commit independently coherent and reviewable. Use as few commits as th
 
 Distinguish focused iteration checks from the final workflow. Include the full sanitizer matrix only when `AGENTS.md`, the roadmap step, or the risk of the change requires it.
 
-Stop after presenting the plan and ask for approval. Do not edit files, run mutating commands, or begin implementation during this invocation.
+Stop after presenting the plan and ask for approval. Do not edit project files or begin implementation during this invocation. Read-only investigation is the default; refreshing a stale local discovery index, such as by running `scalps index`, is allowed.
