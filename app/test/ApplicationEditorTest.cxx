@@ -42,10 +42,16 @@ TEST_CASE("production editor host exposes shell state") {
 	editor.SetPointerCapture(false);
 	CHECK_FALSE(editor.WindowState().mouseCaptured);
 
-	editor.Resize(300, 160);
+	const size_t invalidationsBeforeResize = editor.WindowState().invalidatedRectangles.size();
+	editor.Resize(300, 120);
 	CHECK(editor.FrameWidth() == 300);
-	CHECK(editor.FrameHeight() == 160);
-	CHECK_FALSE(editor.WindowState().invalidatedRectangles.empty());
+	CHECK(editor.FrameHeight() == 120);
+	REQUIRE(editor.WindowState().invalidatedRectangles.size() > invalidationsBeforeResize);
+	const Scintilla::Internal::PRectangle resizedClient = editor.WindowState().invalidatedRectangles.back();
+	CHECK(resizedClient.left == 0);
+	CHECK(resizedClient.top == 0);
+	CHECK(resizedClient.right == 300);
+	CHECK(resizedClient.bottom == 120);
 	editor.RenderFrame();
 	CHECK(editor.Scrollbars().changes > 0);
 }
@@ -53,6 +59,7 @@ TEST_CASE("production editor host exposes shell state") {
 TEST_CASE("deferred application services fail visibly") {
 	Scalpel::ApplicationEditor editor(200, 100);
 	editor.LoadInitialBuffer("clipboard request");
+	CHECK(editor.UnsupportedRequests().empty());
 	const size_t requestsBeforeExplicitClipboardUse = editor.UnsupportedRequests().size();
 
 	editor.SetKeyboardFocus(true);

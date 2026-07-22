@@ -100,7 +100,6 @@ protected:
 	void Copy() override;
 	void Paste() override;
 	void ClaimSelection() override;
-	bool CanPaste() override;
 	void CopyToClipboard(const Scintilla::Internal::SelectionText &selectedText) override;
 	void StartDrag() override;
 

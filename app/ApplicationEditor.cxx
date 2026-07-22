@@ -53,6 +53,7 @@ void ApplicationEditor::Resize(int width, int height) {
 	window.rectangle = PRectangle(0, 0, width, height);
 	frame.reset();
 	ChangeSize();
+	wMain.InvalidateAll();
 }
 
 void ApplicationEditor::SetKeyboardFocus(bool focused) {
@@ -68,7 +69,8 @@ void ApplicationEditor::RequestClipboardCopy() {
 }
 
 bool ApplicationEditor::ClipboardPasteAvailable() {
-	return CanPaste();
+	RecordUnsupported("clipboard paste availability");
+	return false;
 }
 
 void ApplicationEditor::RenderFrame() {
@@ -142,12 +144,6 @@ void ApplicationEditor::Paste() {
 }
 
 void ApplicationEditor::ClaimSelection() {
-	RecordUnsupported("clipboard selection ownership");
-}
-
-bool ApplicationEditor::CanPaste() {
-	RecordUnsupported("clipboard paste availability");
-	return false;
 }
 
 void ApplicationEditor::CopyToClipboard(const Scintilla::Internal::SelectionText &) {
@@ -176,6 +172,7 @@ bool ApplicationEditor::HaveMouseCapture() {
 
 void ApplicationEditor::CreateCallTipWindow(PRectangle) {
 	RecordUnsupported("call-tip window");
+	// Window identity is intentionally omitted until popup windows are implemented.
 }
 
 void ApplicationEditor::AddToPopUp(const char *label, int command, bool enabled) {
@@ -213,8 +210,8 @@ void ApplicationEditor::QueueIdleWork(Scintilla::Internal::WorkItems items, Scin
 }
 
 void ApplicationEditor::RecordUnsupported(std::string request) {
-	unsupportedRequests.push_back(request);
-	std::fprintf(stderr, "scalpel-editor unsupported: %s\n", request.c_str());
+	unsupportedRequests.push_back(std::move(request));
+	std::fprintf(stderr, "scalpel-editor unsupported: %s\n", unsupportedRequests.back().c_str());
 }
 
 }
