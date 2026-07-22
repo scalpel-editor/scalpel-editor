@@ -7,6 +7,7 @@ scalpel-editor is a Wayland-only text editor built from a refactored Scintilla c
 ## Repository layout
 
 - `scintilla/` — the Scintilla 5.6.4 core, imported verbatim. `scintilla/UPSTREAM.md` records the release identity and the byte-for-byte verification of the import. This code is now this project's to change; the verbatim import commit is the baseline, and git history from that commit is the record of divergence. Do not update `UPSTREAM.md` as the code diverges — it describes the import, not the current state.
+- `app/` — the production editor host, application platform definitions, standalone `scalpel-editor` executable, and focused `applicationTest` coverage.
 - `seed/` — working reference code copied from OnlyWayUi (see `ORIGINS.md`). It shows a Scintilla-on-Wayland editor built through RmlUi's abstractions. Mine it, do not build on it: absorb what a piece teaches into direct code, then delete the piece. It does not compile in this repository and that is expected.
 - `ROADMAP.md` — the phase plan. Update it when a phase completes or the plan changes.
 
@@ -18,7 +19,7 @@ The build uses CMake with the Ninja generator. Always configure from the reposit
 cmake --preset dev          # configure into build/ (Debug)
 ```
 
-Use the smallest build and test scope that covers the code being changed. Ninja rebuilds the target's dependencies, and both Catch2 executables accept a test-name pattern:
+Use the smallest build and test scope that covers the code being changed. Ninja rebuilds the target's dependencies, and the Catch2 executables accept a test-name pattern:
 
 ```
 cmake --build build --target editorTest
@@ -26,6 +27,11 @@ cmake --build build --target editorTest
 
 cmake --build build --target unitTest
 ./build/scintilla/test/unit/unitTest "Document*"
+
+cmake --build build --target applicationTest
+./build/app/test/applicationTest "production editor host*"
+
+cmake --build build --target scalpel-editor
 ```
 
 Keep iteration checks narrow even when the final workflow will be broad. Build only the target under development and run only its focused tests; do not also build unrelated test targets in anticipation of the final workflow. A CMake dependency or compile-flag change may make Ninja rebuild much of the tree, so let the required final workflow pay that cost once unless a broader intermediate build is needed to diagnose the change.
@@ -47,7 +53,7 @@ Run `./check.sh` at roadmap phase gates, before a release, when requested, and w
 
 The ASan test preset sets `ASAN_OPTIONS=detect_leaks=0` because this development runner uses `ptrace`, under which LeakSanitizer aborts before reporting results. AddressSanitizer's other checks remain enabled. The matrix therefore does not check for leaks; use a non-traced process for a separate leak check.
 
-For failure details, run a test binary directly: `./build/scintilla/test/unit/unitTest` for the upstream platform-free tests or `./build/scintilla/test/editor/editorTest` for the concrete editor tests (Catch2 v2; pass a test name pattern to run one case). The core builds as a static library, `scintilla_core`. The unit executable links only the platform-free objects it calls. `editorTest` links the editor concern translation units (`Editor*.cxx`, `ScintillaBase.cxx`, and their required core objects) against the deterministic test-only `Platform.h` implementation, so missing editor definitions fail the build. Named feature work lives in concern files such as `EditorWrapping.cxx` and `EditorDocument.cxx`; `Editor.cxx` keeps shared paint, geometry, notifications, and document-watcher work. The first application with a real platform implementation arrives in roadmap phase 6.
+For failure details, run a test binary directly: `./build/scintilla/test/unit/unitTest` for the upstream platform-free tests, `./build/scintilla/test/editor/editorTest` for the concrete editor tests, or `./build/app/test/applicationTest` for the production host and its real application `Window` and `Platform` objects (Catch2 v2; pass a test name pattern to run one case). The core builds as a static library, `scintilla_core`. The unit executable links only the platform-free objects it calls. `editorTest` links the editor concern translation units (`Editor*.cxx`, `ScintillaBase.cxx`, and their required core objects) against the deterministic test-only `Platform.h` implementation, so missing editor definitions fail the build. Named feature work lives in concern files such as `EditorWrapping.cxx` and `EditorDocument.cxx`; `Editor.cxx` keeps shared paint, geometry, notifications, and document-watcher work. The production application host lives in `app/` and is being completed during roadmap phase 6.
 
 ## Development
 
