@@ -14,7 +14,7 @@ Owners used in the tables:
 | **Phase 7** | Compose, key repeat, IME, clipboard and primary selection transfers, cursor themes, frame pacing, presentation feedback, optional-protocol fallback, scale and buffer-scale, robust global and seat removal, hot-plugged seats. |
 | **Debug only** | Assert and debug-print helpers used by the core; not part of the user-visible editor surface. |
 
-Steps 7–11 are complete: `Surface::Allocate` is measure-only `DrawSurface` in `scintilla_render`; `Font::Allocate` is `FontPlatform` (fixture paths via `UseTestFontPaths` in `editorTest`); `editorTest` paints with `CreateDrawSurface` on a host-owned headless `GlContext`/`Renderer`. `TestPlatform` still owns Window, inspectable ListBox, Menu logs, and Platform chrome helpers for the fixture. The production `ApplicationEditor` owns the application Window helpers, editor host callbacks, injected renderer, unsupported-service log, monotonic ticker deadlines, idle work, invalidation state, input delivery, and executable. `WaylandWindow` owns the configured xdg-toplevel and `wl_egl_window`, coalesced resize and keyboard-focus changes, the blocking display wait, and the current seat's keyboard and pointer. `WaylandInput` owns xkbcommon state and retains ordered keyboard and pointer events for the application loop; window-mode `GlContext` owns EGL objects and the editor paints to framebuffer 0. Production ListBox/Menu stubs are `scintilla_platform_popups` (not linked by `editorTest`).
+Phase 6 is complete: `Surface::Allocate` is measure-only `DrawSurface` in `scintilla_render`; `Font::Allocate` is `FontPlatform` (fixture paths via `UseTestFontPaths` in `editorTest`); `editorTest` paints with `CreateDrawSurface` on a host-owned headless `GlContext`/`Renderer`. `TestPlatform` still owns Window, inspectable ListBox, Menu logs, and Platform chrome helpers for the fixture. The production `ApplicationEditor` owns the application Window helpers, editor host callbacks, injected renderer, unsupported-service log, monotonic ticker deadlines, idle work, invalidation state, input delivery, and executable. `WaylandWindow` owns the configured xdg-toplevel and `wl_egl_window`, coalesced resize and keyboard-focus changes, the blocking display wait, and the current seat's keyboard and pointer. `WaylandInput` owns xkbcommon state and retains ordered keyboard and pointer events for the application loop; window-mode `GlContext` owns EGL objects and the editor paints to framebuffer 0. Production ListBox/Menu stubs are `scintilla_platform_popups` (not linked by `editorTest`).
 
 ## Opaque IDs (`Platform.h`)
 
@@ -273,3 +273,7 @@ Step 1 is done when:
 3. Dependencies, protocol generation, seed sources, and license rules are recorded for steps 2 onward.
 
 Implementation (trees, CMake targets, fonts, shaping code) starts at step 2.
+
+## Completion of step 12
+
+The absorbed PlatOWUI and GL3 renderer seed files were removed while the Phase 7 backend references and `seed/LICENSE.txt` remain. The application-aware self-contained-header check passed all 63 production headers; the normal workflow and explicit 39-case renderer suite passed; the executable remained live for a five-second Wayland smoke test; and `./check.sh` passed the complete `dev`, AddressSanitizer, and UndefinedBehaviorSanitizer matrix on 2026-07-22.
