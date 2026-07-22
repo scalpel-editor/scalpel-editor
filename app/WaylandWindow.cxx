@@ -183,54 +183,67 @@ void WaylandWindow::WaitForEvents(std::optional<std::chrono::milliseconds> timeo
 	if (!display) {
 		throw std::runtime_error("Wayland event wait requires a display");
 	}
-	while (wl_display_prepare_read(display) != 0) {
-		if (wl_display_dispatch_pending(display) < 0 || wl_display_get_error(display) != 0) {
+	bool recoveringBlockedFlush = false;
+	for (;;) {
+		while (wl_display_prepare_read(display) != 0) {
+			if (wl_display_dispatch_pending(display) < 0 || wl_display_get_error(display) != 0) {
+				throw std::runtime_error("Wayland display dispatch failed");
+			}
+		}
+
+		short events = POLLIN;
+		if (wl_display_flush(display) < 0) {
+			if (errno != EAGAIN) {
+				wl_display_cancel_read(display);
+				throw std::runtime_error("Wayland display flush failed");
+			}
+			events |= POLLOUT;
+			recoveringBlockedFlush = true;
+		} else if (recoveringBlockedFlush) {
+			wl_display_cancel_read(display);
+			break;
+		}
+
+		// Once output is blocked, wait for socket progress even when editor work is
+		// already due. Returning on its zero timeout would spin until POLLOUT.
+		const int timeoutMilliseconds = recoveringBlockedFlush ? -1 :
+			(timeout ? static_cast<int>(std::clamp<int64_t>(
+				timeout->count(), 0, INT_MAX)) : -1);
+		pollfd displayPoll{wl_display_get_fd(display), events, 0};
+		const int pollResult = poll(&displayPoll, 1, timeoutMilliseconds);
+		if (pollResult < 0) {
+			wl_display_cancel_read(display);
+			if (errno == EINTR) {
+				return;
+			}
+			throw std::runtime_error("Wayland display poll failed");
+		}
+
+		if (pollResult > 0 && (displayPoll.revents & POLLIN)) {
+			if (wl_display_read_events(display) < 0) {
+				throw std::runtime_error("Wayland display read failed");
+			}
+		} else {
+			wl_display_cancel_read(display);
+		}
+
+		if (displayPoll.revents & (POLLERR | POLLHUP | POLLNVAL)) {
+			throw std::runtime_error("Wayland display connection failed");
+		}
+
+		int dispatched = 0;
+		do {
+			dispatched = wl_display_dispatch_pending(display);
+		} while (dispatched > 0);
+		if (dispatched < 0 || wl_display_get_error(display) != 0) {
 			throw std::runtime_error("Wayland display dispatch failed");
 		}
-	}
-
-	short events = POLLIN;
-	if (wl_display_flush(display) < 0) {
-		if (errno != EAGAIN) {
-			wl_display_cancel_read(display);
-			throw std::runtime_error("Wayland display flush failed");
+		if (CallbackFailed()) {
+			throw std::runtime_error("Wayland input listener failed");
 		}
-		events |= POLLOUT;
-	}
-
-	const int timeoutMilliseconds = timeout ? static_cast<int>(std::clamp<int64_t>(
-		timeout->count(), 0, INT_MAX)) : -1;
-	pollfd displayPoll{wl_display_get_fd(display), events, 0};
-	const int pollResult = poll(&displayPoll, 1, timeoutMilliseconds);
-	if (pollResult < 0) {
-		wl_display_cancel_read(display);
-		if (errno == EINTR) {
-			return;
+		if (!recoveringBlockedFlush) {
+			break;
 		}
-		throw std::runtime_error("Wayland display poll failed");
-	}
-
-	if (pollResult > 0 && (displayPoll.revents & POLLIN)) {
-		if (wl_display_read_events(display) < 0) {
-			throw std::runtime_error("Wayland display read failed");
-		}
-	} else {
-		wl_display_cancel_read(display);
-	}
-
-	if (displayPoll.revents & (POLLERR | POLLHUP | POLLNVAL)) {
-		throw std::runtime_error("Wayland display connection failed");
-	}
-
-	int dispatched = 0;
-	do {
-		dispatched = wl_display_dispatch_pending(display);
-	} while (dispatched > 0);
-	if (dispatched < 0 || wl_display_get_error(display) != 0) {
-		throw std::runtime_error("Wayland display dispatch failed");
-	}
-	if (CallbackFailed()) {
-		throw std::runtime_error("Wayland input listener failed");
 	}
 }
 
