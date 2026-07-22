@@ -3,6 +3,7 @@
 #ifndef WAYLANDINPUT_H
 #define WAYLANDINPUT_H
 
+#include <array>
 #include <cstdint>
 #include <string_view>
 #include <vector>
@@ -53,6 +54,7 @@ private:
 	xkb_state *state = nullptr;
 	double pointerX = 0;
 	double pointerY = 0;
+	std::array<bool, 3> pointerButtons{};
 	bool keyboardFocused = false;
 	bool pointerFocused = false;
 	std::vector<InputEvent> inputs;

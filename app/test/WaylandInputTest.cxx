@@ -162,10 +162,21 @@ TEST_CASE("Wayland pointer teardown removes stale input and reports leave") {
 	Scalpel::WaylandInput input;
 	input.RecordPointerMotion(30, 12.5, 18.25);
 	input.RecordPointerButton(31, BTN_LEFT, true);
+	input.RecordPointerButton(32, BTN_RIGHT, true);
+	REQUIRE(input.TakeInputs().size() == 3);
+	input.RecordPointerAxis(33, WL_POINTER_AXIS_VERTICAL_SCROLL, 10.0);
 	input.ResetPointerDevice();
 	const std::vector<Scalpel::InputEvent> events = input.TakeInputs();
-	REQUIRE(events.size() == 1);
-	const auto &leave = std::get<Scalpel::PointerInput>(events[0]);
+	REQUIRE(events.size() == 3);
+	const auto &leftRelease = std::get<Scalpel::PointerInput>(events[0]);
+	CHECK(leftRelease.action == Scalpel::PointerAction::Release);
+	CHECK(leftRelease.button == 0);
+	CHECK(leftRelease.x == 12.5);
+	CHECK(leftRelease.y == 18.25);
+	const auto &rightRelease = std::get<Scalpel::PointerInput>(events[1]);
+	CHECK(rightRelease.action == Scalpel::PointerAction::Release);
+	CHECK(rightRelease.button == 1);
+	const auto &leave = std::get<Scalpel::PointerInput>(events[2]);
 	CHECK(leave.action == Scalpel::PointerAction::Leave);
 	CHECK(leave.x == 12.5);
 	CHECK(leave.y == 18.25);
@@ -176,8 +187,11 @@ TEST_CASE("Wayland pointer teardown removes stale input and reports leave") {
 	input.RecordPointerMotion(32, 20, 25);
 	input.RecordPointerLeave();
 	input.ResetPointerDevice();
+	input.ResetPointerDevice();
 	const std::vector<Scalpel::InputEvent> pendingLeave = input.TakeInputs();
 	REQUIRE(pendingLeave.size() == 1);
-	CHECK(std::get<Scalpel::PointerInput>(pendingLeave[0]).action ==
-		Scalpel::PointerAction::Leave);
+	const auto &repeatedLeave = std::get<Scalpel::PointerInput>(pendingLeave[0]);
+	CHECK(repeatedLeave.action == Scalpel::PointerAction::Leave);
+	CHECK(repeatedLeave.x == 20);
+	CHECK(repeatedLeave.y == 25);
 }

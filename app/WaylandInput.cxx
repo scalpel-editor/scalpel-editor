@@ -191,12 +191,20 @@ void WaylandInput::ResetPointerDevice() {
 	inputs.erase(std::remove_if(inputs.begin(), inputs.end(), [](const InputEvent &input) {
 		return std::holds_alternative<PointerInput>(input);
 	}), inputs.end());
+	for (size_t button = 0; button < pointerButtons.size(); button++) {
+		if (pointerButtons[button]) {
+			inputs.emplace_back(PointerInput{PointerAction::Release, CurrentModifiers(),
+				pointerX, pointerY, 0, 0, 0, static_cast<int>(button)});
+			pointerButtons[button] = false;
+		}
+	}
 	if (reportLeave) {
 		pointerFocused = true;
 		RecordPointerLeave();
+	} else {
+		pointerX = 0;
+		pointerY = 0;
 	}
-	pointerX = 0;
-	pointerY = 0;
 }
 
 void WaylandInput::RecordKeyboardFocus(bool focused) {
@@ -256,6 +264,7 @@ void WaylandInput::RecordPointerButton(uint32_t time, uint32_t button, bool pres
 	if (translatedButton < 0) {
 		return;
 	}
+	pointerButtons[static_cast<size_t>(translatedButton)] = pressed;
 	inputs.emplace_back(PointerInput{
 		pressed ? PointerAction::Press : PointerAction::Release,
 		CurrentModifiers(), pointerX, pointerY, 0, 0, time, translatedButton});
