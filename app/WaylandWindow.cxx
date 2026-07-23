@@ -460,11 +460,19 @@ void WaylandWindow::WaitForEvents(std::optional<std::chrono::milliseconds> timeo
 			break;
 		}
 
-		// Once output is blocked, wait for socket progress even when editor work is
-		// already due. Returning on its zero timeout would spin until POLLOUT.
-		const int timeoutMilliseconds = recoveringBlockedFlush ? -1 :
-			(timeout ? static_cast<int>(std::clamp<int64_t>(
-				timeout->count(), 0, INT_MAX)) : -1);
+		const std::optional<std::chrono::milliseconds> repeatTimeout =
+			input.TimeUntilKeyRepeat();
+		// Once output is blocked, ignore an already-due editor timeout so it does
+		// not spin until POLLOUT. A repeat deadline remains eligible so held keys
+		// continue to produce input while output recovery is pending.
+		std::optional<std::chrono::milliseconds> waitTimeout =
+			recoveringBlockedFlush ? repeatTimeout : timeout;
+		if (!recoveringBlockedFlush && repeatTimeout &&
+			(!waitTimeout || *repeatTimeout < *waitTimeout)) {
+			waitTimeout = repeatTimeout;
+		}
+		const int timeoutMilliseconds = waitTimeout ?
+			static_cast<int>(std::clamp<int64_t>(waitTimeout->count(), 0, INT_MAX)) : -1;
 		pollfd displayPoll{wl_display_get_fd(display), events, 0};
 		const int pollResult = poll(&displayPoll, 1, timeoutMilliseconds);
 		if (pollResult < 0) {
@@ -497,7 +505,8 @@ void WaylandWindow::WaitForEvents(std::optional<std::chrono::milliseconds> timeo
 		if (CallbackFailed()) {
 			throw std::runtime_error("Wayland listener failed");
 		}
-		if (!recoveringBlockedFlush) {
+		const bool repeated = input.RunKeyRepeat();
+		if (!recoveringBlockedFlush || repeated) {
 			break;
 		}
 	}
@@ -596,8 +605,12 @@ void WaylandWindow::KeyboardModifiers(void *data, wl_keyboard *, uint32_t, uint3
 		depressed, latched, locked, group);
 }
 
-void WaylandWindow::KeyboardRepeatInfo(void *, wl_keyboard *, int32_t, int32_t) {
-	// Key repeat belongs to phase 7.
+void WaylandWindow::KeyboardRepeatInfo(
+	void *data, wl_keyboard *, int32_t rate, int32_t delay) {
+	auto &window = *static_cast<WaylandWindow *>(data);
+	if (!window.input.SetRepeatInfo(rate, delay)) {
+		window.callbackFailed = true;
+	}
 }
 
 void WaylandWindow::PointerEnter(void *data, wl_pointer *, uint32_t,

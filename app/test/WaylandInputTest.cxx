@@ -1,3 +1,4 @@
+#include <chrono>
 #include <cstdlib>
 #include <string>
 
@@ -166,6 +167,125 @@ TEST_CASE("Wayland keyboard keeps direct text when compose locale fails") {
 	const std::vector<Scalpel::InputEvent> events = input.TakeInputs();
 	REQUIRE(events.size() == 1);
 	CHECK(std::get<Scalpel::KeyboardInput>(events[0]).text == "a");
+}
+
+TEST_CASE("Wayland keyboard repeat follows compositor timing") {
+	using namespace std::chrono_literals;
+	const TestKeymap keymap = MakeTestKeymap();
+	Scalpel::WaylandInput::Clock::time_point now{};
+	Scalpel::WaylandInput input("C.utf8", [&now] { return now; });
+	REQUIRE(input.SetKeymap(keymap.text));
+	REQUIRE(input.SetRepeatInfo(25, 400));
+
+	input.RecordKey(10, KEY_A, true);
+	REQUIRE(input.TakeInputs().size() == 1);
+	CHECK(input.TimeUntilKeyRepeat() == 400ms);
+	now += 399ms;
+	CHECK_FALSE(input.RunKeyRepeat());
+	CHECK(input.TimeUntilKeyRepeat() == 1ms);
+	now += 1ms;
+	CHECK(input.RunKeyRepeat());
+	std::vector<Scalpel::InputEvent> events = input.TakeInputs();
+	REQUIRE(events.size() == 1);
+	CHECK(std::get<Scalpel::KeyboardInput>(events[0]).text == "a");
+	CHECK(std::get<Scalpel::KeyboardInput>(events[0]).time == 10);
+	CHECK(input.TimeUntilKeyRepeat() == 40ms);
+
+	now += 120ms;
+	CHECK(input.RunKeyRepeat());
+	events = input.TakeInputs();
+	REQUIRE(events.size() == 3);
+	CHECK(input.TimeUntilKeyRepeat() == 40ms);
+}
+
+TEST_CASE("Wayland keyboard repeat applies timing changes") {
+	using namespace std::chrono_literals;
+	const TestKeymap keymap = MakeTestKeymap();
+	Scalpel::WaylandInput::Clock::time_point now{};
+	Scalpel::WaylandInput input("C.utf8", [&now] { return now; });
+	REQUIRE(input.SetKeymap(keymap.text));
+	REQUIRE(input.SetRepeatInfo(25, 400));
+	input.RecordKey(11, KEY_A, true);
+	REQUIRE(input.TakeInputs().size() == 1);
+
+	now += 100ms;
+	REQUIRE(input.SetRepeatInfo(50, 200));
+	CHECK(input.TimeUntilKeyRepeat() == 200ms);
+	now += 200ms;
+	CHECK(input.RunKeyRepeat());
+	REQUIRE(input.TakeInputs().size() == 1);
+	CHECK(input.TimeUntilKeyRepeat() == 20ms);
+	REQUIRE(input.SetRepeatInfo(0, 0));
+	CHECK_FALSE(input.TimeUntilKeyRepeat().has_value());
+	input.RecordKey(11, KEY_A, false);
+	REQUIRE(input.TakeInputs().size() == 1);
+	REQUIRE(input.SetRepeatInfo(50, 100));
+	input.RecordKey(11, KEY_A, true);
+	REQUIRE(input.TakeInputs().size() == 1);
+	CHECK_FALSE(input.SetRepeatInfo(-1, 0));
+	CHECK_FALSE(input.TimeUntilKeyRepeat().has_value());
+	CHECK_FALSE(input.SetRepeatInfo(20, -1));
+}
+
+TEST_CASE("Wayland keyboard repeat respects key repeatability and cancellation") {
+	using namespace std::chrono_literals;
+	const TestKeymap keymap = MakeTestKeymap();
+	Scalpel::WaylandInput::Clock::time_point now{};
+	Scalpel::WaylandInput input("C.utf8", [&now] { return now; });
+	REQUIRE(input.SetKeymap(keymap.text));
+	REQUIRE(input.SetRepeatInfo(100, 10));
+
+	input.RecordKey(12, KEY_A, true);
+	input.RecordKey(13, KEY_A, false);
+	REQUIRE(input.TakeInputs().size() == 2);
+	now += 10ms;
+	CHECK_FALSE(input.RunKeyRepeat());
+
+	input.RecordKey(14, KEY_A, true);
+	REQUIRE(input.TakeInputs().size() == 1);
+	input.RecordKeyboardFocus(false);
+	now += 10ms;
+	CHECK_FALSE(input.RunKeyRepeat());
+
+	input.RecordKey(15, KEY_A, true);
+	REQUIRE(input.TakeInputs().size() == 1);
+	input.ResetKeyboardState();
+	now += 10ms;
+	CHECK_FALSE(input.RunKeyRepeat());
+
+	input.RecordKey(16, KEY_A, true);
+	REQUIRE(input.TakeInputs().size() == 1);
+	REQUIRE(input.SetKeymap(keymap.text));
+	now += 10ms;
+	CHECK_FALSE(input.RunKeyRepeat());
+
+	input.RecordKey(17, KEY_A, true);
+	input.RecordKey(18, KEY_LEFTSHIFT, true);
+	REQUIRE(input.TakeInputs().size() == 2);
+	now += 10ms;
+	CHECK_FALSE(input.RunKeyRepeat());
+
+	input.RecordKey(19, KEY_A, true);
+	REQUIRE(input.TakeInputs().size() == 1);
+	input.ResetKeyboardDevice();
+	now += 10ms;
+	CHECK_FALSE(input.RunKeyRepeat());
+}
+
+TEST_CASE("Wayland keyboard repeat limits deadline catch-up") {
+	using namespace std::chrono_literals;
+	const TestKeymap keymap = MakeTestKeymap();
+	Scalpel::WaylandInput::Clock::time_point now{};
+	Scalpel::WaylandInput input("C.utf8", [&now] { return now; });
+	REQUIRE(input.SetKeymap(keymap.text));
+	REQUIRE(input.SetRepeatInfo(100, 0));
+	input.RecordKey(20, KEY_A, true);
+	REQUIRE(input.TakeInputs().size() == 1);
+
+	now += 1s;
+	CHECK(input.RunKeyRepeat());
+	CHECK(input.TakeInputs().size() == 32);
+	CHECK(input.TimeUntilKeyRepeat() == 10ms);
 }
 
 TEST_CASE("Wayland keyboard retains focus and key event order") {

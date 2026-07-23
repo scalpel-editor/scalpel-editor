@@ -6,6 +6,7 @@
 #include "WaylandInput.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cstdlib>
 #include <stdexcept>
@@ -117,17 +118,35 @@ int PointerButton(uint32_t button) noexcept {
 
 }
 
-WaylandInput::WaylandInput() : WaylandInput(ComposeLocale()) {
+WaylandInput::WaylandInput() :
+	WaylandInput(ComposeLocale(), [] { return Clock::now(); }) {
 }
 
 WaylandInput::WaylandInput(std::string_view composeLocale) :
-	context(xkb_context_new(XKB_CONTEXT_NO_FLAGS)) {
+	WaylandInput(composeLocale, [] { return Clock::now(); }) {
+}
+
+WaylandInput::WaylandInput(std::string_view composeLocale, NowFunction now_) :
+	now(std::move(now_)), context(xkb_context_new(XKB_CONTEXT_NO_FLAGS)) {
+	if (!now) {
+		if (context) {
+			xkb_context_unref(context);
+			context = nullptr;
+		}
+		throw std::invalid_argument("WaylandInput requires a clock");
+	}
 	if (!context) {
 		throw std::runtime_error("could not create the xkbcommon context");
 	}
-	const std::string locale(composeLocale);
-	composeTable = xkb_compose_table_new_from_locale(
-		context, locale.c_str(), XKB_COMPOSE_COMPILE_NO_FLAGS);
+	try {
+		const std::string locale(composeLocale);
+		composeTable = xkb_compose_table_new_from_locale(
+			context, locale.c_str(), XKB_COMPOSE_COMPILE_NO_FLAGS);
+	} catch (...) {
+		xkb_context_unref(context);
+		context = nullptr;
+		throw;
+	}
 	if (composeTable) {
 		composeState = xkb_compose_state_new(composeTable, XKB_COMPOSE_STATE_NO_FLAGS);
 		if (!composeState) {
@@ -176,11 +195,13 @@ bool WaylandInput::SetKeymap(std::string_view keymapText) {
 	keymap = newKeymap;
 	state = newState;
 	ResetCompose();
+	StopRepeat();
 	return true;
 }
 
 void WaylandInput::ResetKeyboardState() {
 	ResetCompose();
+	StopRepeat();
 	if (!keymap) {
 		return;
 	}
@@ -196,6 +217,7 @@ void WaylandInput::ResetKeyboardState() {
 
 void WaylandInput::ResetKeyboardDevice() {
 	ResetCompose();
+	StopRepeat();
 	const bool reportFocusLoss = keyboardFocused || std::any_of(
 		inputs.begin(), inputs.end(), [](const InputEvent &input) {
 			const auto *focus = std::get_if<KeyboardFocusInput>(&input);
@@ -251,9 +273,54 @@ void WaylandInput::SetPointerVersion(uint32_t version) noexcept {
 	ResetPointerFrame();
 }
 
+bool WaylandInput::SetRepeatInfo(int32_t rate, int32_t delay) noexcept {
+	if (rate < 0 || delay < 0) {
+		StopRepeat();
+		return false;
+	}
+	repeat.rate = rate;
+	repeat.delay = delay;
+	if (rate == 0) {
+		StopRepeat();
+		return true;
+	}
+	repeat.interval = std::chrono::milliseconds(std::max(1, 1000 / rate));
+	if (repeat.active) {
+		repeat.next = now() + std::chrono::milliseconds(delay);
+	}
+	return true;
+}
+
+std::optional<std::chrono::milliseconds> WaylandInput::TimeUntilKeyRepeat() const {
+	if (!repeat.active) {
+		return std::nullopt;
+	}
+	using std::chrono::ceil;
+	using std::chrono::milliseconds;
+	return ceil<milliseconds>(std::max(Clock::duration::zero(), repeat.next - now()));
+}
+
+bool WaylandInput::RunKeyRepeat() {
+	if (!repeat.active) {
+		return false;
+	}
+	const Clock::time_point current = now();
+	int emitted = 0;
+	while (repeat.active && current >= repeat.next && emitted < 32) {
+		AppendKey(repeat.time, repeat.key, true);
+		repeat.next += repeat.interval;
+		emitted++;
+	}
+	if (repeat.active && current >= repeat.next) {
+		repeat.next = current + repeat.interval;
+	}
+	return emitted != 0;
+}
+
 void WaylandInput::RecordKeyboardFocus(bool focused) {
 	if (!focused) {
 		ResetCompose();
+		StopRepeat();
 	}
 	if (focused != keyboardFocused) {
 		keyboardFocused = focused;
@@ -272,6 +339,15 @@ void WaylandInput::RecordKey(uint32_t time, uint32_t key, bool pressed) {
 	if (!state) {
 		return;
 	}
+	AppendKey(time, key, pressed);
+	if (pressed) {
+		StartRepeat(time, key);
+	} else if (repeat.active && repeat.key == key) {
+		StopRepeat();
+	}
+}
+
+void WaylandInput::AppendKey(uint32_t time, uint32_t key, bool pressed) {
 	const xkb_keycode_t keycode = key + 8;
 	KeyboardInput input;
 	const xkb_keysym_t keysym = xkb_state_key_get_one_sym(state, keycode);
@@ -283,6 +359,25 @@ void WaylandInput::RecordKey(uint32_t time, uint32_t key, bool pressed) {
 		input.text = TextForKey(keycode, keysym, input.modifiers);
 	}
 	inputs.emplace_back(std::move(input));
+}
+
+void WaylandInput::StartRepeat(uint32_t time, uint32_t key) {
+	StopRepeat();
+	const xkb_keycode_t keycode = key + 8;
+	if (repeat.rate <= 0 || !keymap || !xkb_keymap_key_repeats(keymap, keycode)) {
+		return;
+	}
+	repeat.key = key;
+	repeat.time = time;
+	repeat.interval = std::chrono::milliseconds(std::max(1, 1000 / repeat.rate));
+	repeat.next = now() + std::chrono::milliseconds(repeat.delay);
+	repeat.active = true;
+}
+
+void WaylandInput::StopRepeat() noexcept {
+	repeat.active = false;
+	repeat.key = 0;
+	repeat.time = 0;
 }
 
 std::string WaylandInput::TextForKey(

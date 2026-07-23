@@ -47,8 +47,8 @@ namespace Scalpel {
  * events, then translates and queues keyboard and pointer events for the
  * application loop. Registry, output, seat, decoration, and retained
  * toplevel changes pass through testable lifecycle state. Pointer-axis
- * callbacks are coalesced into one scroll event per protocol frame. Key
- * repeat, compose, and related input work remain in Phase 7.
+ * callbacks are coalesced into one scroll event per protocol frame. Keyboard
+ * composition and compositor-configured repeat are part of the input state.
  */
 class WaylandWindow final {
 public:
@@ -74,7 +74,7 @@ public:
 
 	/** Complete one request/event round trip, throwing on display failure. */
 	void RoundTrip();
-	/** Wait for display activity or the optional editor-work deadline. */
+	/** Wait for display activity, key repeat, or the optional editor-work deadline. */
 	void WaitForEvents(std::optional<std::chrono::milliseconds> timeout);
 
 private:
