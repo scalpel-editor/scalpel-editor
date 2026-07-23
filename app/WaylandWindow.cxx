@@ -1,7 +1,7 @@
 // Wayland xdg-shell toplevel and input connection.
 //
 // The connection, configure handshake, and cleanup order were informed by
-// OnlyWayUi's Wayland backend. Its MIT notice is in LICENSES/OnlyWayUi.txt.
+// the author's earlier OnlyWayUi Wayland backend.
 
 #include "WaylandWindow.h"
 

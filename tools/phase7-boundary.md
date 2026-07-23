@@ -20,7 +20,7 @@ Phase 7 keeps one direct shell. New state may be split by concern when that make
 | Frame callbacks and presentation feedback | 9 | Frame callbacks control permission to submit another redraw; presentation feedback reports a submitted frame and does not pace drawing. |
 | Output and surface scaling | 10 | One scale state converts editor and surface units into buffer pixels for rendering, damage, cursors, and protocol rectangles. |
 | D-Bus and xdg-foreign readiness | 11 | The existing wait grows to accept file descriptors and deadlines from multiple sources; file chooser policy remains Phase 8. |
-| Integration, documentation, and seed removal | 12 | Exercise combined changes and absent protocols, remove absorbed backend seed files, retain notices, and run the phase gate. |
+| Integration, documentation, and seed removal | 12 | Exercise combined changes and absent protocols, remove absorbed backend seed files, audit remaining license requirements, and run the phase gate. |
 
 ## Registry globals
 
@@ -161,9 +161,9 @@ The Phase 7 backend, editor-host, sample, and build references were removed afte
 
 ## License rules
 
-`ORIGINS.md` identifies the seed as OnlyWayUi tag `scintilla-seed`, commit `5e373e9e8fd3d83c7f514f029a2299df9c1face2`. `LICENSES/OnlyWayUi.txt` contains its MIT notice. Production files already derived from that backend name the retained notice in their source comments.
+`ORIGINS.md` identifies the seed as OnlyWayUi tag `scintilla-seed`, commit `5e373e9e8fd3d83c7f514f029a2299df9c1face2`. That snapshot included an RmlUi-derived GL3 renderer under RmlUi's MIT notice, along with the author's later Wayland backend and portal URI converter.
 
-When a Phase 7 implementation derives a substantial part from the seed, keep the existing source comment and retain the full OnlyWayUi notice in the distributed project. Step 12 moved the notice to `LICENSES/OnlyWayUi.txt` before deleting `seed/LICENSE.txt`.
+The production shell was implemented directly from the installed Wayland and library sources, using the author's earlier Wayland backend only as a source of techniques. Step 12 deleted that backend, and the retained portal URI converter was also written by the repository author after the OnlyWayUi fork diverged from RmlUi. A later source audit found no RmlUi code in the current tree and removed the obsolete copy of its notice.
 
 Generated Wayland protocol files remain build artifacts. Preserve the notices emitted from their installed XML inputs and do not edit generated files. New code based only on installed Wayland, xkbcommon, EGL, or D-Bus declarations follows those local headers and protocol descriptions and does not copy seed implementation text.
 
@@ -219,4 +219,4 @@ Live coverage: `wayland-info` on the current KWin session advertised the require
 
 Not claimed as live coverage: this runner had no keyboard or pointer injection tool and did not safely control KWin globals, seats, input-method activation, clipboard ownership, or output scale. Compose and repeat, cursor changes, clipboard and primary selection, IME, live scale changes, clean compositor close, and global or seat removal therefore remain deterministic coverage rather than claimed live exercise. No Phase 7 optional global was unavailable in the observed KWin registry.
 
-The absorbed Wayland backend, historical editor host, sample, and seed-build files were removed. `seed/backends/OnlyWayUi_Portal_Uri.*` remains for Phase 8, and the unchanged OnlyWayUi MIT notice now lives at `LICENSES/OnlyWayUi.txt`.
+The absorbed Wayland backend, historical editor host, sample, and seed-build files were removed. `seed/backends/OnlyWayUi_Portal_Uri.*`, written by the repository author after the OnlyWayUi fork diverged from RmlUi, remains for Phase 8.

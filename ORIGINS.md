@@ -18,4 +18,4 @@ The removed `PlatOWUI` measured and drew through OnlyWayUi's default FreeType fo
 
 The removed Wayland backend paced redraws with `wl_surface.frame` callbacks and used presentation-time to report displayed frames. It did not implement xkbcommon compose, text-input-v3, primary selection, fractional scaling, or viewporter support; Phase 7 implemented those features from the installed protocol and library sources.
 
-The OnlyWayUi code is MIT licensed (`LICENSES/OnlyWayUi.txt`). Files derived from it must keep that copyright notice with them for as long as any derived code remains.
+The deleted `OnlyWayUi_Renderer_GL3` was derived from RmlUi's MIT-licensed GL3 renderer, but the production renderer was implemented directly and retains no RmlUi code. The retained portal URI converter and the deleted Wayland backend were written in the unpublished OnlyWayUi fork after it diverged from RmlUi; they do not carry RmlUi authorship into this repository.

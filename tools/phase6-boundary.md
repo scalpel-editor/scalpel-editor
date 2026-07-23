@@ -260,7 +260,7 @@ These paths taught techniques that are now represented by direct code under this
 | Material | License location | Rule |
 | --- | --- | --- |
 | Scintilla core under `scintilla/` | `scintilla/License.txt` | Unchanged; core edits stay under that grant |
-| Seed and any code derived from OnlyWayUi / RmlUi | `LICENSES/OnlyWayUi.txt` (MIT; CodePoint / Shift / RmlUi Team notices) | Keep the copyright and permission notice with every derived file for as long as derived code remains |
+| Seed snapshot's RmlUi-derived GL3 renderer (since deleted) | `seed/LICENSE.txt` in the historical seed tree | The RmlUi copyright and permission notice accompanied the renderer while it remained |
 | Checked-in test fonts (step 2) | Notices checked in beside the font files | Compatibly licensed **primary and fallback** faces; system font packages must not be required for deterministic tests |
 | FreeType, HarfBuzz, Fontconfig, Wayland, EGL, OpenGL, xkbcommon | System package licenses | Link only; do not vendor unless a later decision says so |
 
@@ -276,4 +276,4 @@ Implementation (trees, CMake targets, fonts, shaping code) starts at step 2.
 
 ## Completion of step 12
 
-At the Phase 6 gate, the absorbed PlatOWUI and GL3 renderer seed files were removed while the Phase 7 backend references remained. Phase 7 later removed those references and moved the OnlyWayUi notice to `LICENSES/OnlyWayUi.txt`. The application-aware self-contained-header check passed all 63 production headers; the normal workflow and explicit 39-case renderer suite passed; the executable remained live for a five-second Wayland smoke test; and `./check.sh` passed the complete `dev`, AddressSanitizer, and UndefinedBehaviorSanitizer matrix on 2026-07-22.
+At the Phase 6 gate, the absorbed PlatOWUI and GL3 renderer seed files were removed while the Phase 7 backend references remained. Phase 7 later removed those references. A subsequent source audit confirmed that no RmlUi code remained, so the temporarily retained copy of its notice was removed. The application-aware self-contained-header check passed all 63 production headers; the normal workflow and explicit 39-case renderer suite passed; the executable remained live for a five-second Wayland smoke test; and `./check.sh` passed the complete `dev`, AddressSanitizer, and UndefinedBehaviorSanitizer matrix on 2026-07-22.

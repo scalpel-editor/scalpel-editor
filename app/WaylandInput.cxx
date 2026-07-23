@@ -1,7 +1,7 @@
 // Input translation for the current Wayland seat.
 //
-// The xkbcommon lifecycle was informed by OnlyWayUi's Wayland backend. Its
-// MIT notice is in LICENSES/OnlyWayUi.txt.
+// The xkbcommon lifecycle was informed by the author's earlier OnlyWayUi
+// Wayland backend.
 
 #include "WaylandInput.h"
 
