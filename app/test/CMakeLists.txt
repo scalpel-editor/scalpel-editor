@@ -1,12 +1,54 @@
-add_executable(applicationTest ApplicationEditorTest.cxx)
-target_include_directories(applicationTest PRIVATE
+add_executable(applicationHostTest
+  ApplicationHostTest.cxx
+  ApplicationTestMain.cxx
+)
+target_include_directories(applicationHostTest PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
   ../../scintilla/test/unit
 )
-target_link_libraries(applicationTest PRIVATE scalpel_application)
-target_compile_options(applicationTest PRIVATE -Wall -Wextra)
+target_link_libraries(applicationHostTest PRIVATE scalpel_application)
+target_compile_options(applicationHostTest PRIVATE -Wall -Wextra)
 
-add_test(NAME application COMMAND applicationTest)
+add_test(NAME application-host COMMAND applicationHostTest)
+
+add_executable(applicationImeTest
+  ApplicationImeTest.cxx
+  ApplicationTestMain.cxx
+)
+target_include_directories(applicationImeTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(applicationImeTest PRIVATE scalpel_application)
+target_compile_options(applicationImeTest PRIVATE -Wall -Wextra)
+
+add_test(NAME application-ime COMMAND applicationImeTest)
+
+add_executable(applicationTransferTest
+  ApplicationTransferTest.cxx
+  ApplicationTestMain.cxx
+)
+target_include_directories(applicationTransferTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(applicationTransferTest PRIVATE scalpel_application)
+target_compile_options(applicationTransferTest PRIVATE -Wall -Wextra)
+
+add_test(NAME application-transfer COMMAND applicationTransferTest)
+
+add_executable(applicationInputTest
+  ApplicationInputTest.cxx
+  ApplicationTestMain.cxx
+)
+target_include_directories(applicationInputTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(applicationInputTest PRIVATE scalpel_application)
+target_compile_options(applicationInputTest PRIVATE -Wall -Wextra)
+
+add_test(NAME application-input COMMAND applicationInputTest)
 
 add_executable(waylandLifecycleTest WaylandLifecycleTest.cxx)
 target_include_directories(waylandLifecycleTest PRIVATE
