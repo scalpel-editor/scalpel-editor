@@ -49,7 +49,8 @@ public:
 	/** Bind this surface's colour buffer as the renderer draw target. */
 	void BindDrawTarget();
 	/** Use a non-owning framebuffer target, including window framebuffer 0. */
-	void SetExternalDrawTarget(unsigned framebuffer, int width, int height);
+	void SetExternalDrawTarget(unsigned framebuffer, int bufferWidth, int bufferHeight,
+		int logicalWidth, int logicalHeight);
 
 	void Init(WindowID wid) override;
 	void Init(SurfaceID sid, WindowID wid) override;
@@ -114,6 +115,8 @@ private:
 	unsigned externalFramebuffer = 0;
 	int externalWidth = 0;
 	int externalHeight = 0;
+	int externalLogicalWidth = 0;
+	int externalLogicalHeight = 0;
 	bool hasExternalTarget = false;
 };
 
@@ -124,6 +127,9 @@ std::unique_ptr<DrawSurface> CreateDrawSurface(Renderer &renderer, int width, in
 /** Drawing surface for a framebuffer owned by EGL or another caller. */
 std::unique_ptr<DrawSurface> CreateExternalDrawSurface(Renderer &renderer, unsigned framebuffer,
 	int width, int height, std::vector<std::shared_ptr<FontFace>> fallbacks = {});
+std::unique_ptr<DrawSurface> CreateExternalDrawSurface(Renderer &renderer, unsigned framebuffer,
+	int bufferWidth, int bufferHeight, int logicalWidth, int logicalHeight,
+	std::vector<std::shared_ptr<FontFace>> fallbacks = {});
 
 /** Measure-only surface (no GL buffer). Same measure path as drawing surfaces. */
 std::unique_ptr<DrawSurface> CreateMeasureOnlySurface(

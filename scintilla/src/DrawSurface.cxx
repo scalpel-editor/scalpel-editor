@@ -41,12 +41,17 @@ void DrawSurface::BindDrawTarget() {
 	const unsigned framebuffer = buffer.Valid() ? buffer.FramebufferName() : externalFramebuffer;
 	const int width = buffer.Valid() ? buffer.Width() : externalWidth;
 	const int height = buffer.Valid() ? buffer.Height() : externalHeight;
+	const int logicalWidth = buffer.Valid() ? width : externalLogicalWidth;
+	const int logicalHeight = buffer.Valid() ? height : externalLogicalHeight;
 	if (!buffer.Valid() && !hasExternalTarget) {
 		throw std::runtime_error("DrawSurface::BindDrawTarget without a framebuffer");
 	}
 	const bool targetChanged = renderer->TargetFramebuffer() != framebuffer ||
-		renderer->TargetWidth() != width || renderer->TargetHeight() != height;
-	renderer->SetDrawTarget(framebuffer, width, height);
+		renderer->TargetWidth() != width || renderer->TargetHeight() != height ||
+		renderer->TargetLogicalWidth() != logicalWidth ||
+		renderer->TargetLogicalHeight() != logicalHeight;
+	renderer->SetDrawTarget(
+		framebuffer, width, height, logicalWidth, logicalHeight);
 	if (targetChanged) {
 		for (const PRectangle rc : clipStack) {
 			renderer->SetClip(rc);
@@ -55,13 +60,17 @@ void DrawSurface::BindDrawTarget() {
 	renderer->BindCurrentTarget();
 }
 
-void DrawSurface::SetExternalDrawTarget(unsigned framebuffer, int width, int height) {
-	if (width <= 0 || height <= 0) {
+void DrawSurface::SetExternalDrawTarget(unsigned framebuffer,
+	int bufferWidth, int bufferHeight, int logicalWidth, int logicalHeight) {
+	if (bufferWidth <= 0 || bufferHeight <= 0 ||
+		logicalWidth <= 0 || logicalHeight <= 0) {
 		throw std::invalid_argument("external draw target requires a positive size");
 	}
 	externalFramebuffer = framebuffer;
-	externalWidth = width;
-	externalHeight = height;
+	externalWidth = bufferWidth;
+	externalHeight = bufferHeight;
+	externalLogicalWidth = logicalWidth;
+	externalLogicalHeight = logicalHeight;
 	hasExternalTarget = true;
 }
 
@@ -106,6 +115,8 @@ void DrawSurface::Release() noexcept {
 	externalFramebuffer = 0;
 	externalWidth = 0;
 	externalHeight = 0;
+	externalLogicalWidth = 0;
+	externalLogicalHeight = 0;
 }
 
 int DrawSurface::SupportsFeature(Scintilla::Supports feature) noexcept {
@@ -401,9 +412,17 @@ std::unique_ptr<DrawSurface> CreateDrawSurface(Renderer &renderer, int width, in
 
 std::unique_ptr<DrawSurface> CreateExternalDrawSurface(Renderer &renderer, unsigned framebuffer,
 	int width, int height, std::vector<std::shared_ptr<FontFace>> fallbacks) {
+	return CreateExternalDrawSurface(renderer, framebuffer, width, height,
+		width, height, std::move(fallbacks));
+}
+
+std::unique_ptr<DrawSurface> CreateExternalDrawSurface(Renderer &renderer, unsigned framebuffer,
+	int bufferWidth, int bufferHeight, int logicalWidth, int logicalHeight,
+	std::vector<std::shared_ptr<FontFace>> fallbacks) {
 	auto surface = std::make_unique<DrawSurface>(&renderer, std::move(fallbacks));
 	surface->Init(WindowID{});
-	surface->SetExternalDrawTarget(framebuffer, width, height);
+	surface->SetExternalDrawTarget(
+		framebuffer, bufferWidth, bufferHeight, logicalWidth, logicalHeight);
 	renderer.MakeCurrent();
 	surface->BindDrawTarget();
 	return surface;

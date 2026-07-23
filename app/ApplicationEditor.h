@@ -93,6 +93,7 @@ public:
 	void LoadInitialBuffer(std::string_view text);
 	[[nodiscard]] std::string Text() const;
 	void Resize(int width, int height);
+	void SetFrameBufferSize(int width, int height);
 	void SetKeyboardFocus(bool focused);
 	void HandleKeyboardInput(const KeyboardInput &input);
 	void HandlePointerInput(const PointerInput &input);
@@ -129,6 +130,8 @@ public:
 	[[nodiscard]] std::vector<uint8_t> FramePixels() const;
 	[[nodiscard]] int FrameWidth() const noexcept;
 	[[nodiscard]] int FrameHeight() const noexcept;
+	[[nodiscard]] int BufferWidth() const noexcept { return bufferWidth; }
+	[[nodiscard]] int BufferHeight() const noexcept { return bufferHeight; }
 	[[nodiscard]] int BufferAge() const noexcept;
 	[[nodiscard]] bool BufferAgeSupported() const noexcept;
 	[[nodiscard]] bool DamageSwapSupported() const noexcept;
@@ -234,6 +237,8 @@ private:
 	NowFunction now;
 	double horizontalWheelRemainder = 0;
 	double verticalWheelRemainder = 0;
+	int bufferWidth = 0;
+	int bufferHeight = 0;
 };
 
 }

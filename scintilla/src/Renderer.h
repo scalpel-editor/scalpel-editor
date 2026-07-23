@@ -120,6 +120,12 @@ public:
 	 * Resets the clip stack when the target identity or size changes.
 	 */
 	void SetDrawTarget(unsigned framebuffer, int width, int height);
+	/**
+	 * Select a buffer-sized target whose drawing coordinates use a distinct
+	 * logical size.
+	 */
+	void SetDrawTarget(unsigned framebuffer, int bufferWidth, int bufferHeight,
+		int logicalWidth, int logicalHeight);
 
 	/** Re-bind the current target FBO and viewport without clearing clips. */
 	void BindCurrentTarget();
@@ -216,6 +222,8 @@ public:
 
 	[[nodiscard]] int TargetWidth() const noexcept { return targetWidth; }
 	[[nodiscard]] int TargetHeight() const noexcept { return targetHeight; }
+	[[nodiscard]] int TargetLogicalWidth() const noexcept { return targetLogicalWidth; }
+	[[nodiscard]] int TargetLogicalHeight() const noexcept { return targetLogicalHeight; }
 	[[nodiscard]] unsigned TargetFramebuffer() const noexcept { return targetFbo; }
 	[[nodiscard]] size_t ClipDepth() const noexcept { return clipStack.size(); }
 
@@ -264,6 +272,7 @@ private:
 		float u0, float v0, float u1, float v1, unsigned texture, bool flipV,
 		bool sourceStraightAlpha, ColourRGBA modulate = ColourRGBA(255, 255, 255, 255));
 	[[nodiscard]] PixelRect CurrentClip() const noexcept;
+	[[nodiscard]] PixelRect LogicalPixelRect(PRectangle rc) const noexcept;
 	void BeginDraw();
 	void SetBlendForColour(ColourRGBA colour);
 
@@ -271,6 +280,8 @@ private:
 	unsigned targetFbo = 0;
 	int targetWidth = 0;
 	int targetHeight = 0;
+	int targetLogicalWidth = 0;
+	int targetLogicalHeight = 0;
 
 	std::vector<PixelRect> clipStack;
 	std::unordered_map<GlyphKey, CachedGlyph, GlyphKeyHash> glyphCache;

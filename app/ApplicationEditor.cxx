@@ -126,7 +126,8 @@ ApplicationResources::ApplicationResources(
 ApplicationResources::~ApplicationResources() = default;
 
 ApplicationEditor::ApplicationEditor(int width, int height, NowFunction now_) :
-	ApplicationResources(width, height), now(std::move(now_)) {
+	ApplicationResources(width, height), now(std::move(now_)),
+	bufferWidth(width), bufferHeight(height) {
 	if (!now) {
 		throw std::invalid_argument("ApplicationEditor requires a clock");
 	}
@@ -135,7 +136,8 @@ ApplicationEditor::ApplicationEditor(int width, int height, NowFunction now_) :
 
 ApplicationEditor::ApplicationEditor(std::unique_ptr<Scintilla::Internal::GlContext> context,
 	int width, int height, NowFunction now_) :
-	ApplicationResources(std::move(context), width, height), now(std::move(now_)) {
+	ApplicationResources(std::move(context), width, height), now(std::move(now_)),
+	bufferWidth(width), bufferHeight(height) {
 	if (!now) {
 		throw std::invalid_argument("ApplicationEditor requires a clock");
 	}
@@ -164,10 +166,26 @@ void ApplicationEditor::Resize(int width, int height) {
 		throw std::invalid_argument("ApplicationEditor::Resize requires a positive size");
 	}
 	window.rectangle = PRectangle(0, 0, width, height);
+	bufferWidth = width;
+	bufferHeight = height;
 	frame.reset();
 	ChangeSize();
 	wMain.InvalidateAll();
 	textInputStateDirty = true;
+}
+
+void ApplicationEditor::SetFrameBufferSize(int width, int height) {
+	if (width <= 0 || height <= 0) {
+		throw std::invalid_argument(
+			"ApplicationEditor::SetFrameBufferSize requires a positive size");
+	}
+	if (bufferWidth == width && bufferHeight == height) {
+		return;
+	}
+	bufferWidth = width;
+	bufferHeight = height;
+	frame.reset();
+	wMain.InvalidateAll();
 }
 
 void ApplicationEditor::SetKeyboardFocus(bool focused) {
@@ -544,7 +562,8 @@ void ApplicationEditor::PresentFrame(
 	}
 	const int width = FrameWidth();
 	const int height = FrameHeight();
-	frame = Scintilla::Internal::CreateExternalDrawSurface(*renderer, 0, width, height);
+	frame = Scintilla::Internal::CreateExternalDrawSurface(
+		*renderer, 0, bufferWidth, bufferHeight, width, height);
 	paintState = PaintState::painting;
 	rcPaint = DamageBounds(damage, GetClientRectangle());
 	paintingAllText = rcPaint == GetClientRectangle();

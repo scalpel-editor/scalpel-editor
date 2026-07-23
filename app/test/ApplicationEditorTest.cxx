@@ -78,6 +78,13 @@ TEST_CASE("production editor host exposes shell state") {
 	editor.Resize(300, 120);
 	CHECK(editor.FrameWidth() == 300);
 	CHECK(editor.FrameHeight() == 120);
+	CHECK(editor.BufferWidth() == 300);
+	CHECK(editor.BufferHeight() == 120);
+	editor.SetFrameBufferSize(450, 180);
+	CHECK(editor.FrameWidth() == 300);
+	CHECK(editor.FrameHeight() == 120);
+	CHECK(editor.BufferWidth() == 450);
+	CHECK(editor.BufferHeight() == 180);
 	REQUIRE(editor.WindowState().invalidatedRectangles.size() > invalidationsBeforeResize);
 	const Scintilla::Internal::PRectangle resizedClient = editor.WindowState().invalidatedRectangles.back();
 	CHECK(resizedClient.left == 0);

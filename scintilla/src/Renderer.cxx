@@ -527,17 +527,27 @@ void Renderer::MakeCurrent() {
 }
 
 void Renderer::SetDrawTarget(unsigned framebuffer, int width, int height) {
-	if (width <= 0 || height <= 0) {
+	SetDrawTarget(framebuffer, width, height, width, height);
+}
+
+void Renderer::SetDrawTarget(unsigned framebuffer, int bufferWidth, int bufferHeight,
+	int logicalWidth, int logicalHeight) {
+	if (bufferWidth <= 0 || bufferHeight <= 0 ||
+		logicalWidth <= 0 || logicalHeight <= 0) {
 		throw std::runtime_error("Renderer::SetDrawTarget requires positive size");
 	}
 	MakeCurrent();
-	const bool changed = targetFbo != framebuffer || targetWidth != width || targetHeight != height;
+	const bool changed = targetFbo != framebuffer ||
+		targetWidth != bufferWidth || targetHeight != bufferHeight ||
+		targetLogicalWidth != logicalWidth || targetLogicalHeight != logicalHeight;
 	if (changed) {
 		clipStack.clear();
 	}
 	targetFbo = framebuffer;
-	targetWidth = width;
-	targetHeight = height;
+	targetWidth = bufferWidth;
+	targetHeight = bufferHeight;
+	targetLogicalWidth = logicalWidth;
+	targetLogicalHeight = logicalHeight;
 	BindCurrentTarget();
 }
 
@@ -553,6 +563,22 @@ PixelRect Renderer::CurrentClip() const noexcept {
 		return PixelRect{0, 0, targetWidth, targetHeight};
 	}
 	return clipStack.back();
+}
+
+PixelRect Renderer::LogicalPixelRect(PRectangle rc) const noexcept {
+	if (targetLogicalWidth <= 0 || targetLogicalHeight <= 0) {
+		return {};
+	}
+	return {
+		static_cast<int>(std::floor(
+			rc.left * targetWidth / targetLogicalWidth)),
+		static_cast<int>(std::floor(
+			rc.top * targetHeight / targetLogicalHeight)),
+		static_cast<int>(std::ceil(
+			rc.right * targetWidth / targetLogicalWidth)),
+		static_cast<int>(std::ceil(
+			rc.bottom * targetHeight / targetLogicalHeight)),
+	};
 }
 
 void Renderer::ApplyScissor() const {
@@ -574,7 +600,7 @@ void Renderer::ApplyScissor() const {
 void Renderer::SetClip(PRectangle rc) {
 	MakeCurrent();
 	glBindFramebuffer(GL_FRAMEBUFFER, targetFbo);
-	PixelRect next = PixelRectFromPRectangle(rc);
+	PixelRect next = LogicalPixelRect(rc);
 	next = IntersectPixelRect(next, CurrentClip());
 	// Also clamp to target.
 	next = IntersectPixelRect(next, PixelRect{0, 0, targetWidth, targetHeight});
@@ -609,7 +635,8 @@ void Renderer::Clear(ColourRGBA colour) {
 
 void Renderer::UploadProjection() const {
 	float mat[16];
-	OrthoTopLeft(static_cast<float>(targetWidth), static_cast<float>(targetHeight), mat);
+	OrthoTopLeft(static_cast<float>(targetLogicalWidth),
+		static_cast<float>(targetLogicalHeight), mat);
 	glUniformMatrix4fv(uniformTransform, 1, GL_FALSE, mat);
 }
 
@@ -690,7 +717,7 @@ void Renderer::DrawLineSegment(Point start, Point end, XYPOSITION width, ColourR
 void Renderer::FillRectangleOpaque(PRectangle rc, ColourRGBA colour) {
 	BeginDraw();
 
-	PixelRect pr = IntersectPixelRect(PixelRectFromPRectangle(rc), CurrentClip());
+	PixelRect pr = IntersectPixelRect(LogicalPixelRect(rc), CurrentClip());
 	if (pr.Empty()) {
 		return;
 	}

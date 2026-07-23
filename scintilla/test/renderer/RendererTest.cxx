@@ -171,6 +171,27 @@ TEST_CASE("DrawSurface paints into a caller-owned framebuffer") {
 	CHECK(ExactColour(target.ReadPixel(6, 4), ColourRGBA(20, 40, 60, 255)));
 }
 
+TEST_CASE("DrawSurface maps logical coordinates into a scaled framebuffer") {
+	GlContext context;
+	Renderer renderer(context);
+	ColourBuffer target;
+	target.Resize(8, 6);
+	std::unique_ptr<DrawSurface> surface = CreateExternalDrawSurface(
+		renderer, target.FramebufferName(), 8, 6, 4, 3);
+	const ColourRGBA black(0, 0, 0, 255);
+	const ColourRGBA green(0, 255, 0, 255);
+	renderer.Clear(black);
+
+	surface->SetClip(PRectangle::FromInts(1, 1, 3, 2));
+	surface->FillRectangle(
+		PRectangle::FromInts(0, 0, 4, 3), Fill(green));
+
+	CHECK(ExactColour(target.ReadPixel(1, 2), black));
+	CHECK(ExactColour(target.ReadPixel(2, 2), green));
+	CHECK(ExactColour(target.ReadPixel(5, 3), green));
+	CHECK(ExactColour(target.ReadPixel(6, 3), black));
+}
+
 TEST_CASE("DrawSurface measures through shaped runs; measure-only text is a no-op") {
 	FontCache fonts;
 	const std::filesystem::path primary = std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "FallbackPrimary.ttf";
