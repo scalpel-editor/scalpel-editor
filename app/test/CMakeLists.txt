@@ -50,15 +50,70 @@ target_compile_options(applicationInputTest PRIVATE -Wall -Wextra)
 
 add_test(NAME application-input COMMAND applicationInputTest)
 
-add_executable(waylandLifecycleTest WaylandLifecycleTest.cxx)
-target_include_directories(waylandLifecycleTest PRIVATE
+add_executable(waylandCursorTest
+  WaylandCursorTest.cxx
+  WaylandTestMain.cxx
+)
+target_include_directories(waylandCursorTest PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
   ../../scintilla/test/unit
 )
-target_link_libraries(waylandLifecycleTest PRIVATE scalpel_wayland)
-target_compile_options(waylandLifecycleTest PRIVATE -Wall -Wextra)
+target_link_libraries(waylandCursorTest PRIVATE scalpel_wayland)
+target_compile_options(waylandCursorTest PRIVATE -Wall -Wextra)
 
-add_test(NAME wayland-lifecycle COMMAND waylandLifecycleTest)
+add_test(NAME wayland-cursor COMMAND waylandCursorTest)
+
+add_executable(waylandScaleTest
+  WaylandScaleTest.cxx
+  WaylandTestMain.cxx
+)
+target_include_directories(waylandScaleTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(waylandScaleTest PRIVATE scalpel_wayland)
+target_compile_options(waylandScaleTest PRIVATE -Wall -Wextra)
+
+add_test(NAME wayland-scale COMMAND waylandScaleTest)
+
+add_executable(waylandFrameTest
+  WaylandFrameTest.cxx
+  WaylandTestMain.cxx
+)
+target_include_directories(waylandFrameTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(waylandFrameTest PRIVATE scalpel_wayland)
+target_compile_options(waylandFrameTest PRIVATE -Wall -Wextra)
+
+add_test(NAME wayland-frame COMMAND waylandFrameTest)
+
+add_executable(waylandWindowTest
+  WaylandWindowTest.cxx
+  WaylandTestMain.cxx
+)
+target_include_directories(waylandWindowTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(waylandWindowTest PRIVATE scalpel_wayland)
+target_compile_options(waylandWindowTest PRIVATE -Wall -Wextra)
+
+add_test(NAME wayland-window COMMAND waylandWindowTest)
+
+add_executable(waylandRegistryTest
+  WaylandRegistryTest.cxx
+  WaylandTestMain.cxx
+)
+target_include_directories(waylandRegistryTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(waylandRegistryTest PRIVATE scalpel_wayland)
+target_compile_options(waylandRegistryTest PRIVATE -Wall -Wextra)
+
+add_test(NAME wayland-registry COMMAND waylandRegistryTest)
 
 add_executable(waylandInputTest WaylandInputTest.cxx)
 target_include_directories(waylandInputTest PRIVATE
