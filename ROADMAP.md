@@ -32,9 +32,9 @@ The complete interface inventory was classified and converted by concern. Retain
 
 The former 9,000-line `Editor.cxx` was split into greppable `Editor*.cxx` concern files with matching focused test files. `Editor.cxx` now keeps shared paint, geometry, notifications, document-watcher work, core editing and movement helpers, and the temporary dispatch shell; `ScintillaBase.cxx` keeps lifecycle, popup command routing, IME helpers, and its temporary forwarding shell. Production code no longer calls through `WndProc`, and application-facing behavior has direct named-path tests. Tests may still use thin compatibility cases to reach protected operations; phase 5 removes that temporary access.
 
-`DISCOVERABILITY.md` defines the fixed search benchmark. The final phase 4 inventory accounts for all 853 callable and notification entries, with every retained callable mapped to a typed destination and every deleted callable absent from dispatch. Final exact-name, held-out, cold-navigation, boundary, build, and sanitizer evidence is in `benchmark-results/phase4-final/`; under vector search over the whole repository, 27 of 33 retained natural-language queries placed the expected concern in the top three and every sampled implementation was reachable within two searches.
+The final phase 4 inventory accounts for all 853 callable and notification entries, with every retained callable mapped to a typed destination and every deleted callable absent from dispatch.
 
-Deliverable: no retained behavior is reachable only through a message number; deleted behavior and documentation are gone; the concern split meets the checks in [DISCOVERABILITY.md](DISCOVERABILITY.md); the only remaining message cases are thin compatibility forwarders owned by phase 5.
+Deliverable: no retained behavior is reachable only through a message number; deleted behavior and documentation are gone; the only remaining message cases are thin compatibility forwarders owned by phase 5.
 
 ## Phase 5 — Delete the generated message layer ✅ (2026-07-16)
 
@@ -42,7 +42,7 @@ The `Editor` and `ScintillaBase` compatibility switches, coercion helpers, gener
 
 Retained core and Lexilla-facing data now have hand-maintained definitions in the concern type headers. [tools/phase5-boundary.md](tools/phase5-boundary.md) and [MESSAGE_REMOVAL.md](MESSAGE_REMOVAL.md) remain the historical classification record; same-spelling definitions required by an external contract have an explicit owner and reason.
 
-`tools/check-no-message-layer.sh` guards the deleted boundary. Final exact-name and cold-navigation checks, the explicit editor construction/link test, the normal workflow, and the complete `dev` / `asan` / `ubsan` matrix passed; the recorded search result was 28 of 33 retained natural-language queries in the top three. Final evidence is in `benchmark-results/phase5-final/`.
+`tools/check-no-message-layer.sh` guards the deleted boundary. The explicit editor construction/link test, the normal workflow, and the complete `dev` / `asan` / `ubsan` matrix passed.
 
 Deliverable: the name-to-number-to-switch path and its generated client surface are gone; core and Lexilla-facing data have one project-owned definition; tests reach behavior through typed operations; repository-wide completion searches and all tests pass.
 

@@ -22,7 +22,7 @@ When one entry mixes these roles, split it along those boundaries instead of cho
 
 ## Documentation Pattern
 
-For every retained operation, read its implementation, nearby description, focused tests, and the historical classification in this guide before editing. Add a focused editor test when current coverage does not observe the behavior. Keep a short authoritative description with the named operation, following the placement checks in [DISCOVERABILITY.md](DISCOVERABILITY.md). The former `ScintillaDoc.html` catalog and temporary `WndProc` forwarders were deleted in phase 5; new work must use and test the named typed path directly.
+For every retained operation, read its implementation, nearby description, focused tests, and the historical classification in this guide before editing. Add a focused editor test when current coverage does not observe the behavior. Keep a short authoritative description with the named operation. The former `ScintillaDoc.html` catalog and temporary `WndProc` forwarders were deleted in phase 5; new work must use and test the named typed path directly.
 
 For a deleted feature, state which absent platform or message-layer need it served, remove its documentation in the same change, and test the behavior that remains.
 
@@ -121,7 +121,7 @@ Frozen 2026-07-16 before deleting the generated message layer. Classification of
 
 ### Step 10 (2026-07-16)
 
-Deleted the remaining generated client and documentation surface: `ScintillaCall.h`, `Scintilla.h`, `ScintillaWidget.h`, `Scintilla.iface`, and `ScintillaDoc.html`. No constants from those headers needed re-homing beyond the step 9 project-owned type headers. Default key-map modifier aliases that still spelled `SCI_*` were rewritten to `KeyMod` in `KeyMap`. Discoverability corpus `obsolete_locations` no longer list the deleted files. Step 11 still runs repository-wide completion searches and the three-tree phase gate.
+Deleted the remaining generated client and documentation surface: `ScintillaCall.h`, `Scintilla.h`, `ScintillaWidget.h`, `Scintilla.iface`, and `ScintillaDoc.html`. No constants from those headers needed re-homing beyond the step 9 project-owned type headers. Default key-map modifier aliases that still spelled `SCI_*` were rewritten to `KeyMod` in `KeyMap`. Step 11 still runs repository-wide completion searches and the three-tree phase gate.
 
 ## Interface Inventory
 
@@ -135,7 +135,7 @@ Mechanical audit green: 782 retained callables, 41 deleted callables, 32 notific
 
 ### Step 18 remaining layout (audit)
 
-Done (2026-07-16): remaining layout map below; no further concern files; production `WndProc` removed from `Command` and `ContextMenu`; menu commands and enablement have focused tests; application-facing suites exercise named methods (or `RunCommand`) as primary proof, with message parity only as a secondary check. Step 19 (2026-07-16): residual `ScintillaDoc.html` API catalogs reduced to pointers; inventory wording brought to completed state; discoverability re-measurement recorded under `benchmark-results/phase4-step19/`. Step 20 remains the full phase gate.
+Done (2026-07-16): remaining layout map below; no further concern files; production `WndProc` removed from `Command` and `ContextMenu`; menu commands and enablement have focused tests; application-facing suites exercise named methods (or `RunCommand`) as primary proof, with message parity only as a secondary check. Step 19 (2026-07-16): residual `ScintillaDoc.html` API catalogs reduced to pointers and inventory wording brought to completed state. Step 20 remains the full phase gate.
 
 Phase 4 step 18 reviews what is still defined in `Editor.cxx` and `ScintillaBase.cxx` after the concern moves. Named API and private concern operations already live in `Editor*.cxx` files listed in the inventory. What remains in the two mixed files is either shared machinery the roadmap keeps for later phases, or a small shell that step 18 rewires away from `WndProc`.
 

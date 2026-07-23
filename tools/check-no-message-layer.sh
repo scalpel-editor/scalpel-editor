@@ -40,13 +40,11 @@ check_absent() {
 path_excluded() {
 	path=$1
 	case $path in
-	./seed/*|seed/*|./benchmark-results/*|benchmark-results/*|./build/*|build/*|./build-asan/*|build-asan/*|./build-ubsan/*|build-ubsan/*|./.git/*|.git/*)
+	./seed/*|seed/*|./build/*|build/*|./build-asan/*|build-asan/*|./build-ubsan/*|build-ubsan/*|./.git/*|.git/*)
 		return 0 ;;
 	./tools/phase5-boundary.md|tools/phase5-boundary.md|./tools/check-no-message-layer.sh|tools/check-no-message-layer.sh)
 		return 0 ;;
-	./MESSAGE_REMOVAL.md|MESSAGE_REMOVAL.md|./ROADMAP.md|ROADMAP.md|./AGENTS.md|AGENTS.md|./DISCOVERABILITY.md|DISCOVERABILITY.md|./DISCOVERABILITY_LESSONS.md|DISCOVERABILITY_LESSONS.md|./DISCOVERABILITY_CASE_STUDY.md|DISCOVERABILITY_CASE_STUDY.md)
-		return 0 ;;
-	./tools/discoverability/*|tools/discoverability/*)
+	./MESSAGE_REMOVAL.md|MESSAGE_REMOVAL.md|./ROADMAP.md|ROADMAP.md|./AGENTS.md|AGENTS.md)
 		return 0 ;;
 	esac
 	for pat in $extra_skip; do
@@ -68,7 +66,6 @@ check() {
 	tmp=${TMPDIR:-/tmp}/phase5-msg-check.$$
 	rg -n -e "$pattern" \
 		--glob '!seed/**' \
-		--glob '!benchmark-results/**' \
 		--glob '!build*/**' \
 		--glob '!.git/**' \
 		. >"$tmp" 2>/dev/null || true
@@ -125,7 +122,6 @@ check_message_constants() {
 	tmp=${TMPDIR:-/tmp}/phase5-msg-constants.$$
 	rg -n -o -e '\bSCI_[A-Z0-9_]+\b|\bSCN_[A-Z0-9_]+\b' \
 		--glob '!seed/**' \
-		--glob '!benchmark-results/**' \
 		--glob '!build*/**' \
 		--glob '!.git/**' \
 		. >"$tmp" 2>/dev/null || true
@@ -197,10 +193,14 @@ check 'WndProc coercion helpers' 'PtrFromSPtr|ConstCharPtrFromSPtr|CharPtrFromSP
 
 check 'client parameter packing types' '\b(CharacterRange(Full)?|TextRange(Full)?|TextToFind(Full)?|RangeToFormat(Full)?|NotifyHeader|uptr_t|sptr_t)\b'
 
-# Affirmative "call through SCI_/WndProc" instructions in live docs (not historical freeze text).
+# Affirmative "call through SCI_/WndProc" instructions in live docs.
 tmp=${TMPDIR:-/tmp}/phase5-msg-docs.$$
 rg -n -e 'send the SCI_|SendMessage|call WndProc|through the message (number|layer|interface)' \
-	DISCOVERABILITY.md >"$tmp" 2>/dev/null || true
+	--glob '*.md' \
+	--glob '!MESSAGE_REMOVAL.md' \
+	--glob '!ROADMAP.md' \
+	--glob '!tools/phase5-boundary.md' \
+	. >"$tmp" 2>/dev/null || true
 count=0
 shown=0
 while IFS= read -r line || [ -n "$line" ]; do
