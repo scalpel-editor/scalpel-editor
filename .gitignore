@@ -2,5 +2,5 @@
 /build/
 /build-asan/
 /build-ubsan/
-
+/.review/
 /.scalps/
