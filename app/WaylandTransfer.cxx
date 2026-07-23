@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
+#include <cctype>
+#include <cstdint>
 #include <csignal>
 #include <stdexcept>
 #include <utility>
@@ -50,6 +52,67 @@ ssize_t WriteWithoutSigpipe(int descriptor, const char *bytes, std::size_t lengt
 	return written;
 }
 
+}
+
+int WaylandTextMimeRank(std::string_view mimeType) noexcept {
+	std::string lowered(mimeType);
+	std::transform(lowered.begin(), lowered.end(), lowered.begin(),
+		[](unsigned char character) {
+			return static_cast<char>(std::tolower(character));
+		});
+	if (lowered == WaylandTextMimeUtf8) {
+		return 3;
+	}
+	if (lowered == "utf8_string") {
+		return 2;
+	}
+	if (lowered == WaylandTextMimePlain) {
+		return 1;
+	}
+	return 0;
+}
+
+bool IsValidWaylandText(std::string_view text) noexcept {
+	const auto *bytes = reinterpret_cast<const unsigned char *>(text.data());
+	std::size_t offset = 0;
+	while (offset < text.size()) {
+		const unsigned char lead = bytes[offset];
+		std::size_t length = 0;
+		uint32_t codePoint = 0;
+		if (lead <= 0x7f) {
+			length = 1;
+			codePoint = lead;
+		} else if (lead >= 0xc2 && lead <= 0xdf) {
+			length = 2;
+			codePoint = lead & 0x1f;
+		} else if (lead >= 0xe0 && lead <= 0xef) {
+			length = 3;
+			codePoint = lead & 0x0f;
+		} else if (lead >= 0xf0 && lead <= 0xf4) {
+			length = 4;
+			codePoint = lead & 0x07;
+		} else {
+			return false;
+		}
+		if (offset + length > text.size()) {
+			return false;
+		}
+		for (std::size_t index = 1; index < length; ++index) {
+			const unsigned char continuation = bytes[offset + index];
+			if ((continuation & 0xc0) != 0x80) {
+				return false;
+			}
+			codePoint = (codePoint << 6) | (continuation & 0x3f);
+		}
+		if ((length == 3 && codePoint < 0x800) ||
+			(length == 4 && codePoint < 0x10000) ||
+			(codePoint >= 0xd800 && codePoint <= 0xdfff) ||
+			codePoint > 0x10ffff) {
+			return false;
+		}
+		offset += length;
+	}
+	return true;
 }
 
 WaylandTransfer WaylandTransfer::Read(int descriptor, std::size_t maximumBytes,

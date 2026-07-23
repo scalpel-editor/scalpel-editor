@@ -8,8 +8,16 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace Scalpel {
+
+inline constexpr std::string_view WaylandTextMimeUtf8 = "text/plain;charset=utf-8";
+inline constexpr std::string_view WaylandTextMimeUtf8String = "UTF8_STRING";
+inline constexpr std::string_view WaylandTextMimePlain = "text/plain";
+
+[[nodiscard]] int WaylandTextMimeRank(std::string_view mimeType) noexcept;
+[[nodiscard]] bool IsValidWaylandText(std::string_view text) noexcept;
 
 enum class WaylandTransferDirection {
 	Read,

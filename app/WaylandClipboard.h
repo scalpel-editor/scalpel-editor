@@ -26,13 +26,6 @@ struct wl_surface;
 
 namespace Scalpel {
 
-inline constexpr std::string_view ClipboardMimeUtf8 = "text/plain;charset=utf-8";
-inline constexpr std::string_view ClipboardMimeUtf8String = "UTF8_STRING";
-inline constexpr std::string_view ClipboardMimePlain = "text/plain";
-
-[[nodiscard]] int ClipboardMimeRank(std::string_view mimeType) noexcept;
-[[nodiscard]] bool IsValidClipboardUtf8(std::string_view text) noexcept;
-
 struct WaylandClipboardPasteChoice {
 	enum class Kind {
 		Unavailable,

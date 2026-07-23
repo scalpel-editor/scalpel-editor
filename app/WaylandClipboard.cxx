@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <stdexcept>
@@ -16,15 +15,6 @@
 namespace Scalpel {
 
 namespace {
-
-std::string LowerMime(std::string_view mimeType) {
-	std::string lowered(mimeType);
-	std::transform(lowered.begin(), lowered.end(), lowered.begin(),
-		[](unsigned char character) {
-			return static_cast<char>(std::tolower(character));
-		});
-	return lowered;
-}
 
 ClipboardResultStatus ResultStatus(WaylandTransferStatus status) noexcept {
 	switch (status) {
@@ -42,63 +32,6 @@ ClipboardResultStatus ResultStatus(WaylandTransferStatus status) noexcept {
 	return ClipboardResultStatus::Failed;
 }
 
-}
-
-int ClipboardMimeRank(std::string_view mimeType) noexcept {
-	const std::string lowered = LowerMime(mimeType);
-	if (lowered == ClipboardMimeUtf8) {
-		return 3;
-	}
-	if (lowered == "utf8_string") {
-		return 2;
-	}
-	if (lowered == ClipboardMimePlain) {
-		return 1;
-	}
-	return 0;
-}
-
-bool IsValidClipboardUtf8(std::string_view text) noexcept {
-	const auto *bytes = reinterpret_cast<const unsigned char *>(text.data());
-	std::size_t offset = 0;
-	while (offset < text.size()) {
-		const unsigned char lead = bytes[offset];
-		std::size_t length = 0;
-		uint32_t codePoint = 0;
-		if (lead <= 0x7f) {
-			length = 1;
-			codePoint = lead;
-		} else if (lead >= 0xc2 && lead <= 0xdf) {
-			length = 2;
-			codePoint = lead & 0x1f;
-		} else if (lead >= 0xe0 && lead <= 0xef) {
-			length = 3;
-			codePoint = lead & 0x0f;
-		} else if (lead >= 0xf0 && lead <= 0xf4) {
-			length = 4;
-			codePoint = lead & 0x07;
-		} else {
-			return false;
-		}
-		if (offset + length > text.size()) {
-			return false;
-		}
-		for (std::size_t index = 1; index < length; ++index) {
-			const unsigned char continuation = bytes[offset + index];
-			if ((continuation & 0xc0) != 0x80) {
-				return false;
-			}
-			codePoint = (codePoint << 6) | (continuation & 0x3f);
-		}
-		if ((length == 3 && codePoint < 0x800) ||
-			(length == 4 && codePoint < 0x10000) ||
-			(codePoint >= 0xd800 && codePoint <= 0xdfff) ||
-			codePoint > 0x10ffff) {
-			return false;
-		}
-		offset += length;
-	}
-	return true;
 }
 
 void WaylandClipboardState::SetManagerAvailable(bool available) {
@@ -136,7 +69,7 @@ void WaylandClipboardState::OfferMime(uintptr_t token, std::string_view mimeType
 	if (found == offers.end()) {
 		return;
 	}
-	const int rank = ClipboardMimeRank(mimeType);
+	const int rank = WaylandTextMimeRank(mimeType);
 	if (rank > found->second.rank) {
 		found->second.mimeType = mimeType;
 		found->second.rank = rank;
@@ -240,6 +173,7 @@ void WaylandClipboard::SetManager(wl_data_device_manager *manager_) {
 	if (manager == manager_) {
 		return;
 	}
+	DestroySource(true);
 	DestroyDataDevice();
 	DestroySource(false);
 	manager = manager_;
@@ -284,9 +218,9 @@ void WaylandClipboard::CopyText(uint64_t request, std::string text) {
 		return;
 	}
 	sourceRequest = request;
-	wl_data_source_offer(source, ClipboardMimeUtf8.data());
-	wl_data_source_offer(source, ClipboardMimeUtf8String.data());
-	wl_data_source_offer(source, ClipboardMimePlain.data());
+	wl_data_source_offer(source, WaylandTextMimeUtf8.data());
+	wl_data_source_offer(source, WaylandTextMimeUtf8String.data());
+	wl_data_source_offer(source, WaylandTextMimePlain.data());
 	wl_data_device_set_selection(device, source, *state.Serial());
 	Report(request, ClipboardOperation::Copy, ClipboardResultStatus::Published);
 }
@@ -451,7 +385,7 @@ void WaylandClipboard::CollectTransferResults() {
 		ClipboardResultStatus status = ResultStatus(result->status);
 		if (active.operation == ClipboardOperation::Paste &&
 			status == ClipboardResultStatus::Complete &&
-			!IsValidClipboardUtf8(result->bytes)) {
+			!IsValidWaylandText(result->bytes)) {
 			status = ClipboardResultStatus::InvalidUtf8;
 			result->bytes.clear();
 		}
@@ -533,7 +467,7 @@ void WaylandClipboard::DataSourceSend(void *data, wl_data_source *source_,
 	const char *mimeType, int32_t descriptor) {
 	auto &clipboard = *static_cast<WaylandClipboard *>(data);
 	if (source_ != clipboard.source || !mimeType ||
-		ClipboardMimeRank(mimeType) == 0) {
+		WaylandTextMimeRank(mimeType) == 0) {
 		(void)close(descriptor);
 		return;
 	}

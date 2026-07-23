@@ -13,6 +13,7 @@
 #include "WaylandCursor.h"
 #include "WaylandInput.h"
 #include "WaylandLifecycle.h"
+#include "WaylandPrimarySelection.h"
 
 struct wl_array;
 struct wl_compositor;
@@ -82,9 +83,14 @@ public:
 	void SetCursorScale(int scale);
 	void CopyToClipboard(uint64_t request, std::string text);
 	void PasteFromClipboard(uint64_t request);
+	void PublishPrimarySelection(uint64_t request, std::optional<std::string> text);
+	void PasteFromPrimarySelection(uint64_t request);
 	[[nodiscard]] bool ClipboardPasteAvailable() const { return clipboard.CanPaste(); }
 	[[nodiscard]] std::vector<ClipboardResult> TakeClipboardResults() {
 		return clipboard.TakeResults();
+	}
+	[[nodiscard]] std::vector<PrimarySelectionResult> TakePrimarySelectionResults() {
+		return primarySelection.TakeResults();
 	}
 
 	/** Complete one request/event round trip, throwing on display failure. */
@@ -208,6 +214,7 @@ private:
 	WaylandInput input;
 	WaylandCursorState cursorState;
 	WaylandClipboard clipboard;
+	WaylandPrimarySelection primarySelection;
 	WaylandCursorSettings cursorSettings;
 	bool callbackFailed = false;
 	bool configured = false;
