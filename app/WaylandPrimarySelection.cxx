@@ -214,16 +214,16 @@ void WaylandPrimarySelection::PublishText(
 			return;
 		}
 		if (source) {
-			DestroySource(true);
 			zwp_primary_selection_device_v1_set_selection(
 				device, nullptr, *state.Serial());
+			DestroySource(false);
 		}
 		Report(request, PrimarySelectionOperation::Publish,
 			PrimarySelectionResultStatus::Published);
 		return;
 	}
 	DestroySource(true);
-	if (!state.Publish(text)) {
+	if (!state.Publish(std::move(text))) {
 		Report(request, PrimarySelectionOperation::Publish,
 			PrimarySelectionResultStatus::Unavailable);
 		return;
@@ -381,6 +381,7 @@ void WaylandPrimarySelection::DestroyDevice() noexcept {
 
 void WaylandPrimarySelection::DestroySource(bool reportCancellation) noexcept {
 	if (source) {
+		CancelSourceTransfers(sourceRequest);
 		zwp_primary_selection_source_v1_destroy(source);
 		source = nullptr;
 		if (reportCancellation) {
@@ -390,6 +391,21 @@ void WaylandPrimarySelection::DestroySource(bool reportCancellation) noexcept {
 	}
 	sourceRequest = 0;
 	state.CancelOwnership();
+}
+
+void WaylandPrimarySelection::CancelSourceTransfers(uint64_t request) noexcept {
+	for (ActiveTransfer &active : transfers) {
+		if (active.operation == PrimarySelectionOperation::Publish &&
+			active.request == request) {
+			active.transfer.Cancel();
+			(void)active.transfer.TakeResult();
+		}
+	}
+	transfers.erase(std::remove_if(transfers.begin(), transfers.end(),
+		[request](const ActiveTransfer &active) {
+			return active.operation == PrimarySelectionOperation::Publish &&
+				active.request == request;
+		}), transfers.end());
 }
 
 void WaylandPrimarySelection::CancelTransfers() noexcept {

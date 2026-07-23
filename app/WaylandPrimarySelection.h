@@ -133,6 +133,7 @@ private:
 
 	void DestroyDevice() noexcept;
 	void DestroySource(bool reportCancellation) noexcept;
+	void CancelSourceTransfers(uint64_t request) noexcept;
 	void CancelTransfers() noexcept;
 	void CollectTransferResults();
 	void Report(uint64_t request, PrimarySelectionOperation operation,
