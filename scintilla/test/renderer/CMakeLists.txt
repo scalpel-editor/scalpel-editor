@@ -2,7 +2,10 @@
 # Links scintilla_render only — does not define Surface::Allocate for editorTest.
 
 add_executable(rendererTest
-  RendererTest.cxx
+  RendererCompositionTest.cxx
+  RendererPrimitivesTest.cxx
+  RendererSurfaceTest.cxx
+  RendererTestMain.cxx
 )
 
 target_include_directories(rendererTest PRIVATE ../../src ../unit)

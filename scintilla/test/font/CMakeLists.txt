@@ -1,5 +1,9 @@
 add_executable(fontTest
-  FontTest.cxx
+  FontFaceTest.cxx
+  FontLayoutTest.cxx
+  FontMeasureTest.cxx
+  FontRasterTest.cxx
+  FontTestMain.cxx
 )
 
 target_include_directories(fontTest PRIVATE ../../src ../unit)
