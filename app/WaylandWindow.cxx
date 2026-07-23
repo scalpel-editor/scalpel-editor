@@ -264,11 +264,6 @@ void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleActi
 			decorationManager = static_cast<zxdg_decoration_manager_v1 *>(wl_registry_bind(
 				registry, action.name, &zxdg_decoration_manager_v1_interface,
 				std::min(action.version, 1U)));
-			if (!decorationManager) {
-				callbackFailed = true;
-			} else if (toplevel && !configured) {
-				CreateDecoration();
-			}
 			break;
 		case WaylandLifecycleActionType::ReleaseDecorationManager:
 			if (decorationManager) {
@@ -410,7 +405,6 @@ void WaylandWindow::CreateDecoration() {
 			zxdg_toplevel_decoration_v1_destroy(decoration);
 			decoration = nullptr;
 		}
-		callbackFailed = true;
 		return;
 	}
 	zxdg_toplevel_decoration_v1_set_mode(
