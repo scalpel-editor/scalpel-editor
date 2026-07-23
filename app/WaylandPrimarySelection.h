@@ -14,7 +14,6 @@
 
 #include "WaylandTransfer.h"
 
-struct pollfd;
 struct wl_seat;
 struct zwp_primary_selection_device_manager_v1;
 struct zwp_primary_selection_device_v1;
@@ -25,6 +24,8 @@ struct zwp_primary_selection_source_v1;
 struct zwp_primary_selection_source_v1_listener;
 
 namespace Scalpel {
+
+class WaylandEventLoop;
 
 struct WaylandPrimaryPasteChoice {
 	enum class Kind {
@@ -118,9 +119,8 @@ public:
 	void PasteText(uint64_t request);
 	[[nodiscard]] bool CanPaste() const { return state.CanPaste(); }
 
-	void AppendPollDescriptors(std::vector<pollfd> &descriptors) const;
-	void ProcessPollDescriptors(const std::vector<pollfd> &descriptors,
-		std::size_t firstDescriptor);
+	void AddPollSources(WaylandEventLoop &eventLoop);
+	void ProcessPollTimeouts();
 	[[nodiscard]] std::optional<std::chrono::milliseconds> TimeUntilTransfer() const;
 	[[nodiscard]] std::vector<PrimarySelectionResult> TakeResults();
 

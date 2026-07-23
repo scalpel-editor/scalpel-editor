@@ -37,3 +37,13 @@ target_link_libraries(waylandTransferTest PRIVATE scalpel_wayland)
 target_compile_options(waylandTransferTest PRIVATE -Wall -Wextra)
 
 add_test(NAME wayland-transfer COMMAND waylandTransferTest)
+
+add_executable(waylandEventLoopTest WaylandEventLoopTest.cxx)
+target_include_directories(waylandEventLoopTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(waylandEventLoopTest PRIVATE scalpel_wayland)
+target_compile_options(waylandEventLoopTest PRIVATE -Wall -Wextra)
+
+add_test(NAME wayland-event-loop COMMAND waylandEventLoopTest)

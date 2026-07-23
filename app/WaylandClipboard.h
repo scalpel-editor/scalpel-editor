@@ -13,7 +13,6 @@
 
 #include "WaylandTransfer.h"
 
-struct pollfd;
 struct wl_data_device;
 struct wl_data_device_listener;
 struct wl_data_device_manager;
@@ -25,6 +24,8 @@ struct wl_seat;
 struct wl_surface;
 
 namespace Scalpel {
+
+class WaylandEventLoop;
 
 struct WaylandClipboardPasteChoice {
 	enum class Kind {
@@ -123,9 +124,8 @@ public:
 	void PasteText(uint64_t request);
 	[[nodiscard]] bool CanPaste() const { return state.CanPaste(); }
 
-	void AppendPollDescriptors(std::vector<pollfd> &descriptors) const;
-	void ProcessPollDescriptors(const std::vector<pollfd> &descriptors,
-		std::size_t firstDescriptor);
+	void AddPollSources(WaylandEventLoop &eventLoop);
+	void ProcessPollTimeouts();
 	[[nodiscard]] std::optional<std::chrono::milliseconds> TimeUntilTransfer() const;
 	[[nodiscard]] std::vector<ClipboardResult> TakeResults();
 

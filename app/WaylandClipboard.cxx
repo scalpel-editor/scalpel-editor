@@ -12,6 +12,8 @@
 #include <unistd.h>
 #include <wayland-client.h>
 
+#include "WaylandEventLoop.h"
+
 namespace Scalpel {
 
 namespace {
@@ -277,35 +279,25 @@ void WaylandClipboard::PasteText(uint64_t request) {
 	(void)close(descriptors[1]);
 }
 
-void WaylandClipboard::AppendPollDescriptors(std::vector<pollfd> &descriptors) const {
-	for (const ActiveTransfer &active : transfers) {
+void WaylandClipboard::AddPollSources(WaylandEventLoop &eventLoop) {
+	for (ActiveTransfer &active : transfers) {
 		if (active.transfer.Pending()) {
-			descriptors.push_back({active.transfer.Descriptor(),
-				static_cast<short>(
-					active.transfer.Direction() == WaylandTransferDirection::Read ?
-						POLLIN : POLLOUT),
-				0});
+			WaylandTransfer &transfer = active.transfer;
+			const short ready =
+				transfer.Direction() == WaylandTransferDirection::Read ?
+					POLLIN : POLLOUT;
+			eventLoop.AddSource(transfer.Descriptor(), ready,
+				[&transfer, ready](short revents) {
+					if (revents & (ready | POLLERR | POLLHUP | POLLNVAL)) {
+						transfer.ProcessReady();
+					}
+				});
 		}
 	}
 }
 
-void WaylandClipboard::ProcessPollDescriptors(const std::vector<pollfd> &descriptors,
-	std::size_t firstDescriptor) {
-	std::size_t descriptorIndex = firstDescriptor;
+void WaylandClipboard::ProcessPollTimeouts() {
 	for (ActiveTransfer &active : transfers) {
-		if (!active.transfer.Pending()) {
-			continue;
-		}
-		if (descriptorIndex < descriptors.size() &&
-			descriptors[descriptorIndex].fd == active.transfer.Descriptor()) {
-			const short revents = descriptors[descriptorIndex].revents;
-			const short ready = active.transfer.Direction() == WaylandTransferDirection::Read ?
-				POLLIN : POLLOUT;
-			if (revents & (ready | POLLERR | POLLHUP | POLLNVAL)) {
-				active.transfer.ProcessReady();
-			}
-		}
-		++descriptorIndex;
 		active.transfer.CheckDeadline();
 	}
 	CollectTransferResults();

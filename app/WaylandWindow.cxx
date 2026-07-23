@@ -29,6 +29,7 @@
 #include "presentation-time-client-protocol.h"
 #include "viewporter-client-protocol.h"
 #include "fractional-scale-client-protocol.h"
+#include "WaylandEventLoop.h"
 
 namespace Scalpel {
 
@@ -1048,47 +1049,27 @@ void WaylandWindow::WaitForEvents(std::optional<std::chrono::milliseconds> timeo
 			break;
 		}
 
-		const std::optional<std::chrono::milliseconds> repeatTimeout =
-			input.TimeUntilKeyRepeat();
-		// Once output is blocked, ignore an already-due editor timeout so it does
-		// not spin until POLLOUT. A repeat deadline remains eligible so held keys
-		// continue to produce input while output recovery is pending.
-		std::optional<std::chrono::milliseconds> waitTimeout =
-			recoveringBlockedFlush ? repeatTimeout : timeout;
-		if (!recoveringBlockedFlush && repeatTimeout &&
-			(!waitTimeout || *repeatTimeout < *waitTimeout)) {
-			waitTimeout = repeatTimeout;
-		}
-		const std::optional<std::chrono::milliseconds> transferTimeout =
-			clipboard.TimeUntilTransfer();
-		if (transferTimeout && (!waitTimeout || *transferTimeout < *waitTimeout)) {
-			waitTimeout = transferTimeout;
-		}
-		const std::optional<std::chrono::milliseconds> primaryTransferTimeout =
-			primarySelection.TimeUntilTransfer();
-		if (primaryTransferTimeout &&
-			(!waitTimeout || *primaryTransferTimeout < *waitTimeout)) {
-			waitTimeout = primaryTransferTimeout;
-		}
-		const int timeoutMilliseconds = waitTimeout ?
-			static_cast<int>(std::clamp<int64_t>(waitTimeout->count(), 0, INT_MAX)) : -1;
-		std::vector<pollfd> pollDescriptors{
-			{wl_display_get_fd(display), events, 0},
-		};
-		clipboard.AppendPollDescriptors(pollDescriptors);
-		const std::size_t primaryDescriptor = pollDescriptors.size();
-		primarySelection.AppendPollDescriptors(pollDescriptors);
+		WaylandEventLoop eventLoop(recoveringBlockedFlush);
+		eventLoop.AddEditorDeadline(timeout);
+		eventLoop.AddDeadline(input.TimeUntilKeyRepeat());
+		eventLoop.AddDeadline(clipboard.TimeUntilTransfer());
+		eventLoop.AddDeadline(primarySelection.TimeUntilTransfer());
+		const std::size_t displaySource =
+			eventLoop.AddSource(wl_display_get_fd(display), events);
+		clipboard.AddPollSources(eventLoop);
+		primarySelection.AddPollSources(eventLoop);
+		std::vector<pollfd> pollDescriptors = eventLoop.PollDescriptors();
 		const int pollResult = poll(
-			pollDescriptors.data(), pollDescriptors.size(), timeoutMilliseconds);
-		if (pollResult < 0) {
+			pollDescriptors.data(), pollDescriptors.size(),
+			eventLoop.TimeoutMilliseconds());
+		const WaylandPollOutcome pollOutcome =
+			WaylandEventLoop::InterpretPollResult(pollResult, errno);
+		if (pollOutcome == WaylandPollOutcome::Interrupted) {
 			wl_display_cancel_read(display);
-			if (errno == EINTR) {
-				return;
-			}
-			throw std::runtime_error("Wayland display poll failed");
+			return;
 		}
 
-		pollfd &displayPoll = pollDescriptors.front();
+		pollfd &displayPoll = pollDescriptors[displaySource];
 		if (pollResult > 0 && (displayPoll.revents & POLLIN)) {
 			if (wl_display_read_events(display) < 0) {
 				throw std::runtime_error("Wayland display read failed");
@@ -1100,9 +1081,9 @@ void WaylandWindow::WaitForEvents(std::optional<std::chrono::milliseconds> timeo
 		if (displayPoll.revents & (POLLERR | POLLHUP | POLLNVAL)) {
 			throw std::runtime_error("Wayland display connection failed");
 		}
-		clipboard.ProcessPollDescriptors(pollDescriptors, 1);
-		primarySelection.ProcessPollDescriptors(
-			pollDescriptors, primaryDescriptor);
+		eventLoop.DispatchReady(pollDescriptors);
+		clipboard.ProcessPollTimeouts();
+		primarySelection.ProcessPollTimeouts();
 
 		int dispatched = 0;
 		do {
