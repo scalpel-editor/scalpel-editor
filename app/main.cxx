@@ -1,6 +1,5 @@
 #include <cmath>
 #include <exception>
-#include <iomanip>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -216,22 +215,6 @@ std::vector<int> EglDamage(
 	return rectangles;
 }
 
-void ReportPresentedFrames(Scalpel::WaylandWindow &window) {
-	for (const Scalpel::PresentationResult &result :
-		window.TakePresentationResults()) {
-		if (result.kind == Scalpel::PresentationResult::Kind::Discarded) {
-			std::cerr << "scalpel-editor: frame " << result.submission
-				<< " was discarded\n";
-			continue;
-		}
-		std::cerr << "scalpel-editor: frame " << result.submission
-			<< " presented at " << result.seconds << '.'
-			<< std::setfill('0') << std::setw(9) << result.nanoseconds
-			<< std::setfill(' ') << " on presentation clock "
-			<< window.PresentationClockId().value_or(0) << '\n';
-	}
-}
-
 }
 
 int main() {
@@ -250,7 +233,7 @@ int main() {
 			"The first application frame is rendered in an xdg-toplevel.\n";
 		editor.LoadInitialBuffer(initialText);
 		while (!window.CloseRequested()) {
-			ReportPresentedFrames(window);
+			(void)window.TakePresentationResults();
 			DeliverClipboardResults(window, editor);
 			DeliverPrimarySelectionResults(window, editor);
 			DeliverTextInputBatches(window, editor);
