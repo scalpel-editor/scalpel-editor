@@ -229,7 +229,7 @@ Libraries discovered with pkg-config (versions below are what this development h
 | presentation-time protocol | Phase 7 |
 | xdg-foreign protocol | Phase 7–8 (parent handle for portals) |
 
-Seed CMake (`seed/cmake/DependenciesForBackends.cmake`) still finds decoration, presentation-time, foreign, and dbus for the old OnlyWayUi backend. Phase 6 production CMake must **not** copy that whole list; generate and link only what the steps above need.
+The removed seed CMake found decoration, presentation-time, foreign, and dbus for the old OnlyWayUi backend. Phase 6 production CMake did not copy that whole list; it generated and linked only what the steps above needed.
 
 ### Protocol generation
 
@@ -240,16 +240,16 @@ Seed CMake (`seed/cmake/DependenciesForBackends.cmake`) still finds decoration, 
 
 ## Source references (mine, do not build on)
 
-These paths taught or still teach techniques. Useful logic is rewritten as direct code under this project's layout; absorbed files are removed at the step assigned below even though the retained reference snapshot is not buildable.
+These paths taught techniques that are now represented by direct code under this project's layout. The only retained seed source is the Phase 8 portal URI converter recorded in `ORIGINS.md`.
 
 | Path | What to take | Absorbed by | Delete when |
 | --- | --- | --- | --- |
 | Removed `seed/editor/PlatOWUI.cxx` / `.h` | LTR surface wiring over a foreign font engine; **not** HarfBuzz screen-line layout (unimplemented there) | Steps 2–7 | Step 12 ✅ |
 | Removed `seed/backends/OnlyWayUi_Renderer_GL3.cpp` / `.h` | GL setup, transforms, clipping, geometry, textures, layers — techniques only, not RmlUi interfaces | Steps 5–6 | Step 12 ✅ |
-| `seed/backends/OnlyWayUi_Platform_Wayland.cpp` / `.h` | Connection, xdg-shell, seat, EGL window patterns; frame and presentation patterns for **phase 7** | Steps 9–11 (subset) | After phase 7 absorbs the rest |
-| `seed/backends/OnlyWayUi_Backend*` / `OnlyWayUi_Include_GL3.h` | Historical tie between the sample, platform, and removed renderer | Reference | With backends when unused |
-| `seed/sample/` | Historical shape of a text-editor main loop over a hosted Scintilla | Steps 8–11 | When no longer needed as reference |
-| `seed/cmake/DependenciesForBackends.cmake` | Example pkg-config and scanner wiring (trim to phase 6 set) | CMake in early code steps | Keep or replace when production CMake exists |
+| Removed `seed/backends/OnlyWayUi_Platform_Wayland.cpp` / `.h` | Connection, xdg-shell, seat, EGL window patterns; frame and presentation patterns for **phase 7** | Steps 9–11 (subset) | Phase 7 step 12 ✅ |
+| Removed `seed/backends/OnlyWayUi_Backend*` / `OnlyWayUi_Include_GL3.h` | Historical tie between the sample, platform, and removed renderer | Reference | Phase 7 step 12 ✅ |
+| Removed `seed/sample/` | Historical shape of a text-editor main loop over a hosted Scintilla | Steps 8–11 | Phase 7 step 12 ✅ |
+| Removed `seed/cmake/DependenciesForBackends.cmake` | Example pkg-config and scanner wiring | CMake in early code steps | Phase 7 step 12 ✅ |
 | OnlyWayUi `Samples/basic/harfbuzz/` (external tree; see [ORIGINS.md](../ORIGINS.md)) | FreeType + HarfBuzz integration ideas | Step 3 | External; not vendored |
 | `scintilla/test/editor/TestPlatform.*` | Contract completeness and host-observation patterns | Steps 7–8 | Host observation only after step 7; drawing is `DrawSurface` |
 
@@ -260,7 +260,7 @@ These paths taught or still teach techniques. Useful logic is rewritten as direc
 | Material | License location | Rule |
 | --- | --- | --- |
 | Scintilla core under `scintilla/` | `scintilla/License.txt` | Unchanged; core edits stay under that grant |
-| Seed and any code derived from OnlyWayUi / RmlUi | `seed/LICENSE.txt` (MIT; CodePoint / Shift / RmlUi Team notices) | Keep the copyright and permission notice with every derived file for as long as derived code remains |
+| Seed and any code derived from OnlyWayUi / RmlUi | `LICENSES/OnlyWayUi.txt` (MIT; CodePoint / Shift / RmlUi Team notices) | Keep the copyright and permission notice with every derived file for as long as derived code remains |
 | Checked-in test fonts (step 2) | Notices checked in beside the font files | Compatibly licensed **primary and fallback** faces; system font packages must not be required for deterministic tests |
 | FreeType, HarfBuzz, Fontconfig, Wayland, EGL, OpenGL, xkbcommon | System package licenses | Link only; do not vendor unless a later decision says so |
 
@@ -276,4 +276,4 @@ Implementation (trees, CMake targets, fonts, shaping code) starts at step 2.
 
 ## Completion of step 12
 
-The absorbed PlatOWUI and GL3 renderer seed files were removed while the Phase 7 backend references and `seed/LICENSE.txt` remain. The application-aware self-contained-header check passed all 63 production headers; the normal workflow and explicit 39-case renderer suite passed; the executable remained live for a five-second Wayland smoke test; and `./check.sh` passed the complete `dev`, AddressSanitizer, and UndefinedBehaviorSanitizer matrix on 2026-07-22.
+At the Phase 6 gate, the absorbed PlatOWUI and GL3 renderer seed files were removed while the Phase 7 backend references remained. Phase 7 later removed those references and moved the OnlyWayUi notice to `LICENSES/OnlyWayUi.txt`. The application-aware self-contained-header check passed all 63 production headers; the normal workflow and explicit 39-case renderer suite passed; the executable remained live for a five-second Wayland smoke test; and `./check.sh` passed the complete `dev`, AddressSanitizer, and UndefinedBehaviorSanitizer matrix on 2026-07-22.

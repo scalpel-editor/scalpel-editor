@@ -8,7 +8,7 @@ scalpel-editor is a Wayland-only text editor built from a refactored Scintilla c
 
 - `scintilla/` — the Scintilla 5.6.4 core, imported verbatim. `scintilla/UPSTREAM.md` records the release identity and the byte-for-byte verification of the import. This code is now this project's to change; the verbatim import commit is the baseline, and git history from that commit is the record of divergence. Do not update `UPSTREAM.md` as the code diverges — it describes the import, not the current state.
 - `app/` — the production editor host, application platform definitions, standalone `scalpel-editor` executable, and focused `applicationTest` coverage.
-- `seed/` — partial reference code copied from OnlyWayUi (see `ORIGINS.md`). The retained Wayland backend and old host fragments teach work not yet absorbed; removed renderer and platform-port files may still be named by those fragments. Mine it, do not build on it. It does not compile in this repository and that is expected.
+- `seed/` — the retained OnlyWayUi file-URI conversion reference for Phase 8 (see `ORIGINS.md`). Mine it for portal result handling, but do not build on it.
 - `ROADMAP.md` — the phase plan. Update it when a phase completes or the plan changes.
 
 ## Build and test

@@ -145,25 +145,25 @@ Popup windows, drag and drop, a system accessibility caret, file chooser choices
 
 Configure width and height remain logical surface sizes. A scale change does not change Scintilla's logical client rectangle or multiply pointer input twice. Fractional preferred scale never goes directly into an integer `wl_surface.set_buffer_scale`; viewporter supplies the logical destination.
 
-## Retained source references
+## Source reference disposition
 
-The seed tree is reference material and does not build. Code is rewritten for this application's direct ownership model; files are deleted once their remaining useful behavior has been absorbed.
+The Phase 7 backend, editor-host, sample, and build references were removed after their useful behavior was represented by direct production code. The unabsorbed portal URI converter remains for Phase 8 and does not build in this repository.
 
-| Retained path | Useful Phase 7 material | Missing or unsuitable material | Delete when |
+| Original path | Useful Phase 7 material | Missing or unsuitable material | Disposition |
 | --- | --- | --- | --- |
-| `seed/backends/OnlyWayUi_Platform_Wayland.cpp` and `.h` | Clipboard offers and sources, nonblocking file descriptors, cursor theme loading, keymap handling, and presentation clock reporting. | No compose, primary selection, text-input-v3, output tracking, fractional scale, viewporter, or robust global removal; interfaces are tied to OnlyWayUi. | Step 12 after direct replacements exist. |
-| `seed/backends/OnlyWayUi_Backend_Wayland_GL3.cpp` | Decoration, presentation, xdg-foreign, frame callback, buffer-age damage, blocked-flush recovery, key-repeat scheduling and cancellation, D-Bus watch and timeout, and portal-parent patterns. | Registry removal is empty; one seat is assumed; scale is fixed; portal calls include blocking setup that must not enter this event loop. | Step 12 after direct replacements exist. |
-| `seed/backends/OnlyWayUi_Backend.h` | Observable close and asynchronous dialog contract ideas. | Generic backend interface and file-dialog policy do not belong in the shell. | Step 12 with the backend snapshot. |
-| `seed/backends/OnlyWayUi_Include_GL3.h` | Historical include connection only. | Leftover OpenGL function-loader include for the removed renderer path, with no behavior to absorb. | Step 12 with the backend snapshot. |
-| `seed/backends/OnlyWayUi_Portal_Uri.cpp` and `.h` | File-URI conversion needed by Phase 8 dialog results. | Not needed for Phase 7 shell behavior. | Retain through Phase 8 unless replaced earlier. |
-| `seed/backends/CMakeLists.txt` and `seed/cmake/DependenciesForBackends.cmake` | Protocol-generation paths and dependency names. | Broad historical target names removed files and must not be copied. | Remove when no retained seed file needs them as context. |
-| `seed/editor/` and `seed/sample/` | Historical asynchronous clipboard callback and editor-loop behavior. | RmlUi ownership and product UI are not the project architecture. | Remove at the Phase 7 gate if no Phase 8 work still needs them; otherwise record the remaining owner. |
+| Removed `seed/backends/OnlyWayUi_Platform_Wayland.cpp` and `.h` | Clipboard offers and sources, nonblocking file descriptors, cursor theme loading, keymap handling, and presentation clock reporting. | No compose, primary selection, text-input-v3, output tracking, fractional scale, viewporter, or robust global removal; interfaces are tied to OnlyWayUi. | Deleted in step 12 after direct replacements were complete. |
+| Removed `seed/backends/OnlyWayUi_Backend_Wayland_GL3.cpp` | Decoration, presentation, xdg-foreign, frame callback, buffer-age damage, blocked-flush recovery, key-repeat scheduling and cancellation, D-Bus watch and timeout, and portal-parent patterns. | Registry removal is empty; one seat is assumed; scale is fixed; portal calls include blocking setup that must not enter this event loop. | Deleted in step 12 after direct replacements were complete. |
+| Removed `seed/backends/OnlyWayUi_Backend.h` | Observable close and asynchronous dialog contract ideas. | Generic backend interface and file-dialog policy do not belong in the shell. | Deleted in step 12. |
+| Removed `seed/backends/OnlyWayUi_Include_GL3.h` | Historical include connection only. | Leftover OpenGL function-loader include for the removed renderer path, with no behavior to absorb. | Deleted in step 12. |
+| `seed/backends/OnlyWayUi_Portal_Uri.cpp` and `.h` | File-URI conversion needed by Phase 8 dialog results. | Not needed for Phase 7 shell behavior. | Retained through Phase 8 unless replaced earlier. |
+| Removed `seed/backends/CMakeLists.txt` and `seed/cmake/DependenciesForBackends.cmake` | Protocol-generation paths and dependency names. | Broad historical target names removed files and must not be copied. | Deleted in step 12. |
+| Removed `seed/editor/` and `seed/sample/` | Historical asynchronous clipboard callback and editor-loop behavior. | RmlUi ownership and product UI are not the project architecture. | Deleted in step 12; Phase 8 has no owner for them. |
 
 ## License rules
 
-`ORIGINS.md` identifies the seed as OnlyWayUi tag `scintilla-seed`, commit `5e373e9e8fd3d83c7f514f029a2299df9c1face2`. `seed/LICENSE.txt` contains its MIT notice. Production files already derived from that backend name the retained notice in their source comments.
+`ORIGINS.md` identifies the seed as OnlyWayUi tag `scintilla-seed`, commit `5e373e9e8fd3d83c7f514f029a2299df9c1face2`. `LICENSES/OnlyWayUi.txt` contains its MIT notice. Production files already derived from that backend name the retained notice in their source comments.
 
-When a Phase 7 implementation derives a substantial part from the seed, keep the existing source comment and retain the full OnlyWayUi notice in the distributed project after deleting the seed tree. Step 12 must move or copy the notice to a durable license location before deleting `seed/LICENSE.txt`; it must not discard the notice because the reference files are gone.
+When a Phase 7 implementation derives a substantial part from the seed, keep the existing source comment and retain the full OnlyWayUi notice in the distributed project. Step 12 moved the notice to `LICENSES/OnlyWayUi.txt` before deleting `seed/LICENSE.txt`.
 
 Generated Wayland protocol files remain build artifacts. Preserve the notices emitted from their installed XML inputs and do not edit generated files. New code based only on installed Wayland, xkbcommon, EGL, or D-Bus declarations follows those local headers and protocol descriptions and does not copy seed implementation text.
 
