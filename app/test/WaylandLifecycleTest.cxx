@@ -298,18 +298,19 @@ TEST_CASE("Wayland frame damage clips and converts coordinate origins") {
 TEST_CASE("Wayland frame plans keep paint logical and damage scaled") {
 	Scalpel::FramePlan plan;
 	plan.submissionDamage = {{1, 1, 3, 3}};
-	plan.repaintDamage = {{1, 1, 5, 4}};
+	plan.repaintDamage = {{1, 1, 3, 3}, {7, 5, 9, 7}};
 	const Scalpel::FramePlan scaled = Scalpel::ScaleFramePlan(
 		std::move(plan), 100, 80, 125, 100);
 
 	CHECK(scaled.submissionDamage ==
 		std::vector<Scalpel::FrameRectangle>{{1, 1, 3, 3}});
 	CHECK(scaled.repaintDamage ==
-		std::vector<Scalpel::FrameRectangle>{{1, 1, 5, 4}});
+		std::vector<Scalpel::FrameRectangle>{
+			{1, 1, 3, 3}, {7, 5, 9, 7}});
 	CHECK(scaled.waylandDamage ==
 		std::vector<Scalpel::DamageRectangle>{{1, 1, 3, 3}});
 	CHECK(scaled.eglDamage ==
-		std::vector<Scalpel::DamageRectangle>{{1, 95, 6, 4}});
+		std::vector<Scalpel::DamageRectangle>{{1, 91, 11, 8}});
 }
 
 TEST_CASE("Wayland frame damage bounds excessive rectangle counts") {

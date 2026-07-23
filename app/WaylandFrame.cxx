@@ -180,9 +180,13 @@ FramePlan ScaleFramePlan(
 		ScaleFrameDamageToBuffer(
 			plan.submissionDamage, logicalWidth, logicalHeight,
 			bufferWidth, bufferHeight);
+	const std::vector<FrameRectangle> paintBounds =
+		plan.repaintDamage.empty() ?
+			std::vector<FrameRectangle>{} :
+			std::vector<FrameRectangle>{Bounds(plan.repaintDamage)};
 	const std::vector<FrameRectangle> scaledRepaint =
 		ScaleFrameDamageToBuffer(
-			plan.repaintDamage, logicalWidth, logicalHeight,
+			paintBounds, logicalWidth, logicalHeight,
 			bufferWidth, bufferHeight);
 	plan.waylandDamage = WaylandBufferDamage(scaledSubmission);
 	plan.eglDamage = EglBufferDamage(scaledRepaint, bufferHeight);
