@@ -1,6 +1,7 @@
 #include "WaylandDbus.h"
 
 #include <algorithm>
+#include <new>
 #include <stdexcept>
 #include <utility>
 
@@ -261,6 +262,12 @@ DBusConnection *WaylandDbus::ConnectSessionBus() {
 		return nullptr;
 	}
 	connection = candidate;
+	try {
+		ProcessEvents();
+	} catch (...) {
+		Disconnect();
+		throw;
+	}
 	return connection;
 }
 
@@ -284,18 +291,18 @@ void WaylandDbus::ProcessEvents() {
 			continue;
 		}
 		(void)dbus_timeout_handle(Timeout(token));
-		if (state.HasTimeout(token)) {
-			DBusTimeout *timeout = Timeout(token);
-			state.UpdateTimeout(token,
-				std::chrono::milliseconds(dbus_timeout_get_interval(timeout)),
-				dbus_timeout_get_enabled(timeout));
-		}
+		state.RearmTimeout(token);
 	}
 	if (!connection) {
 		return;
 	}
-	while (dbus_connection_dispatch(connection) ==
-		DBUS_DISPATCH_DATA_REMAINS) {
+	DBusDispatchStatus status =
+		dbus_connection_get_dispatch_status(connection);
+	while (status == DBUS_DISPATCH_DATA_REMAINS) {
+		status = dbus_connection_dispatch(connection);
+	}
+	if (status == DBUS_DISPATCH_NEED_MEMORY) {
+		throw std::bad_alloc();
 	}
 }
 
@@ -318,8 +325,8 @@ void WaylandDbus::HandleWatch(uintptr_t token, short revents) {
 		return;
 	}
 	const unsigned int flags = WatchReadyFlags(revents);
-	if (flags != 0) {
-		(void)dbus_watch_handle(Watch(token), flags);
+	if (flags != 0 && !dbus_watch_handle(Watch(token), flags)) {
+		throw std::bad_alloc();
 	}
 }
 
