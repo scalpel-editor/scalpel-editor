@@ -9,6 +9,7 @@
 #include "WaylandLifecycle.h"
 #include "WaylandCursor.h"
 #include "WaylandFrame.h"
+#include "WaylandScale.h"
 #include "WaylandWindow.h"
 
 namespace {
@@ -95,6 +96,67 @@ TEST_CASE("Wayland cursor state rebuilds scaled themes and hotspots") {
 	CHECK(Scalpel::CursorImageGeometry(48, 48, 14, 18, scaled->scale) ==
 		Scalpel::WaylandCursorImageGeometry{48, 48, 7, 9});
 	CHECK_THROWS_WITH(cursor.SetScale(0), "Wayland cursor scale must be positive");
+}
+
+TEST_CASE("Wayland scale follows entered outputs and preferred integer scale") {
+	Scalpel::WaylandScaleState scale(801, 601);
+	REQUIRE(scale.TakeConfiguration() ==
+		Scalpel::WaylandScaleConfiguration{801, 601, 801, 601, 120, 1, 1, false});
+	CHECK_FALSE(scale.TakeConfiguration().has_value());
+
+	scale.AddOutput(10);
+	scale.AddOutput(20);
+	scale.SetOutputScale(10, 2);
+	scale.SetOutputScale(20, 3);
+	scale.EnterOutput(10);
+	REQUIRE(scale.TakeConfiguration()->surfaceBufferScale == 2);
+	scale.EnterOutput(20);
+	REQUIRE(scale.TakeConfiguration() ==
+		Scalpel::WaylandScaleConfiguration{
+			801, 601, 2403, 1803, 360, 3, 3, false});
+
+	scale.RemoveOutput(20);
+	REQUIRE(scale.TakeConfiguration()->surfaceBufferScale == 2);
+	scale.SetPreferredBufferScale(4);
+	REQUIRE(scale.TakeConfiguration() ==
+		Scalpel::WaylandScaleConfiguration{
+			801, 601, 3204, 2404, 480, 4, 4, false});
+	scale.LeaveOutput(10);
+	CHECK_FALSE(scale.TakeConfiguration().has_value());
+}
+
+TEST_CASE("Wayland scale uses fractional scale only with both protocols") {
+	Scalpel::WaylandScaleState scale(801, 601);
+	(void)scale.TakeConfiguration();
+	scale.SetPreferredBufferScale(2);
+	REQUIRE(scale.TakeConfiguration()->surfaceBufferScale == 2);
+	scale.SetFractionalPreferredScale(150);
+	CHECK(scale.Configuration().surfaceBufferScale == 2);
+
+	scale.SetFractionalProtocols(true, false);
+	CHECK_FALSE(scale.TakeConfiguration().has_value());
+	scale.SetFractionalProtocols(true, true);
+	REQUIRE(scale.TakeConfiguration() ==
+		Scalpel::WaylandScaleConfiguration{
+			801, 601, 1002, 752, 150, 1, 2, true});
+
+	scale.SetFractionalProtocols(false, true);
+	REQUIRE(scale.TakeConfiguration()->surfaceBufferScale == 2);
+	scale.SetFractionalProtocols(true, true);
+	(void)scale.TakeConfiguration();
+	scale.Resize(640, 480);
+	REQUIRE(scale.TakeConfiguration() ==
+		Scalpel::WaylandScaleConfiguration{
+			640, 480, 800, 600, 150, 1, 2, true});
+}
+
+TEST_CASE("Wayland scale rejects invalid sizes and scales") {
+	CHECK_THROWS(Scalpel::WaylandScaleState(0, 600));
+	Scalpel::WaylandScaleState scale(800, 600);
+	CHECK_THROWS(scale.SetOutputScale(1, 0));
+	CHECK_THROWS(scale.SetPreferredBufferScale(0));
+	CHECK_THROWS(scale.SetFractionalPreferredScale(0));
+	CHECK_THROWS(scale.Resize(800, 0));
 }
 
 TEST_CASE("Wayland frame pacing preserves invalidation across waits and paint") {
@@ -198,8 +260,13 @@ TEST_CASE("Wayland frame damage clips and converts coordinate origins") {
 			{0, 68, 20, 10}, {90, 0, 10, 10}});
 	CHECK(Scalpel::ScaleFrameDamage({{10, 5, 30, 20}}, 100, 80, 2) ==
 		std::vector<Scalpel::FrameRectangle>{{20, 10, 60, 40}});
+	CHECK(Scalpel::ScaleFrameDamageFractional(
+		{{1, 1, 3, 3}}, 100, 80, 150, 120) ==
+		std::vector<Scalpel::FrameRectangle>{{1, 1, 4, 4}});
 	CHECK_THROWS(Scalpel::ClipFrameDamage(damage, 0, 80));
 	CHECK_THROWS(Scalpel::ScaleFrameDamage(damage, 100, 80, 0));
+	CHECK_THROWS(Scalpel::ScaleFrameDamageFractional(
+		damage, 100, 80, 150, 0));
 	CHECK_THROWS(Scalpel::EglBufferDamage(clipped, 0));
 }
 

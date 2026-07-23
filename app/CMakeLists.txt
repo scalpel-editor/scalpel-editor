@@ -100,6 +100,7 @@ add_library(scalpel_wayland STATIC
   WaylandInput.cxx
   WaylandLifecycle.cxx
   WaylandPrimarySelection.cxx
+  WaylandScale.cxx
   WaylandTextInput.cxx
   WaylandTransfer.cxx
   WaylandWindow.cxx

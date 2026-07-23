@@ -67,6 +67,10 @@ struct PresentationResult {
 	const std::vector<FrameRectangle> &logicalDamage,
 	int logicalWidth, int logicalHeight, int bufferScale,
 	std::size_t maximumRectangles = 16);
+[[nodiscard]] std::vector<FrameRectangle> ScaleFrameDamageFractional(
+	const std::vector<FrameRectangle> &logicalDamage,
+	int logicalWidth, int logicalHeight, uint32_t scaleNumerator,
+	uint32_t scaleDenominator, std::size_t maximumRectangles = 16);
 [[nodiscard]] std::vector<DamageRectangle> WaylandBufferDamage(
 	const std::vector<FrameRectangle> &damage);
 [[nodiscard]] std::vector<DamageRectangle> EglBufferDamage(

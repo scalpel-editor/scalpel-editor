@@ -1,6 +1,7 @@
 #include "WaylandFrame.h"
 
 #include <algorithm>
+#include <climits>
 #include <stdexcept>
 #include <utility>
 
@@ -69,16 +70,44 @@ std::vector<FrameRectangle> ScaleFrameDamage(
 	if (bufferScale <= 0) {
 		throw std::invalid_argument("frame damage requires a positive buffer scale");
 	}
+	return ScaleFrameDamageFractional(logicalDamage, logicalWidth, logicalHeight,
+		static_cast<uint32_t>(bufferScale), 1, maximumRectangles);
+}
+
+std::vector<FrameRectangle> ScaleFrameDamageFractional(
+	const std::vector<FrameRectangle> &logicalDamage,
+	int logicalWidth, int logicalHeight, uint32_t scaleNumerator,
+	uint32_t scaleDenominator, std::size_t maximumRectangles) {
+	if (scaleNumerator == 0 || scaleDenominator == 0) {
+		throw std::invalid_argument("frame damage requires a positive scale");
+	}
 	const std::vector<FrameRectangle> clipped = ClipFrameDamage(
 		logicalDamage, logicalWidth, logicalHeight, maximumRectangles);
 	std::vector<FrameRectangle> scaled;
 	scaled.reserve(clipped.size());
 	for (const FrameRectangle &rectangle : clipped) {
+		const auto floorScaled = [scaleNumerator, scaleDenominator](int value) {
+			const uint64_t result =
+				static_cast<uint64_t>(value) * scaleNumerator / scaleDenominator;
+			if (result > INT_MAX) {
+				throw std::overflow_error("scaled frame damage exceeds integer coordinates");
+			}
+			return static_cast<int>(result);
+		};
+		const auto ceilScaled = [scaleNumerator, scaleDenominator](int value) {
+			const uint64_t result =
+				(static_cast<uint64_t>(value) * scaleNumerator +
+					scaleDenominator - 1) / scaleDenominator;
+			if (result > INT_MAX) {
+				throw std::overflow_error("scaled frame damage exceeds integer coordinates");
+			}
+			return static_cast<int>(result);
+		};
 		scaled.push_back({
-			rectangle.left * bufferScale,
-			rectangle.top * bufferScale,
-			rectangle.right * bufferScale,
-			rectangle.bottom * bufferScale,
+			floorScaled(rectangle.left),
+			floorScaled(rectangle.top),
+			ceilScaled(rectangle.right),
+			ceilScaled(rectangle.bottom),
 		});
 	}
 	return scaled;
