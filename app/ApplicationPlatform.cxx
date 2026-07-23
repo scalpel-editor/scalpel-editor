@@ -94,7 +94,7 @@ const char *Platform::DefaultFont() {
 }
 
 int Platform::DefaultFontSize() {
-	return 11;
+	return 16;
 }
 
 unsigned int Platform::DoubleClickTime() {
