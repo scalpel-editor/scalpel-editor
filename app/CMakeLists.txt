@@ -1,4 +1,4 @@
-# Generate the xdg-shell contracts used by the toplevel.
+# Generate the external Wayland protocol contracts used by the shell.
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(WAYLAND_CLIENT REQUIRED IMPORTED_TARGET wayland-client)
 pkg_check_modules(WAYLAND_EGL REQUIRED IMPORTED_TARGET wayland-egl)
@@ -10,11 +10,15 @@ find_program(WAYLAND_SCANNER_EXECUTABLE wayland-scanner REQUIRED)
 pkg_get_variable(WAYLAND_PROTOCOLS_DATA_DIR wayland-protocols pkgdatadir)
 set(XDG_SHELL_PROTOCOL "${WAYLAND_PROTOCOLS_DATA_DIR}/stable/xdg-shell/xdg-shell.xml")
 set(XDG_DECORATION_PROTOCOL "${WAYLAND_PROTOCOLS_DATA_DIR}/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml")
+set(PRIMARY_SELECTION_PROTOCOL "${WAYLAND_PROTOCOLS_DATA_DIR}/unstable/primary-selection/primary-selection-unstable-v1.xml")
 if(NOT EXISTS "${XDG_SHELL_PROTOCOL}")
   message(FATAL_ERROR "Could not find stable xdg-shell protocol at ${XDG_SHELL_PROTOCOL}")
 endif()
 if(NOT EXISTS "${XDG_DECORATION_PROTOCOL}")
   message(FATAL_ERROR "Could not find xdg-decoration protocol at ${XDG_DECORATION_PROTOCOL}")
+endif()
+if(NOT EXISTS "${PRIMARY_SELECTION_PROTOCOL}")
+  message(FATAL_ERROR "Could not find primary-selection protocol at ${PRIMARY_SELECTION_PROTOCOL}")
 endif()
 
 set(WAYLAND_PROTOCOL_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/wayland-protocols")
@@ -22,6 +26,8 @@ set(XDG_SHELL_CLIENT_HEADER "${WAYLAND_PROTOCOL_OUTPUT_DIR}/xdg-shell-client-pro
 set(XDG_SHELL_PRIVATE_CODE "${WAYLAND_PROTOCOL_OUTPUT_DIR}/xdg-shell-protocol.c")
 set(XDG_DECORATION_CLIENT_HEADER "${WAYLAND_PROTOCOL_OUTPUT_DIR}/xdg-decoration-client-protocol.h")
 set(XDG_DECORATION_PRIVATE_CODE "${WAYLAND_PROTOCOL_OUTPUT_DIR}/xdg-decoration-protocol.c")
+set(PRIMARY_SELECTION_CLIENT_HEADER "${WAYLAND_PROTOCOL_OUTPUT_DIR}/primary-selection-client-protocol.h")
+set(PRIMARY_SELECTION_PRIVATE_CODE "${WAYLAND_PROTOCOL_OUTPUT_DIR}/primary-selection-protocol.c")
 
 add_custom_command(
   OUTPUT
@@ -29,6 +35,8 @@ add_custom_command(
     "${XDG_SHELL_PRIVATE_CODE}"
     "${XDG_DECORATION_CLIENT_HEADER}"
     "${XDG_DECORATION_PRIVATE_CODE}"
+    "${PRIMARY_SELECTION_CLIENT_HEADER}"
+    "${PRIMARY_SELECTION_PRIVATE_CODE}"
   COMMAND "${CMAKE_COMMAND}" -E make_directory "${WAYLAND_PROTOCOL_OUTPUT_DIR}"
   COMMAND "${WAYLAND_SCANNER_EXECUTABLE}" client-header
     "${XDG_SHELL_PROTOCOL}" "${XDG_SHELL_CLIENT_HEADER}"
@@ -38,13 +46,21 @@ add_custom_command(
     "${XDG_DECORATION_PROTOCOL}" "${XDG_DECORATION_CLIENT_HEADER}"
   COMMAND "${WAYLAND_SCANNER_EXECUTABLE}" private-code
     "${XDG_DECORATION_PROTOCOL}" "${XDG_DECORATION_PRIVATE_CODE}"
-  DEPENDS "${XDG_SHELL_PROTOCOL}" "${XDG_DECORATION_PROTOCOL}"
+  COMMAND "${WAYLAND_SCANNER_EXECUTABLE}" client-header
+    "${PRIMARY_SELECTION_PROTOCOL}" "${PRIMARY_SELECTION_CLIENT_HEADER}"
+  COMMAND "${WAYLAND_SCANNER_EXECUTABLE}" private-code
+    "${PRIMARY_SELECTION_PROTOCOL}" "${PRIMARY_SELECTION_PRIVATE_CODE}"
+  DEPENDS
+    "${XDG_SHELL_PROTOCOL}"
+    "${XDG_DECORATION_PROTOCOL}"
+    "${PRIMARY_SELECTION_PROTOCOL}"
   VERBATIM
 )
 
 add_library(scalpel_xdg_shell STATIC
   "${XDG_SHELL_PRIVATE_CODE}"
   "${XDG_DECORATION_PRIVATE_CODE}"
+  "${PRIMARY_SELECTION_PRIVATE_CODE}"
 )
 target_include_directories(scalpel_xdg_shell PUBLIC "${WAYLAND_PROTOCOL_OUTPUT_DIR}")
 target_link_libraries(scalpel_xdg_shell PUBLIC PkgConfig::WAYLAND_CLIENT)

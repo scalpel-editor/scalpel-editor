@@ -63,6 +63,12 @@ std::vector<WaylandLifecycleAction> WaylandLifecycle::AddGlobal(
 			return {{WaylandLifecycleActionType::BindDataDeviceManager, name, version}};
 		}
 		break;
+	case WaylandGlobalKind::PrimarySelectionManager:
+		if (!primarySelectionManagerName) {
+			primarySelectionManagerName = name;
+			return {{WaylandLifecycleActionType::BindPrimarySelectionManager, name, version}};
+		}
+		break;
 	case WaylandGlobalKind::Output:
 		return {{WaylandLifecycleActionType::BindOutput, name, version}};
 	case WaylandGlobalKind::Seat:
@@ -134,6 +140,22 @@ std::vector<WaylandLifecycleAction> WaylandLifecycle::RemoveGlobal(uint32_t name
 		if (replacement != globals.end()) {
 			dataDeviceManagerName = replacement->name;
 			actions.push_back({WaylandLifecycleActionType::BindDataDeviceManager,
+				replacement->name, replacement->version});
+		}
+		return actions;
+	}
+	if (removed.kind == WaylandGlobalKind::PrimarySelectionManager &&
+		primarySelectionManagerName == name) {
+		std::vector<WaylandLifecycleAction> actions = {
+			{WaylandLifecycleActionType::ReleasePrimarySelectionManager, name}};
+		primarySelectionManagerName.reset();
+		const auto replacement = std::find_if(globals.begin(), globals.end(),
+			[](const Global &global) {
+				return global.kind == WaylandGlobalKind::PrimarySelectionManager;
+			});
+		if (replacement != globals.end()) {
+			primarySelectionManagerName = replacement->name;
+			actions.push_back({WaylandLifecycleActionType::BindPrimarySelectionManager,
 				replacement->name, replacement->version});
 		}
 		return actions;

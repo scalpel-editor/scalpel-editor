@@ -24,6 +24,7 @@
 
 #include "xdg-shell-client-protocol.h"
 #include "xdg-decoration-client-protocol.h"
+#include "primary-selection-client-protocol.h"
 
 namespace Scalpel {
 
@@ -232,6 +233,9 @@ void WaylandWindow::Destroy() noexcept {
 	if (dataDeviceManager) {
 		wl_data_device_manager_destroy(dataDeviceManager);
 	}
+	if (primarySelectionManager) {
+		zwp_primary_selection_device_manager_v1_destroy(primarySelectionManager);
+	}
 	if (wmBase) {
 		xdg_wm_base_destroy(wmBase);
 	}
@@ -256,6 +260,7 @@ void WaylandWindow::Destroy() noexcept {
 	cursorSurface = nullptr;
 	sharedMemory = nullptr;
 	dataDeviceManager = nullptr;
+	primarySelectionManager = nullptr;
 	keyboard = nullptr;
 	pointer = nullptr;
 	seat = nullptr;
@@ -467,6 +472,24 @@ void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleActi
 			if (dataDeviceManager) {
 				wl_data_device_manager_destroy(dataDeviceManager);
 				dataDeviceManager = nullptr;
+			}
+			break;
+		case WaylandLifecycleActionType::BindPrimarySelectionManager:
+			if (primarySelectionManager) {
+				callbackFailed = true;
+				break;
+			}
+			primarySelectionManager =
+				static_cast<zwp_primary_selection_device_manager_v1 *>(wl_registry_bind(
+					registry, action.name,
+					&zwp_primary_selection_device_manager_v1_interface,
+					std::min(action.version, 1U)));
+			break;
+		case WaylandLifecycleActionType::ReleasePrimarySelectionManager:
+			if (primarySelectionManager) {
+				zwp_primary_selection_device_manager_v1_destroy(
+					primarySelectionManager);
+				primarySelectionManager = nullptr;
 			}
 			break;
 		case WaylandLifecycleActionType::BindOutput: {
@@ -743,6 +766,10 @@ void WaylandWindow::RegistryGlobal(void *data, wl_registry *, uint32_t name,
 	} else if (std::strcmp(interface, wl_data_device_manager_interface.name) == 0) {
 		window.ApplyLifecycleActions(window.lifecycle.AddGlobal(
 			WaylandGlobalKind::DataDeviceManager, name, version));
+	} else if (std::strcmp(interface,
+		zwp_primary_selection_device_manager_v1_interface.name) == 0) {
+		window.ApplyLifecycleActions(window.lifecycle.AddGlobal(
+			WaylandGlobalKind::PrimarySelectionManager, name, version));
 	} else if (std::strcmp(interface, wl_output_interface.name) == 0) {
 		window.ApplyLifecycleActions(window.lifecycle.AddGlobal(
 			WaylandGlobalKind::Output, name, version));

@@ -41,6 +41,7 @@ struct xdg_wm_base_listener;
 struct zxdg_decoration_manager_v1;
 struct zxdg_toplevel_decoration_v1;
 struct zxdg_toplevel_decoration_v1_listener;
+struct zwp_primary_selection_device_manager_v1;
 struct wl_cursor_theme;
 
 namespace Scalpel {
@@ -191,6 +192,7 @@ private:
 	wl_pointer *pointer = nullptr;
 	wl_shm *sharedMemory = nullptr;
 	wl_data_device_manager *dataDeviceManager = nullptr;
+	zwp_primary_selection_device_manager_v1 *primarySelectionManager = nullptr;
 	wl_surface *cursorSurface = nullptr;
 	wl_cursor_theme *cursorTheme = nullptr;
 	int cursorThemeScale = 0;
