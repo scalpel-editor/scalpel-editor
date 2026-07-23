@@ -792,6 +792,34 @@ TEST_CASE("Wayland registry replaces optional scale managers") {
 		43, 1});
 }
 
+TEST_CASE("Wayland registry replaces the optional portal exporter") {
+	Scalpel::WaylandLifecycle lifecycle(800, 600);
+	const auto first = lifecycle.AddGlobal(
+		Scalpel::WaylandGlobalKind::Exporter, 44, 2);
+	REQUIRE(first.size() == 1);
+	CHECK(first.front() == Scalpel::WaylandLifecycleAction{
+		Scalpel::WaylandLifecycleActionType::BindExporter, 44, 2});
+	CHECK(lifecycle.AddGlobal(
+		Scalpel::WaylandGlobalKind::Exporter, 45, 1).empty());
+
+	const auto replacement = lifecycle.RemoveGlobal(44);
+	REQUIRE(replacement.size() == 2);
+	CHECK(replacement[0] == Scalpel::WaylandLifecycleAction{
+		Scalpel::WaylandLifecycleActionType::ReleaseExporter, 44});
+	CHECK(replacement[1] == Scalpel::WaylandLifecycleAction{
+		Scalpel::WaylandLifecycleActionType::BindExporter, 45, 1});
+
+	const auto removed = lifecycle.RemoveGlobal(45);
+	REQUIRE(removed.size() == 1);
+	CHECK(removed.front().type ==
+		Scalpel::WaylandLifecycleActionType::ReleaseExporter);
+	const auto fresh = lifecycle.AddGlobal(
+		Scalpel::WaylandGlobalKind::Exporter, 46, 1);
+	REQUIRE(fresh.size() == 1);
+	CHECK(fresh.front().type ==
+		Scalpel::WaylandLifecycleActionType::BindExporter);
+}
+
 TEST_CASE("Wayland registry closes when an active required global disappears") {
 	Scalpel::WaylandLifecycle lifecycle(800, 600);
 	(void)lifecycle.AddGlobal(Scalpel::WaylandGlobalKind::Compositor, 10, 4);

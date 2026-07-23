@@ -6,6 +6,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <vector>
 
 namespace Scalpel {
@@ -33,6 +35,7 @@ enum class WaylandGlobalKind {
 	Presentation,
 	Viewporter,
 	FractionalScaleManager,
+	Exporter,
 	Output,
 	Seat,
 };
@@ -56,6 +59,8 @@ enum class WaylandLifecycleActionType {
 	ReleaseViewporter,
 	BindFractionalScaleManager,
 	ReleaseFractionalScaleManager,
+	BindExporter,
+	ReleaseExporter,
 	BindOutput,
 	ReleaseOutput,
 	BindSeat,
@@ -155,10 +160,30 @@ private:
 	std::optional<uint32_t> presentationName;
 	std::optional<uint32_t> viewporterName;
 	std::optional<uint32_t> fractionalScaleManagerName;
+	std::optional<uint32_t> exporterName;
 	std::optional<uint32_t> activeSeatName;
 	WaylandToplevelState toplevelState;
 	std::optional<WaylandToplevelState> proposedToplevelState;
 	bool closeRequested = false;
+};
+
+/** Retains only the current xdg-foreign export and delivered portal token. */
+class WaylandPortalParentState final {
+public:
+	void BeginExport(uintptr_t token);
+	void DeliverHandle(uintptr_t token, std::string_view handle);
+	void EndExport(uintptr_t token) noexcept;
+
+	[[nodiscard]] std::string_view ParentHandle() const noexcept {
+		return parentHandle;
+	}
+	[[nodiscard]] bool ExportActive() const noexcept {
+		return exportToken.has_value();
+	}
+
+private:
+	std::optional<uintptr_t> exportToken;
+	std::string parentHandle;
 };
 
 }

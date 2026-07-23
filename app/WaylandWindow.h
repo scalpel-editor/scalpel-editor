@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -58,6 +59,9 @@ struct xdg_wm_base_listener;
 struct zxdg_decoration_manager_v1;
 struct zxdg_toplevel_decoration_v1;
 struct zxdg_toplevel_decoration_v1_listener;
+struct zxdg_exporter_v2;
+struct zxdg_exported_v2;
+struct zxdg_exported_v2_listener;
 struct zwp_primary_selection_device_manager_v1;
 struct zwp_text_input_manager_v3;
 struct wl_cursor_theme;
@@ -144,6 +148,9 @@ public:
 	[[nodiscard]] DBusConnection *ConnectSessionBus() {
 		return dbus.ConnectSessionBus();
 	}
+	[[nodiscard]] std::string_view PortalParentHandle() const noexcept {
+		return portalParent.ParentHandle();
+	}
 
 	/** Complete one request/event round trip, throwing on display failure. */
 	void RoundTrip();
@@ -161,6 +168,8 @@ private:
 	void DestroyCursorTheme() noexcept;
 	void CreateDecoration();
 	void CreateScaleObjects();
+	void CreatePortalParentExport();
+	void DestroyPortalParentExport() noexcept;
 	void DestroyViewport() noexcept;
 	void DestroyFractionalScale() noexcept;
 	void RefreshScaleProtocolAvailability();
@@ -232,6 +241,8 @@ private:
 		wl_array *capabilities);
 	static void DecorationConfigure(void *data,
 		zxdg_toplevel_decoration_v1 *decoration, uint32_t mode);
+	static void ExportedHandle(void *data,
+		zxdg_exported_v2 *exported, const char *handle);
 	static void PresentationClockId(void *data,
 		wp_presentation *presentation, uint32_t clockId);
 	static void FrameDone(void *data, wl_callback *callback, uint32_t time);
@@ -256,6 +267,7 @@ private:
 	static const xdg_surface_listener surfaceListener;
 	static const xdg_toplevel_listener toplevelListener;
 	static const zxdg_toplevel_decoration_v1_listener decorationListener;
+	static const zxdg_exported_v2_listener exportedListener;
 	static const wp_presentation_listener presentationListener;
 	static const wl_callback_listener frameListener;
 	static const wp_presentation_feedback_listener presentationFeedbackListener;
@@ -300,7 +312,10 @@ private:
 	xdg_toplevel *toplevel = nullptr;
 	zxdg_decoration_manager_v1 *decorationManager = nullptr;
 	zxdg_toplevel_decoration_v1 *decoration = nullptr;
+	zxdg_exporter_v2 *exporter = nullptr;
+	zxdg_exported_v2 *exported = nullptr;
 	WaylandLifecycle lifecycle;
+	WaylandPortalParentState portalParent;
 	WaylandScaleState scaleState;
 	std::optional<WaylandScaleConfiguration> appliedScaleConfiguration;
 	WaylandInput input;

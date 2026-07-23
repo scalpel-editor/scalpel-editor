@@ -16,6 +16,7 @@ set(TEXT_INPUT_PROTOCOL "${WAYLAND_PROTOCOLS_DATA_DIR}/unstable/text-input/text-
 set(PRESENTATION_TIME_PROTOCOL "${WAYLAND_PROTOCOLS_DATA_DIR}/stable/presentation-time/presentation-time.xml")
 set(VIEWPORTER_PROTOCOL "${WAYLAND_PROTOCOLS_DATA_DIR}/stable/viewporter/viewporter.xml")
 set(FRACTIONAL_SCALE_PROTOCOL "${WAYLAND_PROTOCOLS_DATA_DIR}/staging/fractional-scale/fractional-scale-v1.xml")
+set(XDG_FOREIGN_PROTOCOL "${WAYLAND_PROTOCOLS_DATA_DIR}/unstable/xdg-foreign/xdg-foreign-unstable-v2.xml")
 if(NOT EXISTS "${XDG_SHELL_PROTOCOL}")
   message(FATAL_ERROR "Could not find stable xdg-shell protocol at ${XDG_SHELL_PROTOCOL}")
 endif()
@@ -37,6 +38,9 @@ endif()
 if(NOT EXISTS "${FRACTIONAL_SCALE_PROTOCOL}")
   message(FATAL_ERROR "Could not find fractional-scale-v1 protocol at ${FRACTIONAL_SCALE_PROTOCOL}")
 endif()
+if(NOT EXISTS "${XDG_FOREIGN_PROTOCOL}")
+  message(FATAL_ERROR "Could not find xdg-foreign-v2 protocol at ${XDG_FOREIGN_PROTOCOL}")
+endif()
 
 set(WAYLAND_PROTOCOL_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/wayland-protocols")
 set(XDG_SHELL_CLIENT_HEADER "${WAYLAND_PROTOCOL_OUTPUT_DIR}/xdg-shell-client-protocol.h")
@@ -53,6 +57,8 @@ set(VIEWPORTER_CLIENT_HEADER "${WAYLAND_PROTOCOL_OUTPUT_DIR}/viewporter-client-p
 set(VIEWPORTER_PRIVATE_CODE "${WAYLAND_PROTOCOL_OUTPUT_DIR}/viewporter-protocol.c")
 set(FRACTIONAL_SCALE_CLIENT_HEADER "${WAYLAND_PROTOCOL_OUTPUT_DIR}/fractional-scale-client-protocol.h")
 set(FRACTIONAL_SCALE_PRIVATE_CODE "${WAYLAND_PROTOCOL_OUTPUT_DIR}/fractional-scale-protocol.c")
+set(XDG_FOREIGN_CLIENT_HEADER "${WAYLAND_PROTOCOL_OUTPUT_DIR}/xdg-foreign-client-protocol.h")
+set(XDG_FOREIGN_PRIVATE_CODE "${WAYLAND_PROTOCOL_OUTPUT_DIR}/xdg-foreign-protocol.c")
 
 add_custom_command(
   OUTPUT
@@ -70,6 +76,8 @@ add_custom_command(
     "${VIEWPORTER_PRIVATE_CODE}"
     "${FRACTIONAL_SCALE_CLIENT_HEADER}"
     "${FRACTIONAL_SCALE_PRIVATE_CODE}"
+    "${XDG_FOREIGN_CLIENT_HEADER}"
+    "${XDG_FOREIGN_PRIVATE_CODE}"
   COMMAND "${CMAKE_COMMAND}" -E make_directory "${WAYLAND_PROTOCOL_OUTPUT_DIR}"
   COMMAND "${WAYLAND_SCANNER_EXECUTABLE}" client-header
     "${XDG_SHELL_PROTOCOL}" "${XDG_SHELL_CLIENT_HEADER}"
@@ -99,6 +107,10 @@ add_custom_command(
     "${FRACTIONAL_SCALE_PROTOCOL}" "${FRACTIONAL_SCALE_CLIENT_HEADER}"
   COMMAND "${WAYLAND_SCANNER_EXECUTABLE}" private-code
     "${FRACTIONAL_SCALE_PROTOCOL}" "${FRACTIONAL_SCALE_PRIVATE_CODE}"
+  COMMAND "${WAYLAND_SCANNER_EXECUTABLE}" client-header
+    "${XDG_FOREIGN_PROTOCOL}" "${XDG_FOREIGN_CLIENT_HEADER}"
+  COMMAND "${WAYLAND_SCANNER_EXECUTABLE}" private-code
+    "${XDG_FOREIGN_PROTOCOL}" "${XDG_FOREIGN_PRIVATE_CODE}"
   DEPENDS
     "${XDG_SHELL_PROTOCOL}"
     "${XDG_DECORATION_PROTOCOL}"
@@ -107,6 +119,7 @@ add_custom_command(
     "${PRESENTATION_TIME_PROTOCOL}"
     "${VIEWPORTER_PROTOCOL}"
     "${FRACTIONAL_SCALE_PROTOCOL}"
+    "${XDG_FOREIGN_PROTOCOL}"
   VERBATIM
 )
 
@@ -118,6 +131,7 @@ add_library(scalpel_xdg_shell STATIC
   "${PRESENTATION_TIME_PRIVATE_CODE}"
   "${VIEWPORTER_PRIVATE_CODE}"
   "${FRACTIONAL_SCALE_PRIVATE_CODE}"
+  "${XDG_FOREIGN_PRIVATE_CODE}"
 )
 target_include_directories(scalpel_xdg_shell PUBLIC "${WAYLAND_PROTOCOL_OUTPUT_DIR}")
 target_link_libraries(scalpel_xdg_shell PUBLIC PkgConfig::WAYLAND_CLIENT)

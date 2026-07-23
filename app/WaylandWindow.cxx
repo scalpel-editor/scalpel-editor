@@ -29,6 +29,7 @@
 #include "presentation-time-client-protocol.h"
 #include "viewporter-client-protocol.h"
 #include "fractional-scale-client-protocol.h"
+#include "xdg-foreign-client-protocol.h"
 #include "WaylandEventLoop.h"
 
 namespace Scalpel {
@@ -99,6 +100,10 @@ const xdg_toplevel_listener WaylandWindow::toplevelListener = {
 
 const zxdg_toplevel_decoration_v1_listener WaylandWindow::decorationListener = {
 	WaylandWindow::DecorationConfigure,
+};
+
+const zxdg_exported_v2_listener WaylandWindow::exportedListener = {
+	WaylandWindow::ExportedHandle,
 };
 
 const wp_presentation_listener WaylandWindow::presentationListener = {
@@ -188,6 +193,7 @@ void WaylandWindow::Initialise(const char *title) {
 	xdg_toplevel_set_title(toplevel, title);
 	xdg_toplevel_set_app_id(toplevel, "scalpel-editor");
 	CreateDecoration();
+	CreatePortalParentExport();
 
 	// xdg-shell forbids attaching a buffer before this empty initial commit
 	// has been answered with xdg_surface.configure and acknowledged.
@@ -216,6 +222,7 @@ void WaylandWindow::Destroy() noexcept {
 	if (eglWindow) {
 		wl_egl_window_destroy(eglWindow);
 	}
+	DestroyPortalParentExport();
 	if (decoration) {
 		zxdg_toplevel_decoration_v1_destroy(decoration);
 	}
@@ -296,6 +303,9 @@ void WaylandWindow::Destroy() noexcept {
 	if (decorationManager) {
 		zxdg_decoration_manager_v1_destroy(decorationManager);
 	}
+	if (exporter) {
+		zxdg_exporter_v2_destroy(exporter);
+	}
 	if (compositor) {
 		wl_compositor_destroy(compositor);
 	}
@@ -308,6 +318,8 @@ void WaylandWindow::Destroy() noexcept {
 	toplevel = nullptr;
 	decoration = nullptr;
 	decorationManager = nullptr;
+	exported = nullptr;
+	exporter = nullptr;
 	eglWindow = nullptr;
 	shellSurface = nullptr;
 	surface = nullptr;
@@ -780,6 +792,23 @@ void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleActi
 			}
 			RefreshScaleProtocolAvailability();
 			break;
+		case WaylandLifecycleActionType::BindExporter:
+			if (exporter) {
+				callbackFailed = true;
+				break;
+			}
+			exporter = static_cast<zxdg_exporter_v2 *>(wl_registry_bind(
+				registry, action.name, &zxdg_exporter_v2_interface,
+				std::min(action.version, 1U)));
+			CreatePortalParentExport();
+			break;
+		case WaylandLifecycleActionType::ReleaseExporter:
+			DestroyPortalParentExport();
+			if (exporter) {
+				zxdg_exporter_v2_destroy(exporter);
+				exporter = nullptr;
+			}
+			break;
 		case WaylandLifecycleActionType::BindOutput: {
 			wl_output *output = static_cast<wl_output *>(wl_registry_bind(
 				registry, action.name, &wl_output_interface, std::min(action.version, 2U)));
@@ -931,6 +960,33 @@ void WaylandWindow::CreateDecoration() {
 	}
 	zxdg_toplevel_decoration_v1_set_mode(
 		decoration, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+}
+
+void WaylandWindow::CreatePortalParentExport() {
+	if (!exporter || !surface || !toplevel || exported) {
+		return;
+	}
+	exported = zxdg_exporter_v2_export_toplevel(exporter, surface);
+	if (!exported) {
+		return;
+	}
+	const uintptr_t token = reinterpret_cast<uintptr_t>(exported);
+	portalParent.BeginExport(token);
+	if (zxdg_exported_v2_add_listener(
+		exported, &exportedListener, this) != 0) {
+		portalParent.EndExport(token);
+		zxdg_exported_v2_destroy(exported);
+		exported = nullptr;
+	}
+}
+
+void WaylandWindow::DestroyPortalParentExport() noexcept {
+	if (!exported) {
+		return;
+	}
+	portalParent.EndExport(reinterpret_cast<uintptr_t>(exported));
+	zxdg_exported_v2_destroy(exported);
+	exported = nullptr;
 }
 
 void WaylandWindow::CreateScaleObjects() {
@@ -1141,6 +1197,9 @@ void WaylandWindow::RegistryGlobal(void *data, wl_registry *, uint32_t name,
 		interface, wp_fractional_scale_manager_v1_interface.name) == 0) {
 		window.ApplyLifecycleActions(window.lifecycle.AddGlobal(
 			WaylandGlobalKind::FractionalScaleManager, name, version));
+	} else if (std::strcmp(interface, zxdg_exporter_v2_interface.name) == 0) {
+		window.ApplyLifecycleActions(window.lifecycle.AddGlobal(
+			WaylandGlobalKind::Exporter, name, version));
 	} else if (std::strcmp(interface, wl_output_interface.name) == 0) {
 		window.ApplyLifecycleActions(window.lifecycle.AddGlobal(
 			WaylandGlobalKind::Output, name, version));
@@ -1512,6 +1571,20 @@ void WaylandWindow::DecorationConfigure(void *data,
 	zxdg_toplevel_decoration_v1 *, uint32_t mode) {
 	static_cast<WaylandWindow *>(data)->lifecycle.ProposeDecoration(
 		mode == ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+}
+
+void WaylandWindow::ExportedHandle(void *data,
+	zxdg_exported_v2 *exported_, const char *handle) {
+	if (!handle) {
+		return;
+	}
+	auto &window = *static_cast<WaylandWindow *>(data);
+	try {
+		window.portalParent.DeliverHandle(
+			reinterpret_cast<uintptr_t>(exported_), handle);
+	} catch (...) {
+		window.callbackFailed = true;
+	}
 }
 
 }

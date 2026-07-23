@@ -94,6 +94,12 @@ std::vector<WaylandLifecycleAction> WaylandLifecycle::AddGlobal(
 				name, version}};
 		}
 		break;
+	case WaylandGlobalKind::Exporter:
+		if (!exporterName) {
+			exporterName = name;
+			return {{WaylandLifecycleActionType::BindExporter, name, version}};
+		}
+		break;
 	case WaylandGlobalKind::Output:
 		return {{WaylandLifecycleActionType::BindOutput, name, version}};
 	case WaylandGlobalKind::Seat:
@@ -246,6 +252,22 @@ std::vector<WaylandLifecycleAction> WaylandLifecycle::RemoveGlobal(uint32_t name
 			fractionalScaleManagerName = replacement->name;
 			actions.push_back({
 				WaylandLifecycleActionType::BindFractionalScaleManager,
+				replacement->name, replacement->version});
+		}
+		return actions;
+	}
+	if (removed.kind == WaylandGlobalKind::Exporter &&
+		exporterName == name) {
+		std::vector<WaylandLifecycleAction> actions = {
+			{WaylandLifecycleActionType::ReleaseExporter, name}};
+		exporterName.reset();
+		const auto replacement = std::find_if(globals.begin(), globals.end(),
+			[](const Global &global) {
+				return global.kind == WaylandGlobalKind::Exporter;
+			});
+		if (replacement != globals.end()) {
+			exporterName = replacement->name;
+			actions.push_back({WaylandLifecycleActionType::BindExporter,
 				replacement->name, replacement->version});
 		}
 		return actions;
@@ -465,6 +487,31 @@ bool WaylandLifecycle::KeyboardActive() const noexcept {
 bool WaylandLifecycle::HasGlobal(uint32_t name) const noexcept {
 	return std::any_of(globals.begin(), globals.end(),
 		[name](const Global &global) { return global.name == name; });
+}
+
+void WaylandPortalParentState::BeginExport(uintptr_t token) {
+	if (token == 0) {
+		throw std::invalid_argument(
+			"Wayland portal parent export requires a token");
+	}
+	exportToken = token;
+	parentHandle.clear();
+}
+
+void WaylandPortalParentState::DeliverHandle(
+	uintptr_t token, std::string_view handle) {
+	if (exportToken != token) {
+		return;
+	}
+	parentHandle = handle.empty() ?
+		std::string{} : std::string{"wayland:"} + std::string{handle};
+}
+
+void WaylandPortalParentState::EndExport(uintptr_t token) noexcept {
+	if (exportToken == token) {
+		exportToken.reset();
+		parentHandle.clear();
+	}
 }
 
 }
