@@ -19,10 +19,10 @@ struct TestKeymap {
 	uint32_t controlMask = 0;
 };
 
-TestKeymap MakeTestKeymap() {
+TestKeymap MakeTestKeymap(const char *variant = nullptr) {
 	xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
 	REQUIRE(context);
-	const xkb_rule_names names{nullptr, nullptr, "us", nullptr, nullptr};
+	const xkb_rule_names names{nullptr, nullptr, "us", variant, nullptr};
 	xkb_keymap *keymap = xkb_keymap_new_from_names(
 		context, &names, XKB_KEYMAP_COMPILE_NO_FLAGS);
 	REQUIRE(keymap);
@@ -88,6 +88,84 @@ TEST_CASE("Wayland keyboard applies modifiers and maps command keys") {
 	CHECK(controlled.key == Scintilla::Keys::Left);
 	CHECK(controlled.modifiers == Scintilla::KeyMod::Ctrl);
 	CHECK(controlled.text.empty());
+}
+
+TEST_CASE("Wayland keyboard composes locale text") {
+	const TestKeymap keymap = MakeTestKeymap("intl");
+	Scalpel::WaylandInput input("C.utf8");
+	REQUIRE(input.SetKeymap(keymap.text));
+
+	input.RecordKey(22, KEY_APOSTROPHE, true);
+	input.RecordKey(23, KEY_E, true);
+	const std::vector<Scalpel::InputEvent> events = input.TakeInputs();
+	REQUIRE(events.size() == 2);
+	CHECK(std::get<Scalpel::KeyboardInput>(events[0]).text.empty());
+	CHECK(std::get<Scalpel::KeyboardInput>(events[1]).text == "é");
+}
+
+TEST_CASE("Wayland keyboard compose cancellation discards the sequence") {
+	const TestKeymap keymap = MakeTestKeymap("intl");
+	Scalpel::WaylandInput input("C.utf8");
+	REQUIRE(input.SetKeymap(keymap.text));
+
+	input.RecordKey(24, KEY_APOSTROPHE, true);
+	input.RecordKey(25, KEY_LEFT, true);
+	input.RecordKey(26, KEY_A, true);
+	const std::vector<Scalpel::InputEvent> events = input.TakeInputs();
+	REQUIRE(events.size() == 3);
+	CHECK(std::get<Scalpel::KeyboardInput>(events[0]).text.empty());
+	CHECK(std::get<Scalpel::KeyboardInput>(events[1]).text.empty());
+	CHECK(std::get<Scalpel::KeyboardInput>(events[2]).text == "a");
+}
+
+TEST_CASE("Wayland keyboard command keys bypass compose state") {
+	const TestKeymap keymap = MakeTestKeymap("intl");
+	Scalpel::WaylandInput input("C.utf8");
+	REQUIRE(input.SetKeymap(keymap.text));
+
+	input.RecordKey(27, KEY_APOSTROPHE, true);
+	input.UpdateModifiers(keymap.controlMask, 0, 0, 0);
+	input.RecordKey(28, KEY_A, true);
+	input.UpdateModifiers(0, 0, 0, 0);
+	input.RecordKey(29, KEY_E, true);
+	const std::vector<Scalpel::InputEvent> events = input.TakeInputs();
+	REQUIRE(events.size() == 3);
+	CHECK(std::get<Scalpel::KeyboardInput>(events[1]).key ==
+		static_cast<Scintilla::Keys>('A'));
+	CHECK(std::get<Scalpel::KeyboardInput>(events[1]).text.empty());
+	CHECK(std::get<Scalpel::KeyboardInput>(events[2]).text == "é");
+}
+
+TEST_CASE("Wayland keyboard resets unfinished compose state") {
+	const TestKeymap keymap = MakeTestKeymap("intl");
+	Scalpel::WaylandInput input("C.utf8");
+	REQUIRE(input.SetKeymap(keymap.text));
+
+	input.RecordKeyboardFocus(true);
+	input.RecordKey(30, KEY_APOSTROPHE, true);
+	input.RecordKeyboardFocus(false);
+	input.RecordKey(31, KEY_E, true);
+	std::vector<Scalpel::InputEvent> events = input.TakeInputs();
+	REQUIRE(events.size() == 4);
+	CHECK(std::get<Scalpel::KeyboardInput>(events[3]).text == "e");
+
+	input.RecordKey(32, KEY_APOSTROPHE, true);
+	REQUIRE(input.SetKeymap(keymap.text));
+	input.RecordKey(33, KEY_E, true);
+	events = input.TakeInputs();
+	REQUIRE(events.size() == 2);
+	CHECK(std::get<Scalpel::KeyboardInput>(events[1]).text == "e");
+}
+
+TEST_CASE("Wayland keyboard keeps direct text when compose locale fails") {
+	const TestKeymap keymap = MakeTestKeymap();
+	Scalpel::WaylandInput input("not_a_real_compose_locale");
+	REQUIRE(input.SetKeymap(keymap.text));
+
+	input.RecordKey(30, KEY_A, true);
+	const std::vector<Scalpel::InputEvent> events = input.TakeInputs();
+	REQUIRE(events.size() == 1);
+	CHECK(std::get<Scalpel::KeyboardInput>(events[0]).text == "a");
 }
 
 TEST_CASE("Wayland keyboard retains focus and key event order") {

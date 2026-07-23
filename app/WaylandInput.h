@@ -7,12 +7,15 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
 #include "ApplicationInput.h"
 
 struct xkb_context;
+struct xkb_compose_state;
+struct xkb_compose_table;
 struct xkb_keymap;
 struct xkb_state;
 
@@ -21,11 +24,13 @@ namespace Scalpel {
 /**
  * xkbcommon state and translated events for the active Wayland seat.
  *
- * Key repeat and compose state are added in later Phase 7 steps.
+ * Compose state is locale-aware and falls back to direct xkb text when the
+ * locale has no compose table. Key repeat is added in a later Phase 7 step.
  */
 class WaylandInput final {
 public:
 	WaylandInput();
+	explicit WaylandInput(std::string_view composeLocale);
 	~WaylandInput() noexcept;
 
 	WaylandInput(const WaylandInput &) = delete;
@@ -66,10 +71,15 @@ private:
 	};
 
 	[[nodiscard]] Scintilla::KeyMod CurrentModifiers() const;
+	[[nodiscard]] std::string TextForKey(uint32_t keycode, uint32_t keysym,
+		Scintilla::KeyMod modifiers);
+	void ResetCompose() noexcept;
 	[[nodiscard]] static std::optional<size_t> PointerAxisIndex(uint32_t axis) noexcept;
 	void ResetPointerFrame() noexcept;
 
 	xkb_context *context = nullptr;
+	xkb_compose_table *composeTable = nullptr;
+	xkb_compose_state *composeState = nullptr;
 	xkb_keymap *keymap = nullptr;
 	xkb_state *state = nullptr;
 	double pointerX = 0;

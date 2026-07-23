@@ -7,11 +7,14 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdlib>
 #include <stdexcept>
+#include <string>
 #include <utility>
 
 #include <linux/input-event-codes.h>
 #include <wayland-client-protocol.h>
+#include <xkbcommon/xkbcommon-compose.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
 #include <xkbcommon/xkbcommon-names.h>
 #include <xkbcommon/xkbcommon.h>
@@ -21,6 +24,15 @@ namespace Scalpel {
 namespace {
 
 constexpr double PointerAxisStep = 10.0;
+
+std::string_view ComposeLocale() noexcept {
+	for (const char *name : {"LC_ALL", "LC_CTYPE", "LANG"}) {
+		if (const char *value = std::getenv(name); value && *value) {
+			return value;
+		}
+	}
+	return "C";
+}
 
 Scintilla::Keys KeyFromKeysym(xkb_keysym_t keysym) noexcept {
 	switch (keysym) {
@@ -105,9 +117,23 @@ int PointerButton(uint32_t button) noexcept {
 
 }
 
-WaylandInput::WaylandInput() : context(xkb_context_new(XKB_CONTEXT_NO_FLAGS)) {
+WaylandInput::WaylandInput() : WaylandInput(ComposeLocale()) {
+}
+
+WaylandInput::WaylandInput(std::string_view composeLocale) :
+	context(xkb_context_new(XKB_CONTEXT_NO_FLAGS)) {
 	if (!context) {
 		throw std::runtime_error("could not create the xkbcommon context");
+	}
+	const std::string locale(composeLocale);
+	composeTable = xkb_compose_table_new_from_locale(
+		context, locale.c_str(), XKB_COMPOSE_COMPILE_NO_FLAGS);
+	if (composeTable) {
+		composeState = xkb_compose_state_new(composeTable, XKB_COMPOSE_STATE_NO_FLAGS);
+		if (!composeState) {
+			xkb_compose_table_unref(composeTable);
+			composeTable = nullptr;
+		}
 	}
 }
 
@@ -117,6 +143,12 @@ WaylandInput::~WaylandInput() noexcept {
 	}
 	if (keymap) {
 		xkb_keymap_unref(keymap);
+	}
+	if (composeState) {
+		xkb_compose_state_unref(composeState);
+	}
+	if (composeTable) {
+		xkb_compose_table_unref(composeTable);
 	}
 	xkb_context_unref(context);
 }
@@ -143,10 +175,12 @@ bool WaylandInput::SetKeymap(std::string_view keymapText) {
 	}
 	keymap = newKeymap;
 	state = newState;
+	ResetCompose();
 	return true;
 }
 
 void WaylandInput::ResetKeyboardState() {
+	ResetCompose();
 	if (!keymap) {
 		return;
 	}
@@ -161,6 +195,7 @@ void WaylandInput::ResetKeyboardState() {
 }
 
 void WaylandInput::ResetKeyboardDevice() {
+	ResetCompose();
 	const bool reportFocusLoss = keyboardFocused || std::any_of(
 		inputs.begin(), inputs.end(), [](const InputEvent &input) {
 			const auto *focus = std::get_if<KeyboardFocusInput>(&input);
@@ -217,6 +252,9 @@ void WaylandInput::SetPointerVersion(uint32_t version) noexcept {
 }
 
 void WaylandInput::RecordKeyboardFocus(bool focused) {
+	if (!focused) {
+		ResetCompose();
+	}
 	if (focused != keyboardFocused) {
 		keyboardFocused = focused;
 		inputs.emplace_back(KeyboardFocusInput{focused});
@@ -236,19 +274,63 @@ void WaylandInput::RecordKey(uint32_t time, uint32_t key, bool pressed) {
 	}
 	const xkb_keycode_t keycode = key + 8;
 	KeyboardInput input;
-	input.key = KeyFromKeysym(xkb_state_key_get_one_sym(state, keycode));
+	const xkb_keysym_t keysym = xkb_state_key_get_one_sym(state, keycode);
+	input.key = KeyFromKeysym(keysym);
 	input.modifiers = CurrentModifiers();
 	input.time = time;
 	input.pressed = pressed;
 	if (pressed) {
-		const int length = xkb_state_key_get_utf8(state, keycode, nullptr, 0);
-		if (length > 0) {
-			input.text.resize(static_cast<size_t>(length) + 1);
-			xkb_state_key_get_utf8(state, keycode, input.text.data(), input.text.size());
-			input.text.resize(static_cast<size_t>(length));
-		}
+		input.text = TextForKey(keycode, keysym, input.modifiers);
 	}
 	inputs.emplace_back(std::move(input));
+}
+
+std::string WaylandInput::TextForKey(
+	uint32_t keycode, uint32_t keysym, Scintilla::KeyMod modifiers) {
+	const Scintilla::KeyMod commandModifiers = Scintilla::KeyMod::Ctrl |
+		Scintilla::KeyMod::Alt | Scintilla::KeyMod::Super | Scintilla::KeyMod::Meta;
+	if ((modifiers & commandModifiers) != Scintilla::KeyMod::Norm) {
+		return {};
+	}
+
+	if (composeState &&
+		xkb_compose_state_feed(composeState, keysym) == XKB_COMPOSE_FEED_ACCEPTED) {
+		switch (xkb_compose_state_get_status(composeState)) {
+		case XKB_COMPOSE_COMPOSING:
+			return {};
+		case XKB_COMPOSE_COMPOSED: {
+			const int length = xkb_compose_state_get_utf8(composeState, nullptr, 0);
+			std::string text;
+			if (length > 0) {
+				text.resize(static_cast<size_t>(length) + 1);
+				xkb_compose_state_get_utf8(composeState, text.data(), text.size());
+				text.resize(static_cast<size_t>(length));
+			}
+			ResetCompose();
+			return text;
+		}
+		case XKB_COMPOSE_CANCELLED:
+			ResetCompose();
+			return {};
+		case XKB_COMPOSE_NOTHING:
+			break;
+		}
+	}
+
+	const int length = xkb_state_key_get_utf8(state, keycode, nullptr, 0);
+	std::string text;
+	if (length > 0) {
+		text.resize(static_cast<size_t>(length) + 1);
+		xkb_state_key_get_utf8(state, keycode, text.data(), text.size());
+		text.resize(static_cast<size_t>(length));
+	}
+	return text;
+}
+
+void WaylandInput::ResetCompose() noexcept {
+	if (composeState) {
+		xkb_compose_state_reset(composeState);
+	}
 }
 
 void WaylandInput::RecordPointerMotion(uint32_t time, double x, double y) {
