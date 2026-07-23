@@ -27,3 +27,13 @@ target_link_libraries(waylandInputTest PRIVATE scalpel_wayland)
 target_compile_options(waylandInputTest PRIVATE -Wall -Wextra)
 
 add_test(NAME wayland-input COMMAND waylandInputTest)
+
+add_executable(waylandTransferTest WaylandTransferTest.cxx)
+target_include_directories(waylandTransferTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(waylandTransferTest PRIVATE scalpel_wayland)
+target_compile_options(waylandTransferTest PRIVATE -Wall -Wextra)
+
+add_test(NAME wayland-transfer COMMAND waylandTransferTest)

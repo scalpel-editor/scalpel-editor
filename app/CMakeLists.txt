@@ -53,6 +53,7 @@ add_library(scalpel_wayland STATIC
 	WaylandCursor.cxx
   WaylandInput.cxx
   WaylandLifecycle.cxx
+  WaylandTransfer.cxx
   WaylandWindow.cxx
 )
 target_include_directories(scalpel_wayland PUBLIC
