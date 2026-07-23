@@ -154,7 +154,10 @@ public:
 
 	/** Complete one request/event round trip, throwing on display failure. */
 	void RoundTrip();
-	/** Wait for display activity, key repeat, or the optional editor-work deadline. */
+	/**
+	 * Wait for display, transfer, or D-Bus activity, or for the earliest editor,
+	 * key-repeat, transfer, or D-Bus deadline.
+	 */
 	void WaitForEvents(std::optional<std::chrono::milliseconds> timeout);
 
 private:

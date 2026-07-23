@@ -1120,10 +1120,12 @@ void WaylandWindow::WaitForEvents(std::optional<std::chrono::milliseconds> timeo
 		const int pollResult = poll(
 			pollDescriptors.data(), pollDescriptors.size(),
 			eventLoop.TimeoutMilliseconds());
+		if (pollResult < 0) {
+			wl_display_cancel_read(display);
+		}
 		const WaylandPollOutcome pollOutcome =
 			WaylandEventLoop::InterpretPollResult(pollResult, errno);
 		if (pollOutcome == WaylandPollOutcome::Interrupted) {
-			wl_display_cancel_read(display);
 			return;
 		}
 
