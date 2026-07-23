@@ -2,7 +2,7 @@
 
 Phases run roughly in order; each lists its deliverable and how it is verified. Update this file when a phase completes or the plan changes.
 
-Routine work uses the smallest relevant normal-tree build and focused tests, with the complete normal workflow run before a compiled-code handoff. The local `dev` / `asan` / `ubsan` matrix is the phase and release gate and is also used for broad or sanitizer-sensitive changes. There is no hosted CI. Behavior reductions are deliberate scope changes, not behavior-preserving refactors; document and test the retained behavior in the same change.
+Routine work uses one normal-tree target and focused Catch patterns. Widen only when that is not enough; run the complete normal workflow only for multi-concern or shared-infrastructure handoffs. The local `dev` / `asan` / `ubsan` matrix is rare: phase and release gates, explicit request, or changes that clearly need every tree. There is no hosted CI. Behavior reductions are deliberate scope changes, not behavior-preserving refactors; document and test the retained behavior in the same change.
 
 Scope principle: the refactor changes how features are reached, not which features exist. Keep Scintilla's editing features intact and delete only material for absent platforms, the message layer itself, and the encoding paths removed in phase 3. A retained feature with no consumer yet, such as autocomplete, call tips, printing, the lexer interface, or pre-phase-7 IME machinery, stays compiled, named, and documented. The lexer interface must remain compatible with Lexilla; Lexilla integration and Markdown styling are follow-on work.
 

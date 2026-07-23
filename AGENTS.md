@@ -19,7 +19,9 @@ The build uses CMake with the Ninja generator. Always configure from the reposit
 cmake --preset dev          # configure into build/ (Debug)
 ```
 
-Use the smallest build and test scope that covers the code being changed. Ninja rebuilds the target's dependencies, and the Catch2 executables accept a test-name pattern:
+### Default verification (almost every change)
+
+Use only the smallest build and test scope that covers the code being changed. Build one target. Run one Catch2 name pattern that matches the concern under edit. Do not build other test targets "just in case." Do not run an entire test binary without a pattern when a pattern exists. Do not reconfigure, rebuild sanitizer trees, or run the full matrix as routine session work.
 
 ```
 cmake --build build --target editorTest
@@ -34,24 +36,33 @@ cmake --build build --target applicationTest
 cmake --build build --target scalpel-editor
 ```
 
-Keep iteration checks narrow even when the final workflow will be broad. Build only the target under development and run only its focused tests; do not also build unrelated test targets in anticipation of the final workflow. A CMake dependency or compile-flag change may make Ninja rebuild much of the tree, so let the required final workflow pay that cost once unless a broader intermediate build is needed to diagnose the change.
+Ninja rebuilds that target's dependencies. A CMake dependency or compile-flag change may rebuild more of the tree; still request only the needed target and let Ninja decide.
 
-Documentation-only changes do not require a build unless they alter build or test instructions. Before handing off a compiled-code change, run the normal configure/build/test workflow once:
+Documentation-only changes do not require a build unless they alter build or test instructions.
 
-```
-cmake --workflow --preset dev
-```
+### Wider checks (only when the default is not enough)
 
-The full check matrix runs the same sequence for three trees — normal (`dev`, in `build/`), AddressSanitizer (`asan`, in `build-asan/`), and UndefinedBehaviorSanitizer (`ubsan`, in `build-ubsan/`):
+Widen only for a concrete reason:
+
+- The whole suite of the one relevant test binary (no Catch pattern), when the change crosses several cases in that binary or a focused pattern is too narrow to trust.
+- `cmake --workflow --preset dev` once, when handing off compiled code that touches shared infrastructure, CMake or compiler settings, multiple concerns, or the link surface of more than one test binary. Ordinary single-concern work does not need this workflow; focused build and pattern are enough for the commit and for ending a session.
+- One sanitizer tree (`cmake --workflow --preset asan` or `ubsan`) only when the change is about memory lifetime, undefined behavior, or sanitizer/compiler settings and a single tree is enough to check it.
+
+Do not run wider checks in anticipation of a later gate. Do not stack default, full-suite, and workflow checks for the same edit when the smaller one already covers it.
+
+### Full matrix (rare)
+
+The full check matrix configures, builds, and tests three trees — normal (`dev`, in `build/`), AddressSanitizer (`asan`, in `build-asan/`), and UndefinedBehaviorSanitizer (`ubsan`, in `build-ubsan/`):
 
 ```
 ./check.sh                    # all three trees
-cmake --workflow --preset asan   # one tree
 ```
 
-Run `./check.sh` at roadmap phase gates, before a release, when requested, and when a change affects memory lifetime, sanitizer or compiler settings, the test host, or broad shared-core behavior. Do not run it merely because a development session is ending. There is no hosted CI, so the matrix remains the final local gate.
+Run `./check.sh` only at roadmap phase gates, before a release, when the user explicitly asks, or when a change clearly needs every tree (for example sanitizer or compiler settings that must pass in all three). Do not run it because a session is ending, because a handoff feels large, or as a habit after ordinary feature work. There is no hosted CI; the matrix is the deliberate local gate, not the daily loop.
 
 The ASan test preset sets `ASAN_OPTIONS=detect_leaks=0` because this development runner uses `ptrace`, under which LeakSanitizer aborts before reporting results. AddressSanitizer's other checks remain enabled. The matrix therefore does not check for leaks; use a non-traced process for a separate leak check.
+
+### Where tests live
 
 For failure details, run a test binary directly: `./build/scintilla/test/unit/unitTest` for the upstream platform-free tests, `./build/scintilla/test/editor/editorTest` for the concrete editor tests, or `./build/app/test/applicationTest` for the production host and its real application `Window` and `Platform` objects (Catch2 v2; pass a test name pattern to run one case). The core builds as a static library, `scintilla_core`. The unit executable links only the platform-free objects it calls. `editorTest` links the editor concern translation units (`Editor*.cxx`, `ScintillaBase.cxx`, and their required core objects) against the deterministic test-only `Platform.h` implementation, so missing editor definitions fail the build. Named feature work lives in concern files such as `EditorWrapping.cxx` and `EditorDocument.cxx`; `Editor.cxx` keeps shared paint, geometry, notifications, and document-watcher work. The production application host, Wayland shell, and standalone executable live in `app/`.
 
