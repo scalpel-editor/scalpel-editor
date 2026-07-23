@@ -206,6 +206,8 @@ TEST_CASE("Wayland frame buffer age extends repaint damage") {
 	CHECK(aged->repaintDamage ==
 		std::vector<Scalpel::FrameRectangle>{
 			{40, 40, 50, 50}, {20, 20, 30, 30}});
+	CHECK(aged->eglDamage ==
+		std::vector<Scalpel::DamageRectangle>{{20, 30, 30, 30}});
 	(void)frame.SubmitFrame(aged->submission, false);
 	frame.FrameCallbackDone();
 

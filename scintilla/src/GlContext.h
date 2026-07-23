@@ -7,7 +7,11 @@
 #ifndef GLCONTEXT_H
 #define GLCONTEXT_H
 
+#include <cstddef>
 #include <string>
+
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
 
 namespace Scintilla::Internal {
 
@@ -49,6 +53,16 @@ public:
 
 	/** Submit the current window surface. Throws for a headless context. */
 	void SwapBuffers();
+	/** Submit only the supplied bottom-left-origin EGL damage rectangles. */
+	void SwapBuffersWithDamage(const int *rectangles, std::size_t rectangleCount);
+	[[nodiscard]] bool BufferAgeSupported() const noexcept {
+		return bufferAgeSupported;
+	}
+	[[nodiscard]] bool DamageSwapSupported() const noexcept {
+		return swapBuffersWithDamage != nullptr;
+	}
+	/** Return zero when buffer age is unavailable or cannot be queried. */
+	[[nodiscard]] int BufferAge() const noexcept;
 
 	[[nodiscard]] bool IsCurrent() const noexcept;
 	[[nodiscard]] bool HasWindowSurface() const noexcept { return windowSurface; }
@@ -71,6 +85,8 @@ private:
 	void *context = nullptr;   // EGLContext
 	void *surface = nullptr;   // EGLSurface or null for EGL_NO_SURFACE path
 	bool windowSurface = false;
+	bool bufferAgeSupported = false;
+	PFNEGLSWAPBUFFERSWITHDAMAGEKHRPROC swapBuffersWithDamage = nullptr;
 	int majorVersion = 0;
 	int minorVersion = 0;
 };

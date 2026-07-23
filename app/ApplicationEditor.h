@@ -115,7 +115,13 @@ public:
 	void HandleTextInputBatch(const ApplicationTextInputBatch &batch);
 	[[nodiscard]] std::optional<ApplicationTextInputState> TakeTextInputState();
 	void RenderFrame();
+	void RenderFrame(
+		const std::vector<Scintilla::Internal::PRectangle> &damage);
 	void PresentFrame();
+	void PresentFrame(
+		const std::vector<Scintilla::Internal::PRectangle> &damage,
+		const std::vector<int> &eglDamage, bool fullSwap);
+	[[nodiscard]] std::vector<Scintilla::Internal::PRectangle> TakeFrameDamage();
 	void RunPendingWork();
 	[[nodiscard]] std::optional<std::chrono::milliseconds> TimeUntilNextWork() const;
 	[[nodiscard]] bool NeedsRedraw() const noexcept;
@@ -123,6 +129,12 @@ public:
 	[[nodiscard]] std::vector<uint8_t> FramePixels() const;
 	[[nodiscard]] int FrameWidth() const noexcept;
 	[[nodiscard]] int FrameHeight() const noexcept;
+	[[nodiscard]] int BufferAge() const noexcept;
+	[[nodiscard]] bool BufferAgeSupported() const noexcept;
+	[[nodiscard]] bool DamageSwapSupported() const noexcept;
+	[[nodiscard]] Scintilla::Internal::PRectangle LastPaintRectangle() const noexcept {
+		return rcPaint;
+	}
 	[[nodiscard]] const ApplicationWindow &WindowState() const noexcept { return window; }
 	[[nodiscard]] const ScrollState &Scrollbars() const noexcept { return scrollbars; }
 	[[nodiscard]] const std::vector<Scintilla::Notification> &Notifications() const noexcept { return notifications; }

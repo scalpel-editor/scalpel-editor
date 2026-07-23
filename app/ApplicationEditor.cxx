@@ -23,6 +23,31 @@ using Scintilla::Internal::PRectangle;
 
 namespace {
 
+PRectangle DamageBounds(
+	const std::vector<PRectangle> &damage, PRectangle client) {
+	std::optional<PRectangle> bounds;
+	for (const PRectangle &rectangle : damage) {
+		const PRectangle clipped{
+			std::clamp(rectangle.left, client.left, client.right),
+			std::clamp(rectangle.top, client.top, client.bottom),
+			std::clamp(rectangle.right, client.left, client.right),
+			std::clamp(rectangle.bottom, client.top, client.bottom),
+		};
+		if (clipped.left >= clipped.right || clipped.top >= clipped.bottom) {
+			continue;
+		}
+		if (!bounds) {
+			bounds = clipped;
+		} else {
+			bounds->left = std::min(bounds->left, clipped.left);
+			bounds->top = std::min(bounds->top, clipped.top);
+			bounds->right = std::max(bounds->right, clipped.right);
+			bounds->bottom = std::max(bounds->bottom, clipped.bottom);
+		}
+	}
+	return bounds.value_or(client);
+}
+
 const char *ClipboardStatusName(ApplicationClipboardStatus status) noexcept {
 	switch (status) {
 	case ApplicationClipboardStatus::Published:
@@ -479,33 +504,69 @@ void ApplicationEditor::HandlePrimarySelectionResult(uint64_t id,
 }
 
 void ApplicationEditor::RenderFrame() {
+	RenderFrame(TakeFrameDamage());
+}
+
+void ApplicationEditor::RenderFrame(const std::vector<PRectangle> &damage) {
 	const int width = FrameWidth();
 	const int height = FrameHeight();
 	frame = Scintilla::Internal::CreateDrawSurface(*renderer, width, height);
 	paintState = PaintState::painting;
-	rcPaint = GetClientRectangle();
-	paintingAllText = true;
-	Paint(frame.get(), rcPaint);
+	rcPaint = DamageBounds(damage, GetClientRectangle());
+	paintingAllText = rcPaint == GetClientRectangle();
+	try {
+		Paint(frame.get(), rcPaint);
+	} catch (...) {
+		paintState = PaintState::notPainting;
+		paintingAllText = false;
+		throw;
+	}
 	paintState = PaintState::notPainting;
 	paintingAllText = false;
-	window.invalidatedRectangles.clear();
 }
 
 void ApplicationEditor::PresentFrame() {
 	if (!glContext->HasWindowSurface()) {
 		throw std::runtime_error("ApplicationEditor::PresentFrame requires a window surface");
 	}
+	PresentFrame(TakeFrameDamage(), {}, true);
+}
+
+void ApplicationEditor::PresentFrame(
+	const std::vector<PRectangle> &damage,
+	const std::vector<int> &eglDamage, bool fullSwap) {
+	if (!glContext->HasWindowSurface()) {
+		throw std::runtime_error("ApplicationEditor::PresentFrame requires a window surface");
+	}
+	if (eglDamage.size() % 4 != 0) {
+		throw std::invalid_argument(
+			"ApplicationEditor::PresentFrame requires complete EGL rectangles");
+	}
 	const int width = FrameWidth();
 	const int height = FrameHeight();
 	frame = Scintilla::Internal::CreateExternalDrawSurface(*renderer, 0, width, height);
 	paintState = PaintState::painting;
-	rcPaint = GetClientRectangle();
-	paintingAllText = true;
-	Paint(frame.get(), rcPaint);
+	rcPaint = DamageBounds(damage, GetClientRectangle());
+	paintingAllText = rcPaint == GetClientRectangle();
+	try {
+		Paint(frame.get(), rcPaint);
+	} catch (...) {
+		paintState = PaintState::notPainting;
+		paintingAllText = false;
+		throw;
+	}
 	paintState = PaintState::notPainting;
 	paintingAllText = false;
-	window.invalidatedRectangles.clear();
-	glContext->SwapBuffers();
+	if (fullSwap) {
+		glContext->SwapBuffers();
+	} else {
+		glContext->SwapBuffersWithDamage(
+			eglDamage.data(), eglDamage.size() / 4);
+	}
+}
+
+std::vector<PRectangle> ApplicationEditor::TakeFrameDamage() {
+	return std::exchange(window.invalidatedRectangles, {});
 }
 
 void ApplicationEditor::RunPendingWork() {
@@ -554,6 +615,18 @@ std::optional<std::chrono::milliseconds> ApplicationEditor::TimeUntilNextWork() 
 
 bool ApplicationEditor::NeedsRedraw() const noexcept {
 	return !window.invalidatedRectangles.empty();
+}
+
+int ApplicationEditor::BufferAge() const noexcept {
+	return glContext->BufferAge();
+}
+
+bool ApplicationEditor::BufferAgeSupported() const noexcept {
+	return glContext->BufferAgeSupported();
+}
+
+bool ApplicationEditor::DamageSwapSupported() const noexcept {
+	return glContext->DamageSwapSupported();
 }
 
 std::vector<uint8_t> ApplicationEditor::FramePixels() const {

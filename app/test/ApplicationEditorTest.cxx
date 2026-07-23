@@ -38,6 +38,28 @@ TEST_CASE("production editor host rejects presentation without a window surface"
 	CHECK(editor.FramePixels().empty());
 }
 
+TEST_CASE("production editor captures damage before bounded painting") {
+	Scalpel::ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("damage\n");
+	const auto captured = editor.TakeFrameDamage();
+	REQUIRE_FALSE(captured.empty());
+	CHECK_FALSE(editor.NeedsRedraw());
+
+	editor.Resize(321, 180);
+	CHECK(editor.NeedsRedraw());
+	const Scintilla::Internal::PRectangle selected =
+		Scintilla::Internal::PRectangle::FromInts(10, 15, 40, 35);
+	editor.RenderFrame({selected});
+	CHECK(editor.LastPaintRectangle() == selected);
+	CHECK(editor.NeedsRedraw());
+
+	const auto preserved = editor.TakeFrameDamage();
+	REQUIRE_FALSE(preserved.empty());
+	CHECK(std::find(preserved.begin(), preserved.end(),
+		Scintilla::Internal::PRectangle::FromInts(0, 0, 321, 180)) !=
+		preserved.end());
+}
+
 TEST_CASE("production editor host exposes shell state") {
 	Scalpel::ApplicationEditor editor(240, 120);
 	editor.LoadInitialBuffer("one\ntwo\nthree\n");

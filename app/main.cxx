@@ -1,9 +1,12 @@
+#include <cmath>
 #include <exception>
+#include <iomanip>
 #include <iostream>
 #include <memory>
 #include <optional>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "ApplicationEditor.h"
 #include "GlContext.h"
@@ -178,6 +181,57 @@ void SynchronizeTextInput(Scalpel::ApplicationEditor &editor,
 	}
 }
 
+void QueueFrameDamage(Scalpel::ApplicationEditor &editor,
+	Scalpel::WaylandWindow &window) {
+	for (const Scintilla::Internal::PRectangle &rectangle :
+		editor.TakeFrameDamage()) {
+		window.InvalidateFrame({
+			static_cast<int>(std::floor(rectangle.left)),
+			static_cast<int>(std::floor(rectangle.top)),
+			static_cast<int>(std::ceil(rectangle.right)),
+			static_cast<int>(std::ceil(rectangle.bottom)),
+		});
+	}
+}
+
+std::vector<Scintilla::Internal::PRectangle> EditorDamage(
+	const std::vector<Scalpel::FrameRectangle> &damage) {
+	std::vector<Scintilla::Internal::PRectangle> rectangles;
+	rectangles.reserve(damage.size());
+	for (const Scalpel::FrameRectangle &rectangle : damage) {
+		rectangles.push_back(Scintilla::Internal::PRectangle::FromInts(
+			rectangle.left, rectangle.top, rectangle.right, rectangle.bottom));
+	}
+	return rectangles;
+}
+
+std::vector<int> EglDamage(
+	const std::vector<Scalpel::DamageRectangle> &damage) {
+	std::vector<int> rectangles;
+	rectangles.reserve(damage.size() * 4);
+	for (const Scalpel::DamageRectangle &rectangle : damage) {
+		rectangles.insert(rectangles.end(), {
+			rectangle.x, rectangle.y, rectangle.width, rectangle.height});
+	}
+	return rectangles;
+}
+
+void ReportPresentedFrames(Scalpel::WaylandWindow &window) {
+	for (const Scalpel::PresentationResult &result :
+		window.TakePresentationResults()) {
+		if (result.kind == Scalpel::PresentationResult::Kind::Discarded) {
+			std::cerr << "scalpel-editor: frame " << result.submission
+				<< " was discarded\n";
+			continue;
+		}
+		std::cerr << "scalpel-editor: frame " << result.submission
+			<< " presented at " << result.seconds << '.'
+			<< std::setfill('0') << std::setw(9) << result.nanoseconds
+			<< std::setfill(' ') << " on presentation clock "
+			<< window.PresentationClockId().value_or(0) << '\n';
+	}
+}
+
 }
 
 int main() {
@@ -193,6 +247,7 @@ int main() {
 			"The first application frame is rendered in an xdg-toplevel.\n";
 		editor.LoadInitialBuffer(initialText);
 		while (!window.CloseRequested()) {
+			ReportPresentedFrames(window);
 			DeliverClipboardResults(window, editor);
 			DeliverPrimarySelectionResults(window, editor);
 			DeliverTextInputBatches(window, editor);
@@ -214,8 +269,22 @@ int main() {
 			editor.RunPendingWork();
 			SynchronizeTextInput(editor, window);
 			window.SetCursor(editor.WindowState().cursor);
-			if (editor.NeedsRedraw()) {
-				editor.PresentFrame();
+			QueueFrameDamage(editor, window);
+			if (window.CanSubmitFrame()) {
+				const std::optional<Scalpel::FramePlan> plan = window.BeginFrame(
+					editor.FrameWidth(), editor.FrameHeight(), editor.BufferAge(),
+					editor.BufferAgeSupported(), editor.DamageSwapSupported());
+				if (plan) {
+					window.PrepareFrame(*plan);
+					try {
+						editor.PresentFrame(EditorDamage(plan->repaintDamage),
+							EglDamage(plan->eglDamage), plan->fullSwap);
+					} catch (...) {
+						window.CancelFrame();
+						throw;
+					}
+					window.SubmitFrame(plan->submission);
+				}
 			}
 			if (!window.CloseRequested()) {
 				window.WaitForEvents(editor.TimeUntilNextWork());

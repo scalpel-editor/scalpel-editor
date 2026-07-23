@@ -155,13 +155,14 @@ std::optional<FramePlan> WaylandFrameState::BeginFrame(
 	}
 	repaintDamage = ClipFrameDamage(
 		repaintDamage, bufferWidth, bufferHeight, MaximumDamageRectangles);
+	const std::vector<FrameRectangle> paintBounds = {Bounds(repaintDamage)};
 
 	return FramePlan{
 		activeSubmission,
 		std::move(submissionDamage),
 		repaintDamage,
 		WaylandBufferDamage(activeDamage),
-		EglBufferDamage(repaintDamage, bufferHeight),
+		EglBufferDamage(paintBounds, bufferHeight),
 		!damageSwapSupported,
 	};
 }

@@ -4,6 +4,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -224,6 +225,22 @@ GlContext::GlContext(void *nativeDisplay, void *nativeWindow) {
 	}
 	surface = window;
 	windowSurface = true;
+	const char *displayExtensions = eglQueryString(dpy, EGL_EXTENSIONS);
+	bufferAgeSupported = ClientExtensionPresent(
+		displayExtensions, "EGL_EXT_buffer_age");
+	const char *damageFunction = nullptr;
+	if (ClientExtensionPresent(
+		displayExtensions, "EGL_KHR_swap_buffers_with_damage")) {
+		damageFunction = "eglSwapBuffersWithDamageKHR";
+	} else if (ClientExtensionPresent(
+		displayExtensions, "EGL_EXT_swap_buffers_with_damage")) {
+		damageFunction = "eglSwapBuffersWithDamageEXT";
+	}
+	if (damageFunction) {
+		swapBuffersWithDamage =
+			reinterpret_cast<PFNEGLSWAPBUFFERSWITHDAMAGEKHRPROC>(
+			eglGetProcAddress(damageFunction));
+	}
 	if (!eglMakeCurrent(dpy, window, window, ctx)) {
 		Destroy();
 		throw std::runtime_error("eglMakeCurrent for Wayland failed (egl error " + EglErrorHex() + ")");
@@ -289,6 +306,8 @@ void GlContext::Destroy() noexcept {
 	context = nullptr;
 	surface = nullptr;
 	windowSurface = false;
+	bufferAgeSupported = false;
+	swapBuffersWithDamage = nullptr;
 	majorVersion = 0;
 	minorVersion = 0;
 }
@@ -313,6 +332,42 @@ void GlContext::SwapBuffers() {
 	if (!eglSwapBuffers(static_cast<EGLDisplay>(display), static_cast<EGLSurface>(surface))) {
 		throw std::runtime_error("eglSwapBuffers failed (egl error " + EglErrorHex() + ")");
 	}
+}
+
+void GlContext::SwapBuffersWithDamage(
+	const int *rectangles, std::size_t rectangleCount) {
+	if (!windowSurface || !display || !surface) {
+		throw std::runtime_error(
+			"GlContext::SwapBuffersWithDamage requires a window surface");
+	}
+	if (!swapBuffersWithDamage) {
+		SwapBuffers();
+		return;
+	}
+	if ((!rectangles && rectangleCount != 0) ||
+		rectangleCount > static_cast<std::size_t>(
+			std::numeric_limits<EGLint>::max() / 4)) {
+		throw std::invalid_argument("invalid EGL damage rectangle list");
+	}
+	if (!swapBuffersWithDamage(
+		static_cast<EGLDisplay>(display), static_cast<EGLSurface>(surface),
+		rectangles,
+		static_cast<EGLint>(rectangleCount))) {
+		throw std::runtime_error(
+			"eglSwapBuffersWithDamage failed (egl error " + EglErrorHex() + ")");
+	}
+}
+
+int GlContext::BufferAge() const noexcept {
+	if (!windowSurface || !display || !surface || !bufferAgeSupported) {
+		return 0;
+	}
+	EGLint age = 0;
+	if (!eglQuerySurface(static_cast<EGLDisplay>(display),
+		static_cast<EGLSurface>(surface), EGL_BUFFER_AGE_EXT, &age)) {
+		return 0;
+	}
+	return age;
 }
 
 void GlContext::ReleaseCurrent() noexcept {

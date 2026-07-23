@@ -102,6 +102,16 @@ const wp_presentation_listener WaylandWindow::presentationListener = {
 	WaylandWindow::PresentationClockId,
 };
 
+const wl_callback_listener WaylandWindow::frameListener = {
+	WaylandWindow::FrameDone,
+};
+
+const wp_presentation_feedback_listener WaylandWindow::presentationFeedbackListener = {
+	WaylandWindow::PresentationFeedbackSyncOutput,
+	WaylandWindow::PresentationFeedbackPresented,
+	WaylandWindow::PresentationFeedbackDiscarded,
+};
+
 WaylandWindow::WaylandWindow(const char *title, int width_, int height_) :
 	lifecycle(width_, height_) {
 	if (!title) {
@@ -185,6 +195,11 @@ void WaylandWindow::Initialise(const char *title) {
 
 void WaylandWindow::Destroy() noexcept {
 	(void)textInput.SetSeat(nullptr);
+	CancelFrame();
+	for (const PresentationFeedback &feedback : presentationFeedback) {
+		wp_presentation_feedback_destroy(feedback.proxy);
+	}
+	presentationFeedback.clear();
 	if (eglWindow) {
 		wl_egl_window_destroy(eglWindow);
 	}
@@ -282,6 +297,8 @@ void WaylandWindow::Destroy() noexcept {
 	textInputManager = nullptr;
 	presentation = nullptr;
 	presentationClockId.reset();
+	frameCallback = nullptr;
+	preparedSubmission = 0;
 	keyboard = nullptr;
 	pointer = nullptr;
 	seat = nullptr;
@@ -289,6 +306,88 @@ void WaylandWindow::Destroy() noexcept {
 	compositor = nullptr;
 	registry = nullptr;
 	display = nullptr;
+}
+
+void WaylandWindow::PrepareFrame(const FramePlan &plan) {
+	if (!surface || frameCallback || preparedSubmission != 0 ||
+		!frameState.Painting()) {
+		throw std::logic_error("Wayland frame preparation is out of sequence");
+	}
+	frameCallback = wl_surface_frame(surface);
+	if (!frameCallback ||
+		wl_callback_add_listener(frameCallback, &frameListener, this) != 0) {
+		if (frameCallback) {
+			wl_callback_destroy(frameCallback);
+			frameCallback = nullptr;
+		}
+		frameState.CancelPaint();
+		throw std::runtime_error("could not create a Wayland frame callback");
+	}
+	preparedSubmission = plan.submission;
+	for (const DamageRectangle &rectangle : plan.waylandDamage) {
+		if (wl_surface_get_version(surface) >=
+			WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION) {
+			wl_surface_damage_buffer(surface, rectangle.x, rectangle.y,
+				rectangle.width, rectangle.height);
+		} else {
+			wl_surface_damage(surface, rectangle.x, rectangle.y,
+				rectangle.width, rectangle.height);
+		}
+	}
+	if (presentation) {
+		struct wp_presentation_feedback *feedback =
+			wp_presentation_feedback(presentation, surface);
+		if (feedback && wp_presentation_feedback_add_listener(
+			feedback, &presentationFeedbackListener, this) == 0) {
+			presentationFeedback.push_back({plan.submission, feedback});
+		} else if (feedback) {
+			wp_presentation_feedback_destroy(feedback);
+		}
+	}
+}
+
+void WaylandWindow::SubmitFrame(uint64_t submission) {
+	if (submission != preparedSubmission || !frameCallback) {
+		throw std::logic_error("submitted Wayland frame was not prepared");
+	}
+	const std::optional<uint64_t> expired = frameState.SubmitFrame(
+		submission, HasPresentationFeedback(submission));
+	preparedSubmission = 0;
+	if (expired) {
+		DestroyPresentationFeedback(*expired);
+	}
+}
+
+void WaylandWindow::CancelFrame() noexcept {
+	if (frameCallback) {
+		wl_callback_destroy(frameCallback);
+		frameCallback = nullptr;
+		frameState.CancelFrameCallback();
+	}
+	if (preparedSubmission != 0) {
+		DestroyPresentationFeedback(preparedSubmission);
+		preparedSubmission = 0;
+		frameState.CancelPaint();
+	}
+}
+
+bool WaylandWindow::HasPresentationFeedback(uint64_t submission) const noexcept {
+	return std::any_of(presentationFeedback.begin(), presentationFeedback.end(),
+		[submission](const PresentationFeedback &feedback) {
+			return feedback.submission == submission;
+		});
+}
+
+void WaylandWindow::DestroyPresentationFeedback(uint64_t submission) noexcept {
+	const auto found = std::find_if(presentationFeedback.begin(),
+		presentationFeedback.end(),
+		[submission](const PresentationFeedback &feedback) {
+			return feedback.submission == submission;
+		});
+	if (found != presentationFeedback.end()) {
+		wp_presentation_feedback_destroy(found->proxy);
+		presentationFeedback.erase(found);
+	}
 }
 
 void WaylandWindow::SetCursor(Scintilla::Internal::Window::Cursor cursor) {
@@ -564,7 +663,6 @@ void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleActi
 					wp_presentation_destroy(presentation);
 					presentation = nullptr;
 				}
-				callbackFailed = true;
 			}
 			break;
 		case WaylandLifecycleActionType::ReleasePresentation:
@@ -572,7 +670,6 @@ void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleActi
 				wp_presentation_destroy(presentation);
 				presentation = nullptr;
 			}
-			presentationClockId.reset();
 			break;
 		case WaylandLifecycleActionType::BindOutput: {
 			wl_output *output = static_cast<wl_output *>(wl_registry_bind(
@@ -888,6 +985,59 @@ void WaylandWindow::PresentationClockId(
 	void *data, wp_presentation *, uint32_t clockId) {
 	auto &window = *static_cast<WaylandWindow *>(data);
 	window.presentationClockId = clockId;
+}
+
+void WaylandWindow::FrameDone(void *data, wl_callback *callback, uint32_t) {
+	auto &window = *static_cast<WaylandWindow *>(data);
+	if (callback == window.frameCallback) {
+		wl_callback_destroy(callback);
+		window.frameCallback = nullptr;
+		window.frameState.FrameCallbackDone();
+	}
+}
+
+void WaylandWindow::PresentationFeedbackSyncOutput(
+	void *, struct wp_presentation_feedback *, wl_output *) {
+}
+
+void WaylandWindow::PresentationFeedbackPresented(
+	void *data, struct wp_presentation_feedback *feedback,
+	uint32_t secondsHigh, uint32_t secondsLow, uint32_t nanoseconds,
+	uint32_t refreshNanoseconds, uint32_t sequenceHigh,
+	uint32_t sequenceLow, uint32_t flags) {
+	auto &window = *static_cast<WaylandWindow *>(data);
+	const auto found = std::find_if(window.presentationFeedback.begin(),
+		window.presentationFeedback.end(),
+		[feedback](const PresentationFeedback &item) {
+			return item.proxy == feedback;
+		});
+	if (found == window.presentationFeedback.end()) {
+		return;
+	}
+	const uint64_t submission = found->submission;
+	wp_presentation_feedback_destroy(feedback);
+	window.presentationFeedback.erase(found);
+	window.frameState.Presented(submission,
+		(static_cast<uint64_t>(secondsHigh) << 32) | secondsLow,
+		nanoseconds, refreshNanoseconds,
+		(static_cast<uint64_t>(sequenceHigh) << 32) | sequenceLow, flags);
+}
+
+void WaylandWindow::PresentationFeedbackDiscarded(
+	void *data, struct wp_presentation_feedback *feedback) {
+	auto &window = *static_cast<WaylandWindow *>(data);
+	const auto found = std::find_if(window.presentationFeedback.begin(),
+		window.presentationFeedback.end(),
+		[feedback](const PresentationFeedback &item) {
+			return item.proxy == feedback;
+		});
+	if (found == window.presentationFeedback.end()) {
+		return;
+	}
+	const uint64_t submission = found->submission;
+	wp_presentation_feedback_destroy(feedback);
+	window.presentationFeedback.erase(found);
+	window.frameState.Discarded(submission);
 }
 
 void WaylandWindow::RegistryGlobalRemove(void *data, wl_registry *, uint32_t name) {
