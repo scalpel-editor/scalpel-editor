@@ -179,6 +179,7 @@ void WaylandWindow::Initialise(const char *title) {
 }
 
 void WaylandWindow::Destroy() noexcept {
+	(void)textInput.SetSeat(nullptr);
 	if (eglWindow) {
 		wl_egl_window_destroy(eglWindow);
 	}

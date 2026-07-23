@@ -17,6 +17,7 @@
 #include "ApplicationClipboard.h"
 #include "ApplicationPlatform.h"
 #include "ApplicationPrimarySelection.h"
+#include "ApplicationTextInput.h"
 #include "ApplicationInput.h"
 #include "EditorNotifications.h"
 #include "ScintillaBase.h"
@@ -111,6 +112,8 @@ public:
 	void HandlePrimarySelectionResult(uint64_t id,
 		ApplicationPrimarySelectionOperation operation,
 		ApplicationPrimarySelectionStatus status, std::string text = {});
+	void HandleTextInputBatch(const ApplicationTextInputBatch &batch);
+	[[nodiscard]] std::optional<ApplicationTextInputState> TakeTextInputState();
 	void RenderFrame();
 	void PresentFrame();
 	void RunPendingWork();
@@ -134,6 +137,7 @@ public:
 	}
 	[[nodiscard]] int ChangeNotifications() const noexcept { return changeNotifications; }
 	[[nodiscard]] bool IdleRequested() const noexcept { return idleRequested; }
+	[[nodiscard]] int ImeIndicatorAt(Scintilla::Position position) const;
 
 protected:
 	void SetHorizontalScrollPos() override;
@@ -149,6 +153,8 @@ protected:
 
 	void NotifyChange() override;
 	void NotifyParent(Scintilla::NotificationData notification) override;
+	void NotifyCaretMove() override;
+	void UpdateSystemCaret() override;
 	void SetMouseCapture(bool captured) override;
 	bool HaveMouseCapture() override;
 
@@ -165,6 +171,10 @@ private:
 	void RecordUnsupported(std::string request);
 	void QueuePrimarySelectionClaim(std::optional<std::string> text);
 	void RequestPrimarySelectionPaste(Scintilla::Position position);
+	[[nodiscard]] ApplicationTextInputState BuildTextInputState();
+	[[nodiscard]] bool DeleteTextInputSurrounding(
+		const ApplicationTextInputDelete &deletion);
+	void CancelTextInput();
 
 	ScrollState scrollbars;
 	static constexpr std::size_t tickerReasonCount = static_cast<std::size_t>(TickReason::platform) + 1;
@@ -191,6 +201,11 @@ private:
 		std::optional<std::string> text;
 	};
 	std::optional<PendingPrimaryClaim> pendingPrimaryClaim;
+	struct TextInputPreeditRange {
+		Scintilla::Position start = 0;
+		Scintilla::Position length = 0;
+	};
+	std::optional<TextInputPreeditRange> textInputPreeditRange;
 	uint64_t nextClipboardRequest = 1;
 	uint64_t nextPrimarySelectionRequest = 1;
 	uint64_t latestPrimarySelectionClaimRequest = 0;
@@ -201,6 +216,9 @@ private:
 	int changeNotifications = 0;
 	bool idleRequested = false;
 	bool queuedIdleWork = false;
+	bool textInputStateDirty = true;
+	ApplicationTextChangeCause textInputChangeCause =
+		ApplicationTextChangeCause::Other;
 	NowFunction now;
 	double horizontalWheelRemainder = 0;
 	double verticalWheelRemainder = 0;

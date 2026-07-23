@@ -30,6 +30,7 @@ std::vector<WaylandTextInputRequest> WaylandTextInputState::Attach() {
 	enabled = false;
 	acceptsState = true;
 	stateDirty = clientState.has_value();
+	resetState = false;
 	commitSerial = 0;
 	ClearPending();
 	return Reconcile();
@@ -44,6 +45,7 @@ void WaylandTextInputState::Detach() {
 	enabled = false;
 	acceptsState = true;
 	commitSerial = 0;
+	resetState = false;
 	ClearPending();
 }
 
@@ -81,14 +83,20 @@ std::vector<WaylandTextInputRequest> WaylandTextInputState::SetKeyboardFocus(boo
 
 std::vector<WaylandTextInputRequest> WaylandTextInputState::UpdateClientState(
 	WaylandTextInputClientState state_) {
-	if (state_.surroundingText.size() > MaximumSurroundingBytes ||
-		!IsValidWaylandText(state_.surroundingText) ||
-		!IsUtf8Boundary(state_.surroundingText, state_.cursor) ||
-		!IsUtf8Boundary(state_.surroundingText, state_.anchor) ||
+	if ((state_.surroundingText &&
+			(state_.surroundingText->size() > MaximumSurroundingBytes ||
+				!IsValidWaylandText(*state_.surroundingText) ||
+				!IsUtf8Boundary(*state_.surroundingText, state_.cursor) ||
+				!IsUtf8Boundary(*state_.surroundingText, state_.anchor))) ||
 		state_.cursorRectangle.width < 0 || state_.cursorRectangle.height < 0) {
 		throw std::invalid_argument("invalid Wayland text input client state");
 	}
 	if (!clientState || *clientState != state_) {
+		if (clientState &&
+			clientState->surroundingText.has_value() !=
+				state_.surroundingText.has_value()) {
+			resetState = true;
+		}
 		clientState = std::move(state_);
 		stateDirty = true;
 	}
@@ -123,6 +131,10 @@ void WaylandTextInputState::RecordDelete(
 }
 
 void WaylandTextInputState::Done(uint32_t serial) {
+	if (!attached || !entered) {
+		ClearPending();
+		return;
+	}
 	const bool matching = serial == commitSerial;
 	WaylandTextInputBatch batch;
 	batch.serial = serial;
@@ -166,13 +178,18 @@ std::vector<WaylandTextInputRequest> WaylandTextInputState::Reconcile() {
 		commitSerial++;
 		enabled = true;
 		stateDirty = false;
+		resetState = false;
 		return requests;
 	}
 	if (stateDirty && acceptsState) {
+		if (resetState) {
+			requests.push_back({WaylandTextInputRequestType::Enable, std::nullopt});
+		}
 		requests.push_back({WaylandTextInputRequestType::State, clientState});
 		requests.push_back({WaylandTextInputRequestType::Commit, std::nullopt});
 		commitSerial++;
 		stateDirty = false;
+		resetState = false;
 	}
 	return requests;
 }
@@ -265,7 +282,7 @@ void WaylandTextInput::Apply(
 		case WaylandTextInputRequestType::Enable:
 			zwp_text_input_v3_enable(textInput);
 			zwp_text_input_v3_set_content_type(textInput,
-				ZWP_TEXT_INPUT_V3_CONTENT_HINT_NONE,
+				ZWP_TEXT_INPUT_V3_CONTENT_HINT_MULTILINE,
 				ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_NORMAL);
 			break;
 		case WaylandTextInputRequestType::Disable:
@@ -273,8 +290,10 @@ void WaylandTextInput::Apply(
 			break;
 		case WaylandTextInputRequestType::State: {
 			const WaylandTextInputClientState &client = *request.state;
-			zwp_text_input_v3_set_surrounding_text(textInput,
-				client.surroundingText.c_str(), client.cursor, client.anchor);
+			if (client.surroundingText) {
+				zwp_text_input_v3_set_surrounding_text(textInput,
+					client.surroundingText->c_str(), client.cursor, client.anchor);
+			}
 			zwp_text_input_v3_set_text_change_cause(textInput,
 				client.changeCause == WaylandTextChangeCause::InputMethod ?
 					ZWP_TEXT_INPUT_V3_CHANGE_CAUSE_INPUT_METHOD :

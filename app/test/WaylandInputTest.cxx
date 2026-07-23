@@ -64,7 +64,8 @@ TEST_CASE("Wayland text input enables only with focus entry and editor state") {
 	CHECK(enabled[0].type == Scalpel::WaylandTextInputRequestType::Enable);
 	CHECK(enabled[1].type == Scalpel::WaylandTextInputRequestType::State);
 	REQUIRE(enabled[1].state.has_value());
-	CHECK(enabled[1].state->surroundingText == "before \xC3\xA9 after");
+	CHECK(enabled[1].state->surroundingText ==
+		std::optional<std::string>{"before \xC3\xA9 after"});
 	CHECK(enabled[2].type == Scalpel::WaylandTextInputRequestType::Commit);
 	CHECK(input.CommitSerial() == 1);
 	CHECK(input.Enabled());
@@ -118,6 +119,24 @@ TEST_CASE("Wayland text input batches events at done in protocol order") {
 	CHECK(input.CommitSerial() == 2);
 }
 
+TEST_CASE("Wayland text input resets changing surrounding support") {
+	Scalpel::WaylandTextInputState input;
+	(void)input.Attach();
+	(void)input.SetKeyboardFocus(true);
+	(void)input.Enter();
+	REQUIRE(input.UpdateClientState(TextInputClientState()).size() == 3);
+
+	auto unavailable = TextInputClientState();
+	unavailable.surroundingText.reset();
+	const auto reset = input.UpdateClientState(unavailable);
+	REQUIRE(reset.size() == 3);
+	CHECK(reset[0].type == Scalpel::WaylandTextInputRequestType::Enable);
+	CHECK(reset[1].type == Scalpel::WaylandTextInputRequestType::State);
+	REQUIRE(reset[1].state.has_value());
+	CHECK_FALSE(reset[1].state->surroundingText.has_value());
+	CHECK(reset[2].type == Scalpel::WaylandTextInputRequestType::Commit);
+}
+
 TEST_CASE("Wayland text input rejects invalid UTF-8 state and events") {
 	Scalpel::WaylandTextInputState input;
 	(void)input.Attach();
@@ -127,7 +146,7 @@ TEST_CASE("Wayland text input rejects invalid UTF-8 state and events") {
 	CHECK_THROWS_WITH(input.UpdateClientState(invalid),
 		"invalid Wayland text input client state");
 	invalid = TextInputClientState();
-	invalid.surroundingText.assign(4001, 'a');
+	invalid.surroundingText = std::string(4001, 'a');
 	invalid.cursor = 4001;
 	invalid.anchor = 4001;
 	CHECK_THROWS_WITH(input.UpdateClientState(invalid),

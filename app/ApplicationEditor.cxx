@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -120,10 +121,12 @@ ApplicationEditor::~ApplicationEditor() {
 }
 
 void ApplicationEditor::LoadInitialBuffer(std::string_view text) {
+	CancelTextInput();
 	documentGeneration++;
 	SetText(text);
 	EmptyUndoBuffer();
 	SetSavePoint();
+	textInputStateDirty = true;
 }
 
 std::string ApplicationEditor::Text() const {
@@ -138,10 +141,83 @@ void ApplicationEditor::Resize(int width, int height) {
 	frame.reset();
 	ChangeSize();
 	wMain.InvalidateAll();
+	textInputStateDirty = true;
 }
 
 void ApplicationEditor::SetKeyboardFocus(bool focused) {
 	SetFocus(focused);
+	if (!focused) {
+		CancelTextInput();
+	}
+	textInputStateDirty = true;
+}
+
+void ApplicationEditor::HandleTextInputBatch(
+	const ApplicationTextInputBatch &batch) {
+	if (batch.cancel || pdoc->IsReadOnly() || SelectionContainsProtected()) {
+		CancelTextInput();
+		textInputStateDirty = textInputStateDirty || batch.refreshState;
+		return;
+	}
+
+	const bool replacingPreedit = pdoc->TentativeActive();
+	if (replacingPreedit) {
+		pdoc->TentativeUndo();
+		textInputPreeditRange.reset();
+	}
+
+	{
+		Scintilla::Internal::UndoGroup undoGroup(
+			pdoc, batch.deletion.has_value() || batch.commit.has_value());
+		if (batch.deletion && !DeleteTextInputSurrounding(*batch.deletion)) {
+			textInputStateDirty = true;
+			return;
+		}
+		if (batch.commit && !batch.commit->empty()) {
+			InsertCharacter(*batch.commit, Scintilla::CharacterSource::ImeResult);
+		}
+	}
+
+	if (batch.preedit && !batch.preedit->text.empty()) {
+		if (!replacingPreedit) {
+			ClearBeforeTentativeStart();
+		}
+		const Scintilla::Position preeditStart = CurrentPosition();
+		pdoc->TentativeStart();
+		InsertCharacter(batch.preedit->text,
+			Scintilla::CharacterSource::TentativeInput);
+		textInputPreeditRange = TextInputPreeditRange{
+			preeditStart,
+			static_cast<Scintilla::Position>(batch.preedit->text.size()),
+		};
+		DrawImeIndicator(Scintilla::Internal::IndicatorInput,
+			static_cast<Scintilla::Position>(batch.preedit->text.size()));
+		if (batch.preedit->cursorEnd >= 0) {
+			MoveImeCarets(static_cast<Scintilla::Position>(
+				batch.preedit->cursorEnd) -
+				static_cast<Scintilla::Position>(batch.preedit->text.size()));
+		}
+		EnsureCaretVisible();
+		ShowCaretAtCurrentPosition();
+	}
+
+	textInputStateDirty = true;
+	textInputChangeCause = ApplicationTextChangeCause::InputMethod;
+}
+
+std::optional<ApplicationTextInputState> ApplicationEditor::TakeTextInputState() {
+	if (!textInputStateDirty) {
+		return std::nullopt;
+	}
+	ApplicationTextInputState state = BuildTextInputState();
+	state.changeCause = textInputChangeCause;
+	textInputStateDirty = false;
+	textInputChangeCause = ApplicationTextChangeCause::Other;
+	return state;
+}
+
+int ApplicationEditor::ImeIndicatorAt(Scintilla::Position position) const {
+	return IndicatorValueAt(Scintilla::Internal::IndicatorInput, position);
 }
 
 void ApplicationEditor::HandleKeyboardInput(const KeyboardInput &input) {
@@ -158,6 +234,8 @@ void ApplicationEditor::HandleKeyboardInput(const KeyboardInput &input) {
 		(input.modifiers & commandModifiers) == Scintilla::KeyMod::Norm) {
 		InsertCharacter(input.text, Scintilla::CharacterSource::DirectInput);
 	}
+	textInputStateDirty = true;
+	textInputChangeCause = ApplicationTextChangeCause::Other;
 }
 
 void ApplicationEditor::HandlePointerInput(const PointerInput &input) {
@@ -223,6 +301,8 @@ void ApplicationEditor::HandlePointerInput(const PointerInput &input) {
 		break;
 	}
 	}
+	textInputStateDirty = true;
+	textInputChangeCause = ApplicationTextChangeCause::Other;
 }
 
 void ApplicationEditor::SetPointerCapture(bool captured) {
@@ -543,13 +623,146 @@ void ApplicationEditor::RequestPrimarySelectionPaste(
 	});
 }
 
+ApplicationTextInputState ApplicationEditor::BuildTextInputState() {
+	constexpr Scintilla::Position MaximumSurroundingBytes = 4000;
+	if (textInputPreeditRange && !pdoc->TentativeActive()) {
+		textInputPreeditRange.reset();
+	}
+	ApplicationTextInputState state;
+	const Scintilla::Position preeditStart = textInputPreeditRange ?
+		textInputPreeditRange->start : 0;
+	const Scintilla::Position preeditLength = textInputPreeditRange ?
+		textInputPreeditRange->length : 0;
+	const Scintilla::Position caret = textInputPreeditRange ?
+		preeditStart : sel.MainCaret();
+	const Scintilla::Position anchor = textInputPreeditRange ?
+		preeditStart : sel.MainAnchor();
+	const Scintilla::Position selectionStart = std::min(caret, anchor);
+	const Scintilla::Position selectionEnd = std::max(caret, anchor);
+	const Scintilla::Position selectionLength = selectionEnd - selectionStart;
+	if (selectionLength <= MaximumSurroundingBytes) {
+		const Scintilla::Position documentLength =
+			pdoc->Length() - preeditLength;
+		const Scintilla::Position spare =
+			MaximumSurroundingBytes - selectionLength;
+		Scintilla::Position start = std::max<Scintilla::Position>(
+			0, selectionStart - spare / 2);
+		Scintilla::Position end = std::min<Scintilla::Position>(
+			documentLength, start + MaximumSurroundingBytes);
+		if (end < selectionEnd) {
+			end = selectionEnd;
+			start = std::max<Scintilla::Position>(
+				0, end - MaximumSurroundingBytes);
+		}
+		const auto actualPosition = [preeditStart, preeditLength](
+			Scintilla::Position position) {
+			return position <= preeditStart ?
+				position : position + preeditLength;
+		};
+		const auto virtualPosition = [preeditStart, preeditLength](
+			Scintilla::Position position) {
+			return position <= preeditStart ?
+				position : position - preeditLength;
+		};
+		start = virtualPosition(pdoc->MovePositionOutsideChar(
+			actualPosition(start), 1, false));
+		end = virtualPosition(pdoc->MovePositionOutsideChar(
+			actualPosition(end), -1, false));
+		if (start <= selectionStart && end >= selectionEnd) {
+			if (!textInputPreeditRange || end <= preeditStart) {
+				state.surroundingText = RangeText(start, end);
+			} else if (start >= preeditStart) {
+				state.surroundingText = RangeText(
+					start + preeditLength, end + preeditLength);
+			} else {
+				state.surroundingText =
+					RangeText(start, preeditStart) +
+					RangeText(preeditStart + preeditLength,
+						end + preeditLength);
+			}
+			state.cursor = static_cast<int32_t>(caret - start);
+			state.anchor = static_cast<int32_t>(anchor - start);
+		}
+	}
+
+	const Scintilla::Internal::Point caretPoint = PointMainCaret();
+	const auto coordinate = [](Scintilla::Internal::XYPOSITION value) {
+		const double minimum =
+			static_cast<double>(std::numeric_limits<int32_t>::min());
+		const double maximum =
+			static_cast<double>(std::numeric_limits<int32_t>::max());
+		return static_cast<int32_t>(std::clamp<double>(value, minimum, maximum));
+	};
+	state.cursorRectangle = {
+		coordinate(caretPoint.x),
+		coordinate(caretPoint.y),
+		1,
+		std::max(1, vs.lineHeight),
+	};
+	return state;
+}
+
+bool ApplicationEditor::DeleteTextInputSurrounding(
+	const ApplicationTextInputDelete &deletion) {
+	const Scintilla::Position selectionStart = SelectionStart().Position();
+	const Scintilla::Position selectionEnd = SelectionEnd().Position();
+	if (deletion.beforeLength >
+			static_cast<uint64_t>(selectionStart) ||
+		deletion.afterLength >
+			static_cast<uint64_t>(pdoc->Length() - selectionEnd)) {
+		return false;
+	}
+	const Scintilla::Position deleteStart =
+		selectionStart - deletion.beforeLength;
+	const Scintilla::Position deleteEnd =
+		selectionEnd + deletion.afterLength;
+	if (pdoc->MovePositionOutsideChar(deleteStart, 1, false) != deleteStart ||
+		pdoc->MovePositionOutsideChar(deleteEnd, -1, false) != deleteEnd ||
+		(deletion.beforeLength != 0 &&
+			RangeContainsProtected(deleteStart, selectionStart)) ||
+		(deletion.afterLength != 0 &&
+			RangeContainsProtected(selectionEnd, deleteEnd))) {
+		return false;
+	}
+	if (deletion.afterLength != 0 &&
+		!pdoc->DeleteChars(selectionEnd, deletion.afterLength)) {
+		return false;
+	}
+	if (deletion.beforeLength != 0 &&
+		!pdoc->DeleteChars(deleteStart, deletion.beforeLength)) {
+		return false;
+	}
+	return true;
+}
+
+void ApplicationEditor::CancelTextInput() {
+	if (pdoc->TentativeActive()) {
+		pdoc->TentativeUndo();
+		ShowCaretAtCurrentPosition();
+	}
+	textInputPreeditRange.reset();
+	textInputStateDirty = true;
+	textInputChangeCause = ApplicationTextChangeCause::Other;
+}
+
 void ApplicationEditor::NotifyChange() {
 	documentGeneration++;
 	changeNotifications++;
+	textInputStateDirty = true;
+	textInputChangeCause = ApplicationTextChangeCause::Other;
 }
 
 void ApplicationEditor::NotifyParent(Scintilla::NotificationData notification) {
 	notifications.push_back(notification.code);
+}
+
+void ApplicationEditor::NotifyCaretMove() {
+	textInputStateDirty = true;
+	textInputChangeCause = ApplicationTextChangeCause::Other;
+}
+
+void ApplicationEditor::UpdateSystemCaret() {
+	textInputStateDirty = true;
 }
 
 void ApplicationEditor::SetMouseCapture(bool captured) {

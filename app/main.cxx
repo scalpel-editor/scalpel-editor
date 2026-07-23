@@ -123,6 +123,61 @@ void DispatchPrimarySelectionRequests(Scalpel::ApplicationEditor &editor,
 	DeliverPrimarySelectionResults(window, editor);
 }
 
+Scalpel::ApplicationTextInputBatch ApplicationBatch(
+	Scalpel::WaylandTextInputBatch batch) {
+	Scalpel::ApplicationTextInputBatch application;
+	if (batch.preedit) {
+		application.preedit = Scalpel::ApplicationTextInputPreedit{
+			std::move(batch.preedit->text),
+			batch.preedit->cursorBegin,
+			batch.preedit->cursorEnd,
+		};
+	}
+	application.commit = std::move(batch.commit);
+	if (batch.deletion) {
+		application.deletion = Scalpel::ApplicationTextInputDelete{
+			batch.deletion->beforeLength,
+			batch.deletion->afterLength,
+		};
+	}
+	application.refreshState = batch.refreshState;
+	application.cancel = batch.cancel;
+	return application;
+}
+
+Scalpel::WaylandTextInputClientState WaylandState(
+	Scalpel::ApplicationTextInputState state) {
+	return {
+		std::move(state.surroundingText),
+		state.cursor,
+		state.anchor,
+		{
+			state.cursorRectangle.x,
+			state.cursorRectangle.y,
+			state.cursorRectangle.width,
+			state.cursorRectangle.height,
+		},
+		state.changeCause == Scalpel::ApplicationTextChangeCause::InputMethod ?
+			Scalpel::WaylandTextChangeCause::InputMethod :
+			Scalpel::WaylandTextChangeCause::Other,
+	};
+}
+
+void DeliverTextInputBatches(Scalpel::WaylandWindow &window,
+	Scalpel::ApplicationEditor &editor) {
+	for (Scalpel::WaylandTextInputBatch &batch : window.TakeTextInputBatches()) {
+		editor.HandleTextInputBatch(ApplicationBatch(std::move(batch)));
+	}
+}
+
+void SynchronizeTextInput(Scalpel::ApplicationEditor &editor,
+	Scalpel::WaylandWindow &window) {
+	if (std::optional<Scalpel::ApplicationTextInputState> state =
+		editor.TakeTextInputState()) {
+		window.UpdateTextInputState(WaylandState(std::move(*state)));
+	}
+}
+
 }
 
 int main() {
@@ -140,6 +195,7 @@ int main() {
 		while (!window.CloseRequested()) {
 			DeliverClipboardResults(window, editor);
 			DeliverPrimarySelectionResults(window, editor);
+			DeliverTextInputBatches(window, editor);
 			if (const std::optional<Scalpel::WindowSize> resize = window.TakeResize()) {
 				editor.Resize(resize->width, resize->height);
 			}
@@ -155,6 +211,7 @@ int main() {
 			DispatchClipboardRequests(editor, window);
 			DispatchPrimarySelectionRequests(editor, window);
 			editor.RunPendingWork();
+			SynchronizeTextInput(editor, window);
 			window.SetCursor(editor.WindowState().cursor);
 			if (editor.NeedsRedraw()) {
 				editor.PresentFrame();

@@ -35,7 +35,7 @@ enum class WaylandTextChangeCause {
 };
 
 struct WaylandTextInputClientState {
-	std::string surroundingText;
+	std::optional<std::string> surroundingText;
 	int32_t cursor = 0;
 	int32_t anchor = 0;
 	WaylandTextInputRectangle cursorRectangle;
@@ -122,6 +122,7 @@ private:
 	bool keyboardFocused = false;
 	bool enabled = false;
 	bool stateDirty = false;
+	bool resetState = false;
 	bool acceptsState = true;
 	bool pendingInvalid = false;
 };
