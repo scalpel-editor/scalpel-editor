@@ -70,6 +70,7 @@ using namespace Scintilla::Internal;
 TEST_CASE("X offset and first-visible-line round-trip") {
 	TestHost host;
 	TestEditor editor(host, PRectangle(0, 0, 160, 40));
+	editor.SetWrapMode(Wrap::None);
 	LoadClean(editor,
 		"line 00\nline 01\nline 02\nline 03\nline 04\nline 05\n"
 		"line 06\nline 07\nline 08\nline 09\nline 10\nline 11\n"

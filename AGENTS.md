@@ -33,6 +33,9 @@ cmake --build build --target unitTest
 cmake --build build --target applicationHostTest
 ./build/app/test/applicationHostTest "production editor host*"
 
+cmake --build build --target waylandFrameTest
+./build/app/test/waylandFrameTest "Wayland frame*"
+
 cmake --build build --target scalpel-editor
 ```
 
@@ -64,7 +67,7 @@ The ASan test preset sets `ASAN_OPTIONS=detect_leaks=0` because this development
 
 ### Where tests live
 
-For failure details, run a test binary directly: `./build/scintilla/test/unit/unitTest` for the upstream platform-free tests, `./build/scintilla/test/editor/editorTest` for the concrete editor tests, or one of `applicationHostTest`, `applicationImeTest`, `applicationTransferTest`, and `applicationInputTest` under `./build/app/test/` for the corresponding production-host concern (Catch2 v2; pass a test name pattern to run one case). The core builds as a static library, `scintilla_core`. The unit executable links only the platform-free objects it calls. `editorTest` links the editor concern translation units (`Editor*.cxx`, `ScintillaBase.cxx`, and their required core objects) against the deterministic test-only `Platform.h` implementation, so missing editor definitions fail the build. Named feature work lives in concern files such as `EditorWrapping.cxx` and `EditorDocument.cxx`; `Editor.cxx` keeps shared paint, geometry, notifications, and document-watcher work. The production application host, Wayland shell, and standalone executable live in `app/`.
+For failure details, run a test binary directly: `./build/scintilla/test/unit/unitTest` for the upstream platform-free tests, `./build/scintilla/test/editor/editorTest` for the concrete editor tests, or the concern-named target under `./build/app/test/` for application and Wayland behavior (Catch2 v2; pass a test name pattern to run one case). Application targets separate host, IME, transfer, and direct-input behavior. Wayland targets separate cursor, scale, frame, window, registry, text-input, keyboard, pointer, byte-transfer, clipboard, primary-selection, poll, D-Bus, portal, and cross-concern integration behavior. `fontTest` and `rendererTest` retain one component executable each, but their sources are split by concern so editing one case does not rebuild the entire suite translation unit. The core builds as a static library, `scintilla_core`. The unit executable links only the platform-free objects it calls. `editorTest` links the editor concern translation units (`Editor*.cxx`, `ScintillaBase.cxx`, and their required core objects) against the deterministic test-only `Platform.h` implementation, so missing editor definitions fail the build. Named feature work lives in concern files such as `EditorWrapping.cxx` and `EditorDocument.cxx`; `Editor.cxx` keeps shared paint, geometry, notifications, and document-watcher work. The production application host, Wayland shell, and standalone executable live in `app/`.
 
 ## Development
 
