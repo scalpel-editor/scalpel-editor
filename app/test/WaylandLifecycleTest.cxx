@@ -253,6 +253,29 @@ TEST_CASE("Wayland registry replaces optional shared memory") {
 		Scalpel::WaylandLifecycleActionType::ReleaseSharedMemory);
 }
 
+TEST_CASE("Wayland registry replaces the optional data device manager") {
+	Scalpel::WaylandLifecycle lifecycle(800, 600);
+
+	const auto first = lifecycle.AddGlobal(
+		Scalpel::WaylandGlobalKind::DataDeviceManager, 29, 3);
+	REQUIRE(first.size() == 1);
+	CHECK(first.front() == Scalpel::WaylandLifecycleAction{
+		Scalpel::WaylandLifecycleActionType::BindDataDeviceManager, 29, 3});
+	CHECK(lifecycle.AddGlobal(
+		Scalpel::WaylandGlobalKind::DataDeviceManager, 30, 2).empty());
+
+	const auto replacement = lifecycle.RemoveGlobal(29);
+	REQUIRE(replacement.size() == 2);
+	CHECK(replacement[0] == Scalpel::WaylandLifecycleAction{
+		Scalpel::WaylandLifecycleActionType::ReleaseDataDeviceManager, 29});
+	CHECK(replacement[1] == Scalpel::WaylandLifecycleAction{
+		Scalpel::WaylandLifecycleActionType::BindDataDeviceManager, 30, 2});
+	const auto removed = lifecycle.RemoveGlobal(30);
+	REQUIRE(removed.size() == 1);
+	CHECK(removed.front().type ==
+		Scalpel::WaylandLifecycleActionType::ReleaseDataDeviceManager);
+}
+
 TEST_CASE("Wayland registry closes when an active required global disappears") {
 	Scalpel::WaylandLifecycle lifecycle(800, 600);
 	(void)lifecycle.AddGlobal(Scalpel::WaylandGlobalKind::Compositor, 10, 4);

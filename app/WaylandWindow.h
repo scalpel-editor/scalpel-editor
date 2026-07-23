@@ -6,14 +6,17 @@
 #include <chrono>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <vector>
 
+#include "WaylandClipboard.h"
 #include "WaylandCursor.h"
 #include "WaylandInput.h"
 #include "WaylandLifecycle.h"
 
 struct wl_array;
 struct wl_compositor;
+struct wl_data_device_manager;
 struct wl_display;
 struct wl_egl_window;
 struct wl_keyboard;
@@ -76,6 +79,12 @@ public:
 	[[nodiscard]] std::vector<InputEvent> TakeInputs() { return input.TakeInputs(); }
 	void SetCursor(Scintilla::Internal::Window::Cursor cursor);
 	void SetCursorScale(int scale);
+	void CopyToClipboard(uint64_t request, std::string text);
+	void PasteFromClipboard(uint64_t request);
+	[[nodiscard]] bool ClipboardPasteAvailable() const { return clipboard.CanPaste(); }
+	[[nodiscard]] std::vector<ClipboardResult> TakeClipboardResults() {
+		return clipboard.TakeResults();
+	}
 
 	/** Complete one request/event round trip, throwing on display failure. */
 	void RoundTrip();
@@ -181,6 +190,7 @@ private:
 	wl_keyboard *keyboard = nullptr;
 	wl_pointer *pointer = nullptr;
 	wl_shm *sharedMemory = nullptr;
+	wl_data_device_manager *dataDeviceManager = nullptr;
 	wl_surface *cursorSurface = nullptr;
 	wl_cursor_theme *cursorTheme = nullptr;
 	int cursorThemeScale = 0;
@@ -195,6 +205,7 @@ private:
 	WaylandLifecycle lifecycle;
 	WaylandInput input;
 	WaylandCursorState cursorState;
+	WaylandClipboard clipboard;
 	WaylandCursorSettings cursorSettings;
 	bool callbackFailed = false;
 	bool configured = false;

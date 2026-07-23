@@ -57,6 +57,12 @@ std::vector<WaylandLifecycleAction> WaylandLifecycle::AddGlobal(
 			return {{WaylandLifecycleActionType::BindSharedMemory, name, version}};
 		}
 		break;
+	case WaylandGlobalKind::DataDeviceManager:
+		if (!dataDeviceManagerName) {
+			dataDeviceManagerName = name;
+			return {{WaylandLifecycleActionType::BindDataDeviceManager, name, version}};
+		}
+		break;
 	case WaylandGlobalKind::Output:
 		return {{WaylandLifecycleActionType::BindOutput, name, version}};
 	case WaylandGlobalKind::Seat:
@@ -112,6 +118,22 @@ std::vector<WaylandLifecycleAction> WaylandLifecycle::RemoveGlobal(uint32_t name
 		if (replacement != globals.end()) {
 			sharedMemoryName = replacement->name;
 			actions.push_back({WaylandLifecycleActionType::BindSharedMemory,
+				replacement->name, replacement->version});
+		}
+		return actions;
+	}
+	if (removed.kind == WaylandGlobalKind::DataDeviceManager &&
+		dataDeviceManagerName == name) {
+		std::vector<WaylandLifecycleAction> actions = {
+			{WaylandLifecycleActionType::ReleaseDataDeviceManager, name}};
+		dataDeviceManagerName.reset();
+		const auto replacement = std::find_if(globals.begin(), globals.end(),
+			[](const Global &global) {
+				return global.kind == WaylandGlobalKind::DataDeviceManager;
+			});
+		if (replacement != globals.end()) {
+			dataDeviceManagerName = replacement->name;
+			actions.push_back({WaylandLifecycleActionType::BindDataDeviceManager,
 				replacement->name, replacement->version});
 		}
 		return actions;

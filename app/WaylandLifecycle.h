@@ -27,6 +27,7 @@ enum class WaylandGlobalKind {
 	WmBase,
 	DecorationManager,
 	SharedMemory,
+	DataDeviceManager,
 	Output,
 	Seat,
 };
@@ -38,6 +39,8 @@ enum class WaylandLifecycleActionType {
 	ReleaseDecorationManager,
 	BindSharedMemory,
 	ReleaseSharedMemory,
+	BindDataDeviceManager,
+	ReleaseDataDeviceManager,
 	BindOutput,
 	ReleaseOutput,
 	BindSeat,
@@ -131,6 +134,7 @@ private:
 	std::optional<uint32_t> wmBaseName;
 	std::optional<uint32_t> decorationManagerName;
 	std::optional<uint32_t> sharedMemoryName;
+	std::optional<uint32_t> dataDeviceManagerName;
 	std::optional<uint32_t> activeSeatName;
 	WaylandToplevelState toplevelState;
 	std::optional<WaylandToplevelState> proposedToplevelState;

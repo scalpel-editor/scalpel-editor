@@ -13,6 +13,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string_view>
+#include <utility>
 
 #include <sys/mman.h>
 #include <poll.h>
@@ -217,6 +218,7 @@ void WaylandWindow::Destroy() noexcept {
 		}
 	}
 	if (seat) {
+		clipboard.SetSeat(nullptr);
 		if (wl_seat_get_version(seat) >= WL_SEAT_RELEASE_SINCE_VERSION) {
 			wl_seat_release(seat);
 		} else {
@@ -225,6 +227,10 @@ void WaylandWindow::Destroy() noexcept {
 	}
 	if (sharedMemory) {
 		wl_shm_destroy(sharedMemory);
+	}
+	clipboard.SetManager(nullptr);
+	if (dataDeviceManager) {
+		wl_data_device_manager_destroy(dataDeviceManager);
 	}
 	if (wmBase) {
 		xdg_wm_base_destroy(wmBase);
@@ -249,6 +255,7 @@ void WaylandWindow::Destroy() noexcept {
 	surface = nullptr;
 	cursorSurface = nullptr;
 	sharedMemory = nullptr;
+	dataDeviceManager = nullptr;
 	keyboard = nullptr;
 	pointer = nullptr;
 	seat = nullptr;
@@ -282,6 +289,14 @@ void WaylandWindow::SetCursorScale(int scale) {
 	(void)cursorState.SetScale(scale);
 	LoadCursorTheme();
 	ApplyCursorAction(cursorState.SetThemeAvailable(cursorTheme != nullptr));
+}
+
+void WaylandWindow::CopyToClipboard(uint64_t request, std::string text) {
+	clipboard.CopyText(request, std::move(text));
+}
+
+void WaylandWindow::PasteFromClipboard(uint64_t request) {
+	clipboard.PasteText(request);
 }
 
 void WaylandWindow::ApplyCursorAction(const std::optional<WaylandCursorAction> &action) {
@@ -434,6 +449,26 @@ void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleActi
 				sharedMemory = nullptr;
 			}
 			break;
+		case WaylandLifecycleActionType::BindDataDeviceManager:
+			if (dataDeviceManager) {
+				callbackFailed = true;
+				break;
+			}
+			dataDeviceManager = static_cast<wl_data_device_manager *>(wl_registry_bind(
+				registry, action.name, &wl_data_device_manager_interface,
+				std::min(action.version, 3U)));
+			clipboard.SetManager(dataDeviceManager);
+			if (seat) {
+				clipboard.SetSeat(seat);
+			}
+			break;
+		case WaylandLifecycleActionType::ReleaseDataDeviceManager:
+			clipboard.SetManager(nullptr);
+			if (dataDeviceManager) {
+				wl_data_device_manager_destroy(dataDeviceManager);
+				dataDeviceManager = nullptr;
+			}
+			break;
 		case WaylandLifecycleActionType::BindOutput: {
 			wl_output *output = static_cast<wl_output *>(wl_registry_bind(
 				registry, action.name, &wl_output_interface, std::min(action.version, 2U)));
@@ -477,9 +512,12 @@ void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleActi
 					seat = nullptr;
 				}
 				callbackFailed = true;
+			} else {
+				clipboard.SetSeat(seat);
 			}
 			break;
 		case WaylandLifecycleActionType::ReleaseSeat:
+			clipboard.SetSeat(nullptr);
 			if (seat) {
 				if (wl_seat_get_version(seat) >= WL_SEAT_RELEASE_SINCE_VERSION) {
 					wl_seat_release(seat);
@@ -635,10 +673,19 @@ void WaylandWindow::WaitForEvents(std::optional<std::chrono::milliseconds> timeo
 			(!waitTimeout || *repeatTimeout < *waitTimeout)) {
 			waitTimeout = repeatTimeout;
 		}
+		const std::optional<std::chrono::milliseconds> transferTimeout =
+			clipboard.TimeUntilTransfer();
+		if (transferTimeout && (!waitTimeout || *transferTimeout < *waitTimeout)) {
+			waitTimeout = transferTimeout;
+		}
 		const int timeoutMilliseconds = waitTimeout ?
 			static_cast<int>(std::clamp<int64_t>(waitTimeout->count(), 0, INT_MAX)) : -1;
-		pollfd displayPoll{wl_display_get_fd(display), events, 0};
-		const int pollResult = poll(&displayPoll, 1, timeoutMilliseconds);
+		std::vector<pollfd> pollDescriptors{
+			{wl_display_get_fd(display), events, 0},
+		};
+		clipboard.AppendPollDescriptors(pollDescriptors);
+		const int pollResult = poll(
+			pollDescriptors.data(), pollDescriptors.size(), timeoutMilliseconds);
 		if (pollResult < 0) {
 			wl_display_cancel_read(display);
 			if (errno == EINTR) {
@@ -647,6 +694,7 @@ void WaylandWindow::WaitForEvents(std::optional<std::chrono::milliseconds> timeo
 			throw std::runtime_error("Wayland display poll failed");
 		}
 
+		pollfd &displayPoll = pollDescriptors.front();
 		if (pollResult > 0 && (displayPoll.revents & POLLIN)) {
 			if (wl_display_read_events(display) < 0) {
 				throw std::runtime_error("Wayland display read failed");
@@ -658,6 +706,7 @@ void WaylandWindow::WaitForEvents(std::optional<std::chrono::milliseconds> timeo
 		if (displayPoll.revents & (POLLERR | POLLHUP | POLLNVAL)) {
 			throw std::runtime_error("Wayland display connection failed");
 		}
+		clipboard.ProcessPollDescriptors(pollDescriptors, 1);
 
 		int dispatched = 0;
 		do {
@@ -691,6 +740,9 @@ void WaylandWindow::RegistryGlobal(void *data, wl_registry *, uint32_t name,
 	} else if (std::strcmp(interface, wl_shm_interface.name) == 0) {
 		window.ApplyLifecycleActions(window.lifecycle.AddGlobal(
 			WaylandGlobalKind::SharedMemory, name, version));
+	} else if (std::strcmp(interface, wl_data_device_manager_interface.name) == 0) {
+		window.ApplyLifecycleActions(window.lifecycle.AddGlobal(
+			WaylandGlobalKind::DataDeviceManager, name, version));
 	} else if (std::strcmp(interface, wl_output_interface.name) == 0) {
 		window.ApplyLifecycleActions(window.lifecycle.AddGlobal(
 			WaylandGlobalKind::Output, name, version));
@@ -743,9 +795,11 @@ void WaylandWindow::KeyboardKeymap(void *data, wl_keyboard *, uint32_t format,
 	}
 }
 
-void WaylandWindow::KeyboardEnter(void *data, wl_keyboard *, uint32_t, wl_surface *surface_, wl_array *) {
+void WaylandWindow::KeyboardEnter(void *data, wl_keyboard *, uint32_t serial,
+	wl_surface *surface_, wl_array *) {
 	auto &window = *static_cast<WaylandWindow *>(data);
 	if (surface_ == window.surface) {
+		window.clipboard.RecordSerial(serial);
 		window.input.RecordKeyboardFocus(true);
 	}
 }
@@ -758,9 +812,10 @@ void WaylandWindow::KeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surfac
 	}
 }
 
-void WaylandWindow::KeyboardKey(void *data, wl_keyboard *, uint32_t, uint32_t time,
+void WaylandWindow::KeyboardKey(void *data, wl_keyboard *, uint32_t serial, uint32_t time,
 	uint32_t key, uint32_t state) {
 	auto &window = *static_cast<WaylandWindow *>(data);
+	window.clipboard.RecordSerial(serial);
 	if (state == WL_KEYBOARD_KEY_STATE_PRESSED || state == WL_KEYBOARD_KEY_STATE_RELEASED) {
 		window.input.RecordKey(time, key, state == WL_KEYBOARD_KEY_STATE_PRESSED);
 	}
@@ -784,6 +839,7 @@ void WaylandWindow::PointerEnter(void *data, wl_pointer *, uint32_t serial,
 	wl_surface *surface_, int32_t x, int32_t y) {
 	auto &window = *static_cast<WaylandWindow *>(data);
 	if (surface_ == window.surface) {
+		window.clipboard.RecordSerial(serial);
 		window.ApplyCursorAction(window.cursorState.Enter(serial));
 		if (!window.cursorTheme) {
 			window.LoadCursorTheme();
@@ -808,10 +864,12 @@ void WaylandWindow::PointerMotion(void *data, wl_pointer *, uint32_t time,
 		time, wl_fixed_to_double(x), wl_fixed_to_double(y));
 }
 
-void WaylandWindow::PointerButton(void *data, wl_pointer *, uint32_t, uint32_t time,
+void WaylandWindow::PointerButton(void *data, wl_pointer *, uint32_t serial, uint32_t time,
 	uint32_t button, uint32_t state) {
 	if (state == WL_POINTER_BUTTON_STATE_PRESSED || state == WL_POINTER_BUTTON_STATE_RELEASED) {
-		static_cast<WaylandWindow *>(data)->input.RecordPointerButton(
+		auto &window = *static_cast<WaylandWindow *>(data);
+		window.clipboard.RecordSerial(serial);
+		window.input.RecordPointerButton(
 			time, button, state == WL_POINTER_BUTTON_STATE_PRESSED);
 	}
 }
