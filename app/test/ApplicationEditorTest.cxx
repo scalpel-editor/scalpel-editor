@@ -102,21 +102,82 @@ TEST_CASE("production editor host schedules tickers against a monotonic clock") 
 	CHECK_FALSE(editor.TimeUntilNextWork().has_value());
 }
 
-TEST_CASE("deferred application services fail visibly") {
+TEST_CASE("production editor exposes clipboard requests and unavailable results") {
 	Scalpel::ApplicationEditor editor(200, 100);
 	editor.LoadInitialBuffer("clipboard request");
 	CHECK(editor.UnsupportedRequests().empty());
-	const size_t requestsBeforeExplicitClipboardUse = editor.UnsupportedRequests().size();
 
-	editor.SetKeyboardFocus(true);
-	editor.SetKeyboardFocus(false);
+	editor.HandleKeyboardInput({static_cast<Scintilla::Keys>('A'), Scintilla::KeyMod::Ctrl,
+		{}, 1, true});
 	editor.RequestClipboardCopy();
+	const std::vector<Scalpel::ApplicationClipboardRequest> requests =
+		editor.TakeClipboardRequests();
+	REQUIRE(requests.size() == 1);
+	CHECK(requests.front().operation == Scalpel::ApplicationClipboardOperation::Copy);
+	CHECK(requests.front().text == "clipboard request");
+	editor.HandleClipboardResult(requests.front().id,
+		Scalpel::ApplicationClipboardOperation::Copy,
+		Scalpel::ApplicationClipboardStatus::Unavailable);
 
-	CHECK(editor.Notifications().back() == Scintilla::Notification::FocusOut);
 	CHECK_FALSE(editor.ClipboardPasteAvailable());
-	REQUIRE(editor.UnsupportedRequests().size() == requestsBeforeExplicitClipboardUse + 2);
-	CHECK(editor.UnsupportedRequests()[requestsBeforeExplicitClipboardUse] == "clipboard copy");
-	CHECK(editor.UnsupportedRequests()[requestsBeforeExplicitClipboardUse + 1] == "clipboard paste availability");
+	CHECK(editor.UnsupportedRequests().empty());
+	REQUIRE(editor.ClipboardResults().size() == 1);
+	CHECK(editor.ClipboardResults().front().status ==
+		Scalpel::ApplicationClipboardStatus::Unavailable);
+}
+
+TEST_CASE("production editor applies a completed asynchronous paste") {
+	Scalpel::ApplicationEditor editor(200, 100);
+	editor.LoadInitialBuffer("old text");
+	editor.HandleKeyboardInput({static_cast<Scintilla::Keys>('A'), Scintilla::KeyMod::Ctrl,
+		{}, 1, true});
+	editor.SetClipboardPasteAvailable(true);
+	CHECK(editor.ClipboardPasteAvailable());
+	editor.RequestClipboardPaste();
+
+	const std::vector<Scalpel::ApplicationClipboardRequest> requests =
+		editor.TakeClipboardRequests();
+	REQUIRE(requests.size() == 1);
+	CHECK(requests.front().operation == Scalpel::ApplicationClipboardOperation::Paste);
+	editor.HandleClipboardResult(requests.front().id,
+		Scalpel::ApplicationClipboardOperation::Paste,
+		Scalpel::ApplicationClipboardStatus::Complete, "new \xE2\x98\x83");
+
+	CHECK(editor.Text() == "new \xE2\x98\x83");
+	REQUIRE(editor.ClipboardResults().size() == 1);
+	CHECK(editor.ClipboardResults().front().status ==
+		Scalpel::ApplicationClipboardStatus::Complete);
+}
+
+TEST_CASE("production editor rejects stale asynchronous paste results") {
+	Scalpel::ApplicationEditor editor(200, 100);
+	editor.LoadInitialBuffer("first");
+	editor.RequestClipboardPaste();
+	const auto first = editor.TakeClipboardRequests();
+	REQUIRE(first.size() == 1);
+
+	editor.LoadInitialBuffer("replacement");
+	editor.HandleClipboardResult(first.front().id,
+		Scalpel::ApplicationClipboardOperation::Paste,
+		Scalpel::ApplicationClipboardStatus::Complete, "stale");
+	CHECK(editor.Text() == "replacement");
+	CHECK(editor.ClipboardResults().back().status ==
+		Scalpel::ApplicationClipboardStatus::Superseded);
+
+	editor.RequestClipboardPaste();
+	const auto older = editor.TakeClipboardRequests();
+	editor.RequestClipboardPaste();
+	const auto current = editor.TakeClipboardRequests();
+	REQUIRE(older.size() == 1);
+	REQUIRE(current.size() == 1);
+	editor.HandleClipboardResult(older.front().id,
+		Scalpel::ApplicationClipboardOperation::Paste,
+		Scalpel::ApplicationClipboardStatus::Complete, "older");
+	CHECK(editor.Text() == "replacement");
+	editor.HandleClipboardResult(current.front().id,
+		Scalpel::ApplicationClipboardOperation::Paste,
+		Scalpel::ApplicationClipboardStatus::Complete, "current");
+	CHECK(editor.Text() == "currentreplacement");
 }
 
 TEST_CASE("production editor keyboard runs commands and inserts UTF-8 text") {

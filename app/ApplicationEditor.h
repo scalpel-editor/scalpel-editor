@@ -14,6 +14,7 @@
 #include <string_view>
 #include <vector>
 
+#include "ApplicationClipboard.h"
 #include "ApplicationPlatform.h"
 #include "ApplicationInput.h"
 #include "EditorNotifications.h"
@@ -95,7 +96,12 @@ public:
 	void HandlePointerInput(const PointerInput &input);
 	void SetPointerCapture(bool captured);
 	void RequestClipboardCopy();
+	void RequestClipboardPaste();
+	void SetClipboardPasteAvailable(bool available) noexcept;
 	[[nodiscard]] bool ClipboardPasteAvailable();
+	[[nodiscard]] std::vector<ApplicationClipboardRequest> TakeClipboardRequests();
+	void HandleClipboardResult(uint64_t id, ApplicationClipboardOperation operation,
+		ApplicationClipboardStatus status, std::string text = {});
 	void RenderFrame();
 	void PresentFrame();
 	void RunPendingWork();
@@ -110,6 +116,9 @@ public:
 	[[nodiscard]] const std::vector<Scintilla::Notification> &Notifications() const noexcept { return notifications; }
 	[[nodiscard]] const std::vector<TickerRequest> &TickerRequests() const noexcept { return tickerRequests; }
 	[[nodiscard]] const std::vector<std::string> &UnsupportedRequests() const noexcept { return unsupportedRequests; }
+	[[nodiscard]] const std::vector<ApplicationClipboardResult> &ClipboardResults() const noexcept {
+		return clipboardResults;
+	}
 	[[nodiscard]] int ChangeNotifications() const noexcept { return changeNotifications; }
 	[[nodiscard]] bool IdleRequested() const noexcept { return idleRequested; }
 
@@ -148,6 +157,16 @@ private:
 	std::vector<TickerRequest> tickerRequests;
 	std::vector<Scintilla::Notification> notifications;
 	std::vector<std::string> unsupportedRequests;
+	std::vector<ApplicationClipboardRequest> clipboardRequests;
+	std::vector<ApplicationClipboardResult> clipboardResults;
+	struct PendingPaste {
+		uint64_t id = 0;
+		uint64_t documentGeneration = 0;
+	};
+	std::optional<PendingPaste> pendingPaste;
+	uint64_t nextClipboardRequest = 1;
+	uint64_t documentGeneration = 0;
+	bool clipboardPasteAvailable = false;
 	int changeNotifications = 0;
 	bool idleRequested = false;
 	bool queuedIdleWork = false;

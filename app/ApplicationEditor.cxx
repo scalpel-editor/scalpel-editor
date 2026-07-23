@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "ApplicationEditor.h"
+#include "Document.h"
 #include "DrawSurface.h"
 #include "GlContext.h"
 #include "Renderer.h"
@@ -17,6 +18,36 @@ namespace Scalpel {
 
 using Scintilla::Internal::DrawSurface;
 using Scintilla::Internal::PRectangle;
+
+namespace {
+
+const char *ClipboardStatusName(ApplicationClipboardStatus status) noexcept {
+	switch (status) {
+	case ApplicationClipboardStatus::Published:
+		return "published";
+	case ApplicationClipboardStatus::Complete:
+		return "complete";
+	case ApplicationClipboardStatus::Unavailable:
+		return "service unavailable";
+	case ApplicationClipboardStatus::NoText:
+		return "no text";
+	case ApplicationClipboardStatus::InvalidText:
+		return "invalid UTF-8";
+	case ApplicationClipboardStatus::Cancelled:
+		return "cancelled";
+	case ApplicationClipboardStatus::Failed:
+		return "transfer failed";
+	case ApplicationClipboardStatus::TooLarge:
+		return "text too large";
+	case ApplicationClipboardStatus::TimedOut:
+		return "transfer timed out";
+	case ApplicationClipboardStatus::Superseded:
+		return "superseded";
+	}
+	return "unknown";
+}
+
+}
 
 ApplicationResources::ApplicationResources(int width, int height) :
 	ApplicationResources(std::make_unique<Scintilla::Internal::GlContext>(), width, height) {
@@ -60,6 +91,7 @@ ApplicationEditor::~ApplicationEditor() {
 }
 
 void ApplicationEditor::LoadInitialBuffer(std::string_view text) {
+	documentGeneration++;
 	SetText(text);
 	EmptyUndoBuffer();
 	SetSavePoint();
@@ -153,9 +185,52 @@ void ApplicationEditor::RequestClipboardCopy() {
 	Copy();
 }
 
+void ApplicationEditor::RequestClipboardPaste() {
+	Paste();
+}
+
+void ApplicationEditor::SetClipboardPasteAvailable(bool available) noexcept {
+	clipboardPasteAvailable = available;
+}
+
 bool ApplicationEditor::ClipboardPasteAvailable() {
-	RecordUnsupported("clipboard paste availability");
-	return false;
+	return clipboardPasteAvailable && CanPaste();
+}
+
+std::vector<ApplicationClipboardRequest> ApplicationEditor::TakeClipboardRequests() {
+	return std::exchange(clipboardRequests, {});
+}
+
+void ApplicationEditor::HandleClipboardResult(uint64_t id,
+	ApplicationClipboardOperation operation, ApplicationClipboardStatus status,
+	std::string text) {
+	ApplicationClipboardStatus reportedStatus = status;
+	if (operation == ApplicationClipboardOperation::Paste &&
+		status == ApplicationClipboardStatus::Complete) {
+		if (!pendingPaste || pendingPaste->id != id ||
+			pendingPaste->documentGeneration != documentGeneration) {
+			reportedStatus = ApplicationClipboardStatus::Superseded;
+		} else if (!text.empty() && CanPaste()) {
+			Scintilla::Internal::UndoGroup undoGroup(pdoc);
+			ClearSelection(multiPasteMode == Scintilla::MultiPaste::Each);
+			InsertPasteShape(text, PasteShape::stream);
+			EnsureCaretVisible();
+			Redraw();
+		}
+	}
+	if (operation == ApplicationClipboardOperation::Paste &&
+		pendingPaste && pendingPaste->id == id &&
+		status != ApplicationClipboardStatus::Published) {
+		pendingPaste.reset();
+	}
+	clipboardResults.push_back({id, operation, reportedStatus});
+	if (reportedStatus != ApplicationClipboardStatus::Published &&
+		reportedStatus != ApplicationClipboardStatus::Complete &&
+		reportedStatus != ApplicationClipboardStatus::Superseded &&
+		reportedStatus != ApplicationClipboardStatus::NoText) {
+		std::fprintf(stderr, "scalpel-editor clipboard: %s\n",
+			ClipboardStatusName(reportedStatus));
+	}
 }
 
 void ApplicationEditor::RenderFrame() {
@@ -276,18 +351,35 @@ void ApplicationEditor::ReconfigureScrollBars() {
 }
 
 void ApplicationEditor::Copy() {
-	RecordUnsupported("clipboard copy");
+	if (sel.Empty()) {
+		return;
+	}
+	Scintilla::Internal::SelectionText selectedText;
+	CopySelectionRange(&selectedText);
+	CopyToClipboard(selectedText);
 }
 
 void ApplicationEditor::Paste() {
-	RecordUnsupported("clipboard paste");
+	if (!CanPaste()) {
+		return;
+	}
+	const uint64_t request = nextClipboardRequest++;
+	pendingPaste = PendingPaste{request, documentGeneration};
+	clipboardRequests.push_back(
+		{request, ApplicationClipboardOperation::Paste, {}});
 }
 
 void ApplicationEditor::ClaimSelection() {
 }
 
-void ApplicationEditor::CopyToClipboard(const Scintilla::Internal::SelectionText &) {
-	RecordUnsupported("clipboard write");
+void ApplicationEditor::CopyToClipboard(
+	const Scintilla::Internal::SelectionText &selectedText) {
+	const uint64_t request = nextClipboardRequest++;
+	clipboardRequests.push_back({
+		request,
+		ApplicationClipboardOperation::Copy,
+		std::string(selectedText.AsView()),
+	});
 }
 
 void ApplicationEditor::StartDrag() {
