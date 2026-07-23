@@ -322,6 +322,36 @@ TEST_CASE("Wayland registry replaces the optional text input manager") {
 		Scalpel::WaylandLifecycleActionType::ReleaseTextInputManager);
 }
 
+TEST_CASE("Wayland registry treats presentation timing as optional") {
+	Scalpel::WaylandLifecycle lifecycle(800, 600);
+
+	CHECK(lifecycle.RemoveGlobal(35).empty());
+	const auto first = lifecycle.AddGlobal(
+		Scalpel::WaylandGlobalKind::Presentation, 35, 2);
+	REQUIRE(first.size() == 1);
+	CHECK(first.front() == Scalpel::WaylandLifecycleAction{
+		Scalpel::WaylandLifecycleActionType::BindPresentation, 35, 2});
+	CHECK(lifecycle.AddGlobal(
+		Scalpel::WaylandGlobalKind::Presentation, 36, 1).empty());
+
+	const auto replacement = lifecycle.RemoveGlobal(35);
+	REQUIRE(replacement.size() == 2);
+	CHECK(replacement[0] == Scalpel::WaylandLifecycleAction{
+		Scalpel::WaylandLifecycleActionType::ReleasePresentation, 35});
+	CHECK(replacement[1] == Scalpel::WaylandLifecycleAction{
+		Scalpel::WaylandLifecycleActionType::BindPresentation, 36, 1});
+	const auto removed = lifecycle.RemoveGlobal(36);
+	REQUIRE(removed.size() == 1);
+	CHECK(removed.front().type ==
+		Scalpel::WaylandLifecycleActionType::ReleasePresentation);
+
+	const auto fresh = lifecycle.AddGlobal(
+		Scalpel::WaylandGlobalKind::Presentation, 37, 2);
+	REQUIRE(fresh.size() == 1);
+	CHECK(fresh.front().type ==
+		Scalpel::WaylandLifecycleActionType::BindPresentation);
+}
+
 TEST_CASE("Wayland registry closes when an active required global disappears") {
 	Scalpel::WaylandLifecycle lifecycle(800, 600);
 	(void)lifecycle.AddGlobal(Scalpel::WaylandGlobalKind::Compositor, 10, 4);

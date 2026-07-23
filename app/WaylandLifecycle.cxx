@@ -75,6 +75,12 @@ std::vector<WaylandLifecycleAction> WaylandLifecycle::AddGlobal(
 			return {{WaylandLifecycleActionType::BindTextInputManager, name, version}};
 		}
 		break;
+	case WaylandGlobalKind::Presentation:
+		if (!presentationName) {
+			presentationName = name;
+			return {{WaylandLifecycleActionType::BindPresentation, name, version}};
+		}
+		break;
 	case WaylandGlobalKind::Output:
 		return {{WaylandLifecycleActionType::BindOutput, name, version}};
 	case WaylandGlobalKind::Seat:
@@ -178,6 +184,22 @@ std::vector<WaylandLifecycleAction> WaylandLifecycle::RemoveGlobal(uint32_t name
 		if (replacement != globals.end()) {
 			textInputManagerName = replacement->name;
 			actions.push_back({WaylandLifecycleActionType::BindTextInputManager,
+				replacement->name, replacement->version});
+		}
+		return actions;
+	}
+	if (removed.kind == WaylandGlobalKind::Presentation &&
+		presentationName == name) {
+		std::vector<WaylandLifecycleAction> actions = {
+			{WaylandLifecycleActionType::ReleasePresentation, name}};
+		presentationName.reset();
+		const auto replacement = std::find_if(globals.begin(), globals.end(),
+			[](const Global &global) {
+				return global.kind == WaylandGlobalKind::Presentation;
+			});
+		if (replacement != globals.end()) {
+			presentationName = replacement->name;
+			actions.push_back({WaylandLifecycleActionType::BindPresentation,
 				replacement->name, replacement->version});
 		}
 		return actions;

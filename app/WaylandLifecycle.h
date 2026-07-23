@@ -30,6 +30,7 @@ enum class WaylandGlobalKind {
 	DataDeviceManager,
 	PrimarySelectionManager,
 	TextInputManager,
+	Presentation,
 	Output,
 	Seat,
 };
@@ -47,6 +48,8 @@ enum class WaylandLifecycleActionType {
 	ReleasePrimarySelectionManager,
 	BindTextInputManager,
 	ReleaseTextInputManager,
+	BindPresentation,
+	ReleasePresentation,
 	BindOutput,
 	ReleaseOutput,
 	BindSeat,
@@ -143,6 +146,7 @@ private:
 	std::optional<uint32_t> dataDeviceManagerName;
 	std::optional<uint32_t> primarySelectionManagerName;
 	std::optional<uint32_t> textInputManagerName;
+	std::optional<uint32_t> presentationName;
 	std::optional<uint32_t> activeSeatName;
 	WaylandToplevelState toplevelState;
 	std::optional<WaylandToplevelState> proposedToplevelState;

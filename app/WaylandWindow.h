@@ -35,6 +35,8 @@ struct wl_seat_listener;
 struct wl_shm;
 struct wl_surface;
 struct wl_surface_listener;
+struct wp_presentation;
+struct wp_presentation_listener;
 struct xdg_surface;
 struct xdg_surface_listener;
 struct xdg_toplevel;
@@ -80,6 +82,12 @@ public:
 	[[nodiscard]] bool Configured() const noexcept { return configured; }
 	[[nodiscard]] bool CloseRequested() const noexcept { return lifecycle.CloseRequested(); }
 	[[nodiscard]] bool CallbackFailed() const noexcept { return callbackFailed; }
+	[[nodiscard]] bool PresentationAvailable() const noexcept {
+		return presentation != nullptr;
+	}
+	[[nodiscard]] std::optional<uint32_t> PresentationClockId() const noexcept {
+		return presentationClockId;
+	}
 	[[nodiscard]] std::optional<WindowSize> TakeResize() noexcept { return lifecycle.TakeResize(); }
 	[[nodiscard]] std::vector<InputEvent> TakeInputs() { return input.TakeInputs(); }
 	void SetCursor(Scintilla::Internal::Window::Cursor cursor);
@@ -182,6 +190,8 @@ private:
 		wl_array *capabilities);
 	static void DecorationConfigure(void *data,
 		zxdg_toplevel_decoration_v1 *decoration, uint32_t mode);
+	static void PresentationClockId(void *data,
+		wp_presentation *presentation, uint32_t clockId);
 
 	static const wl_registry_listener registryListener;
 	static const wl_seat_listener seatListener;
@@ -193,6 +203,7 @@ private:
 	static const xdg_surface_listener surfaceListener;
 	static const xdg_toplevel_listener toplevelListener;
 	static const zxdg_toplevel_decoration_v1_listener decorationListener;
+	static const wp_presentation_listener presentationListener;
 
 	wl_display *display = nullptr;
 	wl_registry *registry = nullptr;
@@ -209,6 +220,8 @@ private:
 	wl_data_device_manager *dataDeviceManager = nullptr;
 	zwp_primary_selection_device_manager_v1 *primarySelectionManager = nullptr;
 	zwp_text_input_manager_v3 *textInputManager = nullptr;
+	wp_presentation *presentation = nullptr;
+	std::optional<uint32_t> presentationClockId;
 	wl_surface *cursorSurface = nullptr;
 	wl_cursor_theme *cursorTheme = nullptr;
 	int cursorThemeScale = 0;

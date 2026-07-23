@@ -12,6 +12,7 @@ set(XDG_SHELL_PROTOCOL "${WAYLAND_PROTOCOLS_DATA_DIR}/stable/xdg-shell/xdg-shell
 set(XDG_DECORATION_PROTOCOL "${WAYLAND_PROTOCOLS_DATA_DIR}/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml")
 set(PRIMARY_SELECTION_PROTOCOL "${WAYLAND_PROTOCOLS_DATA_DIR}/unstable/primary-selection/primary-selection-unstable-v1.xml")
 set(TEXT_INPUT_PROTOCOL "${WAYLAND_PROTOCOLS_DATA_DIR}/unstable/text-input/text-input-unstable-v3.xml")
+set(PRESENTATION_TIME_PROTOCOL "${WAYLAND_PROTOCOLS_DATA_DIR}/stable/presentation-time/presentation-time.xml")
 if(NOT EXISTS "${XDG_SHELL_PROTOCOL}")
   message(FATAL_ERROR "Could not find stable xdg-shell protocol at ${XDG_SHELL_PROTOCOL}")
 endif()
@@ -24,6 +25,9 @@ endif()
 if(NOT EXISTS "${TEXT_INPUT_PROTOCOL}")
   message(FATAL_ERROR "Could not find text-input-v3 protocol at ${TEXT_INPUT_PROTOCOL}")
 endif()
+if(NOT EXISTS "${PRESENTATION_TIME_PROTOCOL}")
+  message(FATAL_ERROR "Could not find presentation-time protocol at ${PRESENTATION_TIME_PROTOCOL}")
+endif()
 
 set(WAYLAND_PROTOCOL_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/wayland-protocols")
 set(XDG_SHELL_CLIENT_HEADER "${WAYLAND_PROTOCOL_OUTPUT_DIR}/xdg-shell-client-protocol.h")
@@ -34,6 +38,8 @@ set(PRIMARY_SELECTION_CLIENT_HEADER "${WAYLAND_PROTOCOL_OUTPUT_DIR}/primary-sele
 set(PRIMARY_SELECTION_PRIVATE_CODE "${WAYLAND_PROTOCOL_OUTPUT_DIR}/primary-selection-protocol.c")
 set(TEXT_INPUT_CLIENT_HEADER "${WAYLAND_PROTOCOL_OUTPUT_DIR}/text-input-client-protocol.h")
 set(TEXT_INPUT_PRIVATE_CODE "${WAYLAND_PROTOCOL_OUTPUT_DIR}/text-input-protocol.c")
+set(PRESENTATION_TIME_CLIENT_HEADER "${WAYLAND_PROTOCOL_OUTPUT_DIR}/presentation-time-client-protocol.h")
+set(PRESENTATION_TIME_PRIVATE_CODE "${WAYLAND_PROTOCOL_OUTPUT_DIR}/presentation-time-protocol.c")
 
 add_custom_command(
   OUTPUT
@@ -45,6 +51,8 @@ add_custom_command(
     "${PRIMARY_SELECTION_PRIVATE_CODE}"
     "${TEXT_INPUT_CLIENT_HEADER}"
     "${TEXT_INPUT_PRIVATE_CODE}"
+    "${PRESENTATION_TIME_CLIENT_HEADER}"
+    "${PRESENTATION_TIME_PRIVATE_CODE}"
   COMMAND "${CMAKE_COMMAND}" -E make_directory "${WAYLAND_PROTOCOL_OUTPUT_DIR}"
   COMMAND "${WAYLAND_SCANNER_EXECUTABLE}" client-header
     "${XDG_SHELL_PROTOCOL}" "${XDG_SHELL_CLIENT_HEADER}"
@@ -62,11 +70,16 @@ add_custom_command(
     "${TEXT_INPUT_PROTOCOL}" "${TEXT_INPUT_CLIENT_HEADER}"
   COMMAND "${WAYLAND_SCANNER_EXECUTABLE}" private-code
     "${TEXT_INPUT_PROTOCOL}" "${TEXT_INPUT_PRIVATE_CODE}"
+  COMMAND "${WAYLAND_SCANNER_EXECUTABLE}" client-header
+    "${PRESENTATION_TIME_PROTOCOL}" "${PRESENTATION_TIME_CLIENT_HEADER}"
+  COMMAND "${WAYLAND_SCANNER_EXECUTABLE}" private-code
+    "${PRESENTATION_TIME_PROTOCOL}" "${PRESENTATION_TIME_PRIVATE_CODE}"
   DEPENDS
     "${XDG_SHELL_PROTOCOL}"
     "${XDG_DECORATION_PROTOCOL}"
     "${PRIMARY_SELECTION_PROTOCOL}"
     "${TEXT_INPUT_PROTOCOL}"
+    "${PRESENTATION_TIME_PROTOCOL}"
   VERBATIM
 )
 
@@ -75,6 +88,7 @@ add_library(scalpel_xdg_shell STATIC
   "${XDG_DECORATION_PRIVATE_CODE}"
   "${PRIMARY_SELECTION_PRIVATE_CODE}"
   "${TEXT_INPUT_PRIVATE_CODE}"
+  "${PRESENTATION_TIME_PRIVATE_CODE}"
 )
 target_include_directories(scalpel_xdg_shell PUBLIC "${WAYLAND_PROTOCOL_OUTPUT_DIR}")
 target_link_libraries(scalpel_xdg_shell PUBLIC PkgConfig::WAYLAND_CLIENT)

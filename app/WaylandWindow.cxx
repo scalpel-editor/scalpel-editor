@@ -26,6 +26,7 @@
 #include "xdg-decoration-client-protocol.h"
 #include "primary-selection-client-protocol.h"
 #include "text-input-client-protocol.h"
+#include "presentation-time-client-protocol.h"
 
 namespace Scalpel {
 
@@ -95,6 +96,10 @@ const xdg_toplevel_listener WaylandWindow::toplevelListener = {
 
 const zxdg_toplevel_decoration_v1_listener WaylandWindow::decorationListener = {
 	WaylandWindow::DecorationConfigure,
+};
+
+const wp_presentation_listener WaylandWindow::presentationListener = {
+	WaylandWindow::PresentationClockId,
 };
 
 WaylandWindow::WaylandWindow(const char *title, int width_, int height_) :
@@ -246,6 +251,9 @@ void WaylandWindow::Destroy() noexcept {
 	if (textInputManager) {
 		zwp_text_input_manager_v3_destroy(textInputManager);
 	}
+	if (presentation) {
+		wp_presentation_destroy(presentation);
+	}
 	if (wmBase) {
 		xdg_wm_base_destroy(wmBase);
 	}
@@ -272,6 +280,8 @@ void WaylandWindow::Destroy() noexcept {
 	dataDeviceManager = nullptr;
 	primarySelectionManager = nullptr;
 	textInputManager = nullptr;
+	presentation = nullptr;
+	presentationClockId.reset();
 	keyboard = nullptr;
 	pointer = nullptr;
 	seat = nullptr;
@@ -539,6 +549,30 @@ void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleActi
 				zwp_text_input_manager_v3_destroy(textInputManager);
 				textInputManager = nullptr;
 			}
+			break;
+		case WaylandLifecycleActionType::BindPresentation:
+			if (presentation) {
+				callbackFailed = true;
+				break;
+			}
+			presentation = static_cast<wp_presentation *>(wl_registry_bind(
+				registry, action.name, &wp_presentation_interface,
+				std::min(action.version, 2U)));
+			if (!presentation || wp_presentation_add_listener(
+				presentation, &presentationListener, this) != 0) {
+				if (presentation) {
+					wp_presentation_destroy(presentation);
+					presentation = nullptr;
+				}
+				callbackFailed = true;
+			}
+			break;
+		case WaylandLifecycleActionType::ReleasePresentation:
+			if (presentation) {
+				wp_presentation_destroy(presentation);
+				presentation = nullptr;
+			}
+			presentationClockId.reset();
 			break;
 		case WaylandLifecycleActionType::BindOutput: {
 			wl_output *output = static_cast<wl_output *>(wl_registry_bind(
@@ -838,6 +872,9 @@ void WaylandWindow::RegistryGlobal(void *data, wl_registry *, uint32_t name,
 	} else if (std::strcmp(interface, zwp_text_input_manager_v3_interface.name) == 0) {
 		window.ApplyLifecycleActions(window.lifecycle.AddGlobal(
 			WaylandGlobalKind::TextInputManager, name, version));
+	} else if (std::strcmp(interface, wp_presentation_interface.name) == 0) {
+		window.ApplyLifecycleActions(window.lifecycle.AddGlobal(
+			WaylandGlobalKind::Presentation, name, version));
 	} else if (std::strcmp(interface, wl_output_interface.name) == 0) {
 		window.ApplyLifecycleActions(window.lifecycle.AddGlobal(
 			WaylandGlobalKind::Output, name, version));
@@ -845,6 +882,12 @@ void WaylandWindow::RegistryGlobal(void *data, wl_registry *, uint32_t name,
 		window.ApplyLifecycleActions(window.lifecycle.AddGlobal(
 			WaylandGlobalKind::Seat, name, version));
 	}
+}
+
+void WaylandWindow::PresentationClockId(
+	void *data, wp_presentation *, uint32_t clockId) {
+	auto &window = *static_cast<WaylandWindow *>(data);
+	window.presentationClockId = clockId;
 }
 
 void WaylandWindow::RegistryGlobalRemove(void *data, wl_registry *, uint32_t name) {
