@@ -25,6 +25,7 @@
 #include "xdg-shell-client-protocol.h"
 #include "xdg-decoration-client-protocol.h"
 #include "primary-selection-client-protocol.h"
+#include "text-input-client-protocol.h"
 
 namespace Scalpel {
 
@@ -238,6 +239,9 @@ void WaylandWindow::Destroy() noexcept {
 	if (primarySelectionManager) {
 		zwp_primary_selection_device_manager_v1_destroy(primarySelectionManager);
 	}
+	if (textInputManager) {
+		zwp_text_input_manager_v3_destroy(textInputManager);
+	}
 	if (wmBase) {
 		xdg_wm_base_destroy(wmBase);
 	}
@@ -263,6 +267,7 @@ void WaylandWindow::Destroy() noexcept {
 	sharedMemory = nullptr;
 	dataDeviceManager = nullptr;
 	primarySelectionManager = nullptr;
+	textInputManager = nullptr;
 	keyboard = nullptr;
 	pointer = nullptr;
 	seat = nullptr;
@@ -506,6 +511,22 @@ void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleActi
 				zwp_primary_selection_device_manager_v1_destroy(
 					primarySelectionManager);
 				primarySelectionManager = nullptr;
+			}
+			break;
+		case WaylandLifecycleActionType::BindTextInputManager:
+			if (textInputManager) {
+				callbackFailed = true;
+				break;
+			}
+			textInputManager = static_cast<zwp_text_input_manager_v3 *>(
+				wl_registry_bind(registry, action.name,
+					&zwp_text_input_manager_v3_interface,
+					std::min(action.version, 1U)));
+			break;
+		case WaylandLifecycleActionType::ReleaseTextInputManager:
+			if (textInputManager) {
+				zwp_text_input_manager_v3_destroy(textInputManager);
+				textInputManager = nullptr;
 			}
 			break;
 		case WaylandLifecycleActionType::BindOutput: {
@@ -798,6 +819,9 @@ void WaylandWindow::RegistryGlobal(void *data, wl_registry *, uint32_t name,
 		zwp_primary_selection_device_manager_v1_interface.name) == 0) {
 		window.ApplyLifecycleActions(window.lifecycle.AddGlobal(
 			WaylandGlobalKind::PrimarySelectionManager, name, version));
+	} else if (std::strcmp(interface, zwp_text_input_manager_v3_interface.name) == 0) {
+		window.ApplyLifecycleActions(window.lifecycle.AddGlobal(
+			WaylandGlobalKind::TextInputManager, name, version));
 	} else if (std::strcmp(interface, wl_output_interface.name) == 0) {
 		window.ApplyLifecycleActions(window.lifecycle.AddGlobal(
 			WaylandGlobalKind::Output, name, version));

@@ -299,6 +299,29 @@ TEST_CASE("Wayland registry replaces the optional primary selection manager") {
 		Scalpel::WaylandLifecycleActionType::ReleasePrimarySelectionManager);
 }
 
+TEST_CASE("Wayland registry replaces the optional text input manager") {
+	Scalpel::WaylandLifecycle lifecycle(800, 600);
+
+	const auto first = lifecycle.AddGlobal(
+		Scalpel::WaylandGlobalKind::TextInputManager, 33, 1);
+	REQUIRE(first.size() == 1);
+	CHECK(first.front() == Scalpel::WaylandLifecycleAction{
+		Scalpel::WaylandLifecycleActionType::BindTextInputManager, 33, 1});
+	CHECK(lifecycle.AddGlobal(
+		Scalpel::WaylandGlobalKind::TextInputManager, 34, 1).empty());
+
+	const auto replacement = lifecycle.RemoveGlobal(33);
+	REQUIRE(replacement.size() == 2);
+	CHECK(replacement[0] == Scalpel::WaylandLifecycleAction{
+		Scalpel::WaylandLifecycleActionType::ReleaseTextInputManager, 33});
+	CHECK(replacement[1] == Scalpel::WaylandLifecycleAction{
+		Scalpel::WaylandLifecycleActionType::BindTextInputManager, 34, 1});
+	const auto removed = lifecycle.RemoveGlobal(34);
+	REQUIRE(removed.size() == 1);
+	CHECK(removed.front().type ==
+		Scalpel::WaylandLifecycleActionType::ReleaseTextInputManager);
+}
+
 TEST_CASE("Wayland registry closes when an active required global disappears") {
 	Scalpel::WaylandLifecycle lifecycle(800, 600);
 	(void)lifecycle.AddGlobal(Scalpel::WaylandGlobalKind::Compositor, 10, 4);
