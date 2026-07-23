@@ -5,6 +5,10 @@ description: Locate relevant C++ function and method definitions with scalps. Us
 
 # Search C++ definitions
 
+Start by checking for index freshness with `scalps status`.
+
+If the index is stale, then run `scalps index`.
+
 Run searches from the project root:
 
 ```sh
