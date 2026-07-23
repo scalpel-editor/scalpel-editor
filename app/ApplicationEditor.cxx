@@ -132,6 +132,7 @@ ApplicationEditor::ApplicationEditor(int width, int height, NowFunction now_) :
 		throw std::invalid_argument("ApplicationEditor requires a clock");
 	}
 	wMain = static_cast<Scintilla::Internal::WindowID>(&window);
+	ConfigureLineNumberMargins();
 }
 
 ApplicationEditor::ApplicationEditor(std::unique_ptr<Scintilla::Internal::GlContext> context,
@@ -142,10 +143,62 @@ ApplicationEditor::ApplicationEditor(std::unique_ptr<Scintilla::Internal::GlCont
 		throw std::invalid_argument("ApplicationEditor requires a clock");
 	}
 	wMain = static_cast<Scintilla::Internal::WindowID>(&window);
+	ConfigureLineNumberMargins();
 }
 
 ApplicationEditor::~ApplicationEditor() {
 	Finalise();
+}
+
+void ApplicationEditor::ConfigureLineNumberMargins() {
+	// Margin 0 is Number by default; hide the empty symbol margins so only line numbers show.
+	SetMarginTypeN(0, Scintilla::MarginType::Number);
+	SetMarginWidthN(1, 0);
+	SetMarginWidthN(2, 0);
+	// Blank gap between the gutter and the text (default is 1px).
+	SetMarginLeft(24);
+	ApplyLineNumberStyle();
+	UpdateLineNumberWidth();
+}
+
+void ApplicationEditor::ApplyLineNumberStyle() {
+	// Unstyled buffer text uses style 0. Styles start with a null font name; on Refresh,
+	// those take fonts.begin(). StyleClearAll copies STYLE_DEFAULT (system-ui) onto every
+	// style first so a monospace gutter cannot become the accidental text face.
+	// ClearStyles also forces StyleLineNumber.back to Platform::Chrome(); colours below
+	// re-apply after that.
+	StyleClearAll();
+
+	// Colours are Scintilla RGB integers: R | (G << 8) | (B << 16).
+	// Muted digits on a light gutter near Platform::Chrome.
+	constexpr int lineNumber = static_cast<int>(Scintilla::StylesCommon::LineNumber);
+	// Monospace so every digit shares one advance and right-aligned numbers line up
+	// (proportional faces make "0" wider, so 10/20/30 sit further left than 11/12/13).
+	StyleSetFont(lineNumber, "monospace");
+	StyleSetCheckMonospaced(lineNumber, true);
+	StyleSetFore(lineNumber, 0x008a7f6b);
+	StyleSetBack(lineNumber, 0x00f7f5f4);
+}
+
+void ApplicationEditor::UpdateLineNumberWidth() {
+	const Scintilla::Line lineCount = std::max<Scintilla::Line>(1, GetLineCount());
+	int digits = 1;
+	for (Scintilla::Line n = lineCount; n >= 10; n /= 10) {
+		++digits;
+	}
+	// At least two digits so single-digit files do not look cramped.
+	digits = std::max(2, digits);
+
+	const std::string probe(static_cast<size_t>(digits), '9');
+	const long textWidth = TextWidth(
+		static_cast<int>(Scintilla::StylesCommon::LineNumber), probe);
+	// Scintilla already right-pads by marginNumberPadding; add left breathing room.
+	constexpr int extraPadding = 8;
+	const int width = static_cast<int>(std::max<long>(1, textWidth)) + extraPadding;
+	SetMarginWidthN(0, width);
+	// SetMarginWidthN invalidates style data, but line-number placement uses the derived
+	// fixedColumnWidth. Refresh it now so a cached-pane repaint cannot use the old width.
+	RefreshStyleData();
 }
 
 void ApplicationEditor::LoadInitialBuffer(std::string_view text) {
@@ -154,11 +207,30 @@ void ApplicationEditor::LoadInitialBuffer(std::string_view text) {
 	SetText(text);
 	EmptyUndoBuffer();
 	SetSavePoint();
+	UpdateLineNumberWidth();
 	textInputStateDirty = true;
 }
 
 std::string ApplicationEditor::Text() const {
 	return GetText();
+}
+
+Scintilla::Line ApplicationEditor::LineCount() const noexcept {
+	return GetLineCount();
+}
+
+int ApplicationEditor::LineNumberMarginWidth() const noexcept {
+	return vs.fixedColumnWidth;
+}
+
+int ApplicationEditor::TextLeftGap() const noexcept {
+	return GetMarginLeft();
+}
+
+std::string ApplicationEditor::StyleFontName(int style) {
+	char buffer[256]{};
+	StyleGetFont(style, buffer);
+	return buffer;
 }
 
 void ApplicationEditor::Resize(int width, int height) {
@@ -893,6 +965,14 @@ void ApplicationEditor::NotifyChange() {
 }
 
 void ApplicationEditor::NotifyParent(Scintilla::NotificationData notification) {
+	if (notification.code == Scintilla::Notification::Modified &&
+		(Scintilla::FlagSet(notification.modificationType,
+			Scintilla::ModificationFlags::InsertText) ||
+			Scintilla::FlagSet(notification.modificationType,
+				Scintilla::ModificationFlags::DeleteText)) &&
+		notification.linesAdded != 0) {
+		UpdateLineNumberWidth();
+	}
 	notifications.push_back(notification.code);
 }
 

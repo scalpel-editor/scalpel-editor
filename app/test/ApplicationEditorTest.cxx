@@ -30,6 +30,55 @@ TEST_CASE("production editor host constructs and renders its initial buffer") {
 	CHECK_FALSE(editor.Notifications().empty());
 }
 
+TEST_CASE("production editor host shows line numbers and a text-left gap") {
+	Scalpel::ApplicationEditor editor(320, 180);
+
+	CHECK(editor.TextLeftGap() == 24);
+	CHECK(editor.LineNumberMarginWidth() > editor.TextLeftGap());
+	CHECK(editor.LineCount() == 1);
+	// Gutter is monospace; buffer text stays on the default proportional face.
+	CHECK(editor.StyleFontName(static_cast<int>(Scintilla::StylesCommon::LineNumber)) ==
+		"monospace");
+	CHECK(editor.StyleFontName(0) == "system-ui");
+	CHECK(editor.StyleFontName(static_cast<int>(Scintilla::StylesCommon::Default)) ==
+		"system-ui");
+}
+
+TEST_CASE("production editor line-number margin tracks line-count digits") {
+	Scalpel::ApplicationEditor editor(320, 180);
+	std::string text;
+	for (int line = 1; line < 99; ++line) {
+		text += "line\n";
+	}
+	text += "line";
+	editor.LoadInitialBuffer(text);
+
+	REQUIRE(editor.LineCount() == 99);
+	const int twoDigitWidth = editor.LineNumberMarginWidth();
+	CHECK(twoDigitWidth > editor.TextLeftGap());
+
+	// Grow past the 99/100 digit boundary at the document end.
+	editor.HandleKeyboardInput({Scintilla::Keys::End, Scintilla::KeyMod::Ctrl, {}, 1, true});
+	editor.HandleKeyboardInput({static_cast<Scintilla::Keys>(0), Scintilla::KeyMod::Norm,
+		"\nline", 2, true});
+	CHECK(editor.LineCount() == 100);
+	CHECK(editor.LineNumberMarginWidth() > twoDigitWidth);
+
+	// Shrink back across the boundary. Four character deletions leave a trailing
+	// empty line still numbered by the gutter; one more removes that line.
+	for (int character = 0; character < 4; ++character) {
+		editor.HandleKeyboardInput({Scintilla::Keys::Back, Scintilla::KeyMod::Norm,
+			{}, static_cast<unsigned>(3 + character), true});
+	}
+	CHECK(editor.LineCount() == 100);
+	CHECK(editor.LineNumberMarginWidth() > twoDigitWidth);
+
+	editor.HandleKeyboardInput({Scintilla::Keys::Back, Scintilla::KeyMod::Norm,
+		{}, 7, true});
+	CHECK(editor.LineCount() == 99);
+	CHECK(editor.LineNumberMarginWidth() == twoDigitWidth);
+}
+
 TEST_CASE("production editor host rejects presentation without a window surface") {
 	Scalpel::ApplicationEditor editor(320, 180);
 

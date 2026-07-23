@@ -92,6 +92,14 @@ public:
 
 	void LoadInitialBuffer(std::string_view text);
 	[[nodiscard]] std::string Text() const;
+	// Document line count used for the gutter and status (Scintilla's line count).
+	[[nodiscard]] Scintilla::Line LineCount() const noexcept;
+	// Effective pixel width of the left fixed column (margins plus text-left gap).
+	[[nodiscard]] int LineNumberMarginWidth() const noexcept;
+	// Blank gap between the numbered margins and the text.
+	[[nodiscard]] int TextLeftGap() const noexcept;
+	// Font family name configured for a style (empty when unset).
+	[[nodiscard]] std::string StyleFontName(int style);
 	// Logical editor size and framebuffer pixel size change independently.
 	void Resize(int width, int height);
 	void SetFrameBufferSize(int width, int height);
@@ -184,6 +192,9 @@ protected:
 	void QueueIdleWork(Scintilla::Internal::WorkItems items, Scintilla::Position upTo = 0) override;
 
 private:
+	void ConfigureLineNumberMargins();
+	void ApplyLineNumberStyle();
+	void UpdateLineNumberWidth();
 	void RecordUnsupported(std::string request);
 	void QueuePrimarySelectionClaim(std::optional<std::string> text);
 	void RequestPrimarySelectionPaste(Scintilla::Position position);
