@@ -104,8 +104,8 @@ bool WaylandPrimarySelectionState::Publish(std::optional<std::string> text) {
 	if (!managerAvailable || !seatAvailable || !serial) {
 		return false;
 	}
-	selectionOffer.reset();
 	if (text) {
+		selectionOffer.reset();
 		ownedText = std::move(*text);
 		ownsSelection = true;
 	} else {
@@ -207,17 +207,25 @@ void WaylandPrimarySelection::RecordSerial(uint32_t serial) noexcept {
 
 void WaylandPrimarySelection::PublishText(
 	uint64_t request, std::optional<std::string> text) {
+	if (!text) {
+		if (!state.Publish(std::nullopt)) {
+			Report(request, PrimarySelectionOperation::Publish,
+				PrimarySelectionResultStatus::Unavailable);
+			return;
+		}
+		if (source) {
+			DestroySource(true);
+			zwp_primary_selection_device_v1_set_selection(
+				device, nullptr, *state.Serial());
+		}
+		Report(request, PrimarySelectionOperation::Publish,
+			PrimarySelectionResultStatus::Published);
+		return;
+	}
 	DestroySource(true);
 	if (!state.Publish(text)) {
 		Report(request, PrimarySelectionOperation::Publish,
 			PrimarySelectionResultStatus::Unavailable);
-		return;
-	}
-	if (!text) {
-		zwp_primary_selection_device_v1_set_selection(
-			device, nullptr, *state.Serial());
-		Report(request, PrimarySelectionOperation::Publish,
-			PrimarySelectionResultStatus::Published);
 		return;
 	}
 	source = zwp_primary_selection_device_manager_v1_create_source(manager);

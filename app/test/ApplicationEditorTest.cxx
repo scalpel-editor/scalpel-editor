@@ -183,6 +183,109 @@ TEST_CASE("production editor rejects stale asynchronous paste results") {
 	CHECK(editor.Text() == "currentreplacement");
 }
 
+TEST_CASE("production editor publishes and clears primary selection") {
+	Scalpel::ApplicationEditor editor(240, 120);
+	editor.LoadInitialBuffer("primary selection");
+
+	editor.HandleKeyboardInput({static_cast<Scintilla::Keys>('A'),
+		Scintilla::KeyMod::Ctrl, {}, 1, true});
+	std::vector<Scalpel::ApplicationPrimarySelectionRequest> requests =
+		editor.TakePrimarySelectionRequests();
+	REQUIRE(requests.size() == 1);
+	CHECK(requests.front().operation ==
+		Scalpel::ApplicationPrimarySelectionOperation::Publish);
+	REQUIRE(requests.front().text);
+	CHECK(*requests.front().text == "primary selection");
+
+	editor.HandleKeyboardInput({Scintilla::Keys::Right, Scintilla::KeyMod::Norm,
+		{}, 2, true});
+	requests = editor.TakePrimarySelectionRequests();
+	REQUIRE(requests.size() == 1);
+	CHECK(requests.front().operation ==
+		Scalpel::ApplicationPrimarySelectionOperation::Publish);
+	CHECK_FALSE(requests.front().text.has_value());
+}
+
+TEST_CASE("production editor defers pointer selection ownership until release") {
+	Scalpel::ApplicationEditor editor(320, 120);
+	editor.LoadInitialBuffer("alpha beta gamma");
+	editor.RenderFrame();
+
+	editor.HandlePointerInput({Scalpel::PointerAction::Move,
+		Scintilla::KeyMod::Norm, 20, 8, 0, 0, 10, -1});
+	editor.HandlePointerInput({Scalpel::PointerAction::Press,
+		Scintilla::KeyMod::Norm, 20, 8, 0, 0, 11, 0});
+	editor.HandlePointerInput({Scalpel::PointerAction::Move,
+		Scintilla::KeyMod::Norm, 100, 8, 0, 0, 12, -1});
+	CHECK(editor.TakePrimarySelectionRequests().empty());
+
+	editor.HandlePointerInput({Scalpel::PointerAction::Release,
+		Scintilla::KeyMod::Norm, 100, 8, 0, 0, 13, 0});
+	const std::vector<Scalpel::ApplicationPrimarySelectionRequest> requests =
+		editor.TakePrimarySelectionRequests();
+	REQUIRE(requests.size() == 1);
+	CHECK(requests.front().operation ==
+		Scalpel::ApplicationPrimarySelectionOperation::Publish);
+	REQUIRE(requests.front().text);
+	CHECK_FALSE(requests.front().text->empty());
+}
+
+TEST_CASE("production editor pastes primary text at the middle click") {
+	Scalpel::ApplicationEditor editor(320, 120);
+	editor.LoadInitialBuffer("alpha beta gamma");
+	editor.RenderFrame();
+
+	editor.HandlePointerInput({Scalpel::PointerAction::Press,
+		Scintilla::KeyMod::Norm, 20, 8, 0, 0, 20, 2});
+	const std::vector<Scalpel::ApplicationPrimarySelectionRequest> requests =
+		editor.TakePrimarySelectionRequests();
+	REQUIRE(requests.size() == 1);
+	CHECK(requests.front().operation ==
+		Scalpel::ApplicationPrimarySelectionOperation::Paste);
+
+	editor.HandleKeyboardInput({Scintilla::Keys::End, Scintilla::KeyMod::Ctrl,
+		{}, 21, true});
+	editor.HandlePrimarySelectionResult(requests.front().id,
+		Scalpel::ApplicationPrimarySelectionOperation::Paste,
+		Scalpel::ApplicationPrimarySelectionStatus::Complete, "PRIMARY");
+	CHECK(editor.Text().find("PRIMARY") < editor.Text().size() - 7);
+	CHECK(editor.PrimarySelectionResults().back().status ==
+		Scalpel::ApplicationPrimarySelectionStatus::Complete);
+}
+
+TEST_CASE("production editor rejects stale primary paste results") {
+	Scalpel::ApplicationEditor editor(240, 120);
+	editor.LoadInitialBuffer("first");
+	editor.RenderFrame();
+	editor.HandlePointerInput({Scalpel::PointerAction::Press,
+		Scintilla::KeyMod::Norm, 20, 8, 0, 0, 30, 2});
+	const auto requests = editor.TakePrimarySelectionRequests();
+	REQUIRE(requests.size() == 1);
+
+	editor.LoadInitialBuffer("replacement");
+	editor.HandlePrimarySelectionResult(requests.front().id,
+		Scalpel::ApplicationPrimarySelectionOperation::Paste,
+		Scalpel::ApplicationPrimarySelectionStatus::Complete, "stale");
+	CHECK(editor.Text() == "replacement");
+	CHECK(editor.PrimarySelectionResults().back().status ==
+		Scalpel::ApplicationPrimarySelectionStatus::Superseded);
+
+	editor.RenderFrame();
+	editor.HandlePointerInput({Scalpel::PointerAction::Press,
+		Scintilla::KeyMod::Norm, 20, 8, 0, 0, 31, 2});
+	const auto editedRequest = editor.TakePrimarySelectionRequests();
+	REQUIRE(editedRequest.size() == 1);
+	editor.HandleKeyboardInput({static_cast<Scintilla::Keys>('X'),
+		Scintilla::KeyMod::Norm, "x", 32, true});
+	const std::string edited = editor.Text();
+	editor.HandlePrimarySelectionResult(editedRequest.front().id,
+		Scalpel::ApplicationPrimarySelectionOperation::Paste,
+		Scalpel::ApplicationPrimarySelectionStatus::Complete, "late");
+	CHECK(editor.Text() == edited);
+	CHECK(editor.PrimarySelectionResults().back().status ==
+		Scalpel::ApplicationPrimarySelectionStatus::Superseded);
+}
+
 TEST_CASE("production editor keyboard runs commands and inserts UTF-8 text") {
 	Scalpel::ApplicationEditor editor(240, 120);
 	editor.LoadInitialBuffer("ab");

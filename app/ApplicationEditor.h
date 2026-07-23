@@ -16,6 +16,7 @@
 
 #include "ApplicationClipboard.h"
 #include "ApplicationPlatform.h"
+#include "ApplicationPrimarySelection.h"
 #include "ApplicationInput.h"
 #include "EditorNotifications.h"
 #include "ScintillaBase.h"
@@ -103,6 +104,13 @@ public:
 	[[nodiscard]] std::vector<ApplicationClipboardResult> TakeClipboardResults();
 	void HandleClipboardResult(uint64_t id, ApplicationClipboardOperation operation,
 		ApplicationClipboardStatus status, std::string text = {});
+	[[nodiscard]] std::vector<ApplicationPrimarySelectionRequest>
+		TakePrimarySelectionRequests();
+	[[nodiscard]] std::vector<ApplicationPrimarySelectionResult>
+		TakePrimarySelectionResults();
+	void HandlePrimarySelectionResult(uint64_t id,
+		ApplicationPrimarySelectionOperation operation,
+		ApplicationPrimarySelectionStatus status, std::string text = {});
 	void RenderFrame();
 	void PresentFrame();
 	void RunPendingWork();
@@ -119,6 +127,10 @@ public:
 	[[nodiscard]] const std::vector<std::string> &UnsupportedRequests() const noexcept { return unsupportedRequests; }
 	[[nodiscard]] const std::vector<ApplicationClipboardResult> &ClipboardResults() const noexcept {
 		return clipboardResults;
+	}
+	[[nodiscard]] const std::vector<ApplicationPrimarySelectionResult> &
+		PrimarySelectionResults() const noexcept {
+		return primarySelectionResults;
 	}
 	[[nodiscard]] int ChangeNotifications() const noexcept { return changeNotifications; }
 	[[nodiscard]] bool IdleRequested() const noexcept { return idleRequested; }
@@ -151,6 +163,8 @@ protected:
 
 private:
 	void RecordUnsupported(std::string request);
+	void QueuePrimarySelectionClaim(std::optional<std::string> text);
+	void RequestPrimarySelectionPaste(Scintilla::Position position);
 
 	ScrollState scrollbars;
 	static constexpr std::size_t tickerReasonCount = static_cast<std::size_t>(TickReason::platform) + 1;
@@ -160,13 +174,28 @@ private:
 	std::vector<std::string> unsupportedRequests;
 	std::vector<ApplicationClipboardRequest> clipboardRequests;
 	std::vector<ApplicationClipboardResult> clipboardResults;
+	std::vector<ApplicationPrimarySelectionRequest> primarySelectionRequests;
+	std::vector<ApplicationPrimarySelectionResult> primarySelectionResults;
 	struct PendingPaste {
 		uint64_t id = 0;
 		uint64_t documentGeneration = 0;
 	};
 	std::optional<PendingPaste> pendingPaste;
+	struct PendingPrimaryPaste {
+		uint64_t id = 0;
+		uint64_t documentGeneration = 0;
+		Scintilla::Position position = 0;
+	};
+	std::optional<PendingPrimaryPaste> pendingPrimaryPaste;
+	struct PendingPrimaryClaim {
+		std::optional<std::string> text;
+	};
+	std::optional<PendingPrimaryClaim> pendingPrimaryClaim;
 	uint64_t nextClipboardRequest = 1;
+	uint64_t nextPrimarySelectionRequest = 1;
 	uint64_t documentGeneration = 0;
+	bool primarySelectionClaimed = false;
+	bool suppressPrimarySelectionClaim = false;
 	bool clipboardPasteAvailable = false;
 	int changeNotifications = 0;
 	bool idleRequested = false;

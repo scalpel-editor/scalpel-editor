@@ -43,6 +43,38 @@ Scalpel::ApplicationClipboardStatus ApplicationStatus(
 	return Scalpel::ApplicationClipboardStatus::Failed;
 }
 
+Scalpel::ApplicationPrimarySelectionOperation ApplicationOperation(
+	Scalpel::PrimarySelectionOperation operation) {
+	return operation == Scalpel::PrimarySelectionOperation::Publish ?
+		Scalpel::ApplicationPrimarySelectionOperation::Publish :
+		Scalpel::ApplicationPrimarySelectionOperation::Paste;
+}
+
+Scalpel::ApplicationPrimarySelectionStatus ApplicationStatus(
+	Scalpel::PrimarySelectionResultStatus status) {
+	switch (status) {
+	case Scalpel::PrimarySelectionResultStatus::Published:
+		return Scalpel::ApplicationPrimarySelectionStatus::Published;
+	case Scalpel::PrimarySelectionResultStatus::Complete:
+		return Scalpel::ApplicationPrimarySelectionStatus::Complete;
+	case Scalpel::PrimarySelectionResultStatus::Unavailable:
+		return Scalpel::ApplicationPrimarySelectionStatus::Unavailable;
+	case Scalpel::PrimarySelectionResultStatus::NoText:
+		return Scalpel::ApplicationPrimarySelectionStatus::NoText;
+	case Scalpel::PrimarySelectionResultStatus::InvalidUtf8:
+		return Scalpel::ApplicationPrimarySelectionStatus::InvalidText;
+	case Scalpel::PrimarySelectionResultStatus::Cancelled:
+		return Scalpel::ApplicationPrimarySelectionStatus::Cancelled;
+	case Scalpel::PrimarySelectionResultStatus::Failed:
+		return Scalpel::ApplicationPrimarySelectionStatus::Failed;
+	case Scalpel::PrimarySelectionResultStatus::TooLarge:
+		return Scalpel::ApplicationPrimarySelectionStatus::TooLarge;
+	case Scalpel::PrimarySelectionResultStatus::TimedOut:
+		return Scalpel::ApplicationPrimarySelectionStatus::TimedOut;
+	}
+	return Scalpel::ApplicationPrimarySelectionStatus::Failed;
+}
+
 void DeliverClipboardResults(Scalpel::WaylandWindow &window,
 	Scalpel::ApplicationEditor &editor) {
 	for (Scalpel::ClipboardResult &result : window.TakeClipboardResults()) {
@@ -65,6 +97,32 @@ void DispatchClipboardRequests(Scalpel::ApplicationEditor &editor,
 	DeliverClipboardResults(window, editor);
 }
 
+void DeliverPrimarySelectionResults(Scalpel::WaylandWindow &window,
+	Scalpel::ApplicationEditor &editor) {
+	for (Scalpel::PrimarySelectionResult &result :
+		window.TakePrimarySelectionResults()) {
+		editor.HandlePrimarySelectionResult(
+			result.request, ApplicationOperation(result.operation),
+			ApplicationStatus(result.status), std::move(result.text));
+	}
+	(void)editor.TakePrimarySelectionResults();
+}
+
+void DispatchPrimarySelectionRequests(Scalpel::ApplicationEditor &editor,
+	Scalpel::WaylandWindow &window) {
+	for (Scalpel::ApplicationPrimarySelectionRequest &request :
+		editor.TakePrimarySelectionRequests()) {
+		if (request.operation ==
+			Scalpel::ApplicationPrimarySelectionOperation::Publish) {
+			window.PublishPrimarySelection(
+				request.id, std::move(request.text));
+		} else {
+			window.PasteFromPrimarySelection(request.id);
+		}
+	}
+	DeliverPrimarySelectionResults(window, editor);
+}
+
 }
 
 int main() {
@@ -81,6 +139,7 @@ int main() {
 		editor.LoadInitialBuffer(initialText);
 		while (!window.CloseRequested()) {
 			DeliverClipboardResults(window, editor);
+			DeliverPrimarySelectionResults(window, editor);
 			if (const std::optional<Scalpel::WindowSize> resize = window.TakeResize()) {
 				editor.Resize(resize->width, resize->height);
 			}
@@ -94,6 +153,7 @@ int main() {
 				}
 			}
 			DispatchClipboardRequests(editor, window);
+			DispatchPrimarySelectionRequests(editor, window);
 			editor.RunPendingWork();
 			window.SetCursor(editor.WindowState().cursor);
 			if (editor.NeedsRedraw()) {

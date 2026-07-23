@@ -253,6 +253,9 @@ TEST_CASE("Wayland primary selection replaces stale offers") {
 	CHECK(selection.ChoosePaste().kind ==
 		Scalpel::WaylandPrimaryPasteChoice::Kind::Receive);
 	CHECK(selection.ChoosePaste().mimeType == "text/plain;charset=UTF-8");
+	selection.RecordSerial(52);
+	REQUIRE(selection.Publish(std::nullopt));
+	CHECK(selection.SelectionOffer() == 11);
 
 	selection.SelectOffer(10);
 	CHECK_FALSE(selection.SelectionOffer().has_value());

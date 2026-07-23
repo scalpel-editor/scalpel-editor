@@ -47,6 +47,33 @@ const char *ClipboardStatusName(ApplicationClipboardStatus status) noexcept {
 	return "unknown";
 }
 
+const char *PrimarySelectionStatusName(
+	ApplicationPrimarySelectionStatus status) noexcept {
+	switch (status) {
+	case ApplicationPrimarySelectionStatus::Published:
+		return "published";
+	case ApplicationPrimarySelectionStatus::Complete:
+		return "complete";
+	case ApplicationPrimarySelectionStatus::Unavailable:
+		return "service unavailable";
+	case ApplicationPrimarySelectionStatus::NoText:
+		return "no text";
+	case ApplicationPrimarySelectionStatus::InvalidText:
+		return "invalid UTF-8";
+	case ApplicationPrimarySelectionStatus::Cancelled:
+		return "cancelled";
+	case ApplicationPrimarySelectionStatus::Failed:
+		return "transfer failed";
+	case ApplicationPrimarySelectionStatus::TooLarge:
+		return "text too large";
+	case ApplicationPrimarySelectionStatus::TimedOut:
+		return "transfer timed out";
+	case ApplicationPrimarySelectionStatus::Superseded:
+		return "superseded";
+	}
+	return "unknown";
+}
+
 }
 
 ApplicationResources::ApplicationResources(int width, int height) :
@@ -145,11 +172,27 @@ void ApplicationEditor::HandlePointerInput(const PointerInput &input) {
 			ButtonDownWithModifiers(point, input.time, input.modifiers);
 		} else if (input.button == 1) {
 			RightButtonDownWithModifiers(point, input.time, input.modifiers);
+		} else if (input.button == 2) {
+			suppressPrimarySelectionClaim = true;
+			try {
+				const Scintilla::Position position = PositionFromLocation(point);
+				SetEmptySelection(position);
+				RequestPrimarySelectionPaste(position);
+			} catch (...) {
+				suppressPrimarySelectionClaim = false;
+				throw;
+			}
+			suppressPrimarySelectionClaim = false;
 		}
 		break;
 	case PointerAction::Release:
 		if (input.button == 0) {
 			ButtonUpWithModifiers(point, input.time, input.modifiers);
+			if (pendingPrimaryClaim) {
+				QueuePrimarySelectionClaim(
+					std::move(pendingPrimaryClaim->text));
+				pendingPrimaryClaim.reset();
+			}
 		}
 		break;
 	case PointerAction::Scroll: {
@@ -235,6 +278,57 @@ void ApplicationEditor::HandleClipboardResult(uint64_t id,
 		reportedStatus != ApplicationClipboardStatus::Cancelled) {
 		std::fprintf(stderr, "scalpel-editor clipboard: %s\n",
 			ClipboardStatusName(reportedStatus));
+	}
+}
+
+std::vector<ApplicationPrimarySelectionRequest>
+ApplicationEditor::TakePrimarySelectionRequests() {
+	return std::exchange(primarySelectionRequests, {});
+}
+
+std::vector<ApplicationPrimarySelectionResult>
+ApplicationEditor::TakePrimarySelectionResults() {
+	return std::exchange(primarySelectionResults, {});
+}
+
+void ApplicationEditor::HandlePrimarySelectionResult(uint64_t id,
+	ApplicationPrimarySelectionOperation operation,
+	ApplicationPrimarySelectionStatus status, std::string text) {
+	ApplicationPrimarySelectionStatus reportedStatus = status;
+	if (operation == ApplicationPrimarySelectionOperation::Paste &&
+		status == ApplicationPrimarySelectionStatus::Complete) {
+		if (!pendingPrimaryPaste || pendingPrimaryPaste->id != id ||
+			pendingPrimaryPaste->documentGeneration != documentGeneration) {
+			reportedStatus = ApplicationPrimarySelectionStatus::Superseded;
+		} else if (!text.empty() && CanPaste()) {
+			suppressPrimarySelectionClaim = true;
+			try {
+				SetEmptySelection(pendingPrimaryPaste->position);
+				Scintilla::Internal::UndoGroup undoGroup(pdoc);
+				ClearSelection(multiPasteMode == Scintilla::MultiPaste::Each);
+				InsertPasteShape(text, PasteShape::stream);
+				EnsureCaretVisible();
+				Redraw();
+			} catch (...) {
+				suppressPrimarySelectionClaim = false;
+				throw;
+			}
+			suppressPrimarySelectionClaim = false;
+		}
+	}
+	if (operation == ApplicationPrimarySelectionOperation::Paste &&
+		pendingPrimaryPaste && pendingPrimaryPaste->id == id &&
+		status != ApplicationPrimarySelectionStatus::Published) {
+		pendingPrimaryPaste.reset();
+	}
+	primarySelectionResults.push_back({id, operation, reportedStatus});
+	if (reportedStatus != ApplicationPrimarySelectionStatus::Published &&
+		reportedStatus != ApplicationPrimarySelectionStatus::Complete &&
+		reportedStatus != ApplicationPrimarySelectionStatus::Superseded &&
+		reportedStatus != ApplicationPrimarySelectionStatus::NoText &&
+		reportedStatus != ApplicationPrimarySelectionStatus::Cancelled) {
+		std::fprintf(stderr, "scalpel-editor primary selection: %s\n",
+			PrimarySelectionStatusName(reportedStatus));
 	}
 }
 
@@ -375,6 +469,21 @@ void ApplicationEditor::Paste() {
 }
 
 void ApplicationEditor::ClaimSelection() {
+	if (suppressPrimarySelectionClaim) {
+		return;
+	}
+	std::optional<std::string> text;
+	if (!sel.Empty()) {
+		Scintilla::Internal::SelectionText selectedText;
+		CopySelectionRange(&selectedText, false);
+		text = std::string(selectedText.AsView());
+	}
+	if (HaveMouseCapture()) {
+		pendingPrimaryClaim = PendingPrimaryClaim{std::move(text)};
+	} else {
+		pendingPrimaryClaim.reset();
+		QueuePrimarySelectionClaim(std::move(text));
+	}
 }
 
 void ApplicationEditor::CopyToClipboard(
@@ -391,7 +500,34 @@ void ApplicationEditor::StartDrag() {
 	RecordUnsupported("drag and drop");
 }
 
+void ApplicationEditor::QueuePrimarySelectionClaim(
+	std::optional<std::string> text) {
+	if (!text && !primarySelectionClaimed) {
+		return;
+	}
+	primarySelectionClaimed = text.has_value();
+	const uint64_t request = nextPrimarySelectionRequest++;
+	primarySelectionRequests.push_back({
+		request,
+		ApplicationPrimarySelectionOperation::Publish,
+		std::move(text),
+	});
+}
+
+void ApplicationEditor::RequestPrimarySelectionPaste(
+	Scintilla::Position position) {
+	const uint64_t request = nextPrimarySelectionRequest++;
+	pendingPrimaryPaste = PendingPrimaryPaste{
+		request, documentGeneration, position};
+	primarySelectionRequests.push_back({
+		request,
+		ApplicationPrimarySelectionOperation::Paste,
+		std::nullopt,
+	});
+}
+
 void ApplicationEditor::NotifyChange() {
+	documentGeneration++;
 	changeNotifications++;
 }
 
