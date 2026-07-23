@@ -77,8 +77,9 @@ int DefaultFontSize() noexcept {
 
 Style::Style(const char *fontName_) noexcept :
 	FontSpecification(fontName_, DefaultFontSize() * FontSizeMultiplier),
-	fore(black),
-	back(white),
+	// Slightly soft defaults: pure black-on-white is harsh at full window size.
+	fore(ColourRGBA(0x22, 0x22, 0x22)),
+	back(ColourRGBA(0xf6, 0xf6, 0xf6)),
 	eolFilled(false),
 	underline(false),
 	caseForce(CaseForce::mixed),
