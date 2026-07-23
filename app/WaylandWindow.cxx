@@ -144,6 +144,7 @@ void WaylandWindow::Initialise(const char *title) {
 	if (wl_surface_add_listener(surface, &waylandSurfaceListener, this) != 0) {
 		throw std::runtime_error("could not listen for Wayland surface output changes");
 	}
+	textInput.SetSurface(surface);
 	cursorSurface = wl_compositor_create_surface(compositor);
 	if (!cursorSurface) {
 		std::cerr << "scalpel-editor: Wayland cursor surface is unavailable\n";
@@ -222,6 +223,7 @@ void WaylandWindow::Destroy() noexcept {
 	if (seat) {
 		clipboard.SetSeat(nullptr);
 		primarySelection.SetSeat(nullptr);
+		(void)textInput.SetSeat(nullptr);
 		if (wl_seat_get_version(seat) >= WL_SEAT_RELEASE_SINCE_VERSION) {
 			wl_seat_release(seat);
 		} else {
@@ -233,6 +235,7 @@ void WaylandWindow::Destroy() noexcept {
 	}
 	clipboard.SetManager(nullptr);
 	primarySelection.SetManager(nullptr);
+	(void)textInput.SetManager(nullptr);
 	if (dataDeviceManager) {
 		wl_data_device_manager_destroy(dataDeviceManager);
 	}
@@ -522,8 +525,15 @@ void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleActi
 				wl_registry_bind(registry, action.name,
 					&zwp_text_input_manager_v3_interface,
 					std::min(action.version, 1U)));
+			if (!textInput.SetManager(textInputManager)) {
+				callbackFailed = true;
+			}
+			if (seat && !textInput.SetSeat(seat)) {
+				callbackFailed = true;
+			}
 			break;
 		case WaylandLifecycleActionType::ReleaseTextInputManager:
+			(void)textInput.SetManager(nullptr);
 			if (textInputManager) {
 				zwp_text_input_manager_v3_destroy(textInputManager);
 				textInputManager = nullptr;
@@ -575,11 +585,15 @@ void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleActi
 			} else {
 				clipboard.SetSeat(seat);
 				primarySelection.SetSeat(seat);
+				if (!textInput.SetSeat(seat)) {
+					callbackFailed = true;
+				}
 			}
 			break;
 		case WaylandLifecycleActionType::ReleaseSeat:
 			clipboard.SetSeat(nullptr);
 			primarySelection.SetSeat(nullptr);
+			(void)textInput.SetSeat(nullptr);
 			if (seat) {
 				if (wl_seat_get_version(seat) >= WL_SEAT_RELEASE_SINCE_VERSION) {
 					wl_seat_release(seat);
@@ -641,6 +655,7 @@ void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleActi
 			}
 			break;
 		case WaylandLifecycleActionType::ReleaseKeyboard:
+			textInput.SetKeyboardFocus(false);
 			input.ResetKeyboardDevice();
 			if (keyboard) {
 				if (wl_keyboard_get_version(keyboard) >= WL_KEYBOARD_RELEASE_SINCE_VERSION) {
@@ -881,12 +896,14 @@ void WaylandWindow::KeyboardEnter(void *data, wl_keyboard *, uint32_t serial,
 		window.clipboard.RecordSerial(serial);
 		window.primarySelection.RecordSerial(serial);
 		window.input.RecordKeyboardFocus(true);
+		window.textInput.SetKeyboardFocus(true);
 	}
 }
 
 void WaylandWindow::KeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surface *surface_) {
 	auto &window = *static_cast<WaylandWindow *>(data);
 	if (surface_ == window.surface) {
+		window.textInput.SetKeyboardFocus(false);
 		window.input.RecordKeyboardFocus(false);
 		window.input.ResetKeyboardState();
 	}

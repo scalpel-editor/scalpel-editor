@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "WaylandClipboard.h"
@@ -14,6 +15,7 @@
 #include "WaylandInput.h"
 #include "WaylandLifecycle.h"
 #include "WaylandPrimarySelection.h"
+#include "WaylandTextInput.h"
 
 struct wl_array;
 struct wl_compositor;
@@ -92,6 +94,12 @@ public:
 	}
 	[[nodiscard]] std::vector<PrimarySelectionResult> TakePrimarySelectionResults() {
 		return primarySelection.TakeResults();
+	}
+	void UpdateTextInputState(WaylandTextInputClientState state) {
+		textInput.UpdateClientState(std::move(state));
+	}
+	[[nodiscard]] std::vector<WaylandTextInputBatch> TakeTextInputBatches() {
+		return textInput.TakeBatches();
 	}
 
 	/** Complete one request/event round trip, throwing on display failure. */
@@ -217,6 +225,7 @@ private:
 	WaylandCursorState cursorState;
 	WaylandClipboard clipboard;
 	WaylandPrimarySelection primarySelection;
+	WaylandTextInput textInput;
 	WaylandCursorSettings cursorSettings;
 	bool callbackFailed = false;
 	bool configured = false;
