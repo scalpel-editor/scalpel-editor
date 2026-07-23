@@ -279,11 +279,11 @@ int main() {
 					try {
 						editor.PresentFrame(EditorDamage(plan->repaintDamage),
 							EglDamage(plan->eglDamage), plan->fullSwap);
+						window.SubmitFrame(plan->submission);
 					} catch (...) {
 						window.CancelFrame();
 						throw;
 					}
-					window.SubmitFrame(plan->submission);
 				}
 			}
 			if (!window.CloseRequested()) {

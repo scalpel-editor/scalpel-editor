@@ -167,18 +167,13 @@ std::optional<FramePlan> WaylandFrameState::BeginFrame(
 	};
 }
 
-std::optional<uint64_t> WaylandFrameState::SubmitFrame(
+std::optional<uint64_t> WaylandFrameState::PrepareFrame(
 	uint64_t submission, bool presentationRequested) {
-	if (!painting || submission != activeSubmission) {
-		throw std::logic_error("submitted frame does not match the active paint");
+	if (!painting || submission != activeSubmission || submissionPrepared) {
+		throw std::logic_error("prepared frame does not match the active paint");
 	}
-	painting = false;
+	submissionPrepared = true;
 	callbackOutstanding = true;
-	damageHistory.insert(damageHistory.begin(), std::move(activeDamage));
-	if (damageHistory.size() > MaximumDamageHistory) {
-		damageHistory.resize(MaximumDamageHistory);
-	}
-	activeSubmission = 0;
 	if (!presentationRequested) {
 		return std::nullopt;
 	}
@@ -191,14 +186,33 @@ std::optional<uint64_t> WaylandFrameState::SubmitFrame(
 	return expired;
 }
 
+void WaylandFrameState::SubmitFrame(uint64_t submission) {
+	if (!painting || submission != activeSubmission || !submissionPrepared) {
+		throw std::logic_error("submitted frame does not match the active paint");
+	}
+	painting = false;
+	submissionPrepared = false;
+	damageHistory.insert(damageHistory.begin(), std::move(activeDamage));
+	if (damageHistory.size() > MaximumDamageHistory) {
+		damageHistory.resize(MaximumDamageHistory);
+	}
+	activeSubmission = 0;
+}
+
 void WaylandFrameState::CancelPaint() {
 	if (!painting) {
 		return;
 	}
 	AppendDamage(pendingDamage, activeDamage, MaximumDamageRectangles);
 	invalidated = true;
+	const auto feedback = std::find(
+		outstandingFeedback.begin(), outstandingFeedback.end(), activeSubmission);
+	if (feedback != outstandingFeedback.end()) {
+		outstandingFeedback.erase(feedback);
+	}
 	activeDamage.clear();
 	activeSubmission = 0;
+	submissionPrepared = false;
 	painting = false;
 }
 

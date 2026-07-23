@@ -87,8 +87,9 @@ public:
 	[[nodiscard]] std::optional<FramePlan> BeginFrame(
 		int bufferWidth, int bufferHeight, int bufferAge,
 		bool bufferAgeSupported, bool damageSwapSupported);
-	[[nodiscard]] std::optional<uint64_t> SubmitFrame(
+	[[nodiscard]] std::optional<uint64_t> PrepareFrame(
 		uint64_t submission, bool presentationRequested);
+	void SubmitFrame(uint64_t submission);
 	void CancelPaint();
 	void FrameCallbackDone() noexcept;
 	void CancelFrameCallback() noexcept;
@@ -109,6 +110,7 @@ private:
 
 	bool invalidated = false;
 	bool painting = false;
+	bool submissionPrepared = false;
 	bool callbackOutstanding = false;
 	uint64_t nextSubmission = 1;
 	uint64_t activeSubmission = 0;

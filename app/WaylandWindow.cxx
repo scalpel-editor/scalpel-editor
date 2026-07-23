@@ -344,18 +344,25 @@ void WaylandWindow::PrepareFrame(const FramePlan &plan) {
 			wp_presentation_feedback_destroy(feedback);
 		}
 	}
-}
-
-void WaylandWindow::SubmitFrame(uint64_t submission) {
-	if (submission != preparedSubmission || !frameCallback) {
-		throw std::logic_error("submitted Wayland frame was not prepared");
+	std::optional<uint64_t> expired;
+	try {
+		expired = frameState.PrepareFrame(
+			plan.submission, HasPresentationFeedback(plan.submission));
+	} catch (...) {
+		CancelFrame();
+		throw;
 	}
-	const std::optional<uint64_t> expired = frameState.SubmitFrame(
-		submission, HasPresentationFeedback(submission));
-	preparedSubmission = 0;
 	if (expired) {
 		DestroyPresentationFeedback(*expired);
 	}
+}
+
+void WaylandWindow::SubmitFrame(uint64_t submission) {
+	if (submission != preparedSubmission) {
+		throw std::logic_error("submitted Wayland frame was not prepared");
+	}
+	frameState.SubmitFrame(submission);
+	preparedSubmission = 0;
 }
 
 void WaylandWindow::CancelFrame() noexcept {
