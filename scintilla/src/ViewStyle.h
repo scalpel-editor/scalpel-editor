@@ -93,7 +93,7 @@ struct CaretAppearance {
 
 struct WrapAppearance {
 	// No wrapping, word, character, whitespace appearance
-	Scintilla::Wrap state = Wrap::None;
+	Scintilla::Wrap state = Wrap::Word;
 	// Show indication of wrap at line end, line start, or in margin
 	Scintilla::WrapVisualFlag visualFlags = WrapVisualFlag::None;
 	// Show indication near margin or near text

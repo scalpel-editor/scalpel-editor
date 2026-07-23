@@ -72,6 +72,7 @@ namespace {
 TestEditorSnapshot WrapSnapshot() {
 	TestHost host;
 	TestEditor editor(host, PRectangle(0, 0, 320, 200));
+	editor.SetWrapMode(Wrap::None);
 	editor.SetText("a line long enough to wrap in the test window");
 	editor.SetHorizontalOffset(40);
 	editor.PaintAll();
@@ -82,6 +83,13 @@ TestEditorSnapshot WrapSnapshot() {
 	return editor.Snapshot();
 }
 
+}
+
+TEST_CASE("Wrap mode defaults to word wrapping") {
+	TestHost host;
+	TestEditor editor(host);
+
+	CHECK(editor.GetWrapMode() == Wrap::Word);
 }
 
 TEST_CASE("Wrap mode changes editor and host state") {
@@ -200,6 +208,7 @@ TEST_CASE("Wrap display settings redraw only when changed") {
 TEST_CASE("Wrap count reports display rows and disabling wrap restores one row") {
 	TestHost host;
 	TestEditor editor(host, PRectangle(0, 0, 100, 100));
+	editor.SetWrapMode(Wrap::None);
 	editor.SetText("one two three four five six");
 	CHECK(editor.WrapCount(0) == 1);
 
