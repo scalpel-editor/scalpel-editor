@@ -661,6 +661,7 @@ void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleActi
 				callbackFailed = true;
 				break;
 			}
+			presentationClockId.reset();
 			presentation = static_cast<wp_presentation *>(wl_registry_bind(
 				registry, action.name, &wp_presentation_interface,
 				std::min(action.version, 2U)));
@@ -677,6 +678,7 @@ void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleActi
 				wp_presentation_destroy(presentation);
 				presentation = nullptr;
 			}
+			presentationClockId.reset();
 			break;
 		case WaylandLifecycleActionType::BindOutput: {
 			wl_output *output = static_cast<wl_output *>(wl_registry_bind(

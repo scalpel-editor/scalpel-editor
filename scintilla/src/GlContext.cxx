@@ -237,9 +237,7 @@ GlContext::GlContext(void *nativeDisplay, void *nativeWindow) {
 		damageFunction = "eglSwapBuffersWithDamageEXT";
 	}
 	if (damageFunction) {
-		swapBuffersWithDamage =
-			reinterpret_cast<PFNEGLSWAPBUFFERSWITHDAMAGEKHRPROC>(
-			eglGetProcAddress(damageFunction));
+		swapBuffersWithDamage = eglGetProcAddress(damageFunction);
 	}
 	if (!eglMakeCurrent(dpy, window, window, ctx)) {
 		Destroy();
@@ -349,7 +347,10 @@ void GlContext::SwapBuffersWithDamage(
 			std::numeric_limits<EGLint>::max() / 4)) {
 		throw std::invalid_argument("invalid EGL damage rectangle list");
 	}
-	if (!swapBuffersWithDamage(
+	const auto damageSwap =
+		reinterpret_cast<PFNEGLSWAPBUFFERSWITHDAMAGEKHRPROC>(
+			swapBuffersWithDamage);
+	if (!damageSwap(
 		static_cast<EGLDisplay>(display), static_cast<EGLSurface>(surface),
 		rectangles,
 		static_cast<EGLint>(rectangleCount))) {

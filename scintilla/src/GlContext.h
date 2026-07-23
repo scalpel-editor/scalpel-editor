@@ -10,9 +10,6 @@
 #include <cstddef>
 #include <string>
 
-#include <EGL/egl.h>
-#include <EGL/eglext.h>
-
 namespace Scintilla::Internal {
 
 /**
@@ -86,7 +83,7 @@ private:
 	void *surface = nullptr;   // EGLSurface or null for EGL_NO_SURFACE path
 	bool windowSurface = false;
 	bool bufferAgeSupported = false;
-	PFNEGLSWAPBUFFERSWITHDAMAGEKHRPROC swapBuffersWithDamage = nullptr;
+	void (*swapBuffersWithDamage)() = nullptr;
 	int majorVersion = 0;
 	int minorVersion = 0;
 };
