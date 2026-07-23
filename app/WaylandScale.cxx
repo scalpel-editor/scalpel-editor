@@ -133,12 +133,28 @@ void WaylandScaleState::Resize(int logicalWidth_, int logicalHeight_) {
 }
 
 std::optional<WaylandScaleConfiguration>
-WaylandScaleState::TakeConfiguration() noexcept {
+WaylandScaleState::PendingConfiguration() const noexcept {
 	if (!configurationPending) {
 		return std::nullopt;
 	}
-	configurationPending = false;
 	return configuration;
+}
+
+void WaylandScaleState::MarkConfigurationApplied(
+	const WaylandScaleConfiguration &applied) noexcept {
+	if (applied == configuration) {
+		configurationPending = false;
+	}
+}
+
+std::optional<WaylandScaleConfiguration>
+WaylandScaleState::TakeConfiguration() noexcept {
+	const std::optional<WaylandScaleConfiguration> pending =
+		PendingConfiguration();
+	if (pending) {
+		MarkConfigurationApplied(*pending);
+	}
+	return pending;
 }
 
 void WaylandScaleState::Refresh() {

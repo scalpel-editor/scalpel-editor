@@ -59,6 +59,10 @@ public:
 	[[nodiscard]] const WaylandScaleConfiguration &Configuration() const noexcept {
 		return configuration;
 	}
+	[[nodiscard]] std::optional<WaylandScaleConfiguration>
+		PendingConfiguration() const noexcept;
+	void MarkConfigurationApplied(
+		const WaylandScaleConfiguration &applied) noexcept;
 	[[nodiscard]] std::optional<WaylandScaleConfiguration> TakeConfiguration() noexcept;
 
 private:

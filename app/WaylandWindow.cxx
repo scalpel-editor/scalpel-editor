@@ -388,9 +388,10 @@ void WaylandWindow::PrepareFrame(const FramePlan &plan) {
 std::optional<WaylandScaleConfiguration>
 WaylandWindow::TakeScaleConfiguration() {
 	std::optional<WaylandScaleConfiguration> configuration =
-		scaleState.TakeConfiguration();
+		scaleState.PendingConfiguration();
 	if (configuration) {
 		ApplyScaleConfiguration(*configuration);
+		scaleState.MarkConfigurationApplied(*configuration);
 		(void)lifecycle.TakeResize();
 	}
 	return configuration;

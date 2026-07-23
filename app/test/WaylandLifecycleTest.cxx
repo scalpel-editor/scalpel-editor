@@ -164,6 +164,23 @@ TEST_CASE("Wayland scale rejects invalid sizes and scales") {
 	CHECK_THROWS(scale.Resize(800, 0));
 }
 
+TEST_CASE("Wayland scale remains pending until its configuration is applied") {
+	Scalpel::WaylandScaleState scale(800, 600);
+	const auto initial = scale.PendingConfiguration();
+	REQUIRE(initial.has_value());
+	CHECK(scale.PendingConfiguration() == initial);
+
+	scale.Resize(640, 480);
+	scale.MarkConfigurationApplied(*initial);
+	const auto resized = scale.PendingConfiguration();
+	REQUIRE(resized.has_value());
+	CHECK(resized->logicalWidth == 640);
+	CHECK(resized->logicalHeight == 480);
+
+	scale.MarkConfigurationApplied(*resized);
+	CHECK_FALSE(scale.PendingConfiguration().has_value());
+}
+
 TEST_CASE("Wayland scale falls back when buffer scale is unavailable") {
 	Scalpel::WaylandScaleState scale(800, 600);
 	(void)scale.TakeConfiguration();
