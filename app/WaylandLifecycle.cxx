@@ -162,7 +162,11 @@ void WaylandLifecycle::LeaveOutput(uint32_t name) noexcept {
 }
 
 void WaylandLifecycle::ProposeSize(int width, int height) noexcept {
-	ProposeToplevel(width, height, {});
+	if (width > 0 && height > 0) {
+		proposedSize = WindowSize{width, height};
+	} else {
+		proposedSize.reset();
+	}
 }
 
 void WaylandLifecycle::ProposeToplevel(int width, int height,

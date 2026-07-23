@@ -31,6 +31,21 @@ TEST_CASE("Wayland lifecycle coalesces configured sizes") {
 	CHECK_FALSE(lifecycle.CommitConfigure().has_value());
 }
 
+TEST_CASE("Wayland size proposals preserve toplevel state") {
+	Scalpel::WaylandLifecycle lifecycle(800, 600);
+
+	lifecycle.ProposeToplevel(900, 650, {1, 4});
+	lifecycle.ProposeSize(1024, 768);
+	REQUIRE(lifecycle.CommitConfigure() == Scalpel::WindowSize{1024, 768});
+	CHECK(lifecycle.ToplevelState().maximized);
+	CHECK(lifecycle.ToplevelState().activated);
+
+	lifecycle.ProposeSize(1100, 700);
+	REQUIRE(lifecycle.CommitConfigure() == Scalpel::WindowSize{1100, 700});
+	CHECK(lifecycle.ToplevelState().maximized);
+	CHECK(lifecycle.ToplevelState().activated);
+}
+
 TEST_CASE("Wayland lifecycle commits retained toplevel state") {
 	Scalpel::WaylandLifecycle lifecycle(800, 600);
 
