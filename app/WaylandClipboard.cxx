@@ -145,8 +145,6 @@ void WaylandClipboardState::OfferMime(uintptr_t token, std::string_view mimeType
 
 void WaylandClipboardState::SelectOffer(std::optional<uintptr_t> token) {
 	selectionOffer.reset();
-	ownsSelection = false;
-	ownedText.clear();
 	if (token && offers.find(*token) != offers.end()) {
 		selectionOffer = token;
 	}
@@ -249,6 +247,7 @@ void WaylandClipboard::SetManager(wl_data_device_manager *manager_) {
 }
 
 void WaylandClipboard::SetSeat(wl_seat *seat) {
+	DestroySource(true);
 	DestroyDataDevice();
 	state.SetSeatAvailable(seat != nullptr);
 	if (!manager || !seat) {
@@ -286,6 +285,7 @@ void WaylandClipboard::CopyText(uint64_t request, std::string text) {
 	}
 	sourceRequest = request;
 	wl_data_source_offer(source, ClipboardMimeUtf8.data());
+	wl_data_source_offer(source, ClipboardMimeUtf8String.data());
 	wl_data_source_offer(source, ClipboardMimePlain.data());
 	wl_data_device_set_selection(device, source, *state.Serial());
 	Report(request, ClipboardOperation::Copy, ClipboardResultStatus::Published);

@@ -171,6 +171,18 @@ TEST_CASE("Wayland clipboard state requires a service seat and serial to publish
 	CHECK(clipboard.CanPaste());
 	CHECK(clipboard.ChoosePaste().text == "owned text");
 
+	clipboard.AddOffer(10);
+	clipboard.OfferMime(10, "text/plain");
+	clipboard.SelectOffer(10);
+	CHECK(clipboard.ChoosePaste().kind ==
+		Scalpel::WaylandClipboardPasteChoice::Kind::OwnedText);
+	CHECK(clipboard.ChoosePaste().text == "owned text");
+
+	clipboard.CancelOwnership();
+	CHECK(clipboard.ChoosePaste().kind ==
+		Scalpel::WaylandClipboardPasteChoice::Kind::Receive);
+	CHECK(clipboard.ChoosePaste().mimeType == "text/plain");
+
 	clipboard.SetSeatAvailable(false);
 	CHECK_FALSE(clipboard.CanPaste());
 	CHECK_FALSE(clipboard.Serial().has_value());
