@@ -154,25 +154,83 @@ target_compile_options(waylandPointerTest PRIVATE -Wall -Wextra)
 
 add_test(NAME wayland-pointer COMMAND waylandPointerTest)
 
-add_executable(waylandTransferTest WaylandTransferTest.cxx)
-target_include_directories(waylandTransferTest PRIVATE
+add_executable(waylandByteTransferTest
+  WaylandByteTransferTest.cxx
+  WaylandTestMain.cxx
+)
+target_include_directories(waylandByteTransferTest PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
   ../../scintilla/test/unit
 )
-target_link_libraries(waylandTransferTest PRIVATE scalpel_wayland)
-target_compile_options(waylandTransferTest PRIVATE -Wall -Wextra)
+target_link_libraries(waylandByteTransferTest PRIVATE scalpel_wayland)
+target_compile_options(waylandByteTransferTest PRIVATE -Wall -Wextra)
 
-add_test(NAME wayland-transfer COMMAND waylandTransferTest)
+add_test(NAME wayland-byte-transfer COMMAND waylandByteTransferTest)
 
-add_executable(waylandEventLoopTest WaylandEventLoopTest.cxx)
-target_include_directories(waylandEventLoopTest PRIVATE
+add_executable(waylandClipboardTest
+  WaylandClipboardTest.cxx
+  WaylandTestMain.cxx
+)
+target_include_directories(waylandClipboardTest PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
   ../../scintilla/test/unit
 )
-target_link_libraries(waylandEventLoopTest PRIVATE scalpel_wayland)
-target_compile_options(waylandEventLoopTest PRIVATE -Wall -Wextra)
+target_link_libraries(waylandClipboardTest PRIVATE scalpel_wayland)
+target_compile_options(waylandClipboardTest PRIVATE -Wall -Wextra)
 
-add_test(NAME wayland-event-loop COMMAND waylandEventLoopTest)
+add_test(NAME wayland-clipboard COMMAND waylandClipboardTest)
+
+add_executable(waylandPrimarySelectionTest
+  WaylandPrimarySelectionTest.cxx
+  WaylandTestMain.cxx
+)
+target_include_directories(waylandPrimarySelectionTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(waylandPrimarySelectionTest PRIVATE scalpel_wayland)
+target_compile_options(waylandPrimarySelectionTest PRIVATE -Wall -Wextra)
+
+add_test(NAME wayland-primary-selection COMMAND waylandPrimarySelectionTest)
+
+add_executable(waylandPollTest
+  WaylandPollTest.cxx
+  WaylandTestMain.cxx
+)
+target_include_directories(waylandPollTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(waylandPollTest PRIVATE scalpel_wayland)
+target_compile_options(waylandPollTest PRIVATE -Wall -Wextra)
+
+add_test(NAME wayland-poll COMMAND waylandPollTest)
+
+add_executable(waylandDbusTest
+  WaylandDbusTest.cxx
+  WaylandTestMain.cxx
+)
+target_include_directories(waylandDbusTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(waylandDbusTest PRIVATE scalpel_wayland)
+target_compile_options(waylandDbusTest PRIVATE -Wall -Wextra)
+
+add_test(NAME wayland-dbus COMMAND waylandDbusTest)
+
+add_executable(waylandPortalTest
+  WaylandPortalTest.cxx
+  WaylandTestMain.cxx
+)
+target_include_directories(waylandPortalTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(waylandPortalTest PRIVATE scalpel_wayland)
+target_compile_options(waylandPortalTest PRIVATE -Wall -Wextra)
+
+add_test(NAME wayland-portal COMMAND waylandPortalTest)
 
 add_executable(waylandIntegrationTest WaylandIntegrationTest.cxx)
 target_include_directories(waylandIntegrationTest PRIVATE
