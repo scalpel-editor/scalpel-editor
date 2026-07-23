@@ -207,6 +207,44 @@ TEST_CASE("production editor rejects IME deletion inside a UTF-8 character") {
 	CHECK(editor.Text() == "a\xC3\xA9" "a");
 }
 
+TEST_CASE("production editor cancels preedit after rejected IME deletion") {
+	Scalpel::ApplicationEditor editor(240, 120);
+	editor.LoadInitialBuffer("a\xC3\xA9");
+	editor.HandleKeyboardInput({Scintilla::Keys::End,
+		Scintilla::KeyMod::Norm, {}, 1, true});
+
+	Scalpel::ApplicationTextInputBatch preedit;
+	preedit.preedit = Scalpel::ApplicationTextInputPreedit{
+		"\xE6\x96\x87", 3, 3};
+	editor.HandleTextInputBatch(preedit);
+	(void)editor.TakeTextInputState();
+
+	Scalpel::ApplicationTextInputBatch rejected;
+	rejected.deletion = Scalpel::ApplicationTextInputDelete{1, 0};
+	rejected.commit = "X";
+	editor.HandleTextInputBatch(rejected);
+	CHECK(editor.Text() == "a\xC3\xA9");
+	CHECK(editor.ImeIndicatorAt(3) == 0);
+	const auto state = editor.TakeTextInputState();
+	REQUIRE(state.has_value());
+	REQUIRE(state->surroundingText.has_value());
+	CHECK(*state->surroundingText == "a\xC3\xA9");
+	CHECK(state->changeCause == Scalpel::ApplicationTextChangeCause::Other);
+}
+
+TEST_CASE("production editor reports empty IME refresh as other") {
+	Scalpel::ApplicationEditor editor(240, 120);
+	editor.LoadInitialBuffer("base");
+	(void)editor.TakeTextInputState();
+
+	Scalpel::ApplicationTextInputBatch refresh;
+	refresh.refreshState = true;
+	editor.HandleTextInputBatch(refresh);
+	const auto state = editor.TakeTextInputState();
+	REQUIRE(state.has_value());
+	CHECK(state->changeCause == Scalpel::ApplicationTextChangeCause::Other);
+}
+
 TEST_CASE("production editor exposes clipboard requests and unavailable results") {
 	Scalpel::ApplicationEditor editor(200, 100);
 	editor.LoadInitialBuffer("clipboard request");

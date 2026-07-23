@@ -165,16 +165,22 @@ void ApplicationEditor::HandleTextInputBatch(
 		pdoc->TentativeUndo();
 		textInputPreeditRange.reset();
 	}
+	bool changed = replacingPreedit;
 
 	{
 		Scintilla::Internal::UndoGroup undoGroup(
 			pdoc, batch.deletion.has_value() || batch.commit.has_value());
 		if (batch.deletion && !DeleteTextInputSurrounding(*batch.deletion)) {
 			textInputStateDirty = true;
+			textInputChangeCause = ApplicationTextChangeCause::Other;
 			return;
 		}
+		changed = changed || (batch.deletion &&
+			(batch.deletion->beforeLength != 0 ||
+				batch.deletion->afterLength != 0));
 		if (batch.commit && !batch.commit->empty()) {
 			InsertCharacter(*batch.commit, Scintilla::CharacterSource::ImeResult);
+			changed = true;
 		}
 	}
 
@@ -199,10 +205,13 @@ void ApplicationEditor::HandleTextInputBatch(
 		}
 		EnsureCaretVisible();
 		ShowCaretAtCurrentPosition();
+		changed = true;
 	}
 
-	textInputStateDirty = true;
-	textInputChangeCause = ApplicationTextChangeCause::InputMethod;
+	textInputStateDirty = textInputStateDirty || batch.refreshState || changed;
+	if (changed) {
+		textInputChangeCause = ApplicationTextChangeCause::InputMethod;
+	}
 }
 
 std::optional<ApplicationTextInputState> ApplicationEditor::TakeTextInputState() {

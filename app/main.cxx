@@ -196,6 +196,7 @@ int main() {
 			DeliverClipboardResults(window, editor);
 			DeliverPrimarySelectionResults(window, editor);
 			DeliverTextInputBatches(window, editor);
+			SynchronizeTextInput(editor, window);
 			if (const std::optional<Scalpel::WindowSize> resize = window.TakeResize()) {
 				editor.Resize(resize->width, resize->height);
 			}
