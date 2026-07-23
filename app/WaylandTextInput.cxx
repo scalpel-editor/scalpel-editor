@@ -136,9 +136,12 @@ void WaylandTextInputState::Done(uint32_t serial) {
 		return;
 	}
 	const bool matching = serial == commitSerial;
+	const bool pendingChanges = pendingInvalid ||
+		pendingPreedit.has_value() || pendingCommit.has_value() ||
+		pendingDeletion.has_value();
 	WaylandTextInputBatch batch;
 	batch.serial = serial;
-	batch.refreshState = matching;
+	batch.refreshState = matching && (stateDirty || pendingChanges);
 	if (pendingInvalid) {
 		batch.cancel = true;
 	} else {
@@ -149,9 +152,6 @@ void WaylandTextInputState::Done(uint32_t serial) {
 	batches.push_back(std::move(batch));
 	ClearPending();
 	acceptsState = matching;
-	if (matching) {
-		stateDirty = clientState.has_value();
-	}
 }
 
 std::vector<WaylandTextInputBatch> WaylandTextInputState::TakeBatches() {

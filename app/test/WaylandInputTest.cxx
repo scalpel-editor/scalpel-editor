@@ -119,6 +119,27 @@ TEST_CASE("Wayland text input batches events at done in protocol order") {
 	CHECK(input.CommitSerial() == 2);
 }
 
+TEST_CASE("Wayland text input quiesces after an unchanged acknowledgement") {
+	Scalpel::WaylandTextInputState input;
+	(void)input.Attach();
+	(void)input.UpdateClientState(TextInputClientState());
+	(void)input.SetKeyboardFocus(true);
+	REQUIRE(input.Enter().size() == 3);
+
+	input.Done(1);
+	auto batches = input.TakeBatches();
+	REQUIRE(batches.size() == 1);
+	CHECK_FALSE(batches[0].refreshState);
+	CHECK(input.UpdateClientState(TextInputClientState()).empty());
+	CHECK(input.CommitSerial() == 1);
+
+	input.RecordPreedit("compose", 7, 7);
+	input.Done(1);
+	batches = input.TakeBatches();
+	REQUIRE(batches.size() == 1);
+	CHECK(batches[0].refreshState);
+}
+
 TEST_CASE("Wayland text input resets changing surrounding support") {
 	Scalpel::WaylandTextInputState input;
 	(void)input.Attach();
