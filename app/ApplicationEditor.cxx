@@ -201,6 +201,10 @@ std::vector<ApplicationClipboardRequest> ApplicationEditor::TakeClipboardRequest
 	return std::exchange(clipboardRequests, {});
 }
 
+std::vector<ApplicationClipboardResult> ApplicationEditor::TakeClipboardResults() {
+	return std::exchange(clipboardResults, {});
+}
+
 void ApplicationEditor::HandleClipboardResult(uint64_t id,
 	ApplicationClipboardOperation operation, ApplicationClipboardStatus status,
 	std::string text) {
@@ -227,7 +231,8 @@ void ApplicationEditor::HandleClipboardResult(uint64_t id,
 	if (reportedStatus != ApplicationClipboardStatus::Published &&
 		reportedStatus != ApplicationClipboardStatus::Complete &&
 		reportedStatus != ApplicationClipboardStatus::Superseded &&
-		reportedStatus != ApplicationClipboardStatus::NoText) {
+		reportedStatus != ApplicationClipboardStatus::NoText &&
+		reportedStatus != ApplicationClipboardStatus::Cancelled) {
 		std::fprintf(stderr, "scalpel-editor clipboard: %s\n",
 			ClipboardStatusName(reportedStatus));
 	}

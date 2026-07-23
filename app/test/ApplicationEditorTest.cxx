@@ -121,9 +121,12 @@ TEST_CASE("production editor exposes clipboard requests and unavailable results"
 
 	CHECK_FALSE(editor.ClipboardPasteAvailable());
 	CHECK(editor.UnsupportedRequests().empty());
-	REQUIRE(editor.ClipboardResults().size() == 1);
-	CHECK(editor.ClipboardResults().front().status ==
+	const std::vector<Scalpel::ApplicationClipboardResult> results =
+		editor.TakeClipboardResults();
+	REQUIRE(results.size() == 1);
+	CHECK(results.front().status ==
 		Scalpel::ApplicationClipboardStatus::Unavailable);
+	CHECK(editor.ClipboardResults().empty());
 }
 
 TEST_CASE("production editor applies a completed asynchronous paste") {

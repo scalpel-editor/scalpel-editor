@@ -49,6 +49,7 @@ void DeliverClipboardResults(Scalpel::WaylandWindow &window,
 		editor.HandleClipboardResult(result.request, ApplicationOperation(result.operation),
 			ApplicationStatus(result.status), std::move(result.text));
 	}
+	(void)editor.TakeClipboardResults();
 	editor.SetClipboardPasteAvailable(window.ClipboardPasteAvailable());
 }
 

@@ -100,6 +100,7 @@ public:
 	void SetClipboardPasteAvailable(bool available) noexcept;
 	[[nodiscard]] bool ClipboardPasteAvailable();
 	[[nodiscard]] std::vector<ApplicationClipboardRequest> TakeClipboardRequests();
+	[[nodiscard]] std::vector<ApplicationClipboardResult> TakeClipboardResults();
 	void HandleClipboardResult(uint64_t id, ApplicationClipboardOperation operation,
 		ApplicationClipboardStatus status, std::string text = {});
 	void RenderFrame();
