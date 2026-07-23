@@ -2,6 +2,7 @@
 #include <initializer_list>
 #include <optional>
 #include <string_view>
+#include <utility>
 
 #define CATCH_CONFIG_MAIN
 #include "catch.hpp"
@@ -144,6 +145,10 @@ TEST_CASE("Wayland scale uses fractional scale only with both protocols") {
 	REQUIRE(scale.TakeConfiguration()->surfaceBufferScale == 2);
 	scale.SetFractionalProtocols(true, true);
 	(void)scale.TakeConfiguration();
+	scale.ClearFractionalPreferredScale();
+	REQUIRE(scale.TakeConfiguration()->surfaceBufferScale == 2);
+	scale.SetFractionalPreferredScale(150);
+	(void)scale.TakeConfiguration();
 	scale.Resize(640, 480);
 	REQUIRE(scale.TakeConfiguration() ==
 		Scalpel::WaylandScaleConfiguration{
@@ -157,6 +162,23 @@ TEST_CASE("Wayland scale rejects invalid sizes and scales") {
 	CHECK_THROWS(scale.SetPreferredBufferScale(0));
 	CHECK_THROWS(scale.SetFractionalPreferredScale(0));
 	CHECK_THROWS(scale.Resize(800, 0));
+}
+
+TEST_CASE("Wayland scale falls back when buffer scale is unavailable") {
+	Scalpel::WaylandScaleState scale(800, 600);
+	(void)scale.TakeConfiguration();
+	scale.SetPreferredBufferScale(2);
+	REQUIRE(scale.TakeConfiguration()->surfaceBufferScale == 2);
+
+	scale.SetBufferScaleAvailable(false);
+	REQUIRE(scale.TakeConfiguration() ==
+		Scalpel::WaylandScaleConfiguration{
+			800, 600, 800, 600, 120, 1, 1, false});
+	scale.SetFractionalPreferredScale(150);
+	scale.SetFractionalProtocols(true, true);
+	REQUIRE(scale.TakeConfiguration() ==
+		Scalpel::WaylandScaleConfiguration{
+			800, 600, 1000, 750, 150, 1, 2, true});
 }
 
 TEST_CASE("Wayland frame pacing preserves invalidation across waits and paint") {
@@ -263,11 +285,31 @@ TEST_CASE("Wayland frame damage clips and converts coordinate origins") {
 	CHECK(Scalpel::ScaleFrameDamageFractional(
 		{{1, 1, 3, 3}}, 100, 80, 150, 120) ==
 		std::vector<Scalpel::FrameRectangle>{{1, 1, 4, 4}});
+	CHECK(Scalpel::ScaleFrameDamageToBuffer(
+		{{800, 0, 801, 601}}, 801, 601, 1002, 752) ==
+		std::vector<Scalpel::FrameRectangle>{{1000, 0, 1002, 752}});
 	CHECK_THROWS(Scalpel::ClipFrameDamage(damage, 0, 80));
 	CHECK_THROWS(Scalpel::ScaleFrameDamage(damage, 100, 80, 0));
 	CHECK_THROWS(Scalpel::ScaleFrameDamageFractional(
 		damage, 100, 80, 150, 0));
 	CHECK_THROWS(Scalpel::EglBufferDamage(clipped, 0));
+}
+
+TEST_CASE("Wayland frame plans keep paint logical and damage scaled") {
+	Scalpel::FramePlan plan;
+	plan.submissionDamage = {{1, 1, 3, 3}};
+	plan.repaintDamage = {{1, 1, 5, 4}};
+	const Scalpel::FramePlan scaled = Scalpel::ScaleFramePlan(
+		std::move(plan), 100, 80, 125, 100);
+
+	CHECK(scaled.submissionDamage ==
+		std::vector<Scalpel::FrameRectangle>{{1, 1, 3, 3}});
+	CHECK(scaled.repaintDamage ==
+		std::vector<Scalpel::FrameRectangle>{{1, 1, 5, 4}});
+	CHECK(scaled.waylandDamage ==
+		std::vector<Scalpel::DamageRectangle>{{1, 1, 3, 3}});
+	CHECK(scaled.eglDamage ==
+		std::vector<Scalpel::DamageRectangle>{{1, 95, 6, 4}});
 }
 
 TEST_CASE("Wayland frame damage bounds excessive rectangle counts") {
@@ -335,6 +377,25 @@ TEST_CASE("Wayland frame buffer resize invalidates damage history") {
 	CHECK(resized->repaintDamage ==
 		std::vector<Scalpel::FrameRectangle>{{0, 0, 120, 90}});
 	CHECK(frame.DamageHistorySize() == 0);
+}
+
+TEST_CASE("Wayland frame scale changes reset damage history") {
+	Scalpel::WaylandFrameState frame;
+	frame.Invalidate({0, 0, 10, 10});
+	const auto original = frame.BeginFrame(100, 80, 1, true, true);
+	REQUIRE(original.has_value());
+	(void)frame.PrepareFrame(original->submission, false);
+	frame.SubmitFrame(original->submission);
+	frame.FrameCallbackDone();
+	REQUIRE(frame.DamageHistorySize() == 1);
+
+	frame.ResetDamageHistory();
+	CHECK(frame.DamageHistorySize() == 0);
+	frame.Invalidate({20, 20, 30, 30});
+	const auto scaled = frame.BeginFrame(100, 80, 2, true, true);
+	REQUIRE(scaled.has_value());
+	CHECK(scaled->repaintDamage ==
+		std::vector<Scalpel::FrameRectangle>{{0, 0, 100, 80}});
 }
 
 TEST_CASE("Wayland frame extension fallbacks remain independent") {

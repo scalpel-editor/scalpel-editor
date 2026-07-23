@@ -113,6 +113,34 @@ std::vector<FrameRectangle> ScaleFrameDamageFractional(
 	return scaled;
 }
 
+std::vector<FrameRectangle> ScaleFrameDamageToBuffer(
+	const std::vector<FrameRectangle> &logicalDamage,
+	int logicalWidth, int logicalHeight, int bufferWidth, int bufferHeight,
+	std::size_t maximumRectangles) {
+	if (bufferWidth <= 0 || bufferHeight <= 0) {
+		throw std::invalid_argument("frame damage requires positive buffer dimensions");
+	}
+	const std::vector<FrameRectangle> clipped = ClipFrameDamage(
+		logicalDamage, logicalWidth, logicalHeight, maximumRectangles);
+	std::vector<FrameRectangle> scaled;
+	scaled.reserve(clipped.size());
+	for (const FrameRectangle &rectangle : clipped) {
+		scaled.push_back({
+			static_cast<int>(
+				static_cast<int64_t>(rectangle.left) * bufferWidth / logicalWidth),
+			static_cast<int>(
+				static_cast<int64_t>(rectangle.top) * bufferHeight / logicalHeight),
+			static_cast<int>(
+				(static_cast<int64_t>(rectangle.right) * bufferWidth +
+					logicalWidth - 1) / logicalWidth),
+			static_cast<int>(
+				(static_cast<int64_t>(rectangle.bottom) * bufferHeight +
+					logicalHeight - 1) / logicalHeight),
+		});
+	}
+	return scaled;
+}
+
 std::vector<DamageRectangle> WaylandBufferDamage(
 	const std::vector<FrameRectangle> &damage) {
 	std::vector<DamageRectangle> rectangles;
@@ -143,6 +171,22 @@ std::vector<DamageRectangle> EglBufferDamage(
 		}
 	}
 	return rectangles;
+}
+
+FramePlan ScaleFramePlan(
+	FramePlan plan, int logicalWidth, int logicalHeight,
+	int bufferWidth, int bufferHeight) {
+	const std::vector<FrameRectangle> scaledSubmission =
+		ScaleFrameDamageToBuffer(
+			plan.submissionDamage, logicalWidth, logicalHeight,
+			bufferWidth, bufferHeight);
+	const std::vector<FrameRectangle> scaledRepaint =
+		ScaleFrameDamageToBuffer(
+			plan.repaintDamage, logicalWidth, logicalHeight,
+			bufferWidth, bufferHeight);
+	plan.waylandDamage = WaylandBufferDamage(scaledSubmission);
+	plan.eglDamage = EglBufferDamage(scaledRepaint, bufferHeight);
+	return plan;
 }
 
 void WaylandFrameState::Invalidate(FrameRectangle rectangle) {
@@ -266,6 +310,12 @@ void WaylandFrameState::FrameCallbackDone() noexcept {
 
 void WaylandFrameState::CancelFrameCallback() noexcept {
 	callbackOutstanding = false;
+}
+
+void WaylandFrameState::ResetDamageHistory() noexcept {
+	damageHistory.clear();
+	lastSubmittedBufferWidth = 0;
+	lastSubmittedBufferHeight = 0;
 }
 
 bool WaylandFrameState::FeedbackOutstanding(uint64_t submission) const noexcept {

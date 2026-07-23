@@ -165,6 +165,8 @@ void WaylandWindow::Initialise(const char *title) {
 	if (wl_surface_add_listener(surface, &waylandSurfaceListener, this) != 0) {
 		throw std::runtime_error("could not listen for Wayland surface output changes");
 	}
+	scaleState.SetBufferScaleAvailable(
+		wl_surface_get_version(surface) >= WL_SURFACE_SET_BUFFER_SCALE_SINCE_VERSION);
 	CreateScaleObjects();
 	textInput.SetSurface(surface);
 	cursorSurface = wl_compositor_create_surface(compositor);
@@ -193,10 +195,13 @@ void WaylandWindow::Initialise(const char *title) {
 	if (CallbackFailed()) {
 		throw std::runtime_error("could not initialise Wayland listeners");
 	}
-	eglWindow = wl_egl_window_create(surface, Width(), Height());
+	const WaylandScaleConfiguration &scale = scaleState.Configuration();
+	eglWindow = wl_egl_window_create(
+		surface, scale.bufferWidth, scale.bufferHeight);
 	if (!eglWindow) {
 		throw std::runtime_error("could not create the Wayland EGL window");
 	}
+	ApplyScaleConfiguration(scale);
 	(void)lifecycle.TakeResize();
 }
 
@@ -315,6 +320,7 @@ void WaylandWindow::Destroy() noexcept {
 	viewport = nullptr;
 	fractionalScaleManager = nullptr;
 	fractionalScale = nullptr;
+	appliedScaleConfiguration.reset();
 	presentationClockId.reset();
 	frameCallback = nullptr;
 	preparedSubmission = 0;
@@ -343,9 +349,12 @@ void WaylandWindow::PrepareFrame(const FramePlan &plan) {
 		throw std::runtime_error("could not create a Wayland frame callback");
 	}
 	preparedSubmission = plan.submission;
-	for (const DamageRectangle &rectangle : plan.waylandDamage) {
-		if (wl_surface_get_version(surface) >=
-			WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION) {
+	const bool bufferDamage = wl_surface_get_version(surface) >=
+		WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION;
+	const std::vector<DamageRectangle> damage = bufferDamage ?
+		plan.waylandDamage : WaylandBufferDamage(plan.submissionDamage);
+	for (const DamageRectangle &rectangle : damage) {
+		if (bufferDamage) {
 			wl_surface_damage_buffer(surface, rectangle.x, rectangle.y,
 				rectangle.width, rectangle.height);
 		} else {
@@ -374,6 +383,32 @@ void WaylandWindow::PrepareFrame(const FramePlan &plan) {
 	if (expired) {
 		DestroyPresentationFeedback(*expired);
 	}
+}
+
+std::optional<WaylandScaleConfiguration>
+WaylandWindow::TakeScaleConfiguration() {
+	std::optional<WaylandScaleConfiguration> configuration =
+		scaleState.TakeConfiguration();
+	if (configuration) {
+		ApplyScaleConfiguration(*configuration);
+		(void)lifecycle.TakeResize();
+	}
+	return configuration;
+}
+
+std::optional<FramePlan> WaylandWindow::BeginFrame(
+	int bufferAge, bool bufferAgeSupported, bool damageSwapSupported) {
+	const WaylandScaleConfiguration &scale =
+		appliedScaleConfiguration.value_or(scaleState.Configuration());
+	std::optional<FramePlan> plan = frameState.BeginFrame(
+		scale.logicalWidth, scale.logicalHeight, bufferAge,
+		bufferAgeSupported, damageSwapSupported);
+	if (!plan) {
+		return std::nullopt;
+	}
+	return ScaleFramePlan(std::move(*plan),
+		scale.logicalWidth, scale.logicalHeight,
+		scale.bufferWidth, scale.bufferHeight);
 }
 
 void WaylandWindow::SubmitFrame(uint64_t submission) {
@@ -731,6 +766,11 @@ void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleActi
 			break;
 		case WaylandLifecycleActionType::ReleaseFractionalScaleManager:
 			DestroyFractionalScale();
+			try {
+				scaleState.ClearFractionalPreferredScale();
+			} catch (...) {
+				callbackFailed = true;
+			}
 			if (fractionalScaleManager) {
 				wp_fractional_scale_manager_v1_destroy(
 					fractionalScaleManager);
@@ -925,6 +965,37 @@ void WaylandWindow::DestroyFractionalScale() noexcept {
 void WaylandWindow::RefreshScaleProtocolAvailability() {
 	scaleState.SetFractionalProtocols(
 		viewport != nullptr, fractionalScale != nullptr);
+}
+
+void WaylandWindow::ApplyScaleConfiguration(
+	const WaylandScaleConfiguration &configuration) {
+	if (appliedScaleConfiguration &&
+		*appliedScaleConfiguration == configuration) {
+		return;
+	}
+	CancelFrame();
+	if (surface && wl_surface_get_version(surface) >=
+		WL_SURFACE_SET_BUFFER_SCALE_SINCE_VERSION) {
+		wl_surface_set_buffer_scale(
+			surface, configuration.surfaceBufferScale);
+	}
+	if (viewport) {
+		if (configuration.viewportDestination) {
+			wp_viewport_set_destination(viewport,
+				configuration.logicalWidth, configuration.logicalHeight);
+		} else {
+			wp_viewport_set_destination(viewport, -1, -1);
+		}
+	}
+	if (eglWindow) {
+		wl_egl_window_resize(eglWindow,
+			configuration.bufferWidth, configuration.bufferHeight, 0, 0);
+	}
+	SetCursorScale(configuration.cursorScale);
+	frameState.ResetDamageHistory();
+	frameState.Invalidate({
+		0, 0, configuration.logicalWidth, configuration.logicalHeight});
+	appliedScaleConfiguration = configuration;
 }
 
 std::optional<uint32_t> WaylandWindow::RegistryNameForSeat(wl_seat *seat_) const noexcept {
@@ -1406,10 +1477,6 @@ void WaylandWindow::SurfaceConfigure(void *data, xdg_surface *shellSurface_, uin
 	auto &window = *static_cast<WaylandWindow *>(data);
 	xdg_surface_ack_configure(shellSurface_, serial);
 	if (const std::optional<WindowSize> resize = window.lifecycle.CommitConfigure()) {
-		if (window.eglWindow) {
-			wl_egl_window_resize(
-				window.eglWindow, resize->width, resize->height, 0, 0);
-		}
 		try {
 			window.scaleState.Resize(resize->width, resize->height);
 		} catch (...) {

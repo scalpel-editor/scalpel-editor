@@ -101,9 +101,7 @@ public:
 	}
 	[[nodiscard]] std::optional<WindowSize> TakeResize() noexcept { return lifecycle.TakeResize(); }
 	[[nodiscard]] std::optional<WaylandScaleConfiguration>
-		TakeScaleConfiguration() noexcept {
-		return scaleState.TakeConfiguration();
-	}
+		TakeScaleConfiguration();
 	[[nodiscard]] const WaylandScaleConfiguration &ScaleConfiguration() const noexcept {
 		return scaleState.Configuration();
 	}
@@ -134,11 +132,7 @@ public:
 		return frameState.CanSubmit();
 	}
 	[[nodiscard]] std::optional<FramePlan> BeginFrame(
-		int bufferWidth, int bufferHeight, int bufferAge,
-		bool bufferAgeSupported, bool damageSwapSupported) {
-		return frameState.BeginFrame(bufferWidth, bufferHeight, bufferAge,
-			bufferAgeSupported, damageSwapSupported);
-	}
+		int bufferAge, bool bufferAgeSupported, bool damageSwapSupported);
 	void PrepareFrame(const FramePlan &plan);
 	void SubmitFrame(uint64_t submission);
 	void CancelFrame() noexcept;
@@ -165,6 +159,7 @@ private:
 	void DestroyViewport() noexcept;
 	void DestroyFractionalScale() noexcept;
 	void RefreshScaleProtocolAvailability();
+	void ApplyScaleConfiguration(const WaylandScaleConfiguration &configuration);
 	[[nodiscard]] std::optional<uint32_t> OutputName(wl_output *output) const noexcept;
 	[[nodiscard]] std::optional<uint32_t> RegistryNameForSeat(wl_seat *seat) const noexcept;
 	void DestroyPresentationFeedback(uint64_t submission) noexcept;
@@ -302,6 +297,7 @@ private:
 	zxdg_toplevel_decoration_v1 *decoration = nullptr;
 	WaylandLifecycle lifecycle;
 	WaylandScaleState scaleState;
+	std::optional<WaylandScaleConfiguration> appliedScaleConfiguration;
 	WaylandInput input;
 	WaylandCursorState cursorState;
 	WaylandClipboard clipboard;

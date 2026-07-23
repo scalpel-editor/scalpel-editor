@@ -71,10 +71,17 @@ struct PresentationResult {
 	const std::vector<FrameRectangle> &logicalDamage,
 	int logicalWidth, int logicalHeight, uint32_t scaleNumerator,
 	uint32_t scaleDenominator, std::size_t maximumRectangles = 16);
+[[nodiscard]] std::vector<FrameRectangle> ScaleFrameDamageToBuffer(
+	const std::vector<FrameRectangle> &logicalDamage,
+	int logicalWidth, int logicalHeight, int bufferWidth, int bufferHeight,
+	std::size_t maximumRectangles = 16);
 [[nodiscard]] std::vector<DamageRectangle> WaylandBufferDamage(
 	const std::vector<FrameRectangle> &damage);
 [[nodiscard]] std::vector<DamageRectangle> EglBufferDamage(
 	const std::vector<FrameRectangle> &damage, int bufferHeight);
+[[nodiscard]] FramePlan ScaleFramePlan(
+	FramePlan plan, int logicalWidth, int logicalHeight,
+	int bufferWidth, int bufferHeight);
 
 class WaylandFrameState final {
 public:
@@ -97,6 +104,7 @@ public:
 	void CancelPaint();
 	void FrameCallbackDone() noexcept;
 	void CancelFrameCallback() noexcept;
+	void ResetDamageHistory() noexcept;
 
 	void Presented(uint64_t submission, uint64_t seconds, uint32_t nanoseconds,
 		uint32_t refreshNanoseconds, uint64_t sequence, uint32_t flags);

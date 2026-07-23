@@ -50,8 +50,10 @@ public:
 	void SetOutputScale(uint32_t name, int scale);
 	void SetPreferredBufferScale(int scale);
 	void SetFractionalPreferredScale(uint32_t scaleNumerator);
+	void ClearFractionalPreferredScale();
 	void SetFractionalProtocols(bool viewporterAvailable,
 		bool fractionalScaleAvailable);
+	void SetBufferScaleAvailable(bool available);
 	void Resize(int logicalWidth, int logicalHeight);
 
 	[[nodiscard]] const WaylandScaleConfiguration &Configuration() const noexcept {
@@ -76,6 +78,7 @@ private:
 	std::optional<uint32_t> fractionalPreferredScale;
 	bool viewporterAvailable = false;
 	bool fractionalScaleAvailable = false;
+	bool bufferScaleAvailable = true;
 	WaylandScaleConfiguration configuration;
 	bool configurationPending = true;
 };

@@ -97,12 +97,26 @@ void WaylandScaleState::SetFractionalPreferredScale(uint32_t scaleNumerator) {
 	}
 }
 
+void WaylandScaleState::ClearFractionalPreferredScale() {
+	if (fractionalPreferredScale) {
+		fractionalPreferredScale.reset();
+		Refresh();
+	}
+}
+
 void WaylandScaleState::SetFractionalProtocols(
 	bool viewporterAvailable_, bool fractionalScaleAvailable_) {
 	if (viewporterAvailable != viewporterAvailable_ ||
 		fractionalScaleAvailable != fractionalScaleAvailable_) {
 		viewporterAvailable = viewporterAvailable_;
 		fractionalScaleAvailable = fractionalScaleAvailable_;
+		Refresh();
+	}
+}
+
+void WaylandScaleState::SetBufferScaleAvailable(bool available) {
+	if (bufferScaleAvailable != available) {
+		bufferScaleAvailable = available;
 		Refresh();
 	}
 }
@@ -150,6 +164,9 @@ WaylandScaleConfiguration WaylandScaleState::Calculate() const {
 					integerScale = std::max(integerScale, output.scale);
 				}
 			}
+		}
+		if (!bufferScaleAvailable) {
+			integerScale = 1;
 		}
 		if (integerScale > INT_MAX / static_cast<int>(FractionalScaleDenominator)) {
 			throw std::overflow_error("Wayland integer scale is too large");

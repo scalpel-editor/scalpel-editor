@@ -241,6 +241,9 @@ int main() {
 			window.Display(), window.EglWindow());
 		Scalpel::ApplicationEditor editor(
 			std::move(glContext), window.Width(), window.Height());
+		editor.SetFrameBufferSize(
+			window.ScaleConfiguration().bufferWidth,
+			window.ScaleConfiguration().bufferHeight);
 		constexpr std::string_view initialText =
 			"scalpel-editor\n\n"
 			"A direct Scintilla editor for Wayland.\n"
@@ -252,8 +255,13 @@ int main() {
 			DeliverPrimarySelectionResults(window, editor);
 			DeliverTextInputBatches(window, editor);
 			SynchronizeTextInput(editor, window);
-			if (const std::optional<Scalpel::WindowSize> resize = window.TakeResize()) {
-				editor.Resize(resize->width, resize->height);
+			if (const std::optional<Scalpel::WaylandScaleConfiguration> scale =
+				window.TakeScaleConfiguration()) {
+				if (editor.FrameWidth() != scale->logicalWidth ||
+					editor.FrameHeight() != scale->logicalHeight) {
+					editor.Resize(scale->logicalWidth, scale->logicalHeight);
+				}
+				editor.SetFrameBufferSize(scale->bufferWidth, scale->bufferHeight);
 			}
 			for (const Scalpel::InputEvent &input : window.TakeInputs()) {
 				if (const auto *focus = std::get_if<Scalpel::KeyboardFocusInput>(&input)) {
@@ -272,7 +280,7 @@ int main() {
 			QueueFrameDamage(editor, window);
 			if (window.CanSubmitFrame()) {
 				const std::optional<Scalpel::FramePlan> plan = window.BeginFrame(
-					editor.FrameWidth(), editor.FrameHeight(), editor.BufferAge(),
+					editor.BufferAge(),
 					editor.BufferAgeSupported(), editor.DamageSwapSupported());
 				if (plan) {
 					window.PrepareFrame(*plan);
