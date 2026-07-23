@@ -135,14 +135,23 @@ std::optional<FramePlan> WaylandFrameState::BeginFrame(
 	if (submissionDamage.empty()) {
 		submissionDamage = {{0, 0, bufferWidth, bufferHeight}};
 	}
+	const bool bufferSizeChanged = lastSubmittedBufferWidth != 0 &&
+		(bufferWidth != lastSubmittedBufferWidth ||
+			bufferHeight != lastSubmittedBufferHeight);
+	if (bufferSizeChanged) {
+		damageHistory.clear();
+	}
 	pendingDamage.clear();
 	invalidated = false;
 	activeDamage = submissionDamage;
 	activeSubmission = nextSubmission++;
+	activeBufferWidth = bufferWidth;
+	activeBufferHeight = bufferHeight;
 	painting = true;
 
 	std::vector<FrameRectangle> repaintDamage = submissionDamage;
-	const bool validAge = bufferAgeSupported && bufferAge > 0 &&
+	const bool validAge = !bufferSizeChanged &&
+		bufferAgeSupported && bufferAge > 0 &&
 		static_cast<std::size_t>(bufferAge - 1) <= damageHistory.size();
 	if (!validAge) {
 		repaintDamage = {{0, 0, bufferWidth, bufferHeight}};
@@ -196,7 +205,11 @@ void WaylandFrameState::SubmitFrame(uint64_t submission) {
 	if (damageHistory.size() > MaximumDamageHistory) {
 		damageHistory.resize(MaximumDamageHistory);
 	}
+	lastSubmittedBufferWidth = activeBufferWidth;
+	lastSubmittedBufferHeight = activeBufferHeight;
 	activeSubmission = 0;
+	activeBufferWidth = 0;
+	activeBufferHeight = 0;
 }
 
 void WaylandFrameState::CancelPaint() {
@@ -212,6 +225,8 @@ void WaylandFrameState::CancelPaint() {
 	}
 	activeDamage.clear();
 	activeSubmission = 0;
+	activeBufferWidth = 0;
+	activeBufferHeight = 0;
 	submissionPrepared = false;
 	painting = false;
 }

@@ -250,6 +250,26 @@ TEST_CASE("Wayland frame buffer age extends repaint damage") {
 	CHECK(frame.DamageHistorySize() == 3);
 }
 
+TEST_CASE("Wayland frame buffer resize invalidates damage history") {
+	Scalpel::WaylandFrameState frame;
+	frame.Invalidate({0, 0, 10, 10});
+	const auto original = frame.BeginFrame(100, 80, 1, true, true);
+	REQUIRE(original.has_value());
+	(void)frame.PrepareFrame(original->submission, false);
+	frame.SubmitFrame(original->submission);
+	frame.FrameCallbackDone();
+	CHECK(frame.DamageHistorySize() == 1);
+
+	frame.Invalidate({100, 80, 110, 90});
+	const auto resized = frame.BeginFrame(120, 90, 1, true, true);
+	REQUIRE(resized.has_value());
+	CHECK(resized->submissionDamage ==
+		std::vector<Scalpel::FrameRectangle>{{100, 80, 110, 90}});
+	CHECK(resized->repaintDamage ==
+		std::vector<Scalpel::FrameRectangle>{{0, 0, 120, 90}});
+	CHECK(frame.DamageHistorySize() == 0);
+}
+
 TEST_CASE("Wayland frame extension fallbacks remain independent") {
 	Scalpel::WaylandFrameState frame;
 	frame.Invalidate({10, 10, 20, 20});

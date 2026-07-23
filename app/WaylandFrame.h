@@ -114,6 +114,10 @@ private:
 	bool callbackOutstanding = false;
 	uint64_t nextSubmission = 1;
 	uint64_t activeSubmission = 0;
+	int activeBufferWidth = 0;
+	int activeBufferHeight = 0;
+	int lastSubmittedBufferWidth = 0;
+	int lastSubmittedBufferHeight = 0;
 	std::vector<FrameRectangle> pendingDamage;
 	std::vector<FrameRectangle> activeDamage;
 	std::vector<std::vector<FrameRectangle>> damageHistory;
