@@ -90,7 +90,7 @@ ColourRGBA Platform::ChromeHighlight() {
 }
 
 const char *Platform::DefaultFont() {
-	return "sans";
+	return "system-ui";
 }
 
 int Platform::DefaultFontSize() {
