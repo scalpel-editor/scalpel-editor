@@ -83,6 +83,8 @@ At the beginning of a session, a plan should be created as a sequence of commits
 
 ## Commits
 
+Run `git add`, validation commands, and `git commit` as separate shell calls. Do not combine them with `&&`. Do not use `$'...'` shell quoting for commit messages. Invoke `git` directly so existing `["git", "add"]` and `["git", "commit"]` command rules apply.
+
 The extended message should contain a concise description of what changed and why.
 
 Hard-wrap commit messages at 68 characters. The commit hook enforces an absolute maximum of 72 characters.
