@@ -16,6 +16,7 @@
 #include "WaylandInput.h"
 #include "WaylandLifecycle.h"
 #include "WaylandPrimarySelection.h"
+#include "WaylandScale.h"
 #include "WaylandTextInput.h"
 
 struct wl_array;
@@ -42,6 +43,11 @@ struct wp_presentation;
 struct wp_presentation_feedback;
 struct wp_presentation_feedback_listener;
 struct wp_presentation_listener;
+struct wp_viewporter;
+struct wp_viewport;
+struct wp_fractional_scale_manager_v1;
+struct wp_fractional_scale_v1;
+struct wp_fractional_scale_v1_listener;
 struct xdg_surface;
 struct xdg_surface_listener;
 struct xdg_toplevel;
@@ -94,6 +100,13 @@ public:
 		return presentationClockId;
 	}
 	[[nodiscard]] std::optional<WindowSize> TakeResize() noexcept { return lifecycle.TakeResize(); }
+	[[nodiscard]] std::optional<WaylandScaleConfiguration>
+		TakeScaleConfiguration() noexcept {
+		return scaleState.TakeConfiguration();
+	}
+	[[nodiscard]] const WaylandScaleConfiguration &ScaleConfiguration() const noexcept {
+		return scaleState.Configuration();
+	}
 	[[nodiscard]] std::vector<InputEvent> TakeInputs() { return input.TakeInputs(); }
 	void SetCursor(Scintilla::Internal::Window::Cursor cursor);
 	void SetCursorScale(int scale);
@@ -148,6 +161,10 @@ private:
 	void LoadCursorTheme();
 	void DestroyCursorTheme() noexcept;
 	void CreateDecoration();
+	void CreateScaleObjects();
+	void DestroyViewport() noexcept;
+	void DestroyFractionalScale() noexcept;
+	void RefreshScaleProtocolAvailability();
 	[[nodiscard]] std::optional<uint32_t> OutputName(wl_output *output) const noexcept;
 	[[nodiscard]] std::optional<uint32_t> RegistryNameForSeat(wl_seat *seat) const noexcept;
 	void DestroyPresentationFeedback(uint64_t submission) noexcept;
@@ -226,6 +243,8 @@ private:
 		uint32_t sequenceHigh, uint32_t sequenceLow, uint32_t flags);
 	static void PresentationFeedbackDiscarded(void *data,
 		wp_presentation_feedback *feedback);
+	static void FractionalPreferredScale(void *data,
+		wp_fractional_scale_v1 *fractionalScale, uint32_t scale);
 
 	static const wl_registry_listener registryListener;
 	static const wl_seat_listener seatListener;
@@ -240,6 +259,7 @@ private:
 	static const wp_presentation_listener presentationListener;
 	static const wl_callback_listener frameListener;
 	static const wp_presentation_feedback_listener presentationFeedbackListener;
+	static const wp_fractional_scale_v1_listener fractionalScaleListener;
 
 	wl_display *display = nullptr;
 	wl_registry *registry = nullptr;
@@ -257,6 +277,10 @@ private:
 	zwp_primary_selection_device_manager_v1 *primarySelectionManager = nullptr;
 	zwp_text_input_manager_v3 *textInputManager = nullptr;
 	wp_presentation *presentation = nullptr;
+	wp_viewporter *viewporter = nullptr;
+	wp_viewport *viewport = nullptr;
+	wp_fractional_scale_manager_v1 *fractionalScaleManager = nullptr;
+	wp_fractional_scale_v1 *fractionalScale = nullptr;
 	std::optional<uint32_t> presentationClockId;
 	wl_callback *frameCallback = nullptr;
 	struct PresentationFeedback {
@@ -277,6 +301,7 @@ private:
 	zxdg_decoration_manager_v1 *decorationManager = nullptr;
 	zxdg_toplevel_decoration_v1 *decoration = nullptr;
 	WaylandLifecycle lifecycle;
+	WaylandScaleState scaleState;
 	WaylandInput input;
 	WaylandCursorState cursorState;
 	WaylandClipboard clipboard;

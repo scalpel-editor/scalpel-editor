@@ -681,6 +681,38 @@ TEST_CASE("Wayland registry treats presentation timing as optional") {
 		Scalpel::WaylandLifecycleActionType::BindPresentation);
 }
 
+TEST_CASE("Wayland registry replaces optional scale managers") {
+	Scalpel::WaylandLifecycle lifecycle(800, 600);
+
+	REQUIRE(lifecycle.AddGlobal(
+		Scalpel::WaylandGlobalKind::Viewporter, 40, 1).front() ==
+		Scalpel::WaylandLifecycleAction{
+			Scalpel::WaylandLifecycleActionType::BindViewporter, 40, 1});
+	CHECK(lifecycle.AddGlobal(
+		Scalpel::WaylandGlobalKind::Viewporter, 41, 1).empty());
+	const auto viewporterReplacement = lifecycle.RemoveGlobal(40);
+	REQUIRE(viewporterReplacement.size() == 2);
+	CHECK(viewporterReplacement[0].type ==
+		Scalpel::WaylandLifecycleActionType::ReleaseViewporter);
+	CHECK(viewporterReplacement[1] == Scalpel::WaylandLifecycleAction{
+		Scalpel::WaylandLifecycleActionType::BindViewporter, 41, 1});
+
+	REQUIRE(lifecycle.AddGlobal(
+		Scalpel::WaylandGlobalKind::FractionalScaleManager, 42, 1).front() ==
+		Scalpel::WaylandLifecycleAction{
+			Scalpel::WaylandLifecycleActionType::BindFractionalScaleManager,
+			42, 1});
+	CHECK(lifecycle.AddGlobal(
+		Scalpel::WaylandGlobalKind::FractionalScaleManager, 43, 1).empty());
+	const auto fractionalReplacement = lifecycle.RemoveGlobal(42);
+	REQUIRE(fractionalReplacement.size() == 2);
+	CHECK(fractionalReplacement[0].type ==
+		Scalpel::WaylandLifecycleActionType::ReleaseFractionalScaleManager);
+	CHECK(fractionalReplacement[1] == Scalpel::WaylandLifecycleAction{
+		Scalpel::WaylandLifecycleActionType::BindFractionalScaleManager,
+		43, 1});
+}
+
 TEST_CASE("Wayland registry closes when an active required global disappears") {
 	Scalpel::WaylandLifecycle lifecycle(800, 600);
 	(void)lifecycle.AddGlobal(Scalpel::WaylandGlobalKind::Compositor, 10, 4);

@@ -81,6 +81,19 @@ std::vector<WaylandLifecycleAction> WaylandLifecycle::AddGlobal(
 			return {{WaylandLifecycleActionType::BindPresentation, name, version}};
 		}
 		break;
+	case WaylandGlobalKind::Viewporter:
+		if (!viewporterName) {
+			viewporterName = name;
+			return {{WaylandLifecycleActionType::BindViewporter, name, version}};
+		}
+		break;
+	case WaylandGlobalKind::FractionalScaleManager:
+		if (!fractionalScaleManagerName) {
+			fractionalScaleManagerName = name;
+			return {{WaylandLifecycleActionType::BindFractionalScaleManager,
+				name, version}};
+		}
+		break;
 	case WaylandGlobalKind::Output:
 		return {{WaylandLifecycleActionType::BindOutput, name, version}};
 	case WaylandGlobalKind::Seat:
@@ -200,6 +213,39 @@ std::vector<WaylandLifecycleAction> WaylandLifecycle::RemoveGlobal(uint32_t name
 		if (replacement != globals.end()) {
 			presentationName = replacement->name;
 			actions.push_back({WaylandLifecycleActionType::BindPresentation,
+				replacement->name, replacement->version});
+		}
+		return actions;
+	}
+	if (removed.kind == WaylandGlobalKind::Viewporter &&
+		viewporterName == name) {
+		std::vector<WaylandLifecycleAction> actions = {
+			{WaylandLifecycleActionType::ReleaseViewporter, name}};
+		viewporterName.reset();
+		const auto replacement = std::find_if(globals.begin(), globals.end(),
+			[](const Global &global) {
+				return global.kind == WaylandGlobalKind::Viewporter;
+			});
+		if (replacement != globals.end()) {
+			viewporterName = replacement->name;
+			actions.push_back({WaylandLifecycleActionType::BindViewporter,
+				replacement->name, replacement->version});
+		}
+		return actions;
+	}
+	if (removed.kind == WaylandGlobalKind::FractionalScaleManager &&
+		fractionalScaleManagerName == name) {
+		std::vector<WaylandLifecycleAction> actions = {
+			{WaylandLifecycleActionType::ReleaseFractionalScaleManager, name}};
+		fractionalScaleManagerName.reset();
+		const auto replacement = std::find_if(globals.begin(), globals.end(),
+			[](const Global &global) {
+				return global.kind == WaylandGlobalKind::FractionalScaleManager;
+			});
+		if (replacement != globals.end()) {
+			fractionalScaleManagerName = replacement->name;
+			actions.push_back({
+				WaylandLifecycleActionType::BindFractionalScaleManager,
 				replacement->name, replacement->version});
 		}
 		return actions;

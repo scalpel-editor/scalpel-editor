@@ -27,6 +27,8 @@
 #include "primary-selection-client-protocol.h"
 #include "text-input-client-protocol.h"
 #include "presentation-time-client-protocol.h"
+#include "viewporter-client-protocol.h"
+#include "fractional-scale-client-protocol.h"
 
 namespace Scalpel {
 
@@ -112,8 +114,12 @@ const wp_presentation_feedback_listener WaylandWindow::presentationFeedbackListe
 	WaylandWindow::PresentationFeedbackDiscarded,
 };
 
+const wp_fractional_scale_v1_listener WaylandWindow::fractionalScaleListener = {
+	WaylandWindow::FractionalPreferredScale,
+};
+
 WaylandWindow::WaylandWindow(const char *title, int width_, int height_) :
-	lifecycle(width_, height_) {
+	lifecycle(width_, height_), scaleState(width_, height_) {
 	if (!title) {
 		throw std::invalid_argument("WaylandWindow requires a title");
 	}
@@ -159,6 +165,7 @@ void WaylandWindow::Initialise(const char *title) {
 	if (wl_surface_add_listener(surface, &waylandSurfaceListener, this) != 0) {
 		throw std::runtime_error("could not listen for Wayland surface output changes");
 	}
+	CreateScaleObjects();
 	textInput.SetSurface(surface);
 	cursorSurface = wl_compositor_create_surface(compositor);
 	if (!cursorSurface) {
@@ -212,6 +219,8 @@ void WaylandWindow::Destroy() noexcept {
 	if (shellSurface) {
 		xdg_surface_destroy(shellSurface);
 	}
+	DestroyFractionalScale();
+	DestroyViewport();
 	if (surface) {
 		wl_surface_destroy(surface);
 	}
@@ -269,6 +278,12 @@ void WaylandWindow::Destroy() noexcept {
 	if (presentation) {
 		wp_presentation_destroy(presentation);
 	}
+	if (fractionalScaleManager) {
+		wp_fractional_scale_manager_v1_destroy(fractionalScaleManager);
+	}
+	if (viewporter) {
+		wp_viewporter_destroy(viewporter);
+	}
 	if (wmBase) {
 		xdg_wm_base_destroy(wmBase);
 	}
@@ -296,6 +311,10 @@ void WaylandWindow::Destroy() noexcept {
 	primarySelectionManager = nullptr;
 	textInputManager = nullptr;
 	presentation = nullptr;
+	viewporter = nullptr;
+	viewport = nullptr;
+	fractionalScaleManager = nullptr;
+	fractionalScale = nullptr;
 	presentationClockId.reset();
 	frameCallback = nullptr;
 	preparedSubmission = 0;
@@ -545,7 +564,7 @@ void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleActi
 		switch (action.type) {
 		case WaylandLifecycleActionType::BindCompositor:
 			compositor = static_cast<wl_compositor *>(wl_registry_bind(
-				registry, action.name, &wl_compositor_interface, std::min(action.version, 4U)));
+				registry, action.name, &wl_compositor_interface, std::min(action.version, 6U)));
 			if (!compositor) {
 				callbackFailed = true;
 			}
@@ -680,6 +699,45 @@ void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleActi
 			}
 			presentationClockId.reset();
 			break;
+		case WaylandLifecycleActionType::BindViewporter:
+			if (viewporter) {
+				callbackFailed = true;
+				break;
+			}
+			viewporter = static_cast<wp_viewporter *>(wl_registry_bind(
+				registry, action.name, &wp_viewporter_interface,
+				std::min(action.version, 1U)));
+			CreateScaleObjects();
+			break;
+		case WaylandLifecycleActionType::ReleaseViewporter:
+			DestroyViewport();
+			if (viewporter) {
+				wp_viewporter_destroy(viewporter);
+				viewporter = nullptr;
+			}
+			RefreshScaleProtocolAvailability();
+			break;
+		case WaylandLifecycleActionType::BindFractionalScaleManager:
+			if (fractionalScaleManager) {
+				callbackFailed = true;
+				break;
+			}
+			fractionalScaleManager =
+				static_cast<wp_fractional_scale_manager_v1 *>(wl_registry_bind(
+					registry, action.name,
+					&wp_fractional_scale_manager_v1_interface,
+					std::min(action.version, 1U)));
+			CreateScaleObjects();
+			break;
+		case WaylandLifecycleActionType::ReleaseFractionalScaleManager:
+			DestroyFractionalScale();
+			if (fractionalScaleManager) {
+				wp_fractional_scale_manager_v1_destroy(
+					fractionalScaleManager);
+				fractionalScaleManager = nullptr;
+			}
+			RefreshScaleProtocolAvailability();
+			break;
 		case WaylandLifecycleActionType::BindOutput: {
 			wl_output *output = static_cast<wl_output *>(wl_registry_bind(
 				registry, action.name, &wl_output_interface, std::min(action.version, 2U)));
@@ -691,12 +749,14 @@ void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleActi
 				break;
 			}
 			outputs.push_back(Output{action.name, output});
+			scaleState.AddOutput(action.name);
 			break;
 		}
 		case WaylandLifecycleActionType::ReleaseOutput: {
 			const auto found = std::find_if(outputs.begin(), outputs.end(),
 				[&action](const Output &output) { return output.name == action.name; });
 			if (found != outputs.end()) {
+				scaleState.RemoveOutput(action.name);
 				if (wl_output_get_version(found->proxy) >= WL_OUTPUT_RELEASE_SINCE_VERSION) {
 					wl_output_release(found->proxy);
 				} else {
@@ -829,6 +889,42 @@ void WaylandWindow::CreateDecoration() {
 	}
 	zxdg_toplevel_decoration_v1_set_mode(
 		decoration, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+}
+
+void WaylandWindow::CreateScaleObjects() {
+	if (surface && viewporter && !viewport) {
+		viewport = wp_viewporter_get_viewport(viewporter, surface);
+	}
+	if (surface && fractionalScaleManager && !fractionalScale) {
+		fractionalScale =
+			wp_fractional_scale_manager_v1_get_fractional_scale(
+				fractionalScaleManager, surface);
+		if (fractionalScale && wp_fractional_scale_v1_add_listener(
+			fractionalScale, &fractionalScaleListener, this) != 0) {
+			wp_fractional_scale_v1_destroy(fractionalScale);
+			fractionalScale = nullptr;
+		}
+	}
+	RefreshScaleProtocolAvailability();
+}
+
+void WaylandWindow::DestroyViewport() noexcept {
+	if (viewport) {
+		wp_viewport_destroy(viewport);
+		viewport = nullptr;
+	}
+}
+
+void WaylandWindow::DestroyFractionalScale() noexcept {
+	if (fractionalScale) {
+		wp_fractional_scale_v1_destroy(fractionalScale);
+		fractionalScale = nullptr;
+	}
+}
+
+void WaylandWindow::RefreshScaleProtocolAvailability() {
+	scaleState.SetFractionalProtocols(
+		viewport != nullptr, fractionalScale != nullptr);
 }
 
 std::optional<uint32_t> WaylandWindow::RegistryNameForSeat(wl_seat *seat_) const noexcept {
@@ -981,6 +1077,13 @@ void WaylandWindow::RegistryGlobal(void *data, wl_registry *, uint32_t name,
 	} else if (std::strcmp(interface, wp_presentation_interface.name) == 0) {
 		window.ApplyLifecycleActions(window.lifecycle.AddGlobal(
 			WaylandGlobalKind::Presentation, name, version));
+	} else if (std::strcmp(interface, wp_viewporter_interface.name) == 0) {
+		window.ApplyLifecycleActions(window.lifecycle.AddGlobal(
+			WaylandGlobalKind::Viewporter, name, version));
+	} else if (std::strcmp(
+		interface, wp_fractional_scale_manager_v1_interface.name) == 0) {
+		window.ApplyLifecycleActions(window.lifecycle.AddGlobal(
+			WaylandGlobalKind::FractionalScaleManager, name, version));
 	} else if (std::strcmp(interface, wl_output_interface.name) == 0) {
 		window.ApplyLifecycleActions(window.lifecycle.AddGlobal(
 			WaylandGlobalKind::Output, name, version));
@@ -1047,6 +1150,19 @@ void WaylandWindow::PresentationFeedbackDiscarded(
 	wp_presentation_feedback_destroy(feedback);
 	window.presentationFeedback.erase(found);
 	window.frameState.Discarded(submission);
+}
+
+void WaylandWindow::FractionalPreferredScale(
+	void *data, wp_fractional_scale_v1 *fractionalScale_, uint32_t scale) {
+	auto &window = *static_cast<WaylandWindow *>(data);
+	if (fractionalScale_ != window.fractionalScale || scale == 0) {
+		return;
+	}
+	try {
+		window.scaleState.SetFractionalPreferredScale(scale);
+	} catch (...) {
+		window.callbackFailed = true;
+	}
 }
 
 void WaylandWindow::RegistryGlobalRemove(void *data, wl_registry *, uint32_t name) {
@@ -1222,8 +1338,18 @@ void WaylandWindow::OutputMode(void *, wl_output *, uint32_t, int32_t, int32_t, 
 void WaylandWindow::OutputDone(void *, wl_output *) {
 }
 
-void WaylandWindow::OutputScale(void *, wl_output *, int32_t) {
-	// Output scale becomes application-visible in phase 7 step 10.
+void WaylandWindow::OutputScale(void *data, wl_output *output, int32_t factor) {
+	auto &window = *static_cast<WaylandWindow *>(data);
+	const std::optional<uint32_t> name = window.OutputName(output);
+	if (!name || factor <= 0) {
+		window.callbackFailed = true;
+		return;
+	}
+	try {
+		window.scaleState.SetOutputScale(*name, factor);
+	} catch (...) {
+		window.callbackFailed = true;
+	}
 }
 
 void WaylandWindow::OutputName(void *, wl_output *, const char *) {
@@ -1237,6 +1363,11 @@ void WaylandWindow::WaylandSurfaceEnter(void *data, wl_surface *surface_, wl_out
 	if (surface_ == window.surface) {
 		if (const std::optional<uint32_t> name = window.OutputName(output)) {
 			window.lifecycle.EnterOutput(*name);
+			try {
+				window.scaleState.EnterOutput(*name);
+			} catch (...) {
+				window.callbackFailed = true;
+			}
 		}
 	}
 }
@@ -1246,11 +1377,22 @@ void WaylandWindow::WaylandSurfaceLeave(void *data, wl_surface *surface_, wl_out
 	if (surface_ == window.surface) {
 		if (const std::optional<uint32_t> name = window.OutputName(output)) {
 			window.lifecycle.LeaveOutput(*name);
+			window.scaleState.LeaveOutput(*name);
 		}
 	}
 }
 
-void WaylandWindow::WaylandSurfacePreferredBufferScale(void *, wl_surface *, int32_t) {
+void WaylandWindow::WaylandSurfacePreferredBufferScale(
+	void *data, wl_surface *surface_, int32_t factor) {
+	auto &window = *static_cast<WaylandWindow *>(data);
+	if (surface_ != window.surface || factor <= 0) {
+		return;
+	}
+	try {
+		window.scaleState.SetPreferredBufferScale(factor);
+	} catch (...) {
+		window.callbackFailed = true;
+	}
 }
 
 void WaylandWindow::WaylandSurfacePreferredBufferTransform(void *, wl_surface *, uint32_t) {
@@ -1263,9 +1405,16 @@ void WaylandWindow::WmBasePing(void *, xdg_wm_base *wmBase_, uint32_t serial) {
 void WaylandWindow::SurfaceConfigure(void *data, xdg_surface *shellSurface_, uint32_t serial) {
 	auto &window = *static_cast<WaylandWindow *>(data);
 	xdg_surface_ack_configure(shellSurface_, serial);
-	if (const std::optional<WindowSize> resize = window.lifecycle.CommitConfigure();
-		resize && window.eglWindow) {
-		wl_egl_window_resize(window.eglWindow, resize->width, resize->height, 0, 0);
+	if (const std::optional<WindowSize> resize = window.lifecycle.CommitConfigure()) {
+		if (window.eglWindow) {
+			wl_egl_window_resize(
+				window.eglWindow, resize->width, resize->height, 0, 0);
+		}
+		try {
+			window.scaleState.Resize(resize->width, resize->height);
+		} catch (...) {
+			window.callbackFailed = true;
+		}
 	}
 	window.configured = true;
 }

@@ -31,6 +31,8 @@ enum class WaylandGlobalKind {
 	PrimarySelectionManager,
 	TextInputManager,
 	Presentation,
+	Viewporter,
+	FractionalScaleManager,
 	Output,
 	Seat,
 };
@@ -50,6 +52,10 @@ enum class WaylandLifecycleActionType {
 	ReleaseTextInputManager,
 	BindPresentation,
 	ReleasePresentation,
+	BindViewporter,
+	ReleaseViewporter,
+	BindFractionalScaleManager,
+	ReleaseFractionalScaleManager,
 	BindOutput,
 	ReleaseOutput,
 	BindSeat,
@@ -147,6 +153,8 @@ private:
 	std::optional<uint32_t> primarySelectionManagerName;
 	std::optional<uint32_t> textInputManagerName;
 	std::optional<uint32_t> presentationName;
+	std::optional<uint32_t> viewporterName;
+	std::optional<uint32_t> fractionalScaleManagerName;
 	std::optional<uint32_t> activeSeatName;
 	WaylandToplevelState toplevelState;
 	std::optional<WaylandToplevelState> proposedToplevelState;
