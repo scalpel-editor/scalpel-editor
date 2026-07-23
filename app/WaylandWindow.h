@@ -8,6 +8,7 @@
 #include <optional>
 #include <vector>
 
+#include "WaylandCursor.h"
 #include "WaylandInput.h"
 #include "WaylandLifecycle.h"
 
@@ -25,6 +26,7 @@ struct wl_registry;
 struct wl_registry_listener;
 struct wl_seat;
 struct wl_seat_listener;
+struct wl_shm;
 struct wl_surface;
 struct wl_surface_listener;
 struct xdg_surface;
@@ -36,6 +38,7 @@ struct xdg_wm_base_listener;
 struct zxdg_decoration_manager_v1;
 struct zxdg_toplevel_decoration_v1;
 struct zxdg_toplevel_decoration_v1_listener;
+struct wl_cursor_theme;
 
 namespace Scalpel {
 
@@ -71,6 +74,8 @@ public:
 	[[nodiscard]] bool CallbackFailed() const noexcept { return callbackFailed; }
 	[[nodiscard]] std::optional<WindowSize> TakeResize() noexcept { return lifecycle.TakeResize(); }
 	[[nodiscard]] std::vector<InputEvent> TakeInputs() { return input.TakeInputs(); }
+	void SetCursor(Scintilla::Internal::Window::Cursor cursor);
+	void SetCursorScale(int scale);
 
 	/** Complete one request/event round trip, throwing on display failure. */
 	void RoundTrip();
@@ -82,6 +87,10 @@ private:
 	void Destroy() noexcept;
 	void DispatchUntilConfigured();
 	void ApplyLifecycleActions(const std::vector<WaylandLifecycleAction> &actions);
+	void ApplyCursorAction(const std::optional<WaylandCursorAction> &action);
+	void ApplyCursorAction(const WaylandCursorAction &action);
+	void LoadCursorTheme();
+	void DestroyCursorTheme() noexcept;
 	void CreateDecoration();
 	[[nodiscard]] std::optional<uint32_t> OutputName(wl_output *output) const noexcept;
 	[[nodiscard]] std::optional<uint32_t> RegistryNameForSeat(wl_seat *seat) const noexcept;
@@ -171,6 +180,10 @@ private:
 	wl_seat *seat = nullptr;
 	wl_keyboard *keyboard = nullptr;
 	wl_pointer *pointer = nullptr;
+	wl_shm *sharedMemory = nullptr;
+	wl_surface *cursorSurface = nullptr;
+	wl_cursor_theme *cursorTheme = nullptr;
+	int cursorThemeScale = 0;
 	xdg_wm_base *wmBase = nullptr;
 	wl_surface *surface = nullptr;
 	wl_egl_window *eglWindow = nullptr;
@@ -180,8 +193,11 @@ private:
 	zxdg_toplevel_decoration_v1 *decoration = nullptr;
 	WaylandLifecycle lifecycle;
 	WaylandInput input;
+	WaylandCursorState cursorState;
+	WaylandCursorSettings cursorSettings;
 	bool callbackFailed = false;
 	bool configured = false;
+	bool cursorUnavailableReported = false;
 };
 
 }

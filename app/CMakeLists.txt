@@ -2,6 +2,7 @@
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(WAYLAND_CLIENT REQUIRED IMPORTED_TARGET wayland-client)
 pkg_check_modules(WAYLAND_EGL REQUIRED IMPORTED_TARGET wayland-egl)
+pkg_check_modules(WAYLAND_CURSOR REQUIRED IMPORTED_TARGET wayland-cursor)
 pkg_check_modules(WAYLAND_PROTOCOLS REQUIRED wayland-protocols)
 pkg_check_modules(XKBCOMMON REQUIRED IMPORTED_TARGET xkbcommon)
 
@@ -62,6 +63,7 @@ target_link_libraries(scalpel_wayland PUBLIC
   scalpel_xdg_shell
   PkgConfig::WAYLAND_CLIENT
   PkgConfig::WAYLAND_EGL
+  PkgConfig::WAYLAND_CURSOR
   PkgConfig::XKBCOMMON
 )
 target_compile_options(scalpel_wayland PRIVATE -Wall -Wextra)

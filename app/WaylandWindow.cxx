@@ -10,6 +10,7 @@
 #include <climits>
 #include <cstdint>
 #include <cstring>
+#include <iostream>
 #include <stdexcept>
 #include <string_view>
 
@@ -17,6 +18,7 @@
 #include <poll.h>
 #include <unistd.h>
 #include <wayland-client.h>
+#include <wayland-cursor.h>
 #include <wayland-egl.h>
 
 #include "xdg-shell-client-protocol.h"
@@ -110,6 +112,7 @@ WaylandWindow::~WaylandWindow() noexcept {
 }
 
 void WaylandWindow::Initialise(const char *title) {
+	cursorSettings = ResolveCursorSettings();
 	display = wl_display_connect(nullptr);
 	if (!display) {
 		throw std::runtime_error("could not connect to the Wayland display");
@@ -138,6 +141,13 @@ void WaylandWindow::Initialise(const char *title) {
 	if (wl_surface_add_listener(surface, &waylandSurfaceListener, this) != 0) {
 		throw std::runtime_error("could not listen for Wayland surface output changes");
 	}
+	cursorSurface = wl_compositor_create_surface(compositor);
+	if (!cursorSurface) {
+		std::cerr << "scalpel-editor: Wayland cursor surface is unavailable\n";
+		cursorUnavailableReported = true;
+	}
+	LoadCursorTheme();
+	ApplyCursorAction(cursorState.SetThemeAvailable(cursorTheme != nullptr));
 	shellSurface = xdg_wm_base_get_xdg_surface(wmBase, surface);
 	if (!shellSurface || xdg_surface_add_listener(shellSurface, &surfaceListener, this) != 0) {
 		throw std::runtime_error("could not create the xdg_surface");
@@ -180,6 +190,10 @@ void WaylandWindow::Destroy() noexcept {
 	if (surface) {
 		wl_surface_destroy(surface);
 	}
+	DestroyCursorTheme();
+	if (cursorSurface) {
+		wl_surface_destroy(cursorSurface);
+	}
 	for (const Output &output : outputs) {
 		if (wl_output_get_version(output.proxy) >= WL_OUTPUT_RELEASE_SINCE_VERSION) {
 			wl_output_release(output.proxy);
@@ -209,6 +223,9 @@ void WaylandWindow::Destroy() noexcept {
 			wl_seat_destroy(seat);
 		}
 	}
+	if (sharedMemory) {
+		wl_shm_destroy(sharedMemory);
+	}
 	if (wmBase) {
 		xdg_wm_base_destroy(wmBase);
 	}
@@ -230,6 +247,8 @@ void WaylandWindow::Destroy() noexcept {
 	eglWindow = nullptr;
 	shellSurface = nullptr;
 	surface = nullptr;
+	cursorSurface = nullptr;
+	sharedMemory = nullptr;
 	keyboard = nullptr;
 	pointer = nullptr;
 	seat = nullptr;
@@ -237,6 +256,117 @@ void WaylandWindow::Destroy() noexcept {
 	compositor = nullptr;
 	registry = nullptr;
 	display = nullptr;
+}
+
+void WaylandWindow::SetCursor(Scintilla::Internal::Window::Cursor cursor) {
+	ApplyCursorAction(cursorState.Request(cursor));
+	if (!cursorTheme) {
+		LoadCursorTheme();
+		ApplyCursorAction(cursorState.SetThemeAvailable(cursorTheme != nullptr));
+	}
+}
+
+void WaylandWindow::SetCursorScale(int scale) {
+	if (scale <= 0) {
+		throw std::invalid_argument("Wayland cursor scale must be positive");
+	}
+	if (scale == cursorState.Scale()) {
+		return;
+	}
+	ApplyCursorAction(cursorState.SetThemeAvailable(false));
+	DestroyCursorTheme();
+	(void)cursorState.SetScale(scale);
+	LoadCursorTheme();
+	ApplyCursorAction(cursorState.SetThemeAvailable(cursorTheme != nullptr));
+}
+
+void WaylandWindow::ApplyCursorAction(const std::optional<WaylandCursorAction> &action) {
+	if (action) {
+		ApplyCursorAction(*action);
+	}
+}
+
+void WaylandWindow::ApplyCursorAction(const WaylandCursorAction &action) {
+	if (!pointer || !cursorSurface || !cursorTheme || action.scale != cursorThemeScale) {
+		return;
+	}
+	const WaylandCursorNames names = CursorNames(action.cursor);
+	wl_cursor *selected = nullptr;
+	for (std::size_t index = 0; index < names.count; ++index) {
+		selected = wl_cursor_theme_get_cursor(cursorTheme, names[index].data());
+		if (selected && selected->image_count > 0) {
+			break;
+		}
+	}
+	if (!selected || selected->image_count == 0) {
+		if (!cursorUnavailableReported) {
+			std::cerr << "scalpel-editor: Wayland cursor theme has no usable cursor\n";
+			cursorUnavailableReported = true;
+		}
+		return;
+	}
+	wl_cursor_image *image = selected->images[0];
+	wl_buffer *buffer = wl_cursor_image_get_buffer(image);
+	if (!buffer) {
+		if (!cursorUnavailableReported) {
+			std::cerr << "scalpel-editor: Wayland cursor buffer is unavailable\n";
+			cursorUnavailableReported = true;
+		}
+		return;
+	}
+	const WaylandCursorImageGeometry geometry = CursorImageGeometry(
+		image->width, image->height, image->hotspot_x, image->hotspot_y, action.scale);
+	wl_pointer_set_cursor(pointer, action.serial, cursorSurface,
+		geometry.hotspotX, geometry.hotspotY);
+	wl_surface_set_buffer_scale(cursorSurface, action.scale);
+	wl_surface_attach(cursorSurface, buffer, 0, 0);
+	if (wl_surface_get_version(cursorSurface) >= WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION) {
+		wl_surface_damage_buffer(cursorSurface, 0, 0,
+			static_cast<int32_t>(geometry.bufferWidth),
+			static_cast<int32_t>(geometry.bufferHeight));
+	} else {
+		wl_surface_damage(cursorSurface, 0, 0,
+			static_cast<int32_t>((geometry.bufferWidth + action.scale - 1) / action.scale),
+			static_cast<int32_t>((geometry.bufferHeight + action.scale - 1) / action.scale));
+	}
+	wl_surface_commit(cursorSurface);
+}
+
+void WaylandWindow::LoadCursorTheme() {
+	if (!cursorSurface) {
+		return;
+	}
+	if (!sharedMemory) {
+		if (!cursorUnavailableReported) {
+			std::cerr << "scalpel-editor: Wayland cursor service is unavailable\n";
+			cursorUnavailableReported = true;
+		}
+		return;
+	}
+	if (cursorTheme || cursorThemeScale == cursorState.Scale()) {
+		return;
+	}
+	cursorThemeScale = cursorState.Scale();
+	const int pixelSize = CursorThemePixelSize(
+		cursorSettings.logicalSize, cursorThemeScale);
+	const char *name = cursorSettings.themeName.empty() ?
+		nullptr : cursorSettings.themeName.c_str();
+	cursorTheme = wl_cursor_theme_load(name, pixelSize, sharedMemory);
+	if (!cursorTheme && name) {
+		cursorTheme = wl_cursor_theme_load(nullptr, pixelSize, sharedMemory);
+	}
+	if (!cursorTheme && !cursorUnavailableReported) {
+		std::cerr << "scalpel-editor: Wayland cursor theme is unavailable\n";
+		cursorUnavailableReported = true;
+	}
+}
+
+void WaylandWindow::DestroyCursorTheme() noexcept {
+	if (cursorTheme) {
+		wl_cursor_theme_destroy(cursorTheme);
+		cursorTheme = nullptr;
+	}
+	cursorThemeScale = 0;
 }
 
 void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleAction> &actions) {
@@ -269,6 +399,28 @@ void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleActi
 			if (decorationManager) {
 				zxdg_decoration_manager_v1_destroy(decorationManager);
 				decorationManager = nullptr;
+			}
+			break;
+		case WaylandLifecycleActionType::BindSharedMemory:
+			if (sharedMemory) {
+				callbackFailed = true;
+				break;
+			}
+			sharedMemory = static_cast<wl_shm *>(wl_registry_bind(
+				registry, action.name, &wl_shm_interface, std::min(action.version, 1U)));
+			if (!sharedMemory) {
+				callbackFailed = true;
+				break;
+			}
+			LoadCursorTheme();
+			ApplyCursorAction(cursorState.SetThemeAvailable(cursorTheme != nullptr));
+			break;
+		case WaylandLifecycleActionType::ReleaseSharedMemory:
+			ApplyCursorAction(cursorState.SetThemeAvailable(false));
+			DestroyCursorTheme();
+			if (sharedMemory) {
+				wl_shm_destroy(sharedMemory);
+				sharedMemory = nullptr;
 			}
 			break;
 		case WaylandLifecycleActionType::BindOutput: {
@@ -348,6 +500,7 @@ void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleActi
 			break;
 		case WaylandLifecycleActionType::ReleasePointer:
 			input.ResetPointerDevice();
+			cursorState.ResetPointer();
 			if (pointer) {
 				if (wl_pointer_get_version(pointer) >= WL_POINTER_RELEASE_SINCE_VERSION) {
 					wl_pointer_release(pointer);
@@ -524,6 +677,9 @@ void WaylandWindow::RegistryGlobal(void *data, wl_registry *, uint32_t name,
 	} else if (std::strcmp(interface, zxdg_decoration_manager_v1_interface.name) == 0) {
 		window.ApplyLifecycleActions(window.lifecycle.AddGlobal(
 			WaylandGlobalKind::DecorationManager, name, version));
+	} else if (std::strcmp(interface, wl_shm_interface.name) == 0) {
+		window.ApplyLifecycleActions(window.lifecycle.AddGlobal(
+			WaylandGlobalKind::SharedMemory, name, version));
 	} else if (std::strcmp(interface, wl_output_interface.name) == 0) {
 		window.ApplyLifecycleActions(window.lifecycle.AddGlobal(
 			WaylandGlobalKind::Output, name, version));
@@ -613,10 +769,16 @@ void WaylandWindow::KeyboardRepeatInfo(
 	}
 }
 
-void WaylandWindow::PointerEnter(void *data, wl_pointer *, uint32_t,
+void WaylandWindow::PointerEnter(void *data, wl_pointer *, uint32_t serial,
 	wl_surface *surface_, int32_t x, int32_t y) {
 	auto &window = *static_cast<WaylandWindow *>(data);
 	if (surface_ == window.surface) {
+		window.ApplyCursorAction(window.cursorState.Enter(serial));
+		if (!window.cursorTheme) {
+			window.LoadCursorTheme();
+			window.ApplyCursorAction(window.cursorState.SetThemeAvailable(
+				window.cursorTheme != nullptr));
+		}
 		window.input.RecordPointerMotion(0, wl_fixed_to_double(x), wl_fixed_to_double(y));
 	}
 }
@@ -624,6 +786,7 @@ void WaylandWindow::PointerEnter(void *data, wl_pointer *, uint32_t,
 void WaylandWindow::PointerLeave(void *data, wl_pointer *, uint32_t, wl_surface *surface_) {
 	auto &window = *static_cast<WaylandWindow *>(data);
 	if (surface_ == window.surface) {
+		window.cursorState.Leave();
 		window.input.RecordPointerLeave();
 	}
 }

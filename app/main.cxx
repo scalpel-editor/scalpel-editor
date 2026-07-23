@@ -34,6 +34,7 @@ int main() {
 				}
 			}
 			editor.RunPendingWork();
+			window.SetCursor(editor.WindowState().cursor);
 			if (editor.NeedsRedraw()) {
 				editor.PresentFrame();
 			}

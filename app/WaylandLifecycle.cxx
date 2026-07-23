@@ -51,6 +51,12 @@ std::vector<WaylandLifecycleAction> WaylandLifecycle::AddGlobal(
 			return {{WaylandLifecycleActionType::BindDecorationManager, name, version}};
 		}
 		break;
+	case WaylandGlobalKind::SharedMemory:
+		if (!sharedMemoryName) {
+			sharedMemoryName = name;
+			return {{WaylandLifecycleActionType::BindSharedMemory, name, version}};
+		}
+		break;
 	case WaylandGlobalKind::Output:
 		return {{WaylandLifecycleActionType::BindOutput, name, version}};
 	case WaylandGlobalKind::Seat:
@@ -91,6 +97,21 @@ std::vector<WaylandLifecycleAction> WaylandLifecycle::RemoveGlobal(uint32_t name
 		if (replacement != globals.end()) {
 			decorationManagerName = replacement->name;
 			actions.push_back({WaylandLifecycleActionType::BindDecorationManager,
+				replacement->name, replacement->version});
+		}
+		return actions;
+	}
+	if (removed.kind == WaylandGlobalKind::SharedMemory && sharedMemoryName == name) {
+		std::vector<WaylandLifecycleAction> actions = {
+			{WaylandLifecycleActionType::ReleaseSharedMemory, name}};
+		sharedMemoryName.reset();
+		const auto replacement = std::find_if(globals.begin(), globals.end(),
+			[](const Global &global) {
+				return global.kind == WaylandGlobalKind::SharedMemory;
+			});
+		if (replacement != globals.end()) {
+			sharedMemoryName = replacement->name;
+			actions.push_back({WaylandLifecycleActionType::BindSharedMemory,
 				replacement->name, replacement->version});
 		}
 		return actions;

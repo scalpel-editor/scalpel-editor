@@ -1,4 +1,7 @@
+#include <algorithm>
+#include <initializer_list>
 #include <optional>
+#include <string_view>
 
 #define CATCH_CONFIG_MAIN
 #include "catch.hpp"
@@ -10,6 +13,16 @@
 namespace {
 
 using Cursor = Scintilla::Internal::Window::Cursor;
+
+std::string_view FirstAvailable(const Scalpel::WaylandCursorNames &names,
+	std::initializer_list<std::string_view> available) {
+	for (std::size_t index = 0; index < names.count; ++index) {
+		if (std::find(available.begin(), available.end(), names[index]) != available.end()) {
+			return names[index];
+		}
+	}
+	return {};
+}
 
 }
 
@@ -27,6 +40,9 @@ TEST_CASE("Wayland cursor choices cover every editor cursor") {
 	CHECK(Scalpel::CursorNames(Cursor::text)[0] == "text");
 	CHECK(Scalpel::CursorNames(Cursor::reverseArrow)[0] == "right_ptr");
 	CHECK(Scalpel::CursorNames(Cursor::hand)[0] == "pointer");
+	CHECK(FirstAvailable(Scalpel::CursorNames(Cursor::text), {"left_ptr"}) ==
+		"left_ptr");
+	CHECK(FirstAvailable(Scalpel::CursorNames(Cursor::hand), {"arrow"}) == "arrow");
 }
 
 TEST_CASE("Wayland cursor state retains requests until pointer entry") {
@@ -211,6 +227,29 @@ TEST_CASE("Wayland registry replaces a removed decoration manager") {
 	CHECK(removed.front().type ==
 		Scalpel::WaylandLifecycleActionType::ReleaseDecorationManager);
 	CHECK(lifecycle.ToplevelState().serverSideDecoration);
+}
+
+TEST_CASE("Wayland registry replaces optional shared memory") {
+	Scalpel::WaylandLifecycle lifecycle(800, 600);
+
+	const auto first = lifecycle.AddGlobal(
+		Scalpel::WaylandGlobalKind::SharedMemory, 27, 1);
+	REQUIRE(first.size() == 1);
+	CHECK(first.front() == Scalpel::WaylandLifecycleAction{
+		Scalpel::WaylandLifecycleActionType::BindSharedMemory, 27, 1});
+	CHECK(lifecycle.AddGlobal(
+		Scalpel::WaylandGlobalKind::SharedMemory, 28, 1).empty());
+
+	const auto replacement = lifecycle.RemoveGlobal(27);
+	REQUIRE(replacement.size() == 2);
+	CHECK(replacement[0] == Scalpel::WaylandLifecycleAction{
+		Scalpel::WaylandLifecycleActionType::ReleaseSharedMemory, 27});
+	CHECK(replacement[1] == Scalpel::WaylandLifecycleAction{
+		Scalpel::WaylandLifecycleActionType::BindSharedMemory, 28, 1});
+	const auto removed = lifecycle.RemoveGlobal(28);
+	REQUIRE(removed.size() == 1);
+	CHECK(removed.front().type ==
+		Scalpel::WaylandLifecycleActionType::ReleaseSharedMemory);
 }
 
 TEST_CASE("Wayland registry closes when an active required global disappears") {

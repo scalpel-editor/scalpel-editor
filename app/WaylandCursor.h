@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 
 #include "Platform.h"
@@ -24,6 +25,13 @@ struct WaylandCursorNames {
 
 [[nodiscard]] WaylandCursorNames CursorNames(
 	Scintilla::Internal::Window::Cursor cursor) noexcept;
+
+struct WaylandCursorSettings {
+	std::string themeName;
+	int logicalSize = 24;
+};
+
+[[nodiscard]] WaylandCursorSettings ResolveCursorSettings();
 
 struct WaylandCursorAction {
 	Scintilla::Internal::Window::Cursor cursor =
