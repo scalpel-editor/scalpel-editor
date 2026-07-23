@@ -90,7 +90,7 @@ ColourRGBA Platform::ChromeHighlight() {
 }
 
 const char *Platform::DefaultFont() {
-	return "monospace";
+	return "sans";
 }
 
 int Platform::DefaultFontSize() {

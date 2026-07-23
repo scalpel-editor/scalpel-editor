@@ -71,7 +71,8 @@ public:
 	/**
 	 * HarfBuzz font for this face. Owned by FontFace and destroyed before the
 	 * FreeType face. Typed as void* so this header does not include HarfBuzz.
-	 * Callers cast to hb_font_t *.
+	 * Callers cast to hb_font_t *. Shaping and RasterizeGlyph both use
+	 * FT_LOAD_DEFAULT so advances and bitmap shapes share hinted metrics.
 	 */
 	void *HarfBuzzFont() const noexcept;
 };

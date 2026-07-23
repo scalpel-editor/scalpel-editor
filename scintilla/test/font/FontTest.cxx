@@ -8,6 +8,10 @@
 #include <string_view>
 #include <vector>
 
+#include <ft2build.h>
+#include FT_FREETYPE_H
+#include <hb-ft.h>
+
 #include "EditorStyleTypes.h"
 #include "FontPlatform.h"
 #include "Geometry.h"
@@ -127,10 +131,24 @@ TEST_CASE("Face cache owns primary and fallback faces") {
 	CHECK(fallback->HasGlyph(U'\u2603'));
 }
 
-TEST_CASE("Fixture faces own a HarfBuzz font") {
+TEST_CASE("HarfBuzz font uses the rasterizer load flags") {
 	FontCache cache;
 	const auto face = LoadPrimary(cache);
-	REQUIRE(face->HarfBuzzFont() != nullptr);
+	hb_font_t *hbFont = static_cast<hb_font_t *>(face->HarfBuzzFont());
+
+	REQUIRE(hbFont != nullptr);
+	CHECK(hb_ft_font_get_load_flags(hbFont) == FT_LOAD_DEFAULT);
+	CHECK_FALSE(hb_ft_font_get_load_flags(hbFont) & FT_LOAD_NO_HINTING);
+}
+
+TEST_CASE("HarfBuzz narrow glyph uses a hinted advance at 11 pixels") {
+	FontCache cache;
+	const auto face = LoadPrimary(cache, 11.0);
+	const ShapedRun run = ShapeText("i", face);
+
+	REQUIRE(run.glyphs.size() == 1);
+	CHECK(run.glyphs[0].xAdvance == 3.0);
+	CHECK(run.Width() == run.glyphs[0].xAdvance);
 }
 
 TEST_CASE("ShapeText measures ASCII with per-byte end positions") {

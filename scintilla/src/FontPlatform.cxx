@@ -91,6 +91,7 @@ public:
 		path(std::move(path_)), size(size_), weight(weight_), italic(italic_) {
 		// Size must be set on the FT_Face before hb_ft_font_create_referenced.
 		hbFont = hb_ft_font_create_referenced(face);
+		hb_ft_font_set_load_flags(hbFont, FT_LOAD_DEFAULT);
 	}
 
 	~Impl() noexcept {
