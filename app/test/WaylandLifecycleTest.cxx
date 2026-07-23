@@ -8,6 +8,7 @@
 
 #include "WaylandLifecycle.h"
 #include "WaylandCursor.h"
+#include "WaylandFrame.h"
 #include "WaylandWindow.h"
 
 namespace {
@@ -94,6 +95,211 @@ TEST_CASE("Wayland cursor state rebuilds scaled themes and hotspots") {
 	CHECK(Scalpel::CursorImageGeometry(48, 48, 14, 18, scaled->scale) ==
 		Scalpel::WaylandCursorImageGeometry{48, 48, 7, 9});
 	CHECK_THROWS_WITH(cursor.SetScale(0), "Wayland cursor scale must be positive");
+}
+
+TEST_CASE("Wayland frame pacing preserves invalidation across waits and paint") {
+	Scalpel::WaylandFrameState frame;
+
+	CHECK_FALSE(frame.CanSubmit());
+	frame.Invalidate({10, 20, 30, 40});
+	CHECK(frame.CanSubmit());
+	const auto first = frame.BeginFrame(100, 80, 0, false, true);
+	REQUIRE(first.has_value());
+	CHECK(first->submissionDamage ==
+		std::vector<Scalpel::FrameRectangle>{{10, 20, 30, 40}});
+	CHECK(first->repaintDamage ==
+		std::vector<Scalpel::FrameRectangle>{{0, 0, 100, 80}});
+	CHECK(frame.Painting());
+
+	frame.Invalidate({40, 20, 60, 40});
+	CHECK_FALSE(frame.CanSubmit());
+	CHECK_FALSE(frame.SubmitFrame(first->submission, false).has_value());
+	CHECK(frame.CallbackOutstanding());
+	CHECK(frame.Invalidated());
+	CHECK_FALSE(frame.CanSubmit());
+
+	frame.Invalidate({60, 20, 80, 40});
+	frame.FrameCallbackDone();
+	CHECK(frame.CanSubmit());
+	const auto second = frame.BeginFrame(100, 80, 1, true, true);
+	REQUIRE(second.has_value());
+	CHECK(second->submissionDamage ==
+		std::vector<Scalpel::FrameRectangle>{
+			{40, 20, 60, 40}, {60, 20, 80, 40}});
+	CHECK_FALSE(frame.SubmitFrame(second->submission, false).has_value());
+	frame.FrameCallbackDone();
+	CHECK_FALSE(frame.Invalidated());
+	CHECK_FALSE(frame.CanSubmit());
+	CHECK_FALSE(frame.BeginFrame(100, 80, 1, true, true).has_value());
+}
+
+TEST_CASE("Wayland frame paint cancellation restores captured damage") {
+	Scalpel::WaylandFrameState frame;
+	frame.Invalidate({4, 5, 20, 30});
+	const auto plan = frame.BeginFrame(100, 80, 1, true, true);
+	REQUIRE(plan.has_value());
+
+	frame.CancelPaint();
+	CHECK_FALSE(frame.Painting());
+	CHECK(frame.Invalidated());
+	CHECK(frame.CanSubmit());
+	const auto replacement = frame.BeginFrame(100, 80, 1, true, true);
+	REQUIRE(replacement.has_value());
+	CHECK(replacement->submissionDamage ==
+		std::vector<Scalpel::FrameRectangle>{{4, 5, 20, 30}});
+	CHECK_FALSE(frame.SubmitFrame(replacement->submission, false).has_value());
+	frame.CancelFrameCallback();
+	CHECK_FALSE(frame.CallbackOutstanding());
+}
+
+TEST_CASE("Wayland frame damage clips and converts coordinate origins") {
+	const std::vector<Scalpel::FrameRectangle> damage{
+		{-5, 2, 20, 12},
+		{90, 70, 110, 90},
+		{20, 20, 20, 30},
+		{120, 90, 140, 100},
+	};
+	const auto clipped = Scalpel::ClipFrameDamage(damage, 100, 80);
+	CHECK(clipped == std::vector<Scalpel::FrameRectangle>{
+		{0, 2, 20, 12}, {90, 70, 100, 80}});
+	CHECK(Scalpel::WaylandBufferDamage(clipped) ==
+		std::vector<Scalpel::DamageRectangle>{
+			{0, 2, 20, 10}, {90, 70, 10, 10}});
+	CHECK(Scalpel::EglBufferDamage(clipped, 80) ==
+		std::vector<Scalpel::DamageRectangle>{
+			{0, 68, 20, 10}, {90, 0, 10, 10}});
+	CHECK(Scalpel::ScaleFrameDamage({{10, 5, 30, 20}}, 100, 80, 2) ==
+		std::vector<Scalpel::FrameRectangle>{{20, 10, 60, 40}});
+	CHECK_THROWS(Scalpel::ClipFrameDamage(damage, 0, 80));
+	CHECK_THROWS(Scalpel::ScaleFrameDamage(damage, 100, 80, 0));
+	CHECK_THROWS(Scalpel::EglBufferDamage(clipped, 0));
+}
+
+TEST_CASE("Wayland frame damage bounds excessive rectangle counts") {
+	std::vector<Scalpel::FrameRectangle> damage;
+	for (int index = 0; index < 17; ++index) {
+		damage.push_back({index, index, index + 1, index + 1});
+	}
+	CHECK(Scalpel::ClipFrameDamage(damage, 100, 80) ==
+		std::vector<Scalpel::FrameRectangle>{{0, 0, 17, 17}});
+}
+
+TEST_CASE("Wayland frame buffer age extends repaint damage") {
+	Scalpel::WaylandFrameState frame;
+	frame.Invalidate({0, 0, 10, 10});
+	const auto first = frame.BeginFrame(100, 80, 1, true, true);
+	REQUIRE(first.has_value());
+	CHECK(first->repaintDamage ==
+		std::vector<Scalpel::FrameRectangle>{{0, 0, 10, 10}});
+	(void)frame.SubmitFrame(first->submission, false);
+	frame.FrameCallbackDone();
+
+	frame.Invalidate({20, 20, 30, 30});
+	const auto second = frame.BeginFrame(100, 80, 1, true, true);
+	REQUIRE(second.has_value());
+	(void)frame.SubmitFrame(second->submission, false);
+	frame.FrameCallbackDone();
+
+	frame.Invalidate({40, 40, 50, 50});
+	const auto aged = frame.BeginFrame(100, 80, 2, true, true);
+	REQUIRE(aged.has_value());
+	CHECK(aged->repaintDamage ==
+		std::vector<Scalpel::FrameRectangle>{
+			{40, 40, 50, 50}, {20, 20, 30, 30}});
+	(void)frame.SubmitFrame(aged->submission, false);
+	frame.FrameCallbackDone();
+
+	frame.Invalidate({60, 60, 70, 70});
+	const auto invalidAge = frame.BeginFrame(100, 80, 9, true, true);
+	REQUIRE(invalidAge.has_value());
+	CHECK(invalidAge->repaintDamage ==
+		std::vector<Scalpel::FrameRectangle>{{0, 0, 100, 80}});
+	CHECK(frame.DamageHistorySize() == 3);
+}
+
+TEST_CASE("Wayland frame extension fallbacks remain independent") {
+	Scalpel::WaylandFrameState frame;
+	frame.Invalidate({10, 10, 20, 20});
+	const auto noDamageSwap = frame.BeginFrame(100, 80, 1, true, false);
+	REQUIRE(noDamageSwap.has_value());
+	CHECK(noDamageSwap->repaintDamage ==
+		std::vector<Scalpel::FrameRectangle>{{10, 10, 20, 20}});
+	CHECK(noDamageSwap->fullSwap);
+	(void)frame.SubmitFrame(noDamageSwap->submission, false);
+	frame.FrameCallbackDone();
+
+	frame.Invalidate({30, 30, 40, 40});
+	const auto noBufferAge = frame.BeginFrame(100, 80, 1, false, true);
+	REQUIRE(noBufferAge.has_value());
+	CHECK(noBufferAge->repaintDamage ==
+		std::vector<Scalpel::FrameRectangle>{{0, 0, 100, 80}});
+	CHECK_FALSE(noBufferAge->fullSwap);
+}
+
+TEST_CASE("Wayland frame uses full damage when invalidation clips away") {
+	Scalpel::WaylandFrameState frame;
+	frame.Invalidate({200, 200, 220, 220});
+	const auto plan = frame.BeginFrame(100, 80, 1, true, true);
+	REQUIRE(plan.has_value());
+	CHECK(plan->submissionDamage ==
+		std::vector<Scalpel::FrameRectangle>{{0, 0, 100, 80}});
+	CHECK(plan->waylandDamage ==
+		std::vector<Scalpel::DamageRectangle>{{0, 0, 100, 80}});
+}
+
+TEST_CASE("Wayland frame presentation reports match submission identifiers") {
+	Scalpel::WaylandFrameState frame;
+	auto submit = [&frame](Scalpel::FrameRectangle damage, bool feedback) {
+		frame.Invalidate(damage);
+		const auto plan = frame.BeginFrame(100, 80, 1, true, true);
+		REQUIRE(plan.has_value());
+		const uint64_t submission = plan->submission;
+		CHECK_FALSE(frame.SubmitFrame(submission, feedback).has_value());
+		frame.FrameCallbackDone();
+		return submission;
+	};
+
+	const uint64_t first = submit({0, 0, 10, 10}, false);
+	CHECK_FALSE(frame.FeedbackOutstanding(first));
+	const uint64_t second = submit({10, 10, 20, 20}, true);
+	const uint64_t third = submit({20, 20, 30, 30}, true);
+	frame.Presented(third, 12, 345, 16'666'667, 99, 3);
+	frame.Discarded(second);
+	frame.Presented(999, 0, 0, 0, 0, 0);
+
+	const auto reports = frame.TakePresentationResults();
+	REQUIRE(reports.size() == 2);
+	CHECK(reports[0].submission == third);
+	CHECK(reports[0].kind ==
+		Scalpel::PresentationResult::Kind::Presented);
+	CHECK(reports[0].seconds == 12);
+	CHECK(reports[0].nanoseconds == 345);
+	CHECK(reports[0].refreshNanoseconds == 16'666'667);
+	CHECK(reports[0].sequence == 99);
+	CHECK(reports[0].flags == 3);
+	CHECK(reports[1].submission == second);
+	CHECK(reports[1].kind ==
+		Scalpel::PresentationResult::Kind::Discarded);
+	CHECK(frame.TakePresentationResults().empty());
+}
+
+TEST_CASE("Wayland frame bounds outstanding presentation feedback") {
+	Scalpel::WaylandFrameState frame;
+	uint64_t first = 0;
+	std::optional<uint64_t> expired;
+	for (int index = 0; index < 9; ++index) {
+		frame.Invalidate({index, index, index + 1, index + 1});
+		const auto plan = frame.BeginFrame(100, 80, 1, true, true);
+		REQUIRE(plan.has_value());
+		if (index == 0) {
+			first = plan->submission;
+		}
+		expired = frame.SubmitFrame(plan->submission, true);
+		frame.FrameCallbackDone();
+	}
+	REQUIRE(expired.has_value());
+	CHECK(*expired == first);
+	CHECK_FALSE(frame.FeedbackOutstanding(first));
 }
 
 TEST_CASE("Wayland window reports the constructor argument it rejects") {

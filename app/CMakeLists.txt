@@ -95,7 +95,8 @@ target_link_libraries(scalpel_xdg_shell PUBLIC PkgConfig::WAYLAND_CLIENT)
 
 add_library(scalpel_wayland STATIC
   WaylandClipboard.cxx
-	WaylandCursor.cxx
+  WaylandCursor.cxx
+  WaylandFrame.cxx
   WaylandInput.cxx
   WaylandLifecycle.cxx
   WaylandPrimarySelection.cxx
