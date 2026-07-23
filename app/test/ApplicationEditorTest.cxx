@@ -245,6 +245,64 @@ TEST_CASE("production editor reports empty IME refresh as other") {
 	CHECK(state->changeCause == Scalpel::ApplicationTextChangeCause::Other);
 }
 
+TEST_CASE("production editor preserves IME cause across pointer motion") {
+	Scalpel::ApplicationEditor editor(240, 120);
+	editor.LoadInitialBuffer("base");
+	(void)editor.TakeTextInputState();
+
+	Scalpel::ApplicationTextInputBatch preedit;
+	preedit.preedit = Scalpel::ApplicationTextInputPreedit{"x", 1, 1};
+	editor.HandleTextInputBatch(preedit);
+	editor.HandlePointerInput({Scalpel::PointerAction::Move,
+		Scintilla::KeyMod::Norm, 20, 8});
+	const auto state = editor.TakeTextInputState();
+	REQUIRE(state.has_value());
+	CHECK(state->changeCause ==
+		Scalpel::ApplicationTextChangeCause::InputMethod);
+
+	editor.HandlePointerInput({Scalpel::PointerAction::Leave});
+	CHECK_FALSE(editor.TakeTextInputState().has_value());
+}
+
+TEST_CASE("production editor cancels preedit before direct input") {
+	Scalpel::ApplicationEditor editor(240, 120);
+	editor.LoadInitialBuffer("base");
+	editor.HandleKeyboardInput({Scintilla::Keys::End,
+		Scintilla::KeyMod::Norm, {}, 1, true});
+
+	Scalpel::ApplicationTextInputBatch preedit;
+	preedit.preedit = Scalpel::ApplicationTextInputPreedit{"x", 1, 1};
+	editor.HandleTextInputBatch(preedit);
+	editor.HandleKeyboardInput({static_cast<Scintilla::Keys>('Y'),
+		Scintilla::KeyMod::Norm, "y", 2, true});
+	CHECK(editor.Text() == "basey");
+
+	editor.HandleTextInputBatch(preedit);
+	editor.HandlePointerInput({Scalpel::PointerAction::Press,
+		Scintilla::KeyMod::Norm, 20, 8, 0, 0, 3, 0});
+	CHECK(editor.Text() == "basey");
+	CHECK(editor.ImeIndicatorAt(5) == 0);
+}
+
+TEST_CASE("production editor renders the preedit cursor range") {
+	Scalpel::ApplicationEditor editor(240, 120);
+	editor.LoadInitialBuffer("base");
+	editor.SetKeyboardFocus(true);
+
+	Scalpel::ApplicationTextInputBatch selection;
+	selection.preedit = Scalpel::ApplicationTextInputPreedit{
+		"\xE6\x96\x87x", 0, 3};
+	editor.HandleTextInputBatch(selection);
+	CHECK(editor.GetCurrentPos() == 3);
+	CHECK(editor.GetAnchor() == 0);
+
+	Scalpel::ApplicationTextInputBatch hidden;
+	hidden.preedit = Scalpel::ApplicationTextInputPreedit{"x", -1, -1};
+	editor.HandleTextInputBatch(hidden);
+	editor.RunPendingWork();
+	CHECK_FALSE(editor.TimeUntilNextWork().has_value());
+}
+
 TEST_CASE("production editor exposes clipboard requests and unavailable results") {
 	Scalpel::ApplicationEditor editor(200, 100);
 	editor.LoadInitialBuffer("clipboard request");

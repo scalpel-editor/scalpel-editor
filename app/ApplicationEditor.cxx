@@ -14,6 +14,7 @@
 #include "DrawSurface.h"
 #include "GlContext.h"
 #include "Renderer.h"
+#include "UniConversion.h"
 
 namespace Scalpel {
 
@@ -159,6 +160,15 @@ void ApplicationEditor::HandleTextInputBatch(
 		textInputStateDirty = textInputStateDirty || batch.refreshState;
 		return;
 	}
+	const auto insertText = [this](std::string_view text,
+		Scintilla::CharacterSource source) {
+		for (size_t offset = 0; offset < text.size();) {
+			const size_t length = Scintilla::Internal::UTF8DrawBytes(
+				text.data() + offset, text.size() - offset);
+			InsertCharacter(text.substr(offset, length), source);
+			offset += length;
+		}
+	};
 
 	const bool replacingPreedit = pdoc->TentativeActive();
 	if (replacingPreedit) {
@@ -179,7 +189,7 @@ void ApplicationEditor::HandleTextInputBatch(
 			(batch.deletion->beforeLength != 0 ||
 				batch.deletion->afterLength != 0));
 		if (batch.commit && !batch.commit->empty()) {
-			InsertCharacter(*batch.commit, Scintilla::CharacterSource::ImeResult);
+			insertText(*batch.commit, Scintilla::CharacterSource::ImeResult);
 			changed = true;
 		}
 	}
@@ -190,7 +200,7 @@ void ApplicationEditor::HandleTextInputBatch(
 		}
 		const Scintilla::Position preeditStart = CurrentPosition();
 		pdoc->TentativeStart();
-		InsertCharacter(batch.preedit->text,
+		insertText(batch.preedit->text,
 			Scintilla::CharacterSource::TentativeInput);
 		textInputPreeditRange = TextInputPreeditRange{
 			preeditStart,
@@ -198,13 +208,23 @@ void ApplicationEditor::HandleTextInputBatch(
 		};
 		DrawImeIndicator(Scintilla::Internal::IndicatorInput,
 			static_cast<Scintilla::Position>(batch.preedit->text.size()));
-		if (batch.preedit->cursorEnd >= 0) {
-			MoveImeCarets(static_cast<Scintilla::Position>(
-				batch.preedit->cursorEnd) -
-				static_cast<Scintilla::Position>(batch.preedit->text.size()));
+		if (batch.preedit->cursorBegin < 0) {
+			DropCaret();
+		} else {
+			for (size_t selection = 0; selection < sel.Count(); selection++) {
+				const Scintilla::Position insertEnd =
+					sel.Range(selection).Start().Position();
+				const Scintilla::Position insertStart = insertEnd -
+					static_cast<Scintilla::Position>(batch.preedit->text.size());
+				InvalidateSelection(sel.Range(selection));
+				sel.Range(selection) = Scintilla::Internal::SelectionRange(
+					insertStart + batch.preedit->cursorEnd,
+					insertStart + batch.preedit->cursorBegin);
+				InvalidateSelection(sel.Range(selection));
+			}
+			EnsureCaretVisible();
+			ShowCaretAtCurrentPosition();
 		}
-		EnsureCaretVisible();
-		ShowCaretAtCurrentPosition();
 		changed = true;
 	}
 
@@ -233,6 +253,14 @@ void ApplicationEditor::HandleKeyboardInput(const KeyboardInput &input) {
 	if (!input.pressed) {
 		return;
 	}
+	const Scintilla::Position caretBefore = sel.MainCaret();
+	const Scintilla::Position anchorBefore = sel.MainAnchor();
+	const int xOffsetBefore = xOffset;
+	const Scintilla::Line topLineBefore = topLine;
+	if (pdoc->TentativeActive() &&
+		(input.key != static_cast<Scintilla::Keys>(0) || !input.text.empty())) {
+		CancelTextInput();
+	}
 	bool consumed = false;
 	if (input.key != static_cast<Scintilla::Keys>(0)) {
 		KeyDownWithModifiers(input.key, input.modifiers, &consumed);
@@ -243,12 +271,22 @@ void ApplicationEditor::HandleKeyboardInput(const KeyboardInput &input) {
 		(input.modifiers & commandModifiers) == Scintilla::KeyMod::Norm) {
 		InsertCharacter(input.text, Scintilla::CharacterSource::DirectInput);
 	}
-	textInputStateDirty = true;
-	textInputChangeCause = ApplicationTextChangeCause::Other;
+	if (sel.MainCaret() != caretBefore || sel.MainAnchor() != anchorBefore ||
+		xOffset != xOffsetBefore || topLine != topLineBefore) {
+		textInputStateDirty = true;
+		textInputChangeCause = ApplicationTextChangeCause::Other;
+	}
 }
 
 void ApplicationEditor::HandlePointerInput(const PointerInput &input) {
 	const Scintilla::Internal::Point point(input.x, input.y);
+	const Scintilla::Position caretBefore = sel.MainCaret();
+	const Scintilla::Position anchorBefore = sel.MainAnchor();
+	const int xOffsetBefore = xOffset;
+	const Scintilla::Line topLineBefore = topLine;
+	if (input.action == PointerAction::Press && pdoc->TentativeActive()) {
+		CancelTextInput();
+	}
 	switch (input.action) {
 	case PointerAction::Move:
 		ButtonMoveWithModifiers(point, input.time, input.modifiers);
@@ -310,8 +348,11 @@ void ApplicationEditor::HandlePointerInput(const PointerInput &input) {
 		break;
 	}
 	}
-	textInputStateDirty = true;
-	textInputChangeCause = ApplicationTextChangeCause::Other;
+	if (sel.MainCaret() != caretBefore || sel.MainAnchor() != anchorBefore ||
+		xOffset != xOffsetBefore || topLine != topLineBefore) {
+		textInputStateDirty = true;
+		textInputChangeCause = ApplicationTextChangeCause::Other;
+	}
 }
 
 void ApplicationEditor::SetPointerCapture(bool captured) {
