@@ -1,5 +1,6 @@
 #include <chrono>
 #include <cstdlib>
+#include <stdexcept>
 #include <string>
 
 #include <linux/input-event-codes.h>
@@ -224,7 +225,39 @@ TEST_CASE("Wayland keyboard repeat applies timing changes") {
 	REQUIRE(input.TakeInputs().size() == 1);
 	CHECK_FALSE(input.SetRepeatInfo(-1, 0));
 	CHECK_FALSE(input.TimeUntilKeyRepeat().has_value());
+	input.RecordKey(11, KEY_A, false);
+	input.RecordKey(11, KEY_A, true);
+	REQUIRE(input.TakeInputs().size() == 2);
+	now += 100ms;
+	CHECK_FALSE(input.RunKeyRepeat());
+	REQUIRE(input.SetRepeatInfo(20, 100));
 	CHECK_FALSE(input.SetRepeatInfo(20, -1));
+	input.RecordKey(11, KEY_A, false);
+	input.RecordKey(11, KEY_A, true);
+	REQUIRE(input.TakeInputs().size() == 2);
+	now += 100ms;
+	CHECK_FALSE(input.RunKeyRepeat());
+}
+
+TEST_CASE("Wayland keyboard repeat clock exceptions propagate") {
+	const TestKeymap keymap = MakeTestKeymap();
+	Scalpel::WaylandInput::Clock::time_point now{};
+	bool clockFails = false;
+	Scalpel::WaylandInput input("C.utf8", [&] {
+		if (clockFails) {
+			throw std::runtime_error("clock failed");
+		}
+		return now;
+	});
+	REQUIRE(input.SetKeymap(keymap.text));
+	REQUIRE(input.SetRepeatInfo(25, 400));
+	input.RecordKey(11, KEY_A, true);
+	REQUIRE(input.TakeInputs().size() == 1);
+
+	clockFails = true;
+	CHECK_THROWS_AS(input.SetRepeatInfo(50, 200), std::runtime_error);
+	clockFails = false;
+	CHECK(input.TimeUntilKeyRepeat() == std::chrono::milliseconds(400));
 }
 
 TEST_CASE("Wayland keyboard repeat respects key repeatability and cancellation") {

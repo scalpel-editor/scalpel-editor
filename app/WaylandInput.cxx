@@ -273,20 +273,31 @@ void WaylandInput::SetPointerVersion(uint32_t version) noexcept {
 	ResetPointerFrame();
 }
 
-bool WaylandInput::SetRepeatInfo(int32_t rate, int32_t delay) noexcept {
+bool WaylandInput::SetRepeatInfo(int32_t rate, int32_t delay) {
 	if (rate < 0 || delay < 0) {
 		StopRepeat();
+		repeat.rate = 0;
+		repeat.delay = 0;
+		repeat.interval = std::chrono::milliseconds::zero();
 		return false;
 	}
-	repeat.rate = rate;
-	repeat.delay = delay;
 	if (rate == 0) {
+		repeat.rate = 0;
+		repeat.delay = delay;
+		repeat.interval = std::chrono::milliseconds::zero();
 		StopRepeat();
 		return true;
 	}
-	repeat.interval = std::chrono::milliseconds(std::max(1, 1000 / rate));
+	const std::chrono::milliseconds interval(std::max(1, 1000 / rate));
+	Clock::time_point next;
 	if (repeat.active) {
-		repeat.next = now() + std::chrono::milliseconds(delay);
+		next = now() + std::chrono::milliseconds(delay);
+	}
+	repeat.rate = rate;
+	repeat.delay = delay;
+	repeat.interval = interval;
+	if (repeat.active) {
+		repeat.next = next;
 	}
 	return true;
 }
@@ -383,7 +394,7 @@ void WaylandInput::StopRepeat() noexcept {
 std::string WaylandInput::TextForKey(
 	uint32_t keycode, uint32_t keysym, Scintilla::KeyMod modifiers) {
 	const Scintilla::KeyMod commandModifiers = Scintilla::KeyMod::Ctrl |
-		Scintilla::KeyMod::Alt | Scintilla::KeyMod::Super | Scintilla::KeyMod::Meta;
+		Scintilla::KeyMod::Alt | Scintilla::KeyMod::Super;
 	if ((modifiers & commandModifiers) != Scintilla::KeyMod::Norm) {
 		return {};
 	}

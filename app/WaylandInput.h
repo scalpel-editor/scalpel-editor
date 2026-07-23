@@ -51,7 +51,7 @@ public:
 	void ResetKeyboardDevice();
 	void ResetPointerDevice();
 	void SetPointerVersion(uint32_t version) noexcept;
-	[[nodiscard]] bool SetRepeatInfo(int32_t rate, int32_t delay) noexcept;
+	[[nodiscard]] bool SetRepeatInfo(int32_t rate, int32_t delay);
 	[[nodiscard]] std::optional<std::chrono::milliseconds> TimeUntilKeyRepeat() const;
 	/** Emit repeats due at the current clock, returning whether any were emitted. */
 	[[nodiscard]] bool RunKeyRepeat();
