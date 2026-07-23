@@ -105,7 +105,7 @@ Test state through public concern methods and observable results, not by making 
 
 ## Focused and final verification
 
-During implementation, build only the target owned by the row above and run a matching Catch pattern. Header include changes also require `tools/check-self-contained-headers.sh`. Every compiled-code handoff ends with `cmake --workflow --preset dev`; the full `./check.sh` matrix is reserved for step 12 or an earlier change with the risk categories named in `AGENTS.md`.
+During implementation, build only the target owned by the row above and run a matching Catch pattern. When production headers or their includes change, check only the affected paths with `tools/check-self-contained-headers.sh --changed` or explicit header arguments; reserve the no-argument full scan for phase gates. Every compiled-code handoff ends with `cmake --workflow --preset dev`; the full `./check.sh` matrix is reserved for step 12 or an earlier change with the risk categories named in `AGENTS.md`.
 
 Optional-protocol absence is an automated state case for every extension. The live check records which globals the compositor advertised and verifies the paths available in that environment: initial configure and resize, keyboard and pointer focus, compose and repeat, cursor update, clipboard and primary selection, IME when offered, live scale change when available, frame callbacks, presentation feedback when offered, clean global or seat loss when the compositor can exercise it, and clean close. A live compositor is not used for exact timing, partial-transfer, or coordinate-rounding assertions.
 

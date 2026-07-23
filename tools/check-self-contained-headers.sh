@@ -2,9 +2,12 @@
 # Fail when listed production headers do not compile alone (IWYU prerequisite).
 #
 # Usage:
-#   tools/check-self-contained-headers.sh              # every app/ and Scintilla production header
+#   tools/check-self-contained-headers.sh --changed    # production headers dirty vs HEAD
 #   tools/check-self-contained-headers.sh path/to/H.h  # one or more headers
+#   tools/check-self-contained-headers.sh              # every app/ and Scintilla production header
 #   tools/check-self-contained-headers.sh --all-src    # every scintilla/src/*.h only (legacy alias)
+#
+# Prefer --changed or explicit paths during development. The no-argument full scan is for occasional audits and phase gates, not every session.
 #
 # Requires a configured build tree with compile_commands.json (cmake --preset dev).
 
@@ -63,20 +66,38 @@ PY
 
 }
 
-# Default: every application, Scintilla, and Lexilla-facing production header.
+# Every application, Scintilla, and Lexilla-facing production header.
 list_default_headers() {
 	find app -maxdepth 1 -name '*.h' | sort
 	find scintilla/src -maxdepth 1 -name '*.h' | sort
 	find scintilla/include -maxdepth 1 -name '*.h' | sort
 }
 
-if [ "${1:-}" = "--all-src" ]; then
+# Production headers modified, staged, or untracked relative to HEAD.
+list_changed_headers() {
+	{
+		git -C "$root" diff --name-only HEAD -- app scintilla/src scintilla/include
+		git -C "$root" ls-files --others --exclude-standard -- app scintilla/src scintilla/include
+	} | grep -E '^(app|scintilla/src|scintilla/include)/[^/]+\.h$' | sort -u | while IFS= read -r path; do
+		[ -f "$path" ] && printf '%s\n' "$path"
+	done
+}
+
+if [ "${1:-}" = "--changed" ]; then
+	headers=$(list_changed_headers)
+	shift
+elif [ "${1:-}" = "--all-src" ]; then
 	headers=$(find scintilla/src -maxdepth 1 -name '*.h' | sort)
 	shift
 elif [ "$#" -gt 0 ]; then
 	headers=$*
 else
 	headers=$(list_default_headers)
+fi
+
+if [ -z "${headers:-}" ]; then
+	printf 'no production headers to check\n'
+	exit 0
 fi
 
 fail=0

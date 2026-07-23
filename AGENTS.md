@@ -63,7 +63,7 @@ For failure details, run a test binary directly: `./build/scintilla/test/unit/un
 
 ### Includes
 
-Production headers under `app/`, `scintilla/src/`, and `scintilla/include/` must compile alone. After changing header includes, run `tools/check-self-contained-headers.sh`; it uses the configured development tree's compile database to select flags for the target that owns each header.
+Production headers under `app/`, `scintilla/src/`, and `scintilla/include/` must compile alone. Do not run the full header scan as routine session work. When a session changes production headers or their includes, check only those paths — either pass them explicitly or use `tools/check-self-contained-headers.sh --changed` (dirty production headers vs `HEAD`). The no-argument full scan is for occasional audits and phase gates; it uses the configured development tree's compile database to select flags for the target that owns each header.
 
 ## Documentation guidance
 
