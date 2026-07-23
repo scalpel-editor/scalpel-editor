@@ -354,17 +354,20 @@ void WaylandWindow::LoadCursorTheme() {
 		}
 		return;
 	}
-	if (cursorTheme || cursorThemeScale == cursorState.Scale()) {
+	if (cursorTheme || cursorThemeAttemptedScale == cursorState.Scale()) {
 		return;
 	}
-	cursorThemeScale = cursorState.Scale();
+	cursorThemeAttemptedScale = cursorState.Scale();
 	const int pixelSize = CursorThemePixelSize(
-		cursorSettings.logicalSize, cursorThemeScale);
+		cursorSettings.logicalSize, cursorThemeAttemptedScale);
 	const char *name = cursorSettings.themeName.empty() ?
 		nullptr : cursorSettings.themeName.c_str();
 	cursorTheme = wl_cursor_theme_load(name, pixelSize, sharedMemory);
 	if (!cursorTheme && name) {
 		cursorTheme = wl_cursor_theme_load(nullptr, pixelSize, sharedMemory);
+	}
+	if (cursorTheme) {
+		cursorThemeScale = cursorThemeAttemptedScale;
 	}
 	if (!cursorTheme && !cursorUnavailableReported) {
 		std::cerr << "scalpel-editor: Wayland cursor theme is unavailable\n";
@@ -378,6 +381,7 @@ void WaylandWindow::DestroyCursorTheme() noexcept {
 		cursorTheme = nullptr;
 	}
 	cursorThemeScale = 0;
+	cursorThemeAttemptedScale = 0;
 }
 
 void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleAction> &actions) {

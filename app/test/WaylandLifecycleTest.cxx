@@ -38,6 +38,7 @@ TEST_CASE("Wayland cursor choices cover every editor cursor") {
 		CHECK(names[names.count - 1] == "arrow");
 	}
 	CHECK(Scalpel::CursorNames(Cursor::text)[0] == "text");
+	CHECK(Scalpel::CursorNames(Cursor::up)[0] == "sb_up_arrow");
 	CHECK(Scalpel::CursorNames(Cursor::reverseArrow)[0] == "right_ptr");
 	CHECK(Scalpel::CursorNames(Cursor::hand)[0] == "pointer");
 	CHECK(FirstAvailable(Scalpel::CursorNames(Cursor::text), {"left_ptr"}) ==

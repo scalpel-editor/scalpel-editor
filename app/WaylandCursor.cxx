@@ -99,7 +99,7 @@ WaylandCursorNames CursorNames(Cursor cursor) noexcept {
 	case Cursor::invalid:
 		return {{{"default"sv, "left_ptr"sv, "arrow"sv}}, 3};
 	case Cursor::up:
-		return {{{"n-resize"sv, "top_side"sv, "sb_up_arrow"sv,
+		return {{{"sb_up_arrow"sv, "up-arrow"sv, "up_arrow"sv,
 			"default"sv, "left_ptr"sv, "arrow"sv}}, 6};
 	case Cursor::wait:
 		return {{{"wait"sv, "watch"sv, "progress"sv,

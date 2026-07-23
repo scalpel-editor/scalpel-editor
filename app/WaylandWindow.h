@@ -184,6 +184,7 @@ private:
 	wl_surface *cursorSurface = nullptr;
 	wl_cursor_theme *cursorTheme = nullptr;
 	int cursorThemeScale = 0;
+	int cursorThemeAttemptedScale = 0;
 	xdg_wm_base *wmBase = nullptr;
 	wl_surface *surface = nullptr;
 	wl_egl_window *eglWindow = nullptr;
