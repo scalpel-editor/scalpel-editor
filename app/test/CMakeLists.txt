@@ -115,15 +115,44 @@ target_compile_options(waylandRegistryTest PRIVATE -Wall -Wextra)
 
 add_test(NAME wayland-registry COMMAND waylandRegistryTest)
 
-add_executable(waylandInputTest WaylandInputTest.cxx)
-target_include_directories(waylandInputTest PRIVATE
+add_executable(waylandTextInputTest
+  WaylandTextInputTest.cxx
+  WaylandTestMain.cxx
+)
+target_include_directories(waylandTextInputTest PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
   ../../scintilla/test/unit
 )
-target_link_libraries(waylandInputTest PRIVATE scalpel_wayland)
-target_compile_options(waylandInputTest PRIVATE -Wall -Wextra)
+target_link_libraries(waylandTextInputTest PRIVATE scalpel_wayland)
+target_compile_options(waylandTextInputTest PRIVATE -Wall -Wextra)
 
-add_test(NAME wayland-input COMMAND waylandInputTest)
+add_test(NAME wayland-text-input COMMAND waylandTextInputTest)
+
+add_executable(waylandKeyboardTest
+  WaylandKeyboardTest.cxx
+  WaylandTestMain.cxx
+)
+target_include_directories(waylandKeyboardTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(waylandKeyboardTest PRIVATE scalpel_wayland)
+target_compile_options(waylandKeyboardTest PRIVATE -Wall -Wextra)
+
+add_test(NAME wayland-keyboard COMMAND waylandKeyboardTest)
+
+add_executable(waylandPointerTest
+  WaylandPointerTest.cxx
+  WaylandTestMain.cxx
+)
+target_include_directories(waylandPointerTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(waylandPointerTest PRIVATE scalpel_wayland)
+target_compile_options(waylandPointerTest PRIVATE -Wall -Wextra)
+
+add_test(NAME wayland-pointer COMMAND waylandPointerTest)
 
 add_executable(waylandTransferTest WaylandTransferTest.cxx)
 target_include_directories(waylandTransferTest PRIVATE

@@ -1,0 +1,311 @@
+#include "WaylandInputTest.h"
+
+TEST_CASE("Wayland keyboard translates presses and releases") {
+	const TestKeymap keymap = MakeTestKeymap();
+	Scalpel::WaylandInput input;
+	CHECK_FALSE(input.SetKeymap({}));
+	CHECK_FALSE(input.SetKeymap(std::string_view(keymap.text.data(), keymap.text.size() - 1)));
+	REQUIRE(input.SetKeymap(keymap.text));
+
+	input.RecordKey(15, KEY_A, true);
+	input.RecordKey(16, KEY_A, false);
+	const std::vector<Scalpel::InputEvent> events = input.TakeInputs();
+	REQUIRE(events.size() == 2);
+	const auto &press = std::get<Scalpel::KeyboardInput>(events[0]);
+	const auto &release = std::get<Scalpel::KeyboardInput>(events[1]);
+	CHECK(press.key == static_cast<Scintilla::Keys>('A'));
+	CHECK(press.modifiers == Scintilla::KeyMod::Norm);
+	CHECK(press.text == "a");
+	CHECK(press.time == 15);
+	CHECK(press.pressed);
+	CHECK(release.key == static_cast<Scintilla::Keys>('A'));
+	CHECK(release.text.empty());
+	CHECK_FALSE(release.pressed);
+	CHECK(input.TakeInputs().empty());
+}
+
+TEST_CASE("Wayland keyboard applies modifiers and maps command keys") {
+	const TestKeymap keymap = MakeTestKeymap();
+	Scalpel::WaylandInput input;
+	REQUIRE(input.SetKeymap(keymap.text));
+
+	input.UpdateModifiers(keymap.shiftMask, 0, 0, 0);
+	input.RecordKey(20, KEY_A, true);
+	input.UpdateModifiers(keymap.controlMask, 0, 0, 0);
+	input.RecordKey(21, KEY_LEFT, true);
+	const std::vector<Scalpel::InputEvent> events = input.TakeInputs();
+	REQUIRE(events.size() == 2);
+	const auto &shifted = std::get<Scalpel::KeyboardInput>(events[0]);
+	const auto &controlled = std::get<Scalpel::KeyboardInput>(events[1]);
+	CHECK(shifted.key == static_cast<Scintilla::Keys>('A'));
+	CHECK(shifted.modifiers == Scintilla::KeyMod::Shift);
+	CHECK(shifted.text == "A");
+	CHECK(controlled.key == Scintilla::Keys::Left);
+	CHECK(controlled.modifiers == Scintilla::KeyMod::Ctrl);
+	CHECK(controlled.text.empty());
+}
+
+TEST_CASE("Wayland keyboard composes locale text") {
+	const TestKeymap keymap = MakeTestKeymap("intl");
+	Scalpel::WaylandInput input("C.utf8");
+	REQUIRE(input.SetKeymap(keymap.text));
+
+	input.RecordKey(22, KEY_APOSTROPHE, true);
+	input.RecordKey(23, KEY_E, true);
+	const std::vector<Scalpel::InputEvent> events = input.TakeInputs();
+	REQUIRE(events.size() == 2);
+	CHECK(std::get<Scalpel::KeyboardInput>(events[0]).text.empty());
+	CHECK(std::get<Scalpel::KeyboardInput>(events[1]).text == "é");
+}
+
+TEST_CASE("Wayland keyboard compose cancellation discards the sequence") {
+	const TestKeymap keymap = MakeTestKeymap("intl");
+	Scalpel::WaylandInput input("C.utf8");
+	REQUIRE(input.SetKeymap(keymap.text));
+
+	input.RecordKey(24, KEY_APOSTROPHE, true);
+	input.RecordKey(25, KEY_LEFT, true);
+	input.RecordKey(26, KEY_A, true);
+	const std::vector<Scalpel::InputEvent> events = input.TakeInputs();
+	REQUIRE(events.size() == 3);
+	CHECK(std::get<Scalpel::KeyboardInput>(events[0]).text.empty());
+	CHECK(std::get<Scalpel::KeyboardInput>(events[1]).text.empty());
+	CHECK(std::get<Scalpel::KeyboardInput>(events[2]).text == "a");
+}
+
+TEST_CASE("Wayland keyboard command keys bypass compose state") {
+	const TestKeymap keymap = MakeTestKeymap("intl");
+	Scalpel::WaylandInput input("C.utf8");
+	REQUIRE(input.SetKeymap(keymap.text));
+
+	input.RecordKey(27, KEY_APOSTROPHE, true);
+	input.UpdateModifiers(keymap.controlMask, 0, 0, 0);
+	input.RecordKey(28, KEY_A, true);
+	input.UpdateModifiers(0, 0, 0, 0);
+	input.RecordKey(29, KEY_E, true);
+	const std::vector<Scalpel::InputEvent> events = input.TakeInputs();
+	REQUIRE(events.size() == 3);
+	CHECK(std::get<Scalpel::KeyboardInput>(events[1]).key ==
+		static_cast<Scintilla::Keys>('A'));
+	CHECK(std::get<Scalpel::KeyboardInput>(events[1]).text.empty());
+	CHECK(std::get<Scalpel::KeyboardInput>(events[2]).text == "é");
+}
+
+TEST_CASE("Wayland keyboard resets unfinished compose state") {
+	const TestKeymap keymap = MakeTestKeymap("intl");
+	Scalpel::WaylandInput input("C.utf8");
+	REQUIRE(input.SetKeymap(keymap.text));
+
+	input.RecordKeyboardFocus(true);
+	input.RecordKey(30, KEY_APOSTROPHE, true);
+	input.RecordKeyboardFocus(false);
+	input.RecordKey(31, KEY_E, true);
+	std::vector<Scalpel::InputEvent> events = input.TakeInputs();
+	REQUIRE(events.size() == 4);
+	CHECK(std::get<Scalpel::KeyboardInput>(events[3]).text == "e");
+
+	input.RecordKey(32, KEY_APOSTROPHE, true);
+	REQUIRE(input.SetKeymap(keymap.text));
+	input.RecordKey(33, KEY_E, true);
+	events = input.TakeInputs();
+	REQUIRE(events.size() == 2);
+	CHECK(std::get<Scalpel::KeyboardInput>(events[1]).text == "e");
+}
+
+TEST_CASE("Wayland keyboard keeps direct text when compose locale fails") {
+	const TestKeymap keymap = MakeTestKeymap();
+	Scalpel::WaylandInput input("not_a_real_compose_locale");
+	REQUIRE(input.SetKeymap(keymap.text));
+
+	input.RecordKey(30, KEY_A, true);
+	const std::vector<Scalpel::InputEvent> events = input.TakeInputs();
+	REQUIRE(events.size() == 1);
+	CHECK(std::get<Scalpel::KeyboardInput>(events[0]).text == "a");
+}
+
+TEST_CASE("Wayland keyboard repeat follows compositor timing") {
+	using namespace std::chrono_literals;
+	const TestKeymap keymap = MakeTestKeymap();
+	Scalpel::WaylandInput::Clock::time_point now{};
+	Scalpel::WaylandInput input("C.utf8", [&now] { return now; });
+	REQUIRE(input.SetKeymap(keymap.text));
+	REQUIRE(input.SetRepeatInfo(25, 400));
+
+	input.RecordKey(10, KEY_A, true);
+	REQUIRE(input.TakeInputs().size() == 1);
+	CHECK(input.TimeUntilKeyRepeat() == 400ms);
+	now += 399ms;
+	CHECK_FALSE(input.RunKeyRepeat());
+	CHECK(input.TimeUntilKeyRepeat() == 1ms);
+	now += 1ms;
+	CHECK(input.RunKeyRepeat());
+	std::vector<Scalpel::InputEvent> events = input.TakeInputs();
+	REQUIRE(events.size() == 1);
+	CHECK(std::get<Scalpel::KeyboardInput>(events[0]).text == "a");
+	CHECK(std::get<Scalpel::KeyboardInput>(events[0]).time == 10);
+	CHECK(input.TimeUntilKeyRepeat() == 40ms);
+
+	now += 120ms;
+	CHECK(input.RunKeyRepeat());
+	events = input.TakeInputs();
+	REQUIRE(events.size() == 3);
+	CHECK(input.TimeUntilKeyRepeat() == 40ms);
+}
+
+TEST_CASE("Wayland keyboard repeat applies timing changes") {
+	using namespace std::chrono_literals;
+	const TestKeymap keymap = MakeTestKeymap();
+	Scalpel::WaylandInput::Clock::time_point now{};
+	Scalpel::WaylandInput input("C.utf8", [&now] { return now; });
+	REQUIRE(input.SetKeymap(keymap.text));
+	REQUIRE(input.SetRepeatInfo(25, 400));
+	input.RecordKey(11, KEY_A, true);
+	REQUIRE(input.TakeInputs().size() == 1);
+
+	now += 100ms;
+	REQUIRE(input.SetRepeatInfo(50, 200));
+	CHECK(input.TimeUntilKeyRepeat() == 200ms);
+	now += 200ms;
+	CHECK(input.RunKeyRepeat());
+	REQUIRE(input.TakeInputs().size() == 1);
+	CHECK(input.TimeUntilKeyRepeat() == 20ms);
+	REQUIRE(input.SetRepeatInfo(0, 0));
+	CHECK_FALSE(input.TimeUntilKeyRepeat().has_value());
+	input.RecordKey(11, KEY_A, false);
+	REQUIRE(input.TakeInputs().size() == 1);
+	REQUIRE(input.SetRepeatInfo(50, 100));
+	input.RecordKey(11, KEY_A, true);
+	REQUIRE(input.TakeInputs().size() == 1);
+	CHECK_FALSE(input.SetRepeatInfo(-1, 0));
+	CHECK_FALSE(input.TimeUntilKeyRepeat().has_value());
+	input.RecordKey(11, KEY_A, false);
+	input.RecordKey(11, KEY_A, true);
+	REQUIRE(input.TakeInputs().size() == 2);
+	now += 100ms;
+	CHECK_FALSE(input.RunKeyRepeat());
+	REQUIRE(input.SetRepeatInfo(20, 100));
+	CHECK_FALSE(input.SetRepeatInfo(20, -1));
+	input.RecordKey(11, KEY_A, false);
+	input.RecordKey(11, KEY_A, true);
+	REQUIRE(input.TakeInputs().size() == 2);
+	now += 100ms;
+	CHECK_FALSE(input.RunKeyRepeat());
+}
+
+TEST_CASE("Wayland keyboard repeat clock exceptions propagate") {
+	const TestKeymap keymap = MakeTestKeymap();
+	Scalpel::WaylandInput::Clock::time_point now{};
+	bool clockFails = false;
+	Scalpel::WaylandInput input("C.utf8", [&] {
+		if (clockFails) {
+			throw std::runtime_error("clock failed");
+		}
+		return now;
+	});
+	REQUIRE(input.SetKeymap(keymap.text));
+	REQUIRE(input.SetRepeatInfo(25, 400));
+	input.RecordKey(11, KEY_A, true);
+	REQUIRE(input.TakeInputs().size() == 1);
+
+	clockFails = true;
+	CHECK_THROWS_AS(input.SetRepeatInfo(50, 200), std::runtime_error);
+	clockFails = false;
+	CHECK(input.TimeUntilKeyRepeat() == std::chrono::milliseconds(400));
+}
+
+TEST_CASE("Wayland keyboard repeat respects key repeatability and cancellation") {
+	using namespace std::chrono_literals;
+	const TestKeymap keymap = MakeTestKeymap();
+	Scalpel::WaylandInput::Clock::time_point now{};
+	Scalpel::WaylandInput input("C.utf8", [&now] { return now; });
+	REQUIRE(input.SetKeymap(keymap.text));
+	REQUIRE(input.SetRepeatInfo(100, 10));
+
+	input.RecordKey(12, KEY_A, true);
+	input.RecordKey(13, KEY_A, false);
+	REQUIRE(input.TakeInputs().size() == 2);
+	now += 10ms;
+	CHECK_FALSE(input.RunKeyRepeat());
+
+	input.RecordKey(14, KEY_A, true);
+	REQUIRE(input.TakeInputs().size() == 1);
+	input.RecordKeyboardFocus(false);
+	now += 10ms;
+	CHECK_FALSE(input.RunKeyRepeat());
+
+	input.RecordKey(15, KEY_A, true);
+	REQUIRE(input.TakeInputs().size() == 1);
+	input.ResetKeyboardState();
+	now += 10ms;
+	CHECK_FALSE(input.RunKeyRepeat());
+
+	input.RecordKey(16, KEY_A, true);
+	REQUIRE(input.TakeInputs().size() == 1);
+	REQUIRE(input.SetKeymap(keymap.text));
+	now += 10ms;
+	CHECK_FALSE(input.RunKeyRepeat());
+
+	input.RecordKey(17, KEY_A, true);
+	input.RecordKey(18, KEY_LEFTSHIFT, true);
+	REQUIRE(input.TakeInputs().size() == 2);
+	now += 10ms;
+	CHECK_FALSE(input.RunKeyRepeat());
+
+	input.RecordKey(19, KEY_A, true);
+	REQUIRE(input.TakeInputs().size() == 1);
+	input.ResetKeyboardDevice();
+	now += 10ms;
+	CHECK_FALSE(input.RunKeyRepeat());
+}
+
+TEST_CASE("Wayland keyboard repeat limits deadline catch-up") {
+	using namespace std::chrono_literals;
+	const TestKeymap keymap = MakeTestKeymap();
+	Scalpel::WaylandInput::Clock::time_point now{};
+	Scalpel::WaylandInput input("C.utf8", [&now] { return now; });
+	REQUIRE(input.SetKeymap(keymap.text));
+	REQUIRE(input.SetRepeatInfo(100, 0));
+	input.RecordKey(20, KEY_A, true);
+	REQUIRE(input.TakeInputs().size() == 1);
+
+	now += 1s;
+	CHECK(input.RunKeyRepeat());
+	CHECK(input.TakeInputs().size() == 32);
+	CHECK(input.TimeUntilKeyRepeat() == 10ms);
+}
+
+TEST_CASE("Wayland keyboard retains focus and key event order") {
+	const TestKeymap keymap = MakeTestKeymap();
+	Scalpel::WaylandInput input;
+	REQUIRE(input.SetKeymap(keymap.text));
+
+	input.RecordKeyboardFocus(true);
+	input.RecordKey(25, KEY_A, true);
+	input.RecordKeyboardFocus(false);
+	input.RecordKeyboardFocus(false);
+	const std::vector<Scalpel::InputEvent> events = input.TakeInputs();
+	REQUIRE(events.size() == 3);
+	CHECK(std::get<Scalpel::KeyboardFocusInput>(events[0]).focused);
+	CHECK(std::get<Scalpel::KeyboardInput>(events[1]).time == 25);
+	CHECK_FALSE(std::get<Scalpel::KeyboardFocusInput>(events[2]).focused);
+}
+
+TEST_CASE("Wayland keyboard teardown removes stale input and reports focus loss") {
+	const TestKeymap keymap = MakeTestKeymap();
+	Scalpel::WaylandInput input;
+	REQUIRE(input.SetKeymap(keymap.text));
+
+	input.RecordKeyboardFocus(true);
+	input.UpdateModifiers(keymap.shiftMask, 0, 0, 0);
+	input.RecordKey(25, KEY_A, true);
+	input.ResetKeyboardDevice();
+	const std::vector<Scalpel::InputEvent> events = input.TakeInputs();
+	REQUIRE(events.size() == 1);
+	CHECK_FALSE(std::get<Scalpel::KeyboardFocusInput>(events[0]).focused);
+	input.RecordKey(26, KEY_A, true);
+	CHECK(input.TakeInputs().empty());
+
+	input.RecordPointerMotion(30, 12.5, 18.25);
+	const auto pointer = std::get<Scalpel::PointerInput>(input.TakeInputs().front());
+	CHECK(pointer.modifiers == Scintilla::KeyMod::Norm);
+}
