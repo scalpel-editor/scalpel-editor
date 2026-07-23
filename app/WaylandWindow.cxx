@@ -1457,7 +1457,11 @@ void WaylandWindow::WaylandSurfaceLeave(void *data, wl_surface *surface_, wl_out
 void WaylandWindow::WaylandSurfacePreferredBufferScale(
 	void *data, wl_surface *surface_, int32_t factor) {
 	auto &window = *static_cast<WaylandWindow *>(data);
-	if (surface_ != window.surface || factor <= 0) {
+	if (surface_ != window.surface) {
+		return;
+	}
+	if (factor <= 0) {
+		window.callbackFailed = true;
 		return;
 	}
 	try {
