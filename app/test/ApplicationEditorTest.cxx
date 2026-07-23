@@ -74,12 +74,13 @@ TEST_CASE("production editor host exposes shell state") {
 	editor.SetPointerCapture(false);
 	CHECK_FALSE(editor.WindowState().mouseCaptured);
 
+	editor.SetFrameBufferSize(360, 180);
 	const size_t invalidationsBeforeResize = editor.WindowState().invalidatedRectangles.size();
 	editor.Resize(300, 120);
 	CHECK(editor.FrameWidth() == 300);
 	CHECK(editor.FrameHeight() == 120);
-	CHECK(editor.BufferWidth() == 300);
-	CHECK(editor.BufferHeight() == 120);
+	CHECK(editor.BufferWidth() == 360);
+	CHECK(editor.BufferHeight() == 180);
 	editor.SetFrameBufferSize(450, 180);
 	CHECK(editor.FrameWidth() == 300);
 	CHECK(editor.FrameHeight() == 120);

@@ -166,8 +166,6 @@ void ApplicationEditor::Resize(int width, int height) {
 		throw std::invalid_argument("ApplicationEditor::Resize requires a positive size");
 	}
 	window.rectangle = PRectangle(0, 0, width, height);
-	bufferWidth = width;
-	bufferHeight = height;
 	frame.reset();
 	ChangeSize();
 	wMain.InvalidateAll();

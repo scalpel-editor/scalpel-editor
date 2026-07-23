@@ -92,6 +92,7 @@ public:
 
 	void LoadInitialBuffer(std::string_view text);
 	[[nodiscard]] std::string Text() const;
+	// Logical editor size and framebuffer pixel size change independently.
 	void Resize(int width, int height);
 	void SetFrameBufferSize(int width, int height);
 	void SetKeyboardFocus(bool focused);
