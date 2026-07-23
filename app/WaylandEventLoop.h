@@ -39,7 +39,8 @@ public:
 
 	[[nodiscard]] int TimeoutMilliseconds() const noexcept;
 	[[nodiscard]] std::vector<pollfd> PollDescriptors() const;
-	void DispatchReady(const std::vector<pollfd> &descriptors) const;
+	[[nodiscard]] bool DispatchReady(
+		const std::vector<pollfd> &descriptors) const;
 
 	[[nodiscard]] static WaylandPollOutcome InterpretPollResult(
 		int result, int error);

@@ -5,6 +5,7 @@ pkg_check_modules(WAYLAND_EGL REQUIRED IMPORTED_TARGET wayland-egl)
 pkg_check_modules(WAYLAND_CURSOR REQUIRED IMPORTED_TARGET wayland-cursor)
 pkg_check_modules(WAYLAND_PROTOCOLS REQUIRED wayland-protocols)
 pkg_check_modules(XKBCOMMON REQUIRED IMPORTED_TARGET xkbcommon)
+pkg_check_modules(DBUS REQUIRED IMPORTED_TARGET dbus-1)
 
 find_program(WAYLAND_SCANNER_EXECUTABLE wayland-scanner REQUIRED)
 pkg_get_variable(WAYLAND_PROTOCOLS_DATA_DIR wayland-protocols pkgdatadir)
@@ -124,6 +125,7 @@ target_link_libraries(scalpel_xdg_shell PUBLIC PkgConfig::WAYLAND_CLIENT)
 add_library(scalpel_wayland STATIC
   WaylandClipboard.cxx
   WaylandCursor.cxx
+  WaylandDbus.cxx
   WaylandEventLoop.cxx
   WaylandFrame.cxx
   WaylandInput.cxx
@@ -144,6 +146,7 @@ target_link_libraries(scalpel_wayland PUBLIC
   PkgConfig::WAYLAND_EGL
   PkgConfig::WAYLAND_CURSOR
   PkgConfig::XKBCOMMON
+  PkgConfig::DBUS
 )
 target_compile_options(scalpel_wayland PRIVATE -Wall -Wextra)
 add_dependencies(scalpel_wayland scalpel_xdg_shell)

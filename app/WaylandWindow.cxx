@@ -1054,10 +1054,12 @@ void WaylandWindow::WaitForEvents(std::optional<std::chrono::milliseconds> timeo
 		eventLoop.AddDeadline(input.TimeUntilKeyRepeat());
 		eventLoop.AddDeadline(clipboard.TimeUntilTransfer());
 		eventLoop.AddDeadline(primarySelection.TimeUntilTransfer());
+		eventLoop.AddDeadline(dbus.TimeUntilTimeout());
 		const std::size_t displaySource =
 			eventLoop.AddSource(wl_display_get_fd(display), events);
 		clipboard.AddPollSources(eventLoop);
 		primarySelection.AddPollSources(eventLoop);
+		dbus.AddPollSources(eventLoop);
 		std::vector<pollfd> pollDescriptors = eventLoop.PollDescriptors();
 		const int pollResult = poll(
 			pollDescriptors.data(), pollDescriptors.size(),
@@ -1081,9 +1083,10 @@ void WaylandWindow::WaitForEvents(std::optional<std::chrono::milliseconds> timeo
 		if (displayPoll.revents & (POLLERR | POLLHUP | POLLNVAL)) {
 			throw std::runtime_error("Wayland display connection failed");
 		}
-		eventLoop.DispatchReady(pollDescriptors);
+		const bool serviceReady = eventLoop.DispatchReady(pollDescriptors);
 		clipboard.ProcessPollTimeouts();
 		primarySelection.ProcessPollTimeouts();
+		dbus.ProcessEvents();
 
 		int dispatched = 0;
 		do {
@@ -1096,7 +1099,8 @@ void WaylandWindow::WaitForEvents(std::optional<std::chrono::milliseconds> timeo
 			throw std::runtime_error("Wayland listener failed");
 		}
 		const bool repeated = input.RunKeyRepeat();
-		if (!recoveringBlockedFlush || repeated) {
+		if (!recoveringBlockedFlush || repeated || serviceReady ||
+			pollOutcome == WaylandPollOutcome::TimedOut) {
 			break;
 		}
 	}

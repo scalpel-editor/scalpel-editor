@@ -12,6 +12,7 @@
 
 #include "WaylandClipboard.h"
 #include "WaylandCursor.h"
+#include "WaylandDbus.h"
 #include "WaylandFrame.h"
 #include "WaylandInput.h"
 #include "WaylandLifecycle.h"
@@ -138,6 +139,10 @@ public:
 	void CancelFrame() noexcept;
 	[[nodiscard]] std::vector<PresentationResult> TakePresentationResults() {
 		return frameState.TakePresentationResults();
+	}
+	/** Lazily connect the session bus for later portal requests. */
+	[[nodiscard]] DBusConnection *ConnectSessionBus() {
+		return dbus.ConnectSessionBus();
 	}
 
 	/** Complete one request/event round trip, throwing on display failure. */
@@ -300,6 +305,7 @@ private:
 	std::optional<WaylandScaleConfiguration> appliedScaleConfiguration;
 	WaylandInput input;
 	WaylandCursorState cursorState;
+	WaylandDbus dbus;
 	WaylandClipboard clipboard;
 	WaylandPrimarySelection primarySelection;
 	WaylandTextInput textInput;

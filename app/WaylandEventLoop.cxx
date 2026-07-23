@@ -57,12 +57,13 @@ std::vector<pollfd> WaylandEventLoop::PollDescriptors() const {
 	return descriptors;
 }
 
-void WaylandEventLoop::DispatchReady(
+bool WaylandEventLoop::DispatchReady(
 	const std::vector<pollfd> &descriptors) const {
 	if (descriptors.size() != sources.size()) {
 		throw std::invalid_argument(
 			"Wayland event-loop poll result count changed");
 	}
+	bool dispatched = false;
 	for (std::size_t index = 0; index < sources.size(); ++index) {
 		const Source &source = sources[index];
 		const pollfd &descriptor = descriptors[index];
@@ -72,8 +73,10 @@ void WaylandEventLoop::DispatchReady(
 		}
 		if (descriptor.revents != 0 && source.ready) {
 			source.ready(descriptor.revents);
+			dispatched = true;
 		}
 	}
+	return dispatched;
 }
 
 WaylandPollOutcome WaylandEventLoop::InterpretPollResult(
