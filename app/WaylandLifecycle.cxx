@@ -8,15 +8,15 @@ namespace Scalpel {
 
 namespace {
 
-constexpr uint32_t ToplevelMaximized = 1;
-constexpr uint32_t ToplevelFullscreen = 2;
-constexpr uint32_t ToplevelResizing = 3;
-constexpr uint32_t ToplevelActivated = 4;
+constexpr uint32_t ToplevelMaximized = 1; // XDG_TOPLEVEL_STATE_MAXIMIZED
+constexpr uint32_t ToplevelFullscreen = 2; // XDG_TOPLEVEL_STATE_FULLSCREEN
+constexpr uint32_t ToplevelResizing = 3; // XDG_TOPLEVEL_STATE_RESIZING
+constexpr uint32_t ToplevelActivated = 4; // XDG_TOPLEVEL_STATE_ACTIVATED
 
-constexpr uint32_t WindowMenuCapability = 1;
-constexpr uint32_t MaximizeCapability = 2;
-constexpr uint32_t FullscreenCapability = 3;
-constexpr uint32_t MinimizeCapability = 4;
+constexpr uint32_t WindowMenuCapability = 1; // XDG_TOPLEVEL_WM_CAPABILITIES_WINDOW_MENU
+constexpr uint32_t MaximizeCapability = 2; // XDG_TOPLEVEL_WM_CAPABILITIES_MAXIMIZE
+constexpr uint32_t FullscreenCapability = 3; // XDG_TOPLEVEL_WM_CAPABILITIES_FULLSCREEN
+constexpr uint32_t MinimizeCapability = 4; // XDG_TOPLEVEL_WM_CAPABILITIES_MINIMIZE
 
 }
 

@@ -60,11 +60,9 @@ private:
 		double continuous = 0;
 		int32_t discrete = 0;
 		int32_t value120 = 0;
-		std::optional<uint32_t> relativeDirection;
 		bool hasContinuous = false;
 		bool hasDiscrete = false;
 		bool hasValue120 = false;
-		bool stopped = false;
 	};
 
 	[[nodiscard]] Scintilla::KeyMod CurrentModifiers() const;
@@ -78,7 +76,6 @@ private:
 	double pointerY = 0;
 	std::array<bool, 3> pointerButtons{};
 	std::array<PointerAxisState, 2> pointerAxes{};
-	std::optional<uint32_t> pointerAxisSource;
 	uint32_t pointerAxisTime = 0;
 	bool pointerFrames = false;
 	bool keyboardFocused = false;

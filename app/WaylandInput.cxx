@@ -322,16 +322,13 @@ void WaylandInput::RecordPointerFrame() {
 	ResetPointerFrame();
 }
 
-void WaylandInput::RecordPointerAxisSource(uint32_t source) noexcept {
-	if (pointerFrames) {
-		pointerAxisSource = source;
-	}
+void WaylandInput::RecordPointerAxisSource(uint32_t) noexcept {
+	// Axis source does not alter the emitted scroll delta.
 }
 
 void WaylandInput::RecordPointerAxisStop(uint32_t time, uint32_t axis) noexcept {
 	if (pointerFrames) {
 		if (const std::optional<size_t> index = PointerAxisIndex(axis)) {
-			pointerAxes[*index].stopped = true;
 			pointerAxisTime = time;
 		}
 	}
@@ -356,12 +353,8 @@ void WaylandInput::RecordPointerAxisValue120(uint32_t axis, int32_t value120) no
 }
 
 void WaylandInput::RecordPointerAxisRelativeDirection(
-	uint32_t axis, uint32_t direction) noexcept {
-	if (pointerFrames) {
-		if (const std::optional<size_t> index = PointerAxisIndex(axis)) {
-			pointerAxes[*index].relativeDirection = direction;
-		}
-	}
+	uint32_t, uint32_t) noexcept {
+	// Relative direction does not alter the emitted scroll delta.
 }
 
 std::vector<InputEvent> WaylandInput::TakeInputs() {
@@ -393,7 +386,6 @@ std::optional<size_t> WaylandInput::PointerAxisIndex(uint32_t axis) noexcept {
 
 void WaylandInput::ResetPointerFrame() noexcept {
 	pointerAxes = {};
-	pointerAxisSource.reset();
 	pointerAxisTime = 0;
 }
 
