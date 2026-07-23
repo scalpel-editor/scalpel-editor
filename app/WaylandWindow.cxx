@@ -270,6 +270,10 @@ void WaylandWindow::SetCursorScale(int scale) {
 	if (scale <= 0) {
 		throw std::invalid_argument("Wayland cursor scale must be positive");
 	}
+	if (cursorSurface &&
+		wl_surface_get_version(cursorSurface) < WL_SURFACE_SET_BUFFER_SCALE_SINCE_VERSION) {
+		scale = 1;
+	}
 	if (scale == cursorState.Scale()) {
 		return;
 	}
@@ -316,11 +320,18 @@ void WaylandWindow::ApplyCursorAction(const WaylandCursorAction &action) {
 	}
 	const WaylandCursorImageGeometry geometry = CursorImageGeometry(
 		image->width, image->height, image->hotspot_x, image->hotspot_y, action.scale);
+	const uint32_t surfaceVersion = wl_surface_get_version(cursorSurface);
+	if (action.scale != 1 &&
+		surfaceVersion < WL_SURFACE_SET_BUFFER_SCALE_SINCE_VERSION) {
+		return;
+	}
 	wl_pointer_set_cursor(pointer, action.serial, cursorSurface,
 		geometry.hotspotX, geometry.hotspotY);
-	wl_surface_set_buffer_scale(cursorSurface, action.scale);
+	if (surfaceVersion >= WL_SURFACE_SET_BUFFER_SCALE_SINCE_VERSION) {
+		wl_surface_set_buffer_scale(cursorSurface, action.scale);
+	}
 	wl_surface_attach(cursorSurface, buffer, 0, 0);
-	if (wl_surface_get_version(cursorSurface) >= WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION) {
+	if (surfaceVersion >= WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION) {
 		wl_surface_damage_buffer(cursorSurface, 0, 0,
 			static_cast<int32_t>(geometry.bufferWidth),
 			static_cast<int32_t>(geometry.bufferHeight));
@@ -408,10 +419,6 @@ void WaylandWindow::ApplyLifecycleActions(const std::vector<WaylandLifecycleActi
 			}
 			sharedMemory = static_cast<wl_shm *>(wl_registry_bind(
 				registry, action.name, &wl_shm_interface, std::min(action.version, 1U)));
-			if (!sharedMemory) {
-				callbackFailed = true;
-				break;
-			}
 			LoadCursorTheme();
 			ApplyCursorAction(cursorState.SetThemeAvailable(cursorTheme != nullptr));
 			break;
