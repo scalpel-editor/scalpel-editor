@@ -193,6 +193,7 @@ private:
 	std::optional<PendingPrimaryClaim> pendingPrimaryClaim;
 	uint64_t nextClipboardRequest = 1;
 	uint64_t nextPrimarySelectionRequest = 1;
+	uint64_t latestPrimarySelectionClaimRequest = 0;
 	uint64_t documentGeneration = 0;
 	bool primarySelectionClaimed = false;
 	bool suppressPrimarySelectionClaim = false;

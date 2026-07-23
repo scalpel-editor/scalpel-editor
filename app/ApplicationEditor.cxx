@@ -70,6 +70,8 @@ const char *PrimarySelectionStatusName(
 		return "transfer timed out";
 	case ApplicationPrimarySelectionStatus::Superseded:
 		return "superseded";
+	case ApplicationPrimarySelectionStatus::NotApplied:
+		return "text not applied";
 	}
 	return "unknown";
 }
@@ -175,9 +177,12 @@ void ApplicationEditor::HandlePointerInput(const PointerInput &input) {
 		} else if (input.button == 2) {
 			suppressPrimarySelectionClaim = true;
 			try {
-				const Scintilla::Position position = PositionFromLocation(point);
+				Scintilla::Internal::SelectionPosition position =
+					SPositionFromLocation(point);
+				position = MovePositionOutsideChar(
+					position, sel.MainCaret() - position.Position());
 				SetEmptySelection(position);
-				RequestPrimarySelectionPaste(position);
+				RequestPrimarySelectionPaste(position.Position());
 			} catch (...) {
 				suppressPrimarySelectionClaim = false;
 				throw;
@@ -295,12 +300,21 @@ void ApplicationEditor::HandlePrimarySelectionResult(uint64_t id,
 	ApplicationPrimarySelectionOperation operation,
 	ApplicationPrimarySelectionStatus status, std::string text) {
 	ApplicationPrimarySelectionStatus reportedStatus = status;
+	if (operation == ApplicationPrimarySelectionOperation::Publish &&
+		id == latestPrimarySelectionClaimRequest &&
+		status != ApplicationPrimarySelectionStatus::Published) {
+		primarySelectionClaimed = false;
+	}
 	if (operation == ApplicationPrimarySelectionOperation::Paste &&
 		status == ApplicationPrimarySelectionStatus::Complete) {
 		if (!pendingPrimaryPaste || pendingPrimaryPaste->id != id ||
 			pendingPrimaryPaste->documentGeneration != documentGeneration) {
 			reportedStatus = ApplicationPrimarySelectionStatus::Superseded;
-		} else if (!text.empty() && CanPaste()) {
+		} else if (text.empty()) {
+			reportedStatus = ApplicationPrimarySelectionStatus::NoText;
+		} else if (!CanPaste()) {
+			reportedStatus = ApplicationPrimarySelectionStatus::NotApplied;
+		} else {
 			suppressPrimarySelectionClaim = true;
 			try {
 				SetEmptySelection(pendingPrimaryPaste->position);
@@ -326,7 +340,9 @@ void ApplicationEditor::HandlePrimarySelectionResult(uint64_t id,
 		reportedStatus != ApplicationPrimarySelectionStatus::Complete &&
 		reportedStatus != ApplicationPrimarySelectionStatus::Superseded &&
 		reportedStatus != ApplicationPrimarySelectionStatus::NoText &&
-		reportedStatus != ApplicationPrimarySelectionStatus::Cancelled) {
+		reportedStatus != ApplicationPrimarySelectionStatus::Cancelled &&
+		!(operation == ApplicationPrimarySelectionOperation::Publish &&
+			reportedStatus == ApplicationPrimarySelectionStatus::Unavailable)) {
 		std::fprintf(stderr, "scalpel-editor primary selection: %s\n",
 			PrimarySelectionStatusName(reportedStatus));
 	}
@@ -507,6 +523,7 @@ void ApplicationEditor::QueuePrimarySelectionClaim(
 	}
 	primarySelectionClaimed = text.has_value();
 	const uint64_t request = nextPrimarySelectionRequest++;
+	latestPrimarySelectionClaimRequest = request;
 	primarySelectionRequests.push_back({
 		request,
 		ApplicationPrimarySelectionOperation::Publish,

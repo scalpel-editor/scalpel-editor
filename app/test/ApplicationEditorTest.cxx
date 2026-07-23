@@ -206,6 +206,50 @@ TEST_CASE("production editor publishes and clears primary selection") {
 	CHECK_FALSE(requests.front().text.has_value());
 }
 
+TEST_CASE("production editor forgets rejected primary selection claims") {
+	Scalpel::ApplicationEditor editor(240, 120);
+	editor.LoadInitialBuffer("primary selection");
+
+	editor.HandleKeyboardInput({static_cast<Scintilla::Keys>('A'),
+		Scintilla::KeyMod::Ctrl, {}, 1, true});
+	const std::vector<Scalpel::ApplicationPrimarySelectionRequest> requests =
+		editor.TakePrimarySelectionRequests();
+	REQUIRE(requests.size() == 1);
+	editor.HandlePrimarySelectionResult(requests.front().id,
+		Scalpel::ApplicationPrimarySelectionOperation::Publish,
+		Scalpel::ApplicationPrimarySelectionStatus::Unavailable);
+
+	editor.HandleKeyboardInput({Scintilla::Keys::Right, Scintilla::KeyMod::Norm,
+		{}, 2, true});
+	CHECK(editor.TakePrimarySelectionRequests().empty());
+	CHECK(editor.PrimarySelectionResults().back().status ==
+		Scalpel::ApplicationPrimarySelectionStatus::Unavailable);
+}
+
+TEST_CASE("production editor ignores stale primary claim failures") {
+	Scalpel::ApplicationEditor editor(240, 120);
+	editor.LoadInitialBuffer("primary selection");
+
+	editor.HandleKeyboardInput({static_cast<Scintilla::Keys>('A'),
+		Scintilla::KeyMod::Ctrl, {}, 1, true});
+	const std::vector<Scalpel::ApplicationPrimarySelectionRequest> first =
+		editor.TakePrimarySelectionRequests();
+	REQUIRE(first.size() == 1);
+	editor.HandleKeyboardInput({Scintilla::Keys::Right, Scintilla::KeyMod::Norm,
+		{}, 2, true});
+	REQUIRE(editor.TakePrimarySelectionRequests().size() == 1);
+	editor.HandleKeyboardInput({static_cast<Scintilla::Keys>('A'),
+		Scintilla::KeyMod::Ctrl, {}, 3, true});
+	REQUIRE(editor.TakePrimarySelectionRequests().size() == 1);
+
+	editor.HandlePrimarySelectionResult(first.front().id,
+		Scalpel::ApplicationPrimarySelectionOperation::Publish,
+		Scalpel::ApplicationPrimarySelectionStatus::Cancelled);
+	editor.HandleKeyboardInput({Scintilla::Keys::Right, Scintilla::KeyMod::Norm,
+		{}, 4, true});
+	CHECK(editor.TakePrimarySelectionRequests().size() == 1);
+}
+
 TEST_CASE("production editor defers pointer selection ownership until release") {
 	Scalpel::ApplicationEditor editor(320, 120);
 	editor.LoadInitialBuffer("alpha beta gamma");
@@ -251,6 +295,36 @@ TEST_CASE("production editor pastes primary text at the middle click") {
 	CHECK(editor.Text().find("PRIMARY") < editor.Text().size() - 7);
 	CHECK(editor.PrimarySelectionResults().back().status ==
 		Scalpel::ApplicationPrimarySelectionStatus::Complete);
+}
+
+TEST_CASE("production editor reports primary text that was not pasted") {
+	Scalpel::ApplicationEditor editor(320, 120);
+	editor.LoadInitialBuffer("alpha beta gamma");
+	editor.RenderFrame();
+
+	editor.HandlePointerInput({Scalpel::PointerAction::Press,
+		Scintilla::KeyMod::Norm, 20, 8, 0, 0, 20, 2});
+	std::vector<Scalpel::ApplicationPrimarySelectionRequest> requests =
+		editor.TakePrimarySelectionRequests();
+	REQUIRE(requests.size() == 1);
+	editor.HandlePrimarySelectionResult(requests.front().id,
+		Scalpel::ApplicationPrimarySelectionOperation::Paste,
+		Scalpel::ApplicationPrimarySelectionStatus::Complete, {});
+	CHECK(editor.Text() == "alpha beta gamma");
+	CHECK(editor.PrimarySelectionResults().back().status ==
+		Scalpel::ApplicationPrimarySelectionStatus::NoText);
+
+	editor.SetReadOnly(true);
+	editor.HandlePointerInput({Scalpel::PointerAction::Press,
+		Scintilla::KeyMod::Norm, 20, 8, 0, 0, 21, 2});
+	requests = editor.TakePrimarySelectionRequests();
+	REQUIRE(requests.size() == 1);
+	editor.HandlePrimarySelectionResult(requests.front().id,
+		Scalpel::ApplicationPrimarySelectionOperation::Paste,
+		Scalpel::ApplicationPrimarySelectionStatus::Complete, "PRIMARY");
+	CHECK(editor.Text() == "alpha beta gamma");
+	CHECK(editor.PrimarySelectionResults().back().status ==
+		Scalpel::ApplicationPrimarySelectionStatus::NotApplied);
 }
 
 TEST_CASE("production editor rejects stale primary paste results") {

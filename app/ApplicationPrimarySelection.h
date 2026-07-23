@@ -25,6 +25,7 @@ enum class ApplicationPrimarySelectionStatus {
 	TooLarge,
 	TimedOut,
 	Superseded,
+	NotApplied,
 };
 
 struct ApplicationPrimarySelectionRequest {
