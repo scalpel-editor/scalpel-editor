@@ -47,3 +47,16 @@ target_link_libraries(waylandEventLoopTest PRIVATE scalpel_wayland)
 target_compile_options(waylandEventLoopTest PRIVATE -Wall -Wextra)
 
 add_test(NAME wayland-event-loop COMMAND waylandEventLoopTest)
+
+add_executable(waylandIntegrationTest WaylandIntegrationTest.cxx)
+target_include_directories(waylandIntegrationTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(waylandIntegrationTest PRIVATE
+  scalpel_application
+  scalpel_wayland
+)
+target_compile_options(waylandIntegrationTest PRIVATE -Wall -Wextra)
+
+add_test(NAME wayland-integration COMMAND waylandIntegrationTest)
