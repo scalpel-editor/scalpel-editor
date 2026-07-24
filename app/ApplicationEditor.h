@@ -12,6 +12,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "ApplicationClipboard.h"
@@ -23,6 +24,7 @@
 #include "ScintillaBase.h"
 
 namespace Scintilla::Internal {
+class Document;
 class DrawSurface;
 class GlContext;
 class Renderer;
@@ -67,12 +69,20 @@ protected:
 	std::unique_ptr<Scintilla::Internal::DrawSurface> frame;
 };
 
+/** Opaque handle for a retained Scintilla document. Zero is never valid. */
+using DocumentId = uint64_t;
+
 /**
  * The application-facing editor host used by both test and Wayland targets.
  *
  * It owns the editor window state and an injected or default headless EGL
  * renderer. ApplicationResources is the first base so it is destroyed after
  * ScintillaBase releases its cached drawing objects.
+ *
+ * Multiple Scintilla documents can be retained and switched without
+ * constructing another host: one document is active for input and paint; the
+ * rest keep their text, undo, save point, and a snapshot of selection and
+ * scroll until activated again.
  */
 class ApplicationEditor final : private ApplicationResources, public Scintilla::Internal::ScintillaBase {
 public:
@@ -91,16 +101,39 @@ public:
 	ApplicationEditor &operator=(ApplicationEditor &&) = delete;
 
 	/**
-	 * Replace the whole document for open or startup. Cancels text input,
-	 * bumps the document generation used by asynchronous paste, clears undo,
-	 * and marks the buffer clean.
+	 * Create an empty retained document without changing the active one.
+	 * The caller activates it when the tab should become visible.
+	 */
+	[[nodiscard]] DocumentId CreateDocument();
+	[[nodiscard]] DocumentId ActiveDocument() const noexcept;
+	[[nodiscard]] bool HasDocument(DocumentId id) const noexcept;
+	/**
+	 * Make id active. Cancels tentative IME on the outgoing document,
+	 * snapshots its selection and scroll, bumps the paste generation, switches
+	 * the watched document, restores the incoming view, updates the line-number
+	 * margin, and marks text-input state dirty. No-op when already active.
+	 */
+	void ActivateDocument(DocumentId id);
+	/**
+	 * Drop the table reference for id. The document must not be active;
+	 * activate another first. Releases exactly the retained reference.
+	 */
+	void CloseDocument(DocumentId id);
+
+	/**
+	 * Replace the whole active document for open or startup. Cancels text
+	 * input, bumps the document generation used by asynchronous paste, clears
+	 * undo, and marks the buffer clean.
 	 */
 	void LoadInitialBuffer(std::string_view text);
 	[[nodiscard]] std::string Text() const;
-	/** True when the document is not at its save point. */
+	[[nodiscard]] std::string Text(DocumentId id) const;
+	/** True when the active document is not at its save point. */
 	[[nodiscard]] bool Modified() const noexcept;
-	/** Mark the current document bytes as saved without clearing undo. */
+	[[nodiscard]] bool Modified(DocumentId id) const;
+	/** Mark the active document bytes as saved without clearing undo. */
 	void MarkSaved();
+	void MarkSaved(DocumentId id);
 	// Document line count used for the gutter and status (Scintilla's line count).
 	[[nodiscard]] Scintilla::Line LineCount() const noexcept;
 	// Effective pixel width of the left fixed column (margins plus text-left gap).
@@ -215,9 +248,22 @@ protected:
 	void QueueIdleWork(Scintilla::Internal::WorkItems items, Scintilla::Position upTo = 0) override;
 
 private:
+	struct RetainedDocument {
+		Scintilla::Internal::Document *document = nullptr;
+		std::string selection;
+		Scintilla::Line firstVisibleLine = 0;
+		int xOffset = 0;
+	};
+
 	void ConfigureLineNumberMargins();
 	void ApplyLineNumberStyle();
 	void UpdateLineNumberWidth();
+	void RetainInitialDocument();
+	void ReleaseRetainedDocuments();
+	void SnapshotActiveView();
+	void RestoreActiveView();
+	[[nodiscard]] RetainedDocument *FindRetained(DocumentId id);
+	[[nodiscard]] const RetainedDocument *FindRetained(DocumentId id) const;
 	void RecordUnsupported(std::string request);
 	void QueuePrimarySelectionClaim(std::optional<std::string> text);
 	void RequestPrimarySelectionPaste(Scintilla::Position position);
@@ -226,6 +272,9 @@ private:
 		const ApplicationTextInputDelete &deletion);
 	void CancelTextInput();
 
+	std::unordered_map<DocumentId, RetainedDocument> retainedDocuments;
+	DocumentId activeDocumentId = 0;
+	DocumentId nextDocumentId = 1;
 	ScrollState scrollbars;
 	static constexpr std::size_t tickerReasonCount = static_cast<std::size_t>(TickReason::platform) + 1;
 	std::array<FineTickerState, tickerReasonCount> tickers{};

@@ -133,6 +133,7 @@ ApplicationEditor::ApplicationEditor(int width, int height, NowFunction now_) :
 	}
 	wMain = static_cast<Scintilla::Internal::WindowID>(&window);
 	ConfigureLineNumberMargins();
+	RetainInitialDocument();
 }
 
 ApplicationEditor::ApplicationEditor(std::unique_ptr<Scintilla::Internal::GlContext> context,
@@ -144,10 +145,135 @@ ApplicationEditor::ApplicationEditor(std::unique_ptr<Scintilla::Internal::GlCont
 	}
 	wMain = static_cast<Scintilla::Internal::WindowID>(&window);
 	ConfigureLineNumberMargins();
+	RetainInitialDocument();
 }
 
 ApplicationEditor::~ApplicationEditor() {
+	ReleaseRetainedDocuments();
 	Finalise();
+}
+
+void ApplicationEditor::RetainInitialDocument() {
+	// EditModel already owns pdoc with one reference; the table holds another.
+	activeDocumentId = nextDocumentId++;
+	RetainedDocument entry;
+	entry.document = pdoc;
+	pdoc->AddRef();
+	retainedDocuments.emplace(activeDocumentId, std::move(entry));
+}
+
+void ApplicationEditor::ReleaseRetainedDocuments() {
+	for (auto &[id, entry] : retainedDocuments) {
+		(void)id;
+		if (entry.document) {
+			entry.document->Release();
+			entry.document = nullptr;
+		}
+	}
+	retainedDocuments.clear();
+	activeDocumentId = 0;
+}
+
+ApplicationEditor::RetainedDocument *ApplicationEditor::FindRetained(DocumentId id) {
+	const auto it = retainedDocuments.find(id);
+	if (it == retainedDocuments.end()) {
+		return nullptr;
+	}
+	return &it->second;
+}
+
+const ApplicationEditor::RetainedDocument *ApplicationEditor::FindRetained(
+	DocumentId id) const {
+	const auto it = retainedDocuments.find(id);
+	if (it == retainedDocuments.end()) {
+		return nullptr;
+	}
+	return &it->second;
+}
+
+void ApplicationEditor::SnapshotActiveView() {
+	RetainedDocument *entry = FindRetained(activeDocumentId);
+	if (!entry) {
+		return;
+	}
+	entry->selection = GetSelectionSerialized();
+	entry->firstVisibleLine = GetFirstVisibleLine();
+	entry->xOffset = GetXOffset();
+}
+
+void ApplicationEditor::RestoreActiveView() {
+	const RetainedDocument *entry = FindRetained(activeDocumentId);
+	if (!entry) {
+		return;
+	}
+	// Selection(std::string_view) leaves ranges empty for an empty string, so
+	// never feed it "". New documents start with a caret at 0.
+	if (entry->selection.empty()) {
+		SetEmptySelection(0);
+	} else {
+		SetSelectionSerialized(entry->selection);
+	}
+	SetFirstVisibleLine(entry->firstVisibleLine);
+	SetXOffset(entry->xOffset);
+}
+
+DocumentId ApplicationEditor::CreateDocument() {
+	auto *document = new Scintilla::Internal::Document(
+		Scintilla::DocumentOption::Default);
+	// Table holds the only reference until the document is activated.
+	document->AddRef();
+	const DocumentId id = nextDocumentId++;
+	RetainedDocument entry;
+	entry.document = document;
+	retainedDocuments.emplace(id, std::move(entry));
+	return id;
+}
+
+DocumentId ApplicationEditor::ActiveDocument() const noexcept {
+	return activeDocumentId;
+}
+
+bool ApplicationEditor::HasDocument(DocumentId id) const noexcept {
+	return retainedDocuments.find(id) != retainedDocuments.end();
+}
+
+void ApplicationEditor::ActivateDocument(DocumentId id) {
+	if (id == activeDocumentId) {
+		return;
+	}
+	RetainedDocument *incoming = FindRetained(id);
+	if (!incoming || !incoming->document) {
+		throw std::invalid_argument(
+			"ApplicationEditor::ActivateDocument requires a retained document");
+	}
+	// Cancel tentative IME on the outgoing buffer before snapshotting so the
+	// saved selection and text do not include uncommitted preedit.
+	CancelTextInput();
+	SnapshotActiveView();
+	documentGeneration++;
+	SetDocPointer(incoming->document);
+	activeDocumentId = id;
+	RestoreActiveView();
+	UpdateLineNumberWidth();
+	textInputStateDirty = true;
+	textInputChangeCause = ApplicationTextChangeCause::Other;
+}
+
+void ApplicationEditor::CloseDocument(DocumentId id) {
+	if (id == activeDocumentId) {
+		throw std::invalid_argument(
+			"ApplicationEditor::CloseDocument cannot close the active document");
+	}
+	const auto it = retainedDocuments.find(id);
+	if (it == retainedDocuments.end()) {
+		throw std::invalid_argument(
+			"ApplicationEditor::CloseDocument requires a retained document");
+	}
+	if (it->second.document) {
+		it->second.document->Release();
+		it->second.document = nullptr;
+	}
+	retainedDocuments.erase(it);
 }
 
 void ApplicationEditor::ConfigureLineNumberMargins() {
@@ -215,12 +341,54 @@ std::string ApplicationEditor::Text() const {
 	return GetText();
 }
 
+std::string ApplicationEditor::Text(DocumentId id) const {
+	const RetainedDocument *entry = FindRetained(id);
+	if (!entry || !entry->document) {
+		throw std::invalid_argument(
+			"ApplicationEditor::Text requires a retained document");
+	}
+	if (id == activeDocumentId) {
+		return GetText();
+	}
+	const Scintilla::Position length = entry->document->Length();
+	std::string text(static_cast<size_t>(length), '\0');
+	if (length > 0) {
+		entry->document->GetCharRange(text.data(), 0, length);
+	}
+	return text;
+}
+
 bool ApplicationEditor::Modified() const noexcept {
 	return GetModify();
 }
 
+bool ApplicationEditor::Modified(DocumentId id) const {
+	const RetainedDocument *entry = FindRetained(id);
+	if (!entry || !entry->document) {
+		throw std::invalid_argument(
+			"ApplicationEditor::Modified requires a retained document");
+	}
+	if (id == activeDocumentId) {
+		return GetModify();
+	}
+	return !entry->document->IsSavePoint();
+}
+
 void ApplicationEditor::MarkSaved() {
 	SetSavePoint();
+}
+
+void ApplicationEditor::MarkSaved(DocumentId id) {
+	RetainedDocument *entry = FindRetained(id);
+	if (!entry || !entry->document) {
+		throw std::invalid_argument(
+			"ApplicationEditor::MarkSaved requires a retained document");
+	}
+	if (id == activeDocumentId) {
+		SetSavePoint();
+		return;
+	}
+	entry->document->SetSavePoint();
 }
 
 Scintilla::Line ApplicationEditor::LineCount() const noexcept {

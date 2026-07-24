@@ -242,6 +242,213 @@ TEST_CASE("production editor host exposes shell state") {
 	CHECK(editor.Scrollbars().changes > 0);
 }
 
+TEST_CASE("production editor document switching keeps independent text and save points") {
+	Scalpel::ApplicationEditor editor(320, 180);
+	const Scalpel::DocumentId first = editor.ActiveDocument();
+	REQUIRE(first != 0);
+	CHECK(editor.HasDocument(first));
+	editor.LoadInitialBuffer("first body");
+	CHECK_FALSE(editor.Modified());
+
+	editor.HandleKeyboardInput({Scintilla::Keys::End, Scintilla::KeyMod::Norm,
+		{}, 1, true});
+	editor.HandleKeyboardInput({static_cast<Scintilla::Keys>(0),
+		Scintilla::KeyMod::Norm, "!", 2, true});
+	CHECK(editor.Modified());
+	CHECK(editor.Text() == "first body!");
+
+	const Scalpel::DocumentId second = editor.CreateDocument();
+	REQUIRE(second != first);
+	CHECK(editor.ActiveDocument() == first);
+	CHECK(editor.HasDocument(second));
+	CHECK(editor.Text(second).empty());
+	CHECK_FALSE(editor.Modified(second));
+
+	editor.ActivateDocument(second);
+	CHECK(editor.ActiveDocument() == second);
+	CHECK(editor.Text().empty());
+	CHECK_FALSE(editor.Modified());
+	// By-ID reads still see the inactive first document.
+	CHECK(editor.Text(first) == "first body!");
+	CHECK(editor.Modified(first));
+
+	editor.LoadInitialBuffer("second body");
+	CHECK_FALSE(editor.Modified());
+	editor.HandleKeyboardInput({Scintilla::Keys::End, Scintilla::KeyMod::Norm,
+		{}, 3, true});
+	editor.HandleKeyboardInput({static_cast<Scintilla::Keys>(0),
+		Scintilla::KeyMod::Norm, "?", 4, true});
+	CHECK(editor.Text() == "second body?");
+	CHECK(editor.Modified());
+
+	// Mark the inactive first document saved without activating it.
+	editor.MarkSaved(first);
+	CHECK_FALSE(editor.Modified(first));
+	CHECK(editor.Modified()); // active second still dirty
+
+	editor.ActivateDocument(first);
+	CHECK(editor.ActiveDocument() == first);
+	CHECK(editor.Text() == "first body!");
+	CHECK_FALSE(editor.Modified());
+	CHECK(editor.Text(second) == "second body?");
+	CHECK(editor.Modified(second));
+}
+
+TEST_CASE("production editor document switching keeps independent undo histories") {
+	Scalpel::ApplicationEditor editor(320, 180);
+	const Scalpel::DocumentId first = editor.ActiveDocument();
+	editor.LoadInitialBuffer("alpha");
+	editor.HandleKeyboardInput({Scintilla::Keys::End, Scintilla::KeyMod::Norm,
+		{}, 1, true});
+	editor.HandleKeyboardInput({static_cast<Scintilla::Keys>(0),
+		Scintilla::KeyMod::Norm, "1", 2, true});
+	CHECK(editor.Text() == "alpha1");
+
+	const Scalpel::DocumentId second = editor.CreateDocument();
+	editor.ActivateDocument(second);
+	editor.LoadInitialBuffer("beta");
+	editor.HandleKeyboardInput({Scintilla::Keys::End, Scintilla::KeyMod::Norm,
+		{}, 3, true});
+	editor.HandleKeyboardInput({static_cast<Scintilla::Keys>(0),
+		Scintilla::KeyMod::Norm, "2", 4, true});
+	CHECK(editor.Text() == "beta2");
+
+	editor.HandleKeyboardInput({static_cast<Scintilla::Keys>('Z'),
+		Scintilla::KeyMod::Ctrl, {}, 5, true});
+	CHECK(editor.Text() == "beta");
+	CHECK(editor.Text(first) == "alpha1");
+
+	editor.ActivateDocument(first);
+	editor.HandleKeyboardInput({static_cast<Scintilla::Keys>('Z'),
+		Scintilla::KeyMod::Ctrl, {}, 6, true});
+	CHECK(editor.Text() == "alpha");
+	CHECK(editor.Text(second) == "beta");
+}
+
+TEST_CASE("production editor document switching restores selection and scroll") {
+	Scalpel::ApplicationEditor editor(240, 100);
+	const Scalpel::DocumentId first = editor.ActiveDocument();
+	std::string manyLines;
+	for (int line = 0; line < 40; ++line) {
+		manyLines += "line " + std::to_string(line) + " horizontal overflow text\n";
+	}
+	editor.LoadInitialBuffer(manyLines);
+	editor.RenderFrame();
+	editor.SetSel(5, 12);
+	editor.SetFirstVisibleLine(8);
+	editor.SetXOffset(40);
+	CHECK(editor.GetSelectionStart() == 5);
+	CHECK(editor.GetSelectionEnd() == 12);
+	CHECK(editor.GetFirstVisibleLine() == 8);
+	CHECK(editor.GetXOffset() == 40);
+
+	const Scalpel::DocumentId second = editor.CreateDocument();
+	editor.ActivateDocument(second);
+	editor.LoadInitialBuffer("other\nsecond\nthird\n");
+	editor.RenderFrame();
+	editor.SetSel(0, 5);
+	editor.SetFirstVisibleLine(1);
+	editor.SetXOffset(0);
+	CHECK(editor.GetSelectionStart() == 0);
+	CHECK(editor.GetSelectionEnd() == 5);
+	CHECK(editor.GetFirstVisibleLine() == 1);
+
+	editor.ActivateDocument(first);
+	CHECK(editor.GetSelectionStart() == 5);
+	CHECK(editor.GetSelectionEnd() == 12);
+	CHECK(editor.GetFirstVisibleLine() == 8);
+	CHECK(editor.GetXOffset() == 40);
+
+	editor.ActivateDocument(second);
+	CHECK(editor.GetSelectionStart() == 0);
+	CHECK(editor.GetSelectionEnd() == 5);
+	CHECK(editor.GetFirstVisibleLine() == 1);
+	CHECK(editor.GetXOffset() == 0);
+}
+
+TEST_CASE("production editor document switching releases closed references") {
+	Scalpel::ApplicationEditor editor(200, 100);
+	const Scalpel::DocumentId first = editor.ActiveDocument();
+	editor.LoadInitialBuffer("keep");
+	const Scalpel::DocumentId second = editor.CreateDocument();
+	editor.ActivateDocument(second);
+	editor.LoadInitialBuffer("drop me");
+	const Scalpel::DocumentId third = editor.CreateDocument();
+	editor.ActivateDocument(third);
+	editor.LoadInitialBuffer("active");
+
+	editor.CloseDocument(second);
+	CHECK_FALSE(editor.HasDocument(second));
+	CHECK_THROWS_WITH(editor.Text(second),
+		"ApplicationEditor::Text requires a retained document");
+	CHECK_THROWS_WITH(editor.CloseDocument(third),
+		"ApplicationEditor::CloseDocument cannot close the active document");
+	CHECK_THROWS_WITH(editor.ActivateDocument(second),
+		"ApplicationEditor::ActivateDocument requires a retained document");
+
+	editor.ActivateDocument(first);
+	editor.CloseDocument(third);
+	CHECK_FALSE(editor.HasDocument(third));
+	CHECK(editor.Text() == "keep");
+	CHECK(editor.HasDocument(first));
+}
+
+TEST_CASE("production editor document switching supersedes asynchronous pastes") {
+	Scalpel::ApplicationEditor editor(200, 100);
+	const Scalpel::DocumentId first = editor.ActiveDocument();
+	editor.LoadInitialBuffer("first");
+	editor.RequestClipboardPaste();
+	const auto pasteRequests = editor.TakeClipboardRequests();
+	REQUIRE(pasteRequests.size() == 1);
+
+	editor.RenderFrame();
+	editor.HandlePointerInput({Scalpel::PointerAction::Press,
+		Scintilla::KeyMod::Norm, 20, 8, 0, 0, 1, 2});
+	const auto primaryRequests = editor.TakePrimarySelectionRequests();
+	REQUIRE(primaryRequests.size() == 1);
+
+	const Scalpel::DocumentId second = editor.CreateDocument();
+	editor.ActivateDocument(second);
+	editor.LoadInitialBuffer("second");
+
+	editor.HandleClipboardResult(pasteRequests.front().id,
+		Scalpel::ApplicationClipboardOperation::Paste,
+		Scalpel::ApplicationClipboardStatus::Complete, "stale-clip");
+	CHECK(editor.Text() == "second");
+	CHECK(editor.Text(first) == "first");
+	CHECK(editor.ClipboardResults().back().status ==
+		Scalpel::ApplicationClipboardStatus::Superseded);
+
+	editor.HandlePrimarySelectionResult(primaryRequests.front().id,
+		Scalpel::ApplicationPrimarySelectionOperation::Paste,
+		Scalpel::ApplicationPrimarySelectionStatus::Complete, "stale-primary");
+	CHECK(editor.Text() == "second");
+	CHECK(editor.Text(first) == "first");
+	CHECK(editor.PrimarySelectionResults().back().status ==
+		Scalpel::ApplicationPrimarySelectionStatus::Superseded);
+}
+
+TEST_CASE("production editor document switching cancels tentative IME") {
+	Scalpel::ApplicationEditor editor(240, 120);
+	const Scalpel::DocumentId first = editor.ActiveDocument();
+	editor.LoadInitialBuffer("base");
+
+	Scalpel::ApplicationTextInputBatch preedit;
+	preedit.preedit = Scalpel::ApplicationTextInputPreedit{
+		"\xC3\xA9", 2, 2};
+	editor.HandleTextInputBatch(preedit);
+	CHECK(editor.Text() == "\xC3\xA9" "base");
+	CHECK(editor.ImeIndicatorAt(0) != 0);
+
+	const Scalpel::DocumentId second = editor.CreateDocument();
+	editor.ActivateDocument(second);
+	CHECK(editor.Text(first) == "base");
+
+	editor.ActivateDocument(first);
+	CHECK(editor.Text() == "base");
+	CHECK(editor.ImeIndicatorAt(0) == 0);
+}
+
 TEST_CASE("production editor host schedules tickers against a monotonic clock") {
 	using namespace std::chrono_literals;
 	Scalpel::ApplicationEditor::Clock::time_point now{};
