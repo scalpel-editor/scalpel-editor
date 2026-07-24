@@ -14,6 +14,7 @@
 #include "WaylandClipboard.h"
 #include "WaylandCursor.h"
 #include "WaylandDbus.h"
+#include "WaylandFileDialog.h"
 #include "WaylandFrame.h"
 #include "WaylandInput.h"
 #include "WaylandLifecycle.h"
@@ -150,6 +151,14 @@ public:
 	}
 	[[nodiscard]] std::string_view PortalParentHandle() const noexcept {
 		return portalParent.ParentHandle();
+	}
+	/**
+	 * Start an asynchronous open or save dialog through the desktop portal.
+	 * Returns false when the session bus or portal is unavailable.
+	 */
+	[[nodiscard]] bool ShowFileDialog(const FileDialogRequest &request);
+	[[nodiscard]] std::vector<FileDialogResult> TakeFileDialogResults() {
+		return fileDialog.TakeResults();
 	}
 
 	/** Complete one request/event round trip, throwing on display failure. */
@@ -324,6 +333,7 @@ private:
 	WaylandInput input;
 	WaylandCursorState cursorState;
 	WaylandDbus dbus;
+	WaylandFileDialog fileDialog;
 	WaylandClipboard clipboard;
 	WaylandPrimarySelection primarySelection;
 	WaylandTextInput textInput;

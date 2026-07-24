@@ -213,6 +213,7 @@ void WaylandWindow::Initialise(const char *title) {
 }
 
 void WaylandWindow::Destroy() noexcept {
+	fileDialog.Clear();
 	(void)textInput.SetSeat(nullptr);
 	CancelFrame();
 	for (const PresentationFeedback &feedback : presentationFeedback) {
@@ -960,6 +961,14 @@ void WaylandWindow::CreateDecoration() {
 	}
 	zxdg_toplevel_decoration_v1_set_mode(
 		decoration, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+}
+
+bool WaylandWindow::ShowFileDialog(const FileDialogRequest &request) {
+	DBusConnection *connection = dbus.ConnectSessionBus();
+	if (!connection) {
+		return false;
+	}
+	return fileDialog.Show(connection, portalParent.ParentHandle(), request);
 }
 
 void WaylandWindow::CreatePortalParentExport() {

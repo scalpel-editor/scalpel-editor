@@ -1,13 +1,14 @@
-// Desktop-portal file dialog request and pending-response state.
+// Desktop-portal file dialog request, pending state, and D-Bus calls.
 
 #ifndef WAYLANDFILEDIALOG_H
 #define WAYLANDFILEDIALOG_H
 
 #include <cstdint>
-#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
+
+#include <dbus/dbus.h>
 
 namespace Scalpel {
 
@@ -89,6 +90,58 @@ private:
 	std::vector<Pending> pending;
 	std::vector<FileDialogResult> results;
 };
+
+/**
+ * Starts xdg-desktop-portal open and save dialogs on a session bus connection.
+ *
+ * Setup may briefly block on the bus to start the portal and receive the
+ * request handle. User choice arrives later as a Request.Response signal while
+ * the connection is dispatched from the application event loop.
+ */
+class WaylandFileDialog final {
+public:
+	WaylandFileDialog() = default;
+	~WaylandFileDialog() noexcept;
+
+	WaylandFileDialog(const WaylandFileDialog &) = delete;
+	WaylandFileDialog &operator=(const WaylandFileDialog &) = delete;
+
+	/**
+	 * Start an open or save dialog. parentHandle is the xdg-foreign
+	 * "wayland:…" token or empty for an unparented dialog. Returns false when
+	 * the session bus or portal is unavailable; no result is queued then.
+	 */
+	[[nodiscard]] bool Show(DBusConnection *connection,
+		std::string_view parentHandle, const FileDialogRequest &request);
+	[[nodiscard]] std::vector<FileDialogResult> TakeResults() {
+		return state.TakeResults();
+	}
+	/** Drop pending dialogs without acceptance and detach from the bus. */
+	void Clear() noexcept;
+
+private:
+	[[nodiscard]] bool EnsureResponseFilter();
+	[[nodiscard]] bool EnsurePortalReady(std::string &portalOwner);
+	[[nodiscard]] bool MakeRequestToken(std::string &token,
+		std::string &requestPath);
+	void HandleResponse(DBusMessage *message);
+	static DBusHandlerResult ResponseFilter(DBusConnection *connection,
+		DBusMessage *message, void *data) noexcept;
+
+	WaylandFileDialogState state;
+	DBusConnection *connection = nullptr;
+	bool responseFilterInstalled = false;
+};
+
+/** Append helpers used by Show and covered by unit tests. */
+void FileDialogAppendDictString(DBusMessageIter *dict, const char *key,
+	const char *value);
+void FileDialogAppendDictPath(DBusMessageIter *dict, const char *key,
+	std::string_view path);
+void FileDialogAppendDictFilters(DBusMessageIter *dict,
+	const std::vector<FileDialogFilter> &filters);
+[[nodiscard]] bool FileDialogParseResponse(DBusMessage *message,
+	std::uint32_t &responseCode, std::vector<std::string> &uris);
 
 }
 

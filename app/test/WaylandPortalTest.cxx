@@ -1,5 +1,7 @@
 #include "catch.hpp"
 
+#include <dbus/dbus.h>
+
 #include "WaylandFileDialog.h"
 #include "WaylandLifecycle.h"
 
@@ -101,4 +103,83 @@ TEST_CASE("Wayland file dialog state rejects invalid begin arguments") {
 	CHECK_THROWS(state.Begin(Scalpel::FileDialogMode::Open, "/path", ""));
 	(void)state.Begin(Scalpel::FileDialogMode::Open, "/path", ":1.1");
 	CHECK_THROWS(state.Begin(Scalpel::FileDialogMode::Open, "/path", ":1.1"));
+}
+
+TEST_CASE("Wayland file dialog appends filters and path options") {
+	DBusMessage *message = dbus_message_new_method_call("org.freedesktop.portal.Desktop",
+		"/org/freedesktop/portal/desktop", "org.freedesktop.portal.FileChooser",
+		"OpenFile");
+	REQUIRE(message);
+	DBusMessageIter iter;
+	dbus_message_iter_init_append(message, &iter);
+	const char *parent = "";
+	const char *title = "Open";
+	REQUIRE(dbus_message_iter_append_basic(&iter, DBUS_TYPE_STRING, &parent));
+	REQUIRE(dbus_message_iter_append_basic(&iter, DBUS_TYPE_STRING, &title));
+	DBusMessageIter options;
+	REQUIRE(dbus_message_iter_open_container(
+		&iter, DBUS_TYPE_ARRAY, "{sv}", &options));
+	Scalpel::FileDialogAppendDictString(&options, "handle_token", "token1");
+	Scalpel::FileDialogAppendDictPath(&options, "current_folder", "/tmp/docs");
+	Scalpel::FileDialogAppendDictFilters(&options, {
+		{"Text", {"*.txt", "*.md"}},
+		{"All files", {"*"}},
+	});
+	REQUIRE(dbus_message_iter_close_container(&iter, &options));
+
+	DBusMessageIter read;
+	REQUIRE(dbus_message_iter_init(message, &read));
+	CHECK(dbus_message_iter_get_arg_type(&read) == DBUS_TYPE_STRING);
+	REQUIRE(dbus_message_iter_next(&read));
+	CHECK(dbus_message_iter_get_arg_type(&read) == DBUS_TYPE_STRING);
+	REQUIRE(dbus_message_iter_next(&read));
+	CHECK(dbus_message_iter_get_arg_type(&read) == DBUS_TYPE_ARRAY);
+	DBusMessageIter dict;
+	dbus_message_iter_recurse(&read, &dict);
+	int entryCount = 0;
+	while (dbus_message_iter_get_arg_type(&dict) == DBUS_TYPE_DICT_ENTRY) {
+		++entryCount;
+		dbus_message_iter_next(&dict);
+	}
+	CHECK(entryCount == 3);
+	dbus_message_unref(message);
+}
+
+TEST_CASE("Wayland file dialog parse response extracts URIs") {
+	DBusMessage *message = dbus_message_new_signal(
+		"/org/freedesktop/portal/desktop/request/1_2/token",
+		"org.freedesktop.portal.Request", "Response");
+	REQUIRE(message);
+	DBusMessageIter iter;
+	dbus_message_iter_init_append(message, &iter);
+	dbus_uint32_t code = 0;
+	REQUIRE(dbus_message_iter_append_basic(&iter, DBUS_TYPE_UINT32, &code));
+	DBusMessageIter results;
+	REQUIRE(dbus_message_iter_open_container(
+		&iter, DBUS_TYPE_ARRAY, "{sv}", &results));
+	DBusMessageIter entry;
+	DBusMessageIter variant;
+	DBusMessageIter uris;
+	const char *key = "uris";
+	REQUIRE(dbus_message_iter_open_container(
+		&results, DBUS_TYPE_DICT_ENTRY, nullptr, &entry));
+	REQUIRE(dbus_message_iter_append_basic(&entry, DBUS_TYPE_STRING, &key));
+	REQUIRE(dbus_message_iter_open_container(
+		&entry, DBUS_TYPE_VARIANT, "as", &variant));
+	REQUIRE(dbus_message_iter_open_container(
+		&variant, DBUS_TYPE_ARRAY, "s", &uris));
+	const char *uri = "file:///tmp/chosen.txt";
+	REQUIRE(dbus_message_iter_append_basic(&uris, DBUS_TYPE_STRING, &uri));
+	REQUIRE(dbus_message_iter_close_container(&variant, &uris));
+	REQUIRE(dbus_message_iter_close_container(&entry, &variant));
+	REQUIRE(dbus_message_iter_close_container(&results, &entry));
+	REQUIRE(dbus_message_iter_close_container(&iter, &results));
+
+	std::uint32_t parsedCode = 99;
+	std::vector<std::string> parsedUris;
+	REQUIRE(Scalpel::FileDialogParseResponse(message, parsedCode, parsedUris));
+	CHECK(parsedCode == 0);
+	REQUIRE(parsedUris.size() == 1);
+	CHECK(parsedUris.front() == "file:///tmp/chosen.txt");
+	dbus_message_unref(message);
 }
