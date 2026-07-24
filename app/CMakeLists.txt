@@ -173,6 +173,7 @@ add_library(scalpel_application OBJECT
   ApplicationEditor.cxx
   ApplicationPlatform.cxx
   DocumentFile.cxx
+  UnsavedChangesPrompt.cxx
 )
 
 target_include_directories(scalpel_application PUBLIC

@@ -24,6 +24,19 @@ target_compile_options(documentFileTest PRIVATE -Wall -Wextra)
 
 add_test(NAME document-file COMMAND documentFileTest)
 
+add_executable(unsavedChangesPromptTest
+  UnsavedChangesPromptTest.cxx
+  ApplicationTestMain.cxx
+)
+target_include_directories(unsavedChangesPromptTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(unsavedChangesPromptTest PRIVATE scalpel_application)
+target_compile_options(unsavedChangesPromptTest PRIVATE -Wall -Wextra)
+
+add_test(NAME unsaved-changes-prompt COMMAND unsavedChangesPromptTest)
+
 add_executable(applicationImeTest
   ApplicationImeTest.cxx
   ApplicationTestMain.cxx
