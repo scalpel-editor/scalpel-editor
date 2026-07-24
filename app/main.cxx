@@ -549,6 +549,36 @@ bool HandlePromptPointer(const Scalpel::PointerInput &input,
 	return true;
 }
 
+Scalpel::TabStripHitResult UpdateTabStripPointerState(
+	const Scalpel::PointerInput &input,
+	Scalpel::TabStripModel &model,
+	Scalpel::ApplicationEditor &editor,
+	bool &pointerOverStrip) {
+	Scalpel::TabStripHitResult hit;
+	if (input.action != Scalpel::PointerAction::Leave) {
+		const Scalpel::TabStripLayout layout =
+			Scalpel::LayoutTabStrip(editor.FrameWidth(), model);
+		hit = Scalpel::HitTestTabStrip(
+			layout, Scintilla::Internal::Point(input.x, input.y));
+	}
+
+	pointerOverStrip = hit.kind != Scalpel::TabStripHit::None;
+	Scalpel::DocumentId hoveredId = 0;
+	bool closeHovered = false;
+	if (hit.kind == Scalpel::TabStripHit::Tab ||
+		hit.kind == Scalpel::TabStripHit::Close) {
+		hoveredId = hit.tabId;
+		closeHovered = hit.kind == Scalpel::TabStripHit::Close;
+	}
+	if (hoveredId != model.hoveredId ||
+		closeHovered != model.closeHovered) {
+		model.hoveredId = hoveredId;
+		model.closeHovered = closeHovered;
+		editor.InvalidateTopChrome();
+	}
+	return hit;
+}
+
 /**
  * Handle pointer events in the permanent tab strip. Returns true when the
  * event must not reach the editor.
@@ -559,49 +589,21 @@ bool HandleTabStripPointer(const Scalpel::PointerInput &input,
 	Scalpel::ApplicationEditor &editor,
 	bool &pointerOverStrip) {
 	const int stripWidth = editor.FrameWidth();
-	const Scalpel::TabStripLayout layout =
-		Scalpel::LayoutTabStrip(stripWidth, model);
-	const Scintilla::Internal::Point point(input.x, input.y);
-
-	if (input.action == Scalpel::PointerAction::Leave) {
-		if (model.hoveredId != 0 || model.closeHovered) {
-			model.hoveredId = 0;
-			model.closeHovered = false;
-			editor.InvalidateTopChrome();
-		}
-		pointerOverStrip = false;
-		// Surface leave still needs to clear editor hover and capture.
-		return false;
-	}
-
 	const Scalpel::TabStripHitResult hit =
-		Scalpel::HitTestTabStrip(layout, point);
+		UpdateTabStripPointerState(input, model, editor, pointerOverStrip);
 	const bool inStrip = hit.kind != Scalpel::TabStripHit::None;
-	if (!inStrip) {
-		if (model.hoveredId != 0 || model.closeHovered) {
-			model.hoveredId = 0;
-			model.closeHovered = false;
-			editor.InvalidateTopChrome();
-		}
-		pointerOverStrip = false;
+
+	// A selection drag that began in the editor still owns motion and release
+	// over the strip. In particular, Scintilla must see release to drop capture.
+	if (editor.WindowState().mouseCaptured) {
 		return false;
 	}
-
-	pointerOverStrip = true;
+	if (!inStrip) {
+		// Surface leave still needs to clear editor hover.
+		return false;
+	}
 
 	if (input.action == Scalpel::PointerAction::Move) {
-		Scalpel::DocumentId newHover = 0;
-		bool closeHover = false;
-		if (hit.kind == Scalpel::TabStripHit::Tab ||
-			hit.kind == Scalpel::TabStripHit::Close) {
-			newHover = hit.tabId;
-			closeHover = hit.kind == Scalpel::TabStripHit::Close;
-		}
-		if (newHover != model.hoveredId || closeHover != model.closeHovered) {
-			model.hoveredId = newHover;
-			model.closeHovered = closeHover;
-			editor.InvalidateTopChrome();
-		}
 		return true;
 	}
 
@@ -761,6 +763,7 @@ int main() {
 				editor.SetFrameBufferSize(scale->bufferWidth, scale->bufferHeight);
 				// Width may change scroll clamping and tab layout.
 				(void)SyncTabStripTabs(workspace, stripModel, editor.FrameWidth());
+				RevealActiveTab(stripModel, editor.FrameWidth());
 				editor.InvalidateTopChrome();
 				if (workspace.PromptActive()) {
 					editor.InvalidateClient();
@@ -784,6 +787,8 @@ int main() {
 							cardFocus);
 					} else if (const auto *pointer =
 						std::get_if<Scalpel::PointerInput>(&input)) {
+						(void)UpdateTabStripPointerState(*pointer, stripModel,
+							editor, pointerOverStrip);
 						HandlePromptPointer(*pointer, promptLayout,
 							promptPressHit, workspace, editor, cardFocus);
 					}
