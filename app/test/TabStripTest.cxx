@@ -403,6 +403,92 @@ TEST_CASE("tab strip paint active dirty overflowed hovered and scaled layouts") 
 	}
 }
 
+TEST_CASE("tab strip editor integration paints permanent chrome above the inset client") {
+	ApplicationEditor editor(320, 120);
+	editor.LoadInitialBuffer("editor body\nsecond line\n");
+	editor.SetTopChromeInset(TabStripHeight());
+	(void)editor.TakeFrameDamage();
+
+	TabStripPainter painter;
+	const TabStripModel model = ModelWith({
+		MakeTab(1, "active", true),
+		MakeTab(2, "idle", false, true),
+	});
+	const TabStripLayout layout = LayoutTabStrip(320, model);
+	int chromePaints = 0;
+	editor.SetPermanentChromePainter(
+		[&](Scintilla::Internal::Surface &surface, int width, int height) {
+			++chromePaints;
+			CHECK(width == 320);
+			CHECK(height == 120);
+			painter.Paint(surface, layout, model);
+		});
+
+	// Full frame: strip and editor both paint.
+	editor.RenderFrame({PRectangle::FromInts(0, 0, 320, 120)});
+	CHECK(chromePaints == 1);
+	CHECK(editor.LastPaintRectangle() ==
+		PRectangle::FromInts(0, TabStripHeight(), 320, 120));
+
+	const auto pixels = editor.FramePixels();
+	REQUIRE(pixels.size() == 320U * 120U * 4U);
+	const int yStrip = TabStripHeight() / 2;
+	const Rgba stripPx = Sample(pixels, 320,
+		static_cast<int>(Center(layout.tabs[0].bounds).x), yStrip);
+	const Rgba bodyPx = Sample(pixels, 320, 160, TabStripHeight() + 12);
+	CHECK(Differs(stripPx, bodyPx));
+
+	// Editor-only damage keeps strip out of the permanent paint path.
+	editor.RenderFrame({PRectangle::FromInts(20, TabStripHeight() + 4, 80,
+		TabStripHeight() + 30)});
+	CHECK(chromePaints == 1);
+
+	// Chrome damage repaints the strip without expanding editor paint.
+	editor.InvalidateTopChrome();
+	editor.RenderFrame(editor.TakeFrameDamage());
+	CHECK(chromePaints == 2);
+	CHECK(editor.LastPaintRectangle().Height() == 0);
+}
+
+TEST_CASE("tab strip editor integration overlay draws above permanent chrome") {
+	ApplicationEditor editor(280, 100);
+	editor.LoadInitialBuffer("body\n");
+	editor.SetTopChromeInset(TabStripHeight());
+	(void)editor.TakeFrameDamage();
+
+	TabStripPainter stripPainter;
+	const TabStripModel model = ModelWith({MakeTab(1, "tab", true)});
+	const TabStripLayout layout = LayoutTabStrip(280, model);
+	editor.SetPermanentChromePainter(
+		[&](Scintilla::Internal::Surface &surface, int, int) {
+			stripPainter.Paint(surface, layout, model);
+		});
+
+	bool overlayCalled = false;
+	editor.SetOverlayPainter(
+		[&](Scintilla::Internal::Surface &surface, int width, int height) {
+			overlayCalled = true;
+			// Opaque cover over the strip midpoint.
+			surface.FillRectangle(
+				PRectangle::FromInts(width / 2 - 10, 2, width / 2 + 10,
+					TabStripHeight() - 2),
+				Scintilla::Internal::Fill(
+					Scintilla::Internal::ColourRGBA(0xff, 0x00, 0xff, 0xff)));
+			(void)height;
+		});
+
+	editor.RenderFrame({PRectangle::FromInts(0, 0, 280, 100)});
+	CHECK(overlayCalled);
+
+	const auto pixels = editor.FramePixels();
+	const Rgba over = Sample(pixels, 280, 140, TabStripHeight() / 2);
+	CHECK(over.r == 0xff);
+	CHECK(over.b == 0xff);
+	// Away from the overlay mark, strip chrome still shows.
+	const Rgba stripEdge = Sample(pixels, 280, 20, TabStripHeight() / 2);
+	CHECK(Differs(over, stripEdge));
+}
+
 TEST_CASE("tab strip hit-test ignores overflow outside the viewport") {
 	std::vector<TabStripTab> tabs;
 	for (uint64_t i = 1; i <= 5; ++i) {

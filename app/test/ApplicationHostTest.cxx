@@ -508,3 +508,232 @@ TEST_CASE("production editor host schedules tickers against a monotonic clock") 
 	editor.SetKeyboardFocus(false);
 	CHECK_FALSE(editor.TimeUntilNextWork().has_value());
 }
+
+TEST_CASE("production editor top chrome insets the client and keeps frame origin") {
+	using Scintilla::Internal::PRectangle;
+
+	Scalpel::ApplicationEditor editor(200, 100);
+	editor.LoadInitialBuffer("line one\nline two\nline three\n");
+	(void)editor.TakeFrameDamage();
+
+	CHECK(editor.TopChromeInset() == 0);
+	CHECK(editor.FrameRectangle() == PRectangle::FromInts(0, 0, 200, 100));
+
+	const int inset = 28;
+	editor.SetTopChromeInset(inset);
+	CHECK(editor.TopChromeInset() == inset);
+	CHECK(editor.TopChromeRectangle() == PRectangle::FromInts(0, 0, 200, inset));
+	CHECK(editor.FrameRectangle() == PRectangle::FromInts(0, 0, 200, 100));
+
+	// Partial editor damage is clipped to the inset client, not the chrome band.
+	const PRectangle editorDamage = PRectangle::FromInts(10, inset + 5, 40, inset + 25);
+	editor.RenderFrame({editorDamage});
+	CHECK(editor.LastPaintRectangle() == editorDamage);
+
+	// Chrome-only damage does not expand editor paint into the strip.
+	(void)editor.TakeFrameDamage();
+	editor.RenderFrame({PRectangle::FromInts(0, 0, 200, inset)});
+	CHECK(editor.LastPaintRectangle().Width() == 0);
+	CHECK(editor.LastPaintRectangle().Height() == 0);
+}
+
+TEST_CASE("production editor top chrome hit testing uses frame coordinates") {
+	Scalpel::ApplicationEditor editor(240, 120);
+	editor.LoadInitialBuffer("abcdef\nghijkl\n");
+	const int inset = 28;
+	editor.SetTopChromeInset(inset);
+	editor.SetKeyboardFocus(true);
+	editor.SetSel(0, 0);
+	editor.RenderFrame();
+
+	// Caret geometry for the first character is below the chrome band.
+	const auto firstCaret = editor.TakeTextInputState();
+	REQUIRE(firstCaret.has_value());
+	CHECK(firstCaret->cursorRectangle.y >= inset);
+	REQUIRE(firstCaret->cursorRectangle.height > 0);
+	const int lineHeight = firstCaret->cursorRectangle.height;
+
+	// Click using full-frame y at the first-line caret (no shell-side translation).
+	const int textX = firstCaret->cursorRectangle.x + 2;
+	const int firstLineY = firstCaret->cursorRectangle.y + lineHeight / 2;
+	editor.HandlePointerInput({Scalpel::PointerAction::Press,
+		Scintilla::KeyMod::Norm, static_cast<double>(textX),
+		static_cast<double>(firstLineY), 0, 0, 1, 0});
+	editor.HandlePointerInput({Scalpel::PointerAction::Release,
+		Scintilla::KeyMod::Norm, static_cast<double>(textX),
+		static_cast<double>(firstLineY), 0, 0, 2, 0});
+	CHECK(editor.GetCurrentPos() < 6);
+	CHECK(editor.GetCurrentPos() >= 0);
+
+	// Second display line is one lineHeight below the first in frame coordinates.
+	const int secondLineY = firstCaret->cursorRectangle.y + lineHeight +
+		lineHeight / 2;
+	editor.HandlePointerInput({Scalpel::PointerAction::Press,
+		Scintilla::KeyMod::Norm, static_cast<double>(textX),
+		static_cast<double>(secondLineY), 0, 0, 3, 0});
+	editor.HandlePointerInput({Scalpel::PointerAction::Release,
+		Scintilla::KeyMod::Norm, static_cast<double>(textX),
+		static_cast<double>(secondLineY), 0, 0, 4, 0});
+	CHECK(editor.GetCurrentPos() >= 7);
+}
+
+TEST_CASE("production editor top chrome caret geometry is below the inset") {
+	Scalpel::ApplicationEditor editor(240, 120);
+	editor.LoadInitialBuffer("caret\n");
+	const int inset = 28;
+	editor.SetTopChromeInset(inset);
+	editor.SetKeyboardFocus(true);
+	editor.SetSel(0, 0);
+	editor.RenderFrame();
+
+	const auto state = editor.TakeTextInputState();
+	REQUIRE(state.has_value());
+	CHECK(state->cursorRectangle.y >= inset);
+	CHECK(state->cursorRectangle.height > 0);
+}
+
+TEST_CASE("production editor top chrome permanent painter is damage-aware") {
+	using Scintilla::Internal::ColourRGBA;
+	using Scintilla::Internal::Fill;
+	using Scintilla::Internal::PRectangle;
+	using Scintilla::Internal::Surface;
+
+	Scalpel::ApplicationEditor editor(120, 80);
+	editor.LoadInitialBuffer("base\n");
+	const int inset = 20;
+	editor.SetTopChromeInset(inset);
+	(void)editor.TakeFrameDamage();
+
+	int chromePaints = 0;
+	editor.SetPermanentChromePainter(
+		[&](Surface &surface, int width, int height) {
+			++chromePaints;
+			CHECK(width == 120);
+			CHECK(height == 80);
+			surface.FillRectangle(PRectangle::FromInts(0, 0, width, inset),
+				Fill(ColourRGBA(0x20, 0x40, 0x80, 0xff)));
+		});
+
+	// Editor-only damage: chrome painter must not run.
+	editor.RenderFrame({PRectangle::FromInts(10, inset + 5, 30, inset + 20)});
+	CHECK(chromePaints == 0);
+
+	// Chrome damage: chrome painter runs; editor paint is not expanded.
+	editor.RenderFrame({PRectangle::FromInts(0, 0, 120, inset)});
+	CHECK(chromePaints == 1);
+	CHECK(editor.LastPaintRectangle().Width() == 0);
+
+	const auto pixels = editor.FramePixels();
+	REQUIRE(pixels.size() == 120U * 80U * 4U);
+	const size_t chromeSample = (static_cast<size_t>(inset / 2) * 120U + 10U) * 4U;
+	CHECK(pixels[chromeSample + 0] == 0x20);
+	CHECK(pixels[chromeSample + 1] == 0x40);
+	CHECK(pixels[chromeSample + 2] == 0x80);
+
+	// Full invalidation still paints both bands.
+	editor.InvalidateClient();
+	editor.RenderFrame();
+	CHECK(chromePaints == 2);
+}
+
+TEST_CASE("production editor top chrome overlay paints above tabs and forces full client") {
+	using Scintilla::Internal::ColourRGBA;
+	using Scintilla::Internal::Fill;
+	using Scintilla::Internal::PRectangle;
+	using Scintilla::Internal::Surface;
+
+	Scalpel::ApplicationEditor editor(100, 60);
+	editor.LoadInitialBuffer("under\n");
+	const int inset = 16;
+	editor.SetTopChromeInset(inset);
+	(void)editor.TakeFrameDamage();
+
+	int chromePaints = 0;
+	int overlayPaints = 0;
+	editor.SetPermanentChromePainter(
+		[&](Surface &surface, int width, int) {
+			++chromePaints;
+			surface.FillRectangle(PRectangle::FromInts(0, 0, width, inset),
+				Fill(ColourRGBA(0x00, 0xff, 0x00, 0xff)));
+		});
+	editor.SetOverlayPainter(
+		[&](Surface &surface, int width, int height) {
+			++overlayPaints;
+			CHECK(width == 100);
+			CHECK(height == 60);
+			// Opaque mark over the strip center so overlay is above chrome.
+			surface.FillRectangle(PRectangle::FromInts(40, 2, 60, 14),
+				Fill(ColourRGBA(0xff, 0x00, 0x00, 0xff)));
+		});
+
+	// Partial editor damage expands to the full editor client under an overlay.
+	editor.RenderFrame({PRectangle::FromInts(10, inset + 5, 20, inset + 15)});
+	CHECK(chromePaints == 1);
+	CHECK(overlayPaints == 1);
+	CHECK(editor.LastPaintRectangle() ==
+		PRectangle::FromInts(0, inset, 100, 60));
+
+	const auto pixels = editor.FramePixels();
+	REQUIRE(pixels.size() == 100U * 60U * 4U);
+	// Overlay red marker at strip y=8.
+	const size_t overlaySample = (8U * 100U + 50U) * 4U;
+	CHECK(pixels[overlaySample + 0] == 0xff);
+	CHECK(pixels[overlaySample + 1] == 0x00);
+	CHECK(pixels[overlaySample + 2] == 0x00);
+	// Chrome green remains where overlay did not cover (x=5, y=8).
+	const size_t chromeSample = (8U * 100U + 5U) * 4U;
+	CHECK(pixels[chromeSample + 0] == 0x00);
+	CHECK(pixels[chromeSample + 1] == 0xff);
+	CHECK(pixels[chromeSample + 2] == 0x00);
+}
+
+TEST_CASE("production editor top chrome respects framebuffer scale") {
+	using Scintilla::Internal::ColourRGBA;
+	using Scintilla::Internal::Fill;
+	using Scintilla::Internal::PRectangle;
+	using Scintilla::Internal::Surface;
+
+	Scalpel::ApplicationEditor editor(100, 50);
+	editor.LoadInitialBuffer("scale\n");
+	const int inset = 10;
+	editor.SetTopChromeInset(inset);
+	editor.SetFrameBufferSize(200, 100);
+	(void)editor.TakeFrameDamage();
+
+	editor.SetPermanentChromePainter(
+		[&](Surface &surface, int width, int height) {
+			CHECK(width == 100);
+			CHECK(height == 50);
+			surface.FillRectangle(PRectangle::FromInts(0, 0, width, inset),
+				Fill(ColourRGBA(0x11, 0x22, 0x33, 0xff)));
+		});
+	editor.RenderFrame({PRectangle::FromInts(0, 0, 100, 50)});
+
+	// Logical FramePixels size is unchanged by buffer scale.
+	const auto pixels = editor.FramePixels();
+	REQUIRE(pixels.size() == 100U * 50U * 4U);
+	const size_t sample = (4U * 100U + 4U) * 4U;
+	CHECK(pixels[sample + 0] == 0x11);
+	CHECK(editor.BufferWidth() == 200);
+	CHECK(editor.BufferHeight() == 100);
+}
+
+TEST_CASE("production editor top chrome InvalidateTopChrome damages only the band") {
+	Scalpel::ApplicationEditor editor(160, 90);
+	const int inset = 24;
+	editor.SetTopChromeInset(inset);
+	(void)editor.TakeFrameDamage();
+	CHECK_FALSE(editor.NeedsRedraw());
+
+	editor.InvalidateTopChrome();
+	CHECK(editor.NeedsRedraw());
+	const auto damage = editor.TakeFrameDamage();
+	REQUIRE_FALSE(damage.empty());
+	CHECK(std::find(damage.begin(), damage.end(),
+		Scintilla::Internal::PRectangle::FromInts(0, 0, 160, inset)) !=
+		damage.end());
+	// No full-frame invalidation from InvalidateTopChrome alone.
+	CHECK(std::find(damage.begin(), damage.end(),
+		Scintilla::Internal::PRectangle::FromInts(0, 0, 160, 90)) ==
+		damage.end());
+}

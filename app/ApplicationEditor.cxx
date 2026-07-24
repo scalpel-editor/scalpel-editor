@@ -48,6 +48,19 @@ PRectangle DamageBounds(
 	return bounds.value_or(client);
 }
 
+bool DamageIntersects(const std::vector<PRectangle> &damage,
+	PRectangle area) noexcept {
+	if (damage.empty()) {
+		return true;
+	}
+	for (const PRectangle &rectangle : damage) {
+		if (rectangle.Intersects(area)) {
+			return true;
+		}
+	}
+	return false;
+}
+
 const char *ClipboardStatusName(ApplicationClipboardStatus status) noexcept {
 	switch (status) {
 	case ApplicationClipboardStatus::Published:
@@ -432,6 +445,46 @@ void ApplicationEditor::Resize(int width, int height) {
 	textInputStateDirty = true;
 }
 
+void ApplicationEditor::SetTopChromeInset(int logicalPixels) {
+	if (logicalPixels < 0) {
+		throw std::invalid_argument(
+			"ApplicationEditor::SetTopChromeInset requires a non-negative inset");
+	}
+	if (topChromeInset == logicalPixels) {
+		return;
+	}
+	topChromeInset = logicalPixels;
+	DropGraphics();
+	frame.reset();
+	ChangeSize();
+	wMain.InvalidateAll();
+	textInputStateDirty = true;
+}
+
+PRectangle ApplicationEditor::FrameRectangle() const noexcept {
+	return PRectangle::FromInts(0, 0, FrameWidth(), FrameHeight());
+}
+
+PRectangle ApplicationEditor::TopChromeRectangle() const noexcept {
+	if (topChromeInset <= 0) {
+		return PRectangle::FromInts(0, 0, 0, 0);
+	}
+	const int height = FrameHeight();
+	const int inset = std::min(topChromeInset, height);
+	return PRectangle::FromInts(0, 0, FrameWidth(), inset);
+}
+
+PRectangle ApplicationEditor::GetClientRectangle() const {
+	const int width = FrameWidth();
+	const int height = FrameHeight();
+	if (topChromeInset <= 0) {
+		return PRectangle::FromInts(0, 0, width, height);
+	}
+	// Keep at least one logical pixel of editor height when possible.
+	const int inset = std::min(topChromeInset, std::max(0, height - 1));
+	return PRectangle::FromInts(0, inset, width, height);
+}
+
 void ApplicationEditor::SetFrameBufferSize(int width, int height) {
 	if (width <= 0 || height <= 0) {
 		throw std::invalid_argument(
@@ -789,14 +842,27 @@ void ApplicationEditor::RenderFrame(const std::vector<PRectangle> &damage) {
 	frame = Scintilla::Internal::CreateDrawSurface(*renderer, width, height);
 	paintState = PaintState::painting;
 	const PRectangle client = GetClientRectangle();
-	rcPaint = DamageBounds(damage, client);
-	// Overlay chrome spans the client; partial rcPaint would leave it inconsistent.
-	if (overlayPainter) {
+	const PRectangle chrome = TopChromeRectangle();
+	const bool paintOverlay = static_cast<bool>(overlayPainter);
+	// Modal overlay spans the full frame (tabs + editor).
+	const bool paintEditor = paintOverlay || DamageIntersects(damage, client);
+	const bool paintChrome = permanentChromePainter && topChromeInset > 0 &&
+		(paintOverlay || DamageIntersects(damage, chrome));
+	if (paintOverlay) {
 		rcPaint = client;
+	} else if (paintEditor) {
+		rcPaint = DamageBounds(damage, client);
+	} else {
+		rcPaint = PRectangle::FromInts(0, 0, 0, 0);
 	}
-	paintingAllText = rcPaint == client;
+	paintingAllText = paintEditor && (rcPaint == client);
 	try {
-		Paint(frame.get(), rcPaint);
+		if (paintEditor) {
+			Paint(frame.get(), rcPaint);
+		}
+		if (paintChrome) {
+			permanentChromePainter(*frame, width, height);
+		}
 		if (overlayPainter) {
 			overlayPainter(*frame, width, height);
 		}
@@ -832,15 +898,28 @@ void ApplicationEditor::PresentFrame(
 		*renderer, 0, bufferWidth, bufferHeight, width, height);
 	paintState = PaintState::painting;
 	const PRectangle client = GetClientRectangle();
-	rcPaint = DamageBounds(damage, client);
+	const PRectangle chrome = TopChromeRectangle();
+	const bool paintOverlay = static_cast<bool>(overlayPainter);
+	const bool paintEditor = paintOverlay || DamageIntersects(damage, client);
+	const bool paintChrome = permanentChromePainter && topChromeInset > 0 &&
+		(paintOverlay || DamageIntersects(damage, chrome));
 	// Overlay alpha (scrim) must not re-blend outside the reported EGL damage.
-	if (overlayPainter) {
+	if (paintOverlay) {
 		rcPaint = client;
 		fullSwap = true;
+	} else if (paintEditor) {
+		rcPaint = DamageBounds(damage, client);
+	} else {
+		rcPaint = PRectangle::FromInts(0, 0, 0, 0);
 	}
-	paintingAllText = rcPaint == client;
+	paintingAllText = paintEditor && (rcPaint == client);
 	try {
-		Paint(frame.get(), rcPaint);
+		if (paintEditor) {
+			Paint(frame.get(), rcPaint);
+		}
+		if (paintChrome) {
+			permanentChromePainter(*frame, width, height);
+		}
 		if (overlayPainter) {
 			overlayPainter(*frame, width, height);
 		}
@@ -861,6 +940,18 @@ void ApplicationEditor::PresentFrame(
 
 void ApplicationEditor::SetOverlayPainter(OverlayPainter painter) {
 	overlayPainter = std::move(painter);
+}
+
+void ApplicationEditor::SetPermanentChromePainter(PermanentChromePainter painter) {
+	permanentChromePainter = std::move(painter);
+}
+
+void ApplicationEditor::InvalidateTopChrome() {
+	const PRectangle chrome = TopChromeRectangle();
+	if (chrome.Empty()) {
+		return;
+	}
+	window.invalidatedRectangles.push_back(chrome);
 }
 
 void ApplicationEditor::InvalidateClient() {

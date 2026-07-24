@@ -145,6 +145,18 @@ public:
 	// Logical editor size and framebuffer pixel size change independently.
 	void Resize(int width, int height);
 	void SetFrameBufferSize(int width, int height);
+	/**
+	 * Reserve a fixed logical-height band at the top of the frame for permanent
+	 * chrome (tab strip). Scintilla's client rectangle starts below the inset;
+	 * pointer and caret coordinates stay in full-frame space (no shell-side y
+	 * translation for content below the band). Zero clears the reservation.
+	 */
+	void SetTopChromeInset(int logicalPixels);
+	[[nodiscard]] int TopChromeInset() const noexcept { return topChromeInset; }
+	/** Full frame bounds in logical pixels: (0, 0, width, height). */
+	[[nodiscard]] Scintilla::Internal::PRectangle FrameRectangle() const noexcept;
+	/** Top chrome band: (0, 0, width, topChromeInset). Empty when inset is 0. */
+	[[nodiscard]] Scintilla::Internal::PRectangle TopChromeRectangle() const noexcept;
 	void SetKeyboardFocus(bool focused);
 	void HandleKeyboardInput(const KeyboardInput &input);
 	void HandlePointerInput(const PointerInput &input);
@@ -178,14 +190,26 @@ public:
 	/**
 	 * Optional post-paint chrome. Called after a successful Scintilla Paint on
 	 * the same surface, with logical frame width and height, before swap.
-	 * While set, PresentFrame and RenderFrame expand paint to the full client
-	 * and PresentFrame uses a full buffer swap so alpha overlays do not darken
-	 * preserved pixels outside partial damage.
+	 * While set, PresentFrame and RenderFrame expand paint to the full frame
+	 * (editor client plus top chrome) and PresentFrame uses a full buffer swap
+	 * so alpha overlays do not darken preserved pixels outside partial damage.
+	 * The modal unsaved card is the only user of this path.
 	 */
 	using OverlayPainter = std::function<void(Scintilla::Internal::Surface &surface,
 		int width, int height)>;
 	void SetOverlayPainter(OverlayPainter painter);
-	/** Full-client invalidate so modal chrome appears or disappears cleanly. */
+	/**
+	 * Opaque permanent chrome (tab strip) painted after Scintilla and before any
+	 * modal overlay. Only runs when the chrome band intersects frame damage, or
+	 * when an overlay forces a full-frame paint. Does not expand damage or force
+	 * a full buffer swap on ordinary editor frames.
+	 */
+	using PermanentChromePainter = std::function<void(
+		Scintilla::Internal::Surface &surface, int width, int height)>;
+	void SetPermanentChromePainter(PermanentChromePainter painter);
+	/** Damage only the top chrome band. */
+	void InvalidateTopChrome();
+	/** Full-frame invalidate so modal chrome appears or disappears cleanly. */
 	void InvalidateClient();
 	[[nodiscard]] std::vector<Scintilla::Internal::PRectangle> TakeFrameDamage();
 	void RunPendingWork();
@@ -220,6 +244,9 @@ public:
 	[[nodiscard]] int ImeIndicatorAt(Scintilla::Position position) const;
 
 protected:
+	/** Editor text area only; top is TopChromeInset() when permanent chrome is reserved. */
+	[[nodiscard]] Scintilla::Internal::PRectangle GetClientRectangle() const override;
+
 	void SetHorizontalScrollPos() override;
 	void SetVerticalScrollPos() override;
 	bool ModifyScrollBars(Scintilla::Line maximum, Scintilla::Line page) override;
@@ -322,6 +349,8 @@ private:
 		ApplicationTextChangeCause::Other;
 	NowFunction now;
 	OverlayPainter overlayPainter;
+	PermanentChromePainter permanentChromePainter;
+	int topChromeInset = 0;
 	double horizontalWheelRemainder = 0;
 	double verticalWheelRemainder = 0;
 	int bufferWidth = 0;

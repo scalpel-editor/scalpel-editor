@@ -276,11 +276,15 @@ constexpr LineMarker::FoldPart PartForBar(bool markBefore, bool markAfter) {
 }
 
 void MarginView::PaintOneMargin(Surface *surface, PRectangle rc, PRectangle rcOneMargin, const MarginStyle &marginStyle,
-	const EditModel &model, const ViewStyle &vs) const {
+	const EditModel &model, const ViewStyle &vs, XYPOSITION clientTop) const {
 	const Point ptOrigin = model.GetVisibleOriginInMain();
-	const Sci::Line lineStartPaint = static_cast<Sci::Line>(rcOneMargin.top + ptOrigin.y) / vs.lineHeight;
+	// Line indices are relative to the text client top (may be non-zero when
+	// permanent chrome insets the editor below a tab strip).
+	const Sci::Line lineStartPaint = static_cast<Sci::Line>(
+		rcOneMargin.top - clientTop + ptOrigin.y) / vs.lineHeight;
 	Sci::Line visibleLine = model.TopLineOfMain() + lineStartPaint;
-	XYPOSITION yposScreen = static_cast<XYPOSITION>(lineStartPaint * vs.lineHeight) - ptOrigin.y;
+	XYPOSITION yposScreen = clientTop +
+		static_cast<XYPOSITION>(lineStartPaint * vs.lineHeight) - ptOrigin.y;
 	// Work out whether the top line is whitespace located after a
 	// lessening of fold level which implies a 'fold tail' but which should not
 	// be displayed until the last of a sequence of whitespace.
@@ -464,7 +468,7 @@ void MarginView::PaintOneMargin(Surface *surface, PRectangle rc, PRectangle rcOn
 }
 
 void MarginView::PaintMargin(Surface *surface, Sci::Line topLine, PRectangle rc, PRectangle rcMargin,
-	const EditModel &model, const ViewStyle &vs) {
+	const EditModel &model, const ViewStyle &vs, XYPOSITION clientTop) {
 
 	PRectangle rcOneMargin = rcMargin;
 	rcOneMargin.right = rcMargin.left;
@@ -514,7 +518,7 @@ void MarginView::PaintMargin(Surface *surface, Sci::Line topLine, PRectangle rc,
 					model.pdoc->SciLineFromPosition(model.sel.MainCaret()), lastLine);
 			}
 
-			PaintOneMargin(surface, rc, rcOneMargin, marginStyle, model, vs);
+			PaintOneMargin(surface, rc, rcOneMargin, marginStyle, model, vs, clientTop);
 		}
 	}
 

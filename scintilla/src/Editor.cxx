@@ -237,7 +237,10 @@ PointDocument Editor::DocumentPointFromView(Point ptView) const {
 		ptDocument.y += ptOrigin.y;
 	} else {
 		ptDocument.x += xOffset;
-		ptDocument.y += static_cast<double>(topLine * vs.lineHeight);
+		// Subtract client top so y=0 is the first visible line of the text area
+		// when permanent chrome insets GetClientRectangle.
+		ptDocument.y += static_cast<double>(topLine * vs.lineHeight) -
+			GetClientRectangle().top;
 	}
 	return ptDocument;
 }
@@ -340,7 +343,7 @@ SelectionPosition Editor::SPositionFromLocation(Point pt, bool canReturnInvalid,
 			return SelectionPosition(Sci::invalidPosition);
 		if (pt.x < vs.textStart)
 			return SelectionPosition(Sci::invalidPosition);
-		if (pt.y < 0)
+		if (pt.y < rcClient.top)
 			return SelectionPosition(Sci::invalidPosition);
 	}
 	const PointDocument ptdoc = DocumentPointFromView(pt);
@@ -1300,7 +1303,8 @@ void Editor::PaintSelMargin(Surface *surfaceWindow, const PRectangle &rc) {
 	if (rcMargin.top < rc.top)
 		rcMargin.top = rc.top;
 
-	marginView.PaintMargin(surface, topLine, rc, rcMargin, *this, vs);
+	marginView.PaintMargin(surface, topLine, rc, rcMargin, *this, vs,
+		GetClientRectangle().top);
 
 	if (view.bufferedDraw) {
 		marginView.pixmapSelMargin->FlushDrawing();
@@ -1314,8 +1318,10 @@ void Editor::RefreshPixMaps(Surface *surfaceWindow) {
 	if (view.bufferedDraw && !(view.pixmapLine && marginView.pixmapSelMargin)) {
 		const PRectangle rcClient = GetClientRectangle();
 		view.pixmapLine = surfaceWindow->AllocatePixMap(static_cast<int>(rcClient.Width()), vs.lineHeight);
+		// Height reaches client.bottom so absolute y (including a non-zero client
+		// top) stays inside the pixmap when copying from window coordinates.
 		marginView.pixmapSelMargin = surfaceWindow->AllocatePixMap(vs.fixedColumnWidth,
-			static_cast<int>(rcClient.Height()));
+			std::max(1, static_cast<int>(rcClient.bottom)));
 	}
 }
 

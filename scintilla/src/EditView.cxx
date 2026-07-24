@@ -668,6 +668,8 @@ Point EditView::LocationFromPosition(Surface *surface, const EditModel &model, S
 			}
 		}
 		pt.y += static_cast<XYPOSITION>((lineVisible - topLine) * vs.lineHeight);
+		// rcClient.top is the view origin when permanent chrome insets the client.
+		pt.y += rcClient.top;
 		pt.x += pos.VirtualSpaceWidth(vs.styles[ll->EndLineStyle()].spaceWidth);
 	}
 	return pt;
@@ -2489,8 +2491,11 @@ void EditView::PaintText(Surface *surfaceWindow, const EditModel &model, const V
 		surface->SetMode(model.CurrentSurfaceMode());
 
 		const Point ptOrigin = model.GetVisibleOriginInMain();
+		const int clientTop = static_cast<int>(rcClient.top);
 
-		const int screenLinePaintFirst = static_cast<int>(rcArea.top) / vsDraw.lineHeight;
+		// Line indices are relative to the client top, not the window origin.
+		const int areaTopRelative = std::max(0, static_cast<int>(rcArea.top) - clientTop);
+		const int screenLinePaintFirst = areaTopRelative / vsDraw.lineHeight;
 		const int xOrigin = vsDraw.textStart - model.xOffset + static_cast<int>(ptOrigin.x);
 
 		const SelectionPosition posCaret = model.posDrag.IsValid() ? model.posDrag : model.sel.RangeMain().caret;
@@ -2531,7 +2536,7 @@ void EditView::PaintText(Surface *surfaceWindow, const EditModel &model, const V
 			phase = DrawPhase::back;
 		}
 		for (;;) {
-			int yposScreen = screenLinePaintFirst * vsDraw.lineHeight;
+			int yposScreen = clientTop + screenLinePaintFirst * vsDraw.lineHeight;
 			int ypos = bufferedDraw ? 0 : yposScreen;
 			Sci::Line lineVisible = model.TopLineOfMain() + screenLinePaintFirst;
 			while (lineVisible < model.pcs->LinesDisplayed() && yposScreen < rcArea.bottom) {
@@ -2634,7 +2639,8 @@ void EditView::PaintText(Surface *surfaceWindow, const EditModel &model, const V
 		PRectangle rcBeyondEOF = (vsDraw.marginInside) ? rcClient : rcArea;
 		rcBeyondEOF.left = static_cast<XYPOSITION>(vsDraw.textStart);
 		rcBeyondEOF.right = rcBeyondEOF.right - ((vsDraw.marginInside) ? vsDraw.rightMarginWidth : 0);
-		rcBeyondEOF.top = static_cast<XYPOSITION>((model.pcs->LinesDisplayed() - model.TopLineOfMain()) * vsDraw.lineHeight);
+		rcBeyondEOF.top = static_cast<XYPOSITION>(clientTop +
+			(model.pcs->LinesDisplayed() - model.TopLineOfMain()) * vsDraw.lineHeight);
 		if (rcBeyondEOF.top < rcBeyondEOF.bottom) {
 			surfaceWindow->FillRectangleAligned(rcBeyondEOF, Fill(vsDraw.styles[StyleDefault].back));
 			if (vsDraw.edgeState == EdgeVisualStyle::Line) {
