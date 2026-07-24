@@ -12,6 +12,7 @@
 #include "DocumentFile.h"
 #include "DocumentWorkspace.h"
 #include "GlContext.h"
+#include "TabStrip.h"
 #include "UnsavedChangesCard.h"
 #include "UnsavedChangesPrompt.h"
 #include "WaylandWindow.h"
@@ -263,8 +264,99 @@ std::vector<Scalpel::FileDialogFilter> TextDialogFilters() {
 	return requestId;
 }
 
+/** Rebuild strip tabs from the workspace. Returns true when display state changed. */
+bool SyncTabStripTabs(const Scalpel::DocumentWorkspace &workspace,
+	Scalpel::TabStripModel &model, int stripWidth) {
+	const std::vector<Scalpel::DocumentTabInfo> tabs = workspace.Tabs();
+	bool changed = model.tabs.size() != tabs.size();
+	std::vector<Scalpel::TabStripTab> next;
+	next.reserve(tabs.size());
+	for (const Scalpel::DocumentTabInfo &info : tabs) {
+		Scalpel::TabStripTab tab;
+		tab.id = info.id;
+		tab.label = info.label;
+		tab.dirty = info.dirty;
+		tab.active = info.active;
+		next.push_back(std::move(tab));
+	}
+	if (!changed) {
+		for (std::size_t i = 0; i < next.size(); ++i) {
+			if (next[i].id != model.tabs[i].id ||
+				next[i].label != model.tabs[i].label ||
+				next[i].dirty != model.tabs[i].dirty ||
+				next[i].active != model.tabs[i].active) {
+				changed = true;
+				break;
+			}
+		}
+	}
+	model.tabs = std::move(next);
+
+	bool hoverValid = model.hoveredId == 0;
+	for (const Scalpel::TabStripTab &tab : model.tabs) {
+		if (tab.id == model.hoveredId) {
+			hoverValid = true;
+			break;
+		}
+	}
+	if (!hoverValid) {
+		model.hoveredId = 0;
+		model.closeHovered = false;
+		changed = true;
+	}
+
+	const int clamped = Scalpel::ClampTabStripScroll(
+		stripWidth, model.tabs.size(), model.scrollOffset);
+	if (clamped != model.scrollOffset) {
+		model.scrollOffset = clamped;
+		changed = true;
+	}
+	return changed;
+}
+
+void RevealActiveTab(Scalpel::TabStripModel &model, int stripWidth) {
+	std::size_t activeIndex = 0;
+	bool found = false;
+	for (std::size_t i = 0; i < model.tabs.size(); ++i) {
+		if (model.tabs[i].active) {
+			activeIndex = i;
+			found = true;
+			break;
+		}
+	}
+	if (!found) {
+		return;
+	}
+	model.scrollOffset = Scalpel::ScrollTabStripToIndex(
+		stripWidth, model.tabs.size(), activeIndex, model.scrollOffset);
+}
+
+/** Card subtitle names the tab that owns the dirty-close prompt. */
+[[nodiscard]] std::string UnsavedPromptSubtitle(
+	const Scalpel::DocumentWorkspace &workspace) {
+	const Scalpel::DocumentId promptId = workspace.PromptTab();
+	for (const Scalpel::DocumentTabInfo &tab : workspace.Tabs()) {
+		if (tab.id != promptId) {
+			continue;
+		}
+		std::string label = tab.label;
+		// Drop the dirty marker; the card already asks about unsaved changes.
+		if (label.size() >= 2 &&
+			label.compare(label.size() - 2, 2, " *") == 0) {
+			label.resize(label.size() - 2);
+		}
+		return label;
+	}
+	if (workspace.Path().empty()) {
+		return "Untitled";
+	}
+	return Scalpel::DocumentBaseName(workspace.Path());
+}
+
 void PerformShellRequests(Scalpel::DocumentWorkspace &workspace,
 	Scalpel::WaylandWindow &window,
+	Scalpel::ApplicationEditor &editor,
+	Scalpel::TabStripModel &stripModel,
 	bool &quitAccepted,
 	int &cardFocus,
 	std::optional<Scalpel::UnsavedCardHit> &pressHit) {
@@ -293,7 +385,9 @@ void PerformShellRequests(Scalpel::DocumentWorkspace &workspace,
 			pressHit.reset();
 			break;
 		case Scalpel::DocumentShellRequest::RefreshTabs:
-			// Tab strip wiring is a later step; keep the request for the model.
+			(void)SyncTabStripTabs(workspace, stripModel, editor.FrameWidth());
+			RevealActiveTab(stripModel, editor.FrameWidth());
+			editor.InvalidateTopChrome();
 			break;
 		}
 	}
@@ -325,6 +419,30 @@ void ApplyFileDialogResults(Scalpel::WaylandWindow &window,
 [[nodiscard]] bool IsSaveAsShortcut(const Scalpel::KeyboardInput &input) {
 	return input.pressed &&
 		input.key == static_cast<Scintilla::Keys>('S') &&
+		input.modifiers == (Scintilla::KeyMod::Ctrl | Scintilla::KeyMod::Shift);
+}
+
+[[nodiscard]] bool IsNewTabShortcut(const Scalpel::KeyboardInput &input) {
+	return input.pressed &&
+		input.key == static_cast<Scintilla::Keys>('N') &&
+		input.modifiers == Scintilla::KeyMod::Ctrl;
+}
+
+[[nodiscard]] bool IsCloseTabShortcut(const Scalpel::KeyboardInput &input) {
+	return input.pressed &&
+		input.key == static_cast<Scintilla::Keys>('W') &&
+		input.modifiers == Scintilla::KeyMod::Ctrl;
+}
+
+[[nodiscard]] bool IsNextTabShortcut(const Scalpel::KeyboardInput &input) {
+	return input.pressed &&
+		input.key == Scintilla::Keys::Tab &&
+		input.modifiers == Scintilla::KeyMod::Ctrl;
+}
+
+[[nodiscard]] bool IsPrevTabShortcut(const Scalpel::KeyboardInput &input) {
+	return input.pressed &&
+		input.key == Scintilla::Keys::Tab &&
 		input.modifiers == (Scintilla::KeyMod::Ctrl | Scintilla::KeyMod::Shift);
 }
 
@@ -431,6 +549,135 @@ bool HandlePromptPointer(const Scalpel::PointerInput &input,
 	return true;
 }
 
+/**
+ * Handle pointer events in the permanent tab strip. Returns true when the
+ * event must not reach the editor.
+ */
+bool HandleTabStripPointer(const Scalpel::PointerInput &input,
+	Scalpel::TabStripModel &model,
+	Scalpel::DocumentWorkspace &workspace,
+	Scalpel::ApplicationEditor &editor,
+	bool &pointerOverStrip) {
+	const int stripWidth = editor.FrameWidth();
+	const Scalpel::TabStripLayout layout =
+		Scalpel::LayoutTabStrip(stripWidth, model);
+	const Scintilla::Internal::Point point(input.x, input.y);
+
+	if (input.action == Scalpel::PointerAction::Leave) {
+		if (model.hoveredId != 0 || model.closeHovered) {
+			model.hoveredId = 0;
+			model.closeHovered = false;
+			editor.InvalidateTopChrome();
+		}
+		pointerOverStrip = false;
+		// Surface leave still needs to clear editor hover and capture.
+		return false;
+	}
+
+	const Scalpel::TabStripHitResult hit =
+		Scalpel::HitTestTabStrip(layout, point);
+	const bool inStrip = hit.kind != Scalpel::TabStripHit::None;
+	if (!inStrip) {
+		if (model.hoveredId != 0 || model.closeHovered) {
+			model.hoveredId = 0;
+			model.closeHovered = false;
+			editor.InvalidateTopChrome();
+		}
+		pointerOverStrip = false;
+		return false;
+	}
+
+	pointerOverStrip = true;
+
+	if (input.action == Scalpel::PointerAction::Move) {
+		Scalpel::DocumentId newHover = 0;
+		bool closeHover = false;
+		if (hit.kind == Scalpel::TabStripHit::Tab ||
+			hit.kind == Scalpel::TabStripHit::Close) {
+			newHover = hit.tabId;
+			closeHover = hit.kind == Scalpel::TabStripHit::Close;
+		}
+		if (newHover != model.hoveredId || closeHover != model.closeHovered) {
+			model.hoveredId = newHover;
+			model.closeHovered = closeHover;
+			editor.InvalidateTopChrome();
+		}
+		return true;
+	}
+
+	if (input.action == Scalpel::PointerAction::Scroll) {
+		const double amount =
+			std::abs(input.deltaX) > std::abs(input.deltaY) ?
+			input.deltaX :
+			input.deltaY;
+		int delta = 0;
+		if (amount > 0.0) {
+			delta = 1;
+		} else if (amount < 0.0) {
+			delta = -1;
+		}
+		if (delta != 0) {
+			const int next = Scalpel::AdjustTabStripScroll(
+				stripWidth, model.tabs.size(), model.scrollOffset, delta,
+				Scalpel::TabStripPreferredTabWidth() / 2);
+			if (next != model.scrollOffset) {
+				model.scrollOffset = next;
+				editor.InvalidateTopChrome();
+			}
+		}
+		return true;
+	}
+
+	if (input.action == Scalpel::PointerAction::Press && input.button == 0) {
+		if (hit.kind == Scalpel::TabStripHit::Tab) {
+			workspace.ActivateTab(hit.tabId);
+		} else if (hit.kind == Scalpel::TabStripHit::Close) {
+			workspace.CloseTab(hit.tabId);
+		} else if (hit.kind == Scalpel::TabStripHit::Add) {
+			workspace.NewTab();
+		}
+		return true;
+	}
+
+	// Swallow other strip presses/releases so the editor does not select.
+	return true;
+}
+
+bool HandleEditorKeyboard(const Scalpel::KeyboardInput &input,
+	Scalpel::DocumentWorkspace &workspace,
+	Scalpel::ApplicationEditor &editor) {
+	if (IsOpenShortcut(input)) {
+		workspace.RequestOpen();
+		return true;
+	}
+	if (IsSaveAsShortcut(input)) {
+		workspace.RequestSaveAs();
+		return true;
+	}
+	if (IsSaveShortcut(input)) {
+		workspace.RequestSave();
+		return true;
+	}
+	if (IsNewTabShortcut(input)) {
+		workspace.NewTab();
+		return true;
+	}
+	if (IsCloseTabShortcut(input)) {
+		workspace.CloseTab(workspace.ActiveTab());
+		return true;
+	}
+	if (IsPrevTabShortcut(input)) {
+		workspace.CycleTab(-1);
+		return true;
+	}
+	if (IsNextTabShortcut(input)) {
+		workspace.CycleTab(1);
+		return true;
+	}
+	editor.HandleKeyboardInput(input);
+	return false;
+}
+
 }
 
 int main() {
@@ -446,22 +693,38 @@ int main() {
 		constexpr std::string_view initialText =
 			"scalpel-editor\n\n"
 			"A direct Scintilla editor for Wayland.\n"
+			"Ctrl+N new tab, Ctrl+W close tab, Ctrl+Tab cycle tabs.\n"
 			"Ctrl+O open, Ctrl+S save, Ctrl+Shift+S save as.\n";
 		editor.LoadInitialBuffer(initialText);
+		editor.SetTopChromeInset(Scalpel::TabStripHeight());
 		Scalpel::DocumentWorkspace workspace(editor);
+		Scalpel::TabStripPainter stripPainter;
+		Scalpel::TabStripModel stripModel;
 		Scalpel::UnsavedChangesCardPainter cardPainter;
 		int cardFocus = 0;
 		bool quitAccepted = false;
 		bool cardOverlayBound = false;
+		bool pointerOverStrip = false;
 		std::optional<Scalpel::UnsavedCardHit> promptPressHit;
+
+		(void)SyncTabStripTabs(workspace, stripModel, editor.FrameWidth());
+		editor.InvalidateTopChrome();
+
+		editor.SetPermanentChromePainter(
+			[&](Scintilla::Internal::Surface &surface, int width, int height) {
+				(void)height;
+				stripModel.scrollOffset = Scalpel::ClampTabStripScroll(
+					width, stripModel.tabs.size(), stripModel.scrollOffset);
+				const Scalpel::TabStripLayout layout =
+					Scalpel::LayoutTabStrip(width, stripModel);
+				stripPainter.Paint(surface, layout, stripModel);
+			});
 
 		const auto paintUnsavedCard =
 			[&](Scintilla::Internal::Surface &surface, int width, int height) {
 				const Scalpel::UnsavedChangesCardLayout layout =
 					Scalpel::LayoutUnsavedChangesCard(width, height);
-				const std::string subtitle = workspace.Path().empty() ?
-					"Untitled" :
-					Scalpel::DocumentBaseName(workspace.Path());
+				const std::string subtitle = UnsavedPromptSubtitle(workspace);
 				cardPainter.Paint(surface, layout, "Save changes?", subtitle,
 					cardFocus);
 			};
@@ -472,8 +735,8 @@ int main() {
 			DeliverPrimarySelectionResults(window, editor);
 			DeliverTextInputBatches(window, editor, workspace.PromptActive());
 			ApplyFileDialogResults(window, workspace);
-			PerformShellRequests(workspace, window, quitAccepted, cardFocus,
-				promptPressHit);
+			PerformShellRequests(workspace, window, editor, stripModel,
+				quitAccepted, cardFocus, promptPressHit);
 			SynchronizeTextInput(editor, window);
 
 			if (window.ForceCloseRequested()) {
@@ -481,8 +744,8 @@ int main() {
 			}
 			if (window.CloseRequested()) {
 				workspace.RequestClose();
-				PerformShellRequests(workspace, window, quitAccepted, cardFocus,
-					promptPressHit);
+				PerformShellRequests(workspace, window, editor, stripModel,
+					quitAccepted, cardFocus, promptPressHit);
 				window.ClearCloseRequest();
 				if (quitAccepted) {
 					break;
@@ -496,6 +759,9 @@ int main() {
 					editor.Resize(scale->logicalWidth, scale->logicalHeight);
 				}
 				editor.SetFrameBufferSize(scale->bufferWidth, scale->bufferHeight);
+				// Width may change scroll clamping and tab layout.
+				(void)SyncTabStripTabs(workspace, stripModel, editor.FrameWidth());
+				editor.InvalidateTopChrome();
 				if (workspace.PromptActive()) {
 					editor.InvalidateClient();
 				}
@@ -521,27 +787,23 @@ int main() {
 						HandlePromptPointer(*pointer, promptLayout,
 							promptPressHit, workspace, editor, cardFocus);
 					}
-					PerformShellRequests(workspace, window, quitAccepted,
-						cardFocus, promptPressHit);
+					PerformShellRequests(workspace, window, editor, stripModel,
+						quitAccepted, cardFocus, promptPressHit);
 					continue;
 				}
 				if (const auto *keyboard =
 					std::get_if<Scalpel::KeyboardInput>(&input)) {
-					if (IsOpenShortcut(*keyboard)) {
-						workspace.RequestOpen();
-					} else if (IsSaveAsShortcut(*keyboard)) {
-						workspace.RequestSaveAs();
-					} else if (IsSaveShortcut(*keyboard)) {
-						workspace.RequestSave();
-					} else {
-						editor.HandleKeyboardInput(*keyboard);
-					}
+					HandleEditorKeyboard(*keyboard, workspace, editor);
 				} else {
-					editor.HandlePointerInput(
-						std::get<Scalpel::PointerInput>(input));
+					const auto &pointer =
+						std::get<Scalpel::PointerInput>(input);
+					if (!HandleTabStripPointer(pointer, stripModel, workspace,
+						editor, pointerOverStrip)) {
+						editor.HandlePointerInput(pointer);
+					}
 				}
-				PerformShellRequests(workspace, window, quitAccepted, cardFocus,
-					promptPressHit);
+				PerformShellRequests(workspace, window, editor, stripModel,
+					quitAccepted, cardFocus, promptPressHit);
 			}
 
 			if (quitAccepted || window.ForceCloseRequested()) {
@@ -551,6 +813,10 @@ int main() {
 			DispatchClipboardRequests(editor, window);
 			DispatchPrimarySelectionRequests(editor, window);
 			editor.RunPendingWork();
+			// Edits can flip dirty markers without a workspace request.
+			if (SyncTabStripTabs(workspace, stripModel, editor.FrameWidth())) {
+				editor.InvalidateTopChrome();
+			}
 			SynchronizeTextInput(editor, window);
 			if (workspace.PromptActive()) {
 				window.SetCursor(Scintilla::Internal::Window::Cursor::arrow);
@@ -562,7 +828,9 @@ int main() {
 				// Full client damage so Wayland/EGL damage matches the scrim.
 				editor.InvalidateClient();
 			} else {
-				window.SetCursor(editor.WindowState().cursor);
+				window.SetCursor(pointerOverStrip ?
+					Scintilla::Internal::Window::Cursor::arrow :
+					editor.WindowState().cursor);
 				if (cardOverlayBound) {
 					editor.SetOverlayPainter(nullptr);
 					cardOverlayBound = false;
