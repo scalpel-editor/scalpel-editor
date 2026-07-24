@@ -225,7 +225,15 @@ std::vector<Scalpel::FileDialogFilter> TextDialogFilters() {
 }
 
 void RequestOpenDialog(Scalpel::WaylandWindow &window,
-	const std::string &documentPath) {
+	const Scalpel::ApplicationEditor &editor, const std::string &documentPath) {
+	// Replacement has no save/discard prompt yet; refuse while dirty so open
+	// cannot destroy unsaved edits. The same check runs when applying a result
+	// that became dirty while the dialog was pending.
+	if (editor.Modified()) {
+		std::cerr << "scalpel-editor: save or discard changes before opening "
+			"another file\n";
+		return;
+	}
 	Scalpel::FileDialogRequest request;
 	request.mode = Scalpel::FileDialogMode::Open;
 	request.title = "Open File";
@@ -271,6 +279,11 @@ void ApplyFileDialogResults(Scalpel::WaylandWindow &window,
 		}
 		const std::string &path = result.paths.front();
 		if (result.mode == Scalpel::FileDialogMode::Open) {
+			if (editor.Modified()) {
+				std::cerr << "scalpel-editor: save or discard changes before "
+					"opening another file\n";
+				continue;
+			}
 			const std::optional<std::string> text =
 				Scalpel::ReadDocumentFile(path);
 			if (!text) {
@@ -341,7 +354,7 @@ int main() {
 					editor.SetKeyboardFocus(focus->focused);
 				} else if (const auto *keyboard = std::get_if<Scalpel::KeyboardInput>(&input)) {
 					if (IsOpenShortcut(*keyboard)) {
-						RequestOpenDialog(window, documentPath);
+						RequestOpenDialog(window, editor, documentPath);
 					} else if (IsSaveAsShortcut(*keyboard)) {
 						RequestSaveAsDialog(window, documentPath);
 					} else if (IsSaveShortcut(*keyboard)) {
