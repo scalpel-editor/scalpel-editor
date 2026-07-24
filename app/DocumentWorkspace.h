@@ -158,8 +158,10 @@ private:
 	struct PortalIntent {
 		PortalIntentKind kind = PortalIntentKind::Open;
 		DocumentId tabId = 0;
-		/** True when this Save As should advance the dirty-close prompt. */
-		bool continuePrompt = false;
+		/**
+		 * Non-zero when this Save As may advance one exact dirty-close prompt.
+		 */
+		uint64_t promptGeneration = 0;
 	};
 
 	void Queue(DocumentShellRequest request);
@@ -181,7 +183,7 @@ private:
 	void EnsureActiveMatchesEditor();
 	void ApplyOpenPaths(const std::vector<std::string> &paths);
 	void ApplySaveResult(DocumentId tabId, bool accepted,
-		std::string_view savedPath, bool continuePrompt);
+		std::string_view savedPath, uint64_t promptGeneration);
 
 	ApplicationEditor &editor;
 	std::vector<Tab> tabs;
@@ -194,8 +196,11 @@ private:
 	 * ShowSaveAs is queued; consumed by RegisterSaveAsRequest or failure.
 	 */
 	std::optional<DocumentId> pendingSaveAsTab;
-	/** Whether the next registered Save As continues the dirty-close prompt. */
-	bool pendingSaveAsContinuesPrompt = false;
+	/** Exact prompt that the next registered Save As may continue, or zero. */
+	uint64_t pendingSaveAsPromptGeneration = 0;
+	/** Monotonic identity of the currently visible dirty-close prompt. */
+	uint64_t activePromptGeneration = 0;
+	uint64_t lastPromptGeneration = 0;
 	std::unordered_map<uint64_t, PortalIntent> portalIntents;
 	UnsavedChangesPrompt prompt;
 	std::vector<DocumentShellRequest> requests;

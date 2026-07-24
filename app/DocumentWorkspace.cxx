@@ -45,7 +45,8 @@ void DocumentWorkspace::Queue(DocumentShellRequest request) {
 
 void DocumentWorkspace::QueueShowSaveAs() {
 	pendingSaveAsTab = closingTabId.value_or(activeId);
-	pendingSaveAsContinuesPrompt = prompt.AwaitingSaveAs();
+	pendingSaveAsPromptGeneration =
+		prompt.AwaitingSaveAs() ? activePromptGeneration : 0;
 	Queue(DocumentShellRequest::ShowSaveAs);
 }
 
@@ -76,6 +77,10 @@ void DocumentWorkspace::BeginPrompt(UnsavedPending pending) {
 	if (!prompt.TryBegin(pending)) {
 		return;
 	}
+	activePromptGeneration = ++lastPromptGeneration;
+	if (activePromptGeneration == 0) {
+		activePromptGeneration = ++lastPromptGeneration;
+	}
 	editor.CancelActiveTextInput();
 	editor.InvalidateClient();
 	Queue(DocumentShellRequest::PromptBegan);
@@ -87,10 +92,12 @@ void DocumentWorkspace::ApplyOutcome(UnsavedOutcome outcome) {
 	case UnsavedOutcome::SaveFailed:
 		break;
 	case UnsavedOutcome::Dismissed:
+		activePromptGeneration = 0;
 		closingTabId.reset();
 		editor.InvalidateClient();
 		break;
 	case UnsavedOutcome::PerformClose:
+		activePromptGeneration = 0;
 		if (closingTabId) {
 			const DocumentId id = *closingTabId;
 			closingTabId.reset();
@@ -238,16 +245,20 @@ void DocumentWorkspace::RegisterSaveAsRequest(uint64_t requestId) {
 	PortalIntent intent;
 	intent.kind = PortalIntentKind::SaveAs;
 	intent.tabId = pendingSaveAsTab.value_or(activeId);
-	intent.continuePrompt = pendingSaveAsContinuesPrompt;
+	intent.promptGeneration = pendingSaveAsPromptGeneration;
 	pendingSaveAsTab.reset();
-	pendingSaveAsContinuesPrompt = false;
+	pendingSaveAsPromptGeneration = 0;
 	portalIntents[requestId] = intent;
 }
 
 void DocumentWorkspace::NoteSaveAsDialogFailed() {
+	const bool continuePrompt =
+		pendingSaveAsPromptGeneration != 0 &&
+		pendingSaveAsPromptGeneration == activePromptGeneration &&
+		prompt.AwaitingSaveAs();
 	pendingSaveAsTab.reset();
-	pendingSaveAsContinuesPrompt = false;
-	if (prompt.AwaitingSaveAs()) {
+	pendingSaveAsPromptGeneration = 0;
+	if (continuePrompt) {
 		prompt.NotifySaveIncomplete();
 		editor.InvalidateClient();
 	}
@@ -278,7 +289,7 @@ void DocumentWorkspace::HandlePortalResult(uint64_t requestId, bool accepted,
 	const std::string_view path = usable ?
 		std::string_view(paths.front()) :
 		std::string_view{};
-	ApplySaveResult(intent.tabId, usable, path, intent.continuePrompt);
+	ApplySaveResult(intent.tabId, usable, path, intent.promptGeneration);
 }
 
 void DocumentWorkspace::HandleOpenResult(bool accepted,
@@ -299,15 +310,17 @@ void DocumentWorkspace::HandleOpenResult(bool accepted,
 
 void DocumentWorkspace::HandleSaveResult(bool accepted,
 	std::string_view savedPath) {
-	const bool continuePrompt = prompt.AwaitingSaveAs();
-	ApplySaveResult(activeId, accepted, savedPath, continuePrompt);
+	const uint64_t promptGeneration =
+		prompt.AwaitingSaveAs() ? activePromptGeneration : 0;
+	ApplySaveResult(activeId, accepted, savedPath, promptGeneration);
 }
 
 void DocumentWorkspace::HandleSaveResult(DocumentId tabId, bool accepted,
 	std::string_view savedPath) {
 	const bool continuePrompt = prompt.AwaitingSaveAs() &&
 		(closingTabId ? *closingTabId == tabId : activeId == tabId);
-	ApplySaveResult(tabId, accepted, savedPath, continuePrompt);
+	ApplySaveResult(tabId, accepted, savedPath,
+		continuePrompt ? activePromptGeneration : 0);
 }
 
 void DocumentWorkspace::ApplyOpenPaths(const std::vector<std::string> &paths) {
@@ -348,7 +361,14 @@ void DocumentWorkspace::ApplyOpenPaths(const std::vector<std::string> &paths) {
 }
 
 void DocumentWorkspace::ApplySaveResult(DocumentId tabId, bool accepted,
-	std::string_view savedPath, bool continuePrompt) {
+	std::string_view savedPath, uint64_t promptGeneration) {
+	const bool promptTargetsTab =
+		closingTabId ? *closingTabId == tabId : activeId == tabId;
+	const bool continuePrompt =
+		promptGeneration != 0 &&
+		promptGeneration == activePromptGeneration &&
+		prompt.AwaitingSaveAs() &&
+		promptTargetsTab;
 	if (!accepted || savedPath.empty()) {
 		if (continuePrompt) {
 			prompt.NotifySaveIncomplete();

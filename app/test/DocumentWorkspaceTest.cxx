@@ -698,6 +698,37 @@ TEST_CASE("document workspace portal routing Save As cancel keeps prompt") {
 	CHECK_FALSE(workspace.AwaitingSaveAs());
 }
 
+TEST_CASE("document workspace portal routing stale Save As keeps newer prompt") {
+	TempFile file("");
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("untitled");
+	DirtyBuffer(editor);
+	DocumentWorkspace workspace(editor);
+
+	workspace.RequestClose();
+	(void)workspace.TakeRequests();
+	workspace.Choose(UnsavedChoice::Save);
+	(void)workspace.TakeRequests();
+	workspace.RegisterSaveAsRequest(45);
+
+	// Cancelling the card abandons this close decision, but the portal request
+	// may still deliver a result after another close decision has begun.
+	workspace.Choose(UnsavedChoice::Cancel);
+	REQUIRE_FALSE(workspace.PromptActive());
+	workspace.RequestClose();
+	(void)workspace.TakeRequests();
+	REQUIRE(workspace.PromptActive());
+	REQUIRE_FALSE(workspace.AwaitingSaveAs());
+
+	workspace.HandlePortalResult(45, true, {file.path});
+	CHECK(workspace.PromptActive());
+	CHECK(workspace.Pending() == UnsavedPending::Close);
+	CHECK_FALSE(HasRequest(workspace.TakeRequests(),
+		DocumentShellRequest::AcceptClose));
+	CHECK(workspace.Path() == file.path);
+	CHECK_FALSE(editor.Modified());
+}
+
 TEST_CASE("document workspace portal routing open selects existing among many") {
 	TempFile existing("once\n");
 	TempFile extra("twice\n");
