@@ -969,6 +969,10 @@ bool ApplicationEditor::DeleteTextInputSurrounding(
 	return true;
 }
 
+void ApplicationEditor::CancelActiveTextInput() {
+	CancelTextInput();
+}
+
 void ApplicationEditor::CancelTextInput() {
 	if (pdoc->TentativeActive()) {
 		pdoc->TentativeUndo();

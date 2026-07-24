@@ -132,6 +132,8 @@ public:
 		ApplicationPrimarySelectionOperation operation,
 		ApplicationPrimarySelectionStatus status, std::string text = {});
 	void HandleTextInputBatch(const ApplicationTextInputBatch &batch);
+	/** Drop preedit / tentative IME state (for example when a modal prompt opens). */
+	void CancelActiveTextInput();
 	[[nodiscard]] std::optional<ApplicationTextInputState> TakeTextInputState();
 	void RenderFrame();
 	void RenderFrame(
