@@ -252,6 +252,8 @@ private:
 		Scintilla::Internal::Document *document = nullptr;
 		std::string selection;
 		Scintilla::Line firstVisibleLine = 0;
+		Scintilla::Line firstVisibleDocumentLine = 0;
+		Scintilla::Line firstVisibleSubLine = 0;
 		int xOffset = 0;
 	};
 

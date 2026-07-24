@@ -197,7 +197,11 @@ void ApplicationEditor::SnapshotActiveView() {
 		return;
 	}
 	entry->selection = GetSelectionSerialized();
-	entry->firstVisibleLine = GetFirstVisibleLine();
+	const Scintilla::Line firstVisibleLine = GetFirstVisibleLine();
+	entry->firstVisibleLine = firstVisibleLine;
+	entry->firstVisibleDocumentLine = pcs->DocFromDisplay(firstVisibleLine);
+	entry->firstVisibleSubLine =
+		firstVisibleLine - pcs->DisplayFromDoc(entry->firstVisibleDocumentLine);
 	entry->xOffset = GetXOffset();
 }
 
@@ -213,7 +217,15 @@ void ApplicationEditor::RestoreActiveView() {
 	} else {
 		SetSelectionSerialized(entry->selection);
 	}
+	// SetDocPointer starts with one display line per document line until wrapping
+	// is rebuilt. Restore the display line immediately where that temporary
+	// layout permits it, then let WrapLines recover the exact document line and
+	// wrapped subline if the display line had to be clamped.
 	SetFirstVisibleLine(entry->firstVisibleLine);
+	if (Wrapping()) {
+		scrollToAfterWrap = LineDocSub{
+			entry->firstVisibleDocumentLine, entry->firstVisibleSubLine};
+	}
 	SetXOffset(entry->xOffset);
 }
 

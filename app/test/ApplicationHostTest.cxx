@@ -366,6 +366,29 @@ TEST_CASE("production editor document switching restores selection and scroll") 
 	CHECK(editor.GetXOffset() == 0);
 }
 
+TEST_CASE("production editor document switching restores wrapped scroll") {
+	Scalpel::ApplicationEditor editor(160, 100);
+	editor.SetWrapMode(Scintilla::Wrap::Word);
+	const Scalpel::DocumentId first = editor.ActiveDocument();
+	std::string wrappedLine;
+	for (int word = 0; word < 80; ++word) {
+		wrappedLine += "wrapped ";
+	}
+	editor.LoadInitialBuffer(wrappedLine);
+	editor.RenderFrame();
+	editor.SetFirstVisibleLine(6);
+	REQUIRE(editor.GetFirstVisibleLine() == 6);
+
+	const Scalpel::DocumentId second = editor.CreateDocument();
+	editor.ActivateDocument(second);
+	editor.LoadInitialBuffer("other");
+	editor.RenderFrame();
+
+	editor.ActivateDocument(first);
+	editor.RenderFrame();
+	CHECK(editor.GetFirstVisibleLine() == 6);
+}
+
 TEST_CASE("production editor document switching releases closed references") {
 	Scalpel::ApplicationEditor editor(200, 100);
 	const Scalpel::DocumentId first = editor.ActiveDocument();
