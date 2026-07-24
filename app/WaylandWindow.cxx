@@ -963,10 +963,11 @@ void WaylandWindow::CreateDecoration() {
 		decoration, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
 }
 
-bool WaylandWindow::ShowFileDialog(const FileDialogRequest &request) {
+std::optional<uint64_t> WaylandWindow::ShowFileDialog(
+	const FileDialogRequest &request) {
 	DBusConnection *connection = dbus.ConnectSessionBus();
 	if (!connection) {
-		return false;
+		return std::nullopt;
 	}
 	return fileDialog.Show(connection, portalParent.ParentHandle(), request);
 }

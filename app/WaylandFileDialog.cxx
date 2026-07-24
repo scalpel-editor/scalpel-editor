@@ -232,6 +232,19 @@ void FileDialogAppendDictString(DBusMessageIter *dict, const char *key,
 	dbus_message_iter_close_container(dict, &entry);
 }
 
+void FileDialogAppendDictBool(DBusMessageIter *dict, const char *key, bool value) {
+	DBusMessageIter entry;
+	DBusMessageIter variant;
+	dbus_bool_t dbusValue = value ? TRUE : FALSE;
+	dbus_message_iter_open_container(dict, DBUS_TYPE_DICT_ENTRY, nullptr, &entry);
+	dbus_message_iter_append_basic(&entry, DBUS_TYPE_STRING, &key);
+	dbus_message_iter_open_container(
+		&entry, DBUS_TYPE_VARIANT, DBUS_TYPE_BOOLEAN_AS_STRING, &variant);
+	dbus_message_iter_append_basic(&variant, DBUS_TYPE_BOOLEAN, &dbusValue);
+	dbus_message_iter_close_container(&entry, &variant);
+	dbus_message_iter_close_container(dict, &entry);
+}
+
 void FileDialogAppendDictPath(DBusMessageIter *dict, const char *key,
 	std::string_view path) {
 	DBusMessageIter entry;
@@ -448,25 +461,25 @@ DBusHandlerResult WaylandFileDialog::ResponseFilter(DBusConnection *,
 	}
 }
 
-bool WaylandFileDialog::Show(DBusConnection *busConnection,
+std::optional<uint64_t> WaylandFileDialog::Show(DBusConnection *busConnection,
 	std::string_view parentHandle, const FileDialogRequest &request) {
 	if (!busConnection) {
-		return false;
+		return std::nullopt;
 	}
 	connection = busConnection;
 
 	std::string portalOwner;
 	if (!EnsurePortalReady(portalOwner)) {
-		return false;
+		return std::nullopt;
 	}
 	if (!EnsureResponseFilter()) {
-		return false;
+		return std::nullopt;
 	}
 
 	std::string token;
 	std::string requestPath;
 	if (!MakeRequestToken(token, requestPath)) {
-		return false;
+		return std::nullopt;
 	}
 
 	const char *method = request.mode == FileDialogMode::Save ?
@@ -475,7 +488,7 @@ bool WaylandFileDialog::Show(DBusConnection *busConnection,
 	DBusMessage *message = dbus_message_new_method_call(PortalDesktopService,
 		PortalDesktopPath, PortalFileChooserInterface, method);
 	if (!message) {
-		return false;
+		return std::nullopt;
 	}
 
 	DBusMessageIter iter;
@@ -487,16 +500,21 @@ bool WaylandFileDialog::Show(DBusConnection *busConnection,
 	if (!dbus_message_iter_append_basic(&iter, DBUS_TYPE_STRING, &parent) ||
 		!dbus_message_iter_append_basic(&iter, DBUS_TYPE_STRING, &title)) {
 		dbus_message_unref(message);
-		return false;
+		return std::nullopt;
 	}
 
 	DBusMessageIter options;
 	if (!dbus_message_iter_open_container(
 			&iter, DBUS_TYPE_ARRAY, "{sv}", &options)) {
 		dbus_message_unref(message);
-		return false;
+		return std::nullopt;
 	}
 	FileDialogAppendDictString(&options, "handle_token", token.c_str());
+	if (request.mode == FileDialogMode::Open && request.multiple) {
+		// Contract: org.freedesktop.portal.FileChooser OpenFile option
+		// "multiple" (b); read from the local interface description.
+		FileDialogAppendDictBool(&options, "multiple", true);
+	}
 	if (request.mode == FileDialogMode::Save && !request.suggestedName.empty()) {
 		FileDialogAppendDictString(
 			&options, "current_name", request.suggestedName.c_str());
@@ -510,14 +528,15 @@ bool WaylandFileDialog::Show(DBusConnection *busConnection,
 	}
 	if (!dbus_message_iter_close_container(&iter, &options)) {
 		dbus_message_unref(message);
-		return false;
+		return std::nullopt;
 	}
 
 	// Track the predicted Request path before the method call so a Response
 	// that arrives during the blocking send still matches.
 	const std::string predictedPath = requestPath;
 	const std::string predictedOwner = portalOwner;
-	(void)state.Begin(request.mode, predictedPath, predictedOwner);
+	const uint64_t requestId =
+		state.Begin(request.mode, predictedPath, predictedOwner);
 
 	DBusError error = DBUS_ERROR_INIT;
 	DBusMessage *reply = dbus_connection_send_with_reply_and_block(
@@ -528,7 +547,7 @@ bool WaylandFileDialog::Show(DBusConnection *busConnection,
 			dbus_error_free(&error);
 		}
 		(void)state.Abandon(predictedPath);
-		return false;
+		return std::nullopt;
 	}
 
 	const char *replySender = dbus_message_get_sender(reply);
@@ -541,14 +560,14 @@ bool WaylandFileDialog::Show(DBusConnection *busConnection,
 		dbus_message_iter_get_arg_type(&replyIter) != DBUS_TYPE_OBJECT_PATH) {
 		dbus_message_unref(reply);
 		(void)state.Abandon(predictedPath);
-		return false;
+		return std::nullopt;
 	}
 	const char *handle = nullptr;
 	dbus_message_iter_get_basic(&replyIter, &handle);
 	dbus_message_unref(reply);
 	if (!handle || handle[0] == '\0') {
 		(void)state.Abandon(predictedPath);
-		return false;
+		return std::nullopt;
 	}
 
 	// Retarget is a no-op when a Response already completed the predicted path
@@ -556,7 +575,7 @@ bool WaylandFileDialog::Show(DBusConnection *busConnection,
 	if (predictedPath != handle || predictedOwner != portalOwner) {
 		(void)state.Retarget(predictedPath, handle, std::move(portalOwner));
 	}
-	return true;
+	return requestId;
 }
 
 void WaylandFileDialog::Clear() noexcept {

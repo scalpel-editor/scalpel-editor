@@ -43,20 +43,31 @@ void DocumentWorkspace::Queue(DocumentShellRequest request) {
 	requests.push_back(request);
 }
 
+void DocumentWorkspace::QueueShowSaveAs() {
+	pendingSaveAsTab = closingTabId.value_or(activeId);
+	pendingSaveAsContinuesPrompt = prompt.AwaitingSaveAs();
+	Queue(DocumentShellRequest::ShowSaveAs);
+}
+
 std::vector<DocumentShellRequest> DocumentWorkspace::TakeRequests() {
 	std::vector<DocumentShellRequest> out;
 	out.swap(requests);
 	return out;
 }
 
-bool DocumentWorkspace::SaveToPath(const std::string &destination) {
-	if (!WriteDocumentFile(destination, editor.Text())) {
+bool DocumentWorkspace::SaveToPath(DocumentId tabId,
+	const std::string &destination) {
+	const std::optional<std::size_t> index = FindIndex(tabId);
+	if (!index) {
+		return false;
+	}
+	if (!WriteDocumentFile(destination, editor.Text(tabId))) {
 		std::cerr << "scalpel-editor: failed to write " << destination << '\n';
 		return false;
 	}
-	editor.MarkSaved();
-	ActiveTabRecord().path = destination;
-	ActiveTabRecord().untitledNumber = 0;
+	editor.MarkSaved(tabId);
+	tabs[*index].path = destination;
+	tabs[*index].untitledNumber = 0;
 	Queue(DocumentShellRequest::RefreshTabs);
 	return true;
 }
@@ -92,7 +103,7 @@ void DocumentWorkspace::ApplyOutcome(UnsavedOutcome outcome) {
 		editor.InvalidateClient();
 		break;
 	case UnsavedOutcome::NeedSaveAs:
-		Queue(DocumentShellRequest::ShowSaveAs);
+		QueueShowSaveAs();
 		// Keep the card visible while the portal runs.
 		editor.InvalidateClient();
 		break;
@@ -170,9 +181,9 @@ void DocumentWorkspace::RequestSave() {
 		return;
 	}
 	if (Path().empty()) {
-		Queue(DocumentShellRequest::ShowSaveAs);
+		QueueShowSaveAs();
 	} else {
-		(void)SaveToPath(Path());
+		(void)SaveToPath(activeId, Path());
 	}
 }
 
@@ -180,7 +191,7 @@ void DocumentWorkspace::RequestSaveAs() {
 	if (prompt.Active()) {
 		return;
 	}
-	Queue(DocumentShellRequest::ShowSaveAs);
+	QueueShowSaveAs();
 }
 
 void DocumentWorkspace::RequestClose() {
@@ -202,7 +213,7 @@ void DocumentWorkspace::Choose(UnsavedChoice choice) {
 	}
 	if (choice == UnsavedChoice::Save && !Path().empty()) {
 		// Write before clearing the prompt so a failed write keeps the card.
-		if (!SaveToPath(Path())) {
+		if (!SaveToPath(activeId, Path())) {
 			return;
 		}
 		ApplyOutcome(prompt.Choose(UnsavedChoice::Save, true));
@@ -211,49 +222,149 @@ void DocumentWorkspace::Choose(UnsavedChoice choice) {
 	ApplyOutcome(prompt.Choose(choice, !Path().empty()));
 }
 
+void DocumentWorkspace::RegisterOpenRequest(uint64_t requestId) {
+	if (requestId == 0) {
+		return;
+	}
+	PortalIntent intent;
+	intent.kind = PortalIntentKind::Open;
+	portalIntents[requestId] = intent;
+}
+
+void DocumentWorkspace::RegisterSaveAsRequest(uint64_t requestId) {
+	if (requestId == 0) {
+		return;
+	}
+	PortalIntent intent;
+	intent.kind = PortalIntentKind::SaveAs;
+	intent.tabId = pendingSaveAsTab.value_or(activeId);
+	intent.continuePrompt = pendingSaveAsContinuesPrompt;
+	pendingSaveAsTab.reset();
+	pendingSaveAsContinuesPrompt = false;
+	portalIntents[requestId] = intent;
+}
+
+void DocumentWorkspace::NoteSaveAsDialogFailed() {
+	pendingSaveAsTab.reset();
+	pendingSaveAsContinuesPrompt = false;
+	if (prompt.AwaitingSaveAs()) {
+		prompt.NotifySaveIncomplete();
+		editor.InvalidateClient();
+	}
+}
+
+void DocumentWorkspace::HandlePortalResult(uint64_t requestId, bool accepted,
+	const std::vector<std::string> &paths) {
+	const auto it = portalIntents.find(requestId);
+	if (it == portalIntents.end()) {
+		return;
+	}
+	const PortalIntent intent = it->second;
+	portalIntents.erase(it);
+
+	const bool usable = accepted && !paths.empty();
+
+	if (intent.kind == PortalIntentKind::Open) {
+		if (usable) {
+			ApplyOpenPaths(paths);
+		}
+		return;
+	}
+
+	// Save As: ignore when the initiating tab no longer exists.
+	if (!FindIndex(intent.tabId)) {
+		return;
+	}
+	const std::string_view path = usable ?
+		std::string_view(paths.front()) :
+		std::string_view{};
+	ApplySaveResult(intent.tabId, usable, path, intent.continuePrompt);
+}
+
 void DocumentWorkspace::HandleOpenResult(bool accepted,
 	std::string_view openedPath) {
 	if (!accepted || openedPath.empty()) {
 		return;
 	}
-	if (const std::optional<std::size_t> existing = FindIndexByPath(openedPath)) {
-		ActivateTab(tabs[*existing].id);
+	ApplyOpenPaths({std::string(openedPath)});
+}
+
+void DocumentWorkspace::HandleOpenResult(bool accepted,
+	const std::vector<std::string> &paths) {
+	if (!accepted || paths.empty()) {
 		return;
 	}
-	const std::string pathString(openedPath);
-	const std::optional<std::string> text = ReadDocumentFile(pathString);
-	if (!text) {
-		std::cerr << "scalpel-editor: failed to read " << pathString << '\n';
-		return;
-	}
-	const DocumentId id = editor.CreateDocument();
-	Tab tab;
-	tab.id = id;
-	tab.path = pathString;
-	tab.untitledNumber = 0;
-	tabs.push_back(std::move(tab));
-	editor.ActivateDocument(id);
-	activeId = id;
-	editor.LoadInitialBuffer(*text);
-	Queue(DocumentShellRequest::RefreshTabs);
+	ApplyOpenPaths(paths);
 }
 
 void DocumentWorkspace::HandleSaveResult(bool accepted,
 	std::string_view savedPath) {
-	const bool awaiting = prompt.AwaitingSaveAs();
+	const bool continuePrompt = prompt.AwaitingSaveAs();
+	ApplySaveResult(activeId, accepted, savedPath, continuePrompt);
+}
+
+void DocumentWorkspace::HandleSaveResult(DocumentId tabId, bool accepted,
+	std::string_view savedPath) {
+	const bool continuePrompt = prompt.AwaitingSaveAs() &&
+		(closingTabId ? *closingTabId == tabId : activeId == tabId);
+	ApplySaveResult(tabId, accepted, savedPath, continuePrompt);
+}
+
+void DocumentWorkspace::ApplyOpenPaths(const std::vector<std::string> &paths) {
+	std::optional<DocumentId> lastActivated;
+	for (const std::string &pathString : paths) {
+		if (pathString.empty()) {
+			continue;
+		}
+		if (const std::optional<std::size_t> existing =
+				FindIndexByPath(pathString)) {
+			lastActivated = tabs[*existing].id;
+			continue;
+		}
+		const std::optional<std::string> text = ReadDocumentFile(pathString);
+		if (!text) {
+			std::cerr << "scalpel-editor: failed to read " << pathString << '\n';
+			continue;
+		}
+		const DocumentId id = editor.CreateDocument();
+		Tab tab;
+		tab.id = id;
+		tab.path = pathString;
+		tab.untitledNumber = 0;
+		tabs.push_back(std::move(tab));
+		editor.ActivateDocument(id);
+		activeId = id;
+		editor.LoadInitialBuffer(*text);
+		lastActivated = id;
+	}
+	if (!lastActivated) {
+		return;
+	}
+	if (*lastActivated != activeId) {
+		editor.ActivateDocument(*lastActivated);
+		activeId = *lastActivated;
+	}
+	Queue(DocumentShellRequest::RefreshTabs);
+}
+
+void DocumentWorkspace::ApplySaveResult(DocumentId tabId, bool accepted,
+	std::string_view savedPath, bool continuePrompt) {
 	if (!accepted || savedPath.empty()) {
-		if (awaiting) {
+		if (continuePrompt) {
 			prompt.NotifySaveIncomplete();
 			editor.InvalidateClient();
 		}
 		return;
 	}
+	if (!FindIndex(tabId)) {
+		return;
+	}
 	const std::string pathString(savedPath);
-	if (SaveToPath(pathString)) {
-		if (awaiting) {
+	if (SaveToPath(tabId, pathString)) {
+		if (continuePrompt) {
 			ApplyOutcome(prompt.NotifySaved());
 		}
-	} else if (awaiting) {
+	} else if (continuePrompt) {
 		prompt.NotifySaveIncomplete();
 		editor.InvalidateClient();
 	}

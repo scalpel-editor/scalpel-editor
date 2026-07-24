@@ -158,9 +158,11 @@ public:
 	}
 	/**
 	 * Start an asynchronous open or save dialog through the desktop portal.
-	 * Returns false when the session bus or portal is unavailable.
+	 * Returns the stable portal request ID on success, or nullopt when the
+	 * session bus or portal is unavailable.
 	 */
-	[[nodiscard]] bool ShowFileDialog(const FileDialogRequest &request);
+	[[nodiscard]] std::optional<uint64_t> ShowFileDialog(
+		const FileDialogRequest &request);
 	[[nodiscard]] std::vector<FileDialogResult> TakeFileDialogResults() {
 		return fileDialog.TakeResults();
 	}

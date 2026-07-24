@@ -546,3 +546,198 @@ TEST_CASE("document workspace tabs independent text after switch") {
 	workspace.ActivateTab(second);
 	CHECK(editor.Text() == "beta");
 }
+
+TEST_CASE("document workspace portal routing open registers request ID") {
+	TempFile a("alpha\n");
+	TempFile b("beta\n");
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("startup\n");
+	DocumentWorkspace workspace(editor);
+	const DocumentId startup = workspace.ActiveTab();
+
+	workspace.RequestOpen();
+	REQUIRE(HasRequest(workspace.TakeRequests(), DocumentShellRequest::ShowOpen));
+	workspace.RegisterOpenRequest(41);
+
+	workspace.HandlePortalResult(41, true, {a.path, b.path});
+	CHECK(workspace.TabCount() == 3);
+	CHECK(workspace.ActiveTab() != startup);
+	// Last accepted path is active.
+	CHECK(editor.Text() == "beta\n");
+	CHECK(workspace.Path() == b.path);
+	workspace.ActivateTab(startup);
+	CHECK(editor.Text() == "startup\n");
+	// The first opened file remains as its own tab.
+	bool foundA = false;
+	for (const auto &tab : workspace.Tabs()) {
+		if (tab.path == a.path) {
+			foundA = true;
+			workspace.ActivateTab(tab.id);
+			CHECK(editor.Text() == "alpha\n");
+		}
+	}
+	CHECK(foundA);
+}
+
+TEST_CASE("document workspace portal routing ignores unknown request ID") {
+	TempFile file("ignored\n");
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("startup\n");
+	DocumentWorkspace workspace(editor);
+
+	workspace.HandlePortalResult(99, true, {file.path});
+	CHECK(workspace.TabCount() == 1);
+	CHECK(editor.Text() == "startup\n");
+	CHECK(workspace.Path().empty());
+}
+
+TEST_CASE("document workspace portal routing open cancel is a no-op") {
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("startup\n");
+	DocumentWorkspace workspace(editor);
+	workspace.RegisterOpenRequest(7);
+	workspace.HandlePortalResult(7, false, {});
+	CHECK(workspace.TabCount() == 1);
+	CHECK(editor.Text() == "startup\n");
+}
+
+TEST_CASE("document workspace portal routing Save As targets initiating tab") {
+	TempFile file("");
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("keep me");
+	DocumentWorkspace workspace(editor);
+	const DocumentId first = workspace.ActiveTab();
+	DirtyBuffer(editor);
+	const std::string dirtyText = editor.Text();
+
+	workspace.RequestSaveAs();
+	REQUIRE(HasRequest(workspace.TakeRequests(), DocumentShellRequest::ShowSaveAs));
+	workspace.RegisterSaveAsRequest(12);
+
+	// Switch away while the portal is open; the result must still hit first.
+	workspace.NewTab();
+	editor.LoadInitialBuffer("other");
+	const DocumentId second = workspace.ActiveTab();
+	REQUIRE(second != first);
+
+	workspace.HandlePortalResult(12, true, {file.path});
+	CHECK(workspace.ActiveTab() == second);
+	CHECK(editor.Text() == "other");
+	workspace.ActivateTab(first);
+	CHECK(workspace.Path() == file.path);
+	CHECK(editor.Text() == dirtyText);
+	CHECK_FALSE(editor.Modified());
+	const auto read = Scalpel::ReadDocumentFile(file.path);
+	REQUIRE(read.has_value());
+	CHECK(*read == dirtyText);
+}
+
+TEST_CASE("document workspace portal routing Save As ignores closed tab") {
+	TempFile file("");
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("gone");
+	DocumentWorkspace workspace(editor);
+	const DocumentId first = workspace.ActiveTab();
+	workspace.RequestSaveAs();
+	(void)workspace.TakeRequests();
+	workspace.RegisterSaveAsRequest(20);
+
+	workspace.NewTab();
+	const DocumentId second = workspace.ActiveTab();
+	workspace.CloseTab(first);
+	REQUIRE_FALSE(editor.HasDocument(first));
+	REQUIRE(workspace.ActiveTab() == second);
+
+	workspace.HandlePortalResult(20, true, {file.path});
+	CHECK(workspace.Path().empty());
+	CHECK(workspace.TabCount() == 1);
+	const auto read = Scalpel::ReadDocumentFile(file.path);
+	// No write should have occurred for a tab that no longer exists.
+	REQUIRE(read.has_value());
+	CHECK(read->empty());
+}
+
+TEST_CASE("document workspace portal routing delayed Save As continues prompt") {
+	TempFile file("");
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("untitled body");
+	DirtyBuffer(editor);
+	DocumentWorkspace workspace(editor);
+	const DocumentId dirty = workspace.ActiveTab();
+	workspace.CloseTab(dirty);
+	REQUIRE(workspace.PromptActive());
+	workspace.Choose(UnsavedChoice::Save);
+	REQUIRE(HasRequest(workspace.TakeRequests(), DocumentShellRequest::ShowSaveAs));
+	REQUIRE(workspace.AwaitingSaveAs());
+	workspace.RegisterSaveAsRequest(33);
+
+	workspace.HandlePortalResult(33, true, {file.path});
+	CHECK_FALSE(workspace.PromptActive());
+	CHECK_FALSE(editor.HasDocument(dirty));
+	CHECK(workspace.TabCount() == 1);
+	const auto read = Scalpel::ReadDocumentFile(file.path);
+	REQUIRE(read.has_value());
+	CHECK(read->find('x') != std::string::npos);
+}
+
+TEST_CASE("document workspace portal routing Save As cancel keeps prompt") {
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("untitled");
+	DirtyBuffer(editor);
+	DocumentWorkspace workspace(editor);
+	workspace.RequestClose();
+	(void)workspace.TakeRequests();
+	workspace.Choose(UnsavedChoice::Save);
+	(void)workspace.TakeRequests();
+	REQUIRE(workspace.AwaitingSaveAs());
+	workspace.RegisterSaveAsRequest(44);
+
+	workspace.HandlePortalResult(44, false, {});
+	CHECK(workspace.PromptActive());
+	CHECK(workspace.Pending() == UnsavedPending::Close);
+	CHECK_FALSE(workspace.AwaitingSaveAs());
+}
+
+TEST_CASE("document workspace portal routing open selects existing among many") {
+	TempFile existing("once\n");
+	TempFile extra("twice\n");
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("startup\n");
+	DocumentWorkspace workspace(editor);
+
+	workspace.HandleOpenResult(true, existing.path);
+	const DocumentId opened = workspace.ActiveTab();
+	workspace.NewTab();
+	REQUIRE(workspace.TabCount() == 3);
+
+	workspace.RegisterOpenRequest(55);
+	workspace.HandlePortalResult(55, true, {existing.path, extra.path});
+	// Last path is active; existing path did not duplicate.
+	CHECK(workspace.TabCount() == 4);
+	CHECK(workspace.Path() == extra.path);
+	CHECK(editor.Text() == "twice\n");
+	int existingCount = 0;
+	for (const auto &tab : workspace.Tabs()) {
+		if (tab.path == existing.path) {
+			++existingCount;
+			CHECK(tab.id == opened);
+		}
+	}
+	CHECK(existingCount == 1);
+}
+
+TEST_CASE("document workspace portal routing note Save As dialog failed") {
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("untitled");
+	DirtyBuffer(editor);
+	DocumentWorkspace workspace(editor);
+	workspace.RequestClose();
+	(void)workspace.TakeRequests();
+	workspace.Choose(UnsavedChoice::Save);
+	(void)workspace.TakeRequests();
+	REQUIRE(workspace.AwaitingSaveAs());
+
+	workspace.NoteSaveAsDialogFailed();
+	CHECK(workspace.PromptActive());
+	CHECK_FALSE(workspace.AwaitingSaveAs());
+}

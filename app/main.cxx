@@ -231,20 +231,23 @@ std::vector<Scalpel::FileDialogFilter> TextDialogFilters() {
 	};
 }
 
-void StartOpenDialog(Scalpel::WaylandWindow &window,
-	const std::string &documentPath) {
+[[nodiscard]] std::optional<uint64_t> StartOpenDialog(
+	Scalpel::WaylandWindow &window, const std::string &documentPath) {
 	Scalpel::FileDialogRequest request;
 	request.mode = Scalpel::FileDialogMode::Open;
 	request.title = "Open File";
 	request.currentFolder = Scalpel::DocumentDirectory(documentPath);
+	request.multiple = true;
 	request.filters = TextDialogFilters();
-	if (!window.ShowFileDialog(request)) {
+	const std::optional<uint64_t> requestId = window.ShowFileDialog(request);
+	if (!requestId) {
 		std::cerr << "scalpel-editor: file dialog unavailable\n";
 	}
+	return requestId;
 }
 
-void RequestSaveAsDialog(Scalpel::WaylandWindow &window,
-	const std::string &documentPath) {
+[[nodiscard]] std::optional<uint64_t> RequestSaveAsDialog(
+	Scalpel::WaylandWindow &window, const std::string &documentPath) {
 	Scalpel::FileDialogRequest request;
 	request.mode = Scalpel::FileDialogMode::Save;
 	request.title = "Save File As";
@@ -253,9 +256,11 @@ void RequestSaveAsDialog(Scalpel::WaylandWindow &window,
 		"untitled.txt" :
 		Scalpel::DocumentBaseName(documentPath);
 	request.filters = TextDialogFilters();
-	if (!window.ShowFileDialog(request)) {
+	const std::optional<uint64_t> requestId = window.ShowFileDialog(request);
+	if (!requestId) {
 		std::cerr << "scalpel-editor: file dialog unavailable\n";
 	}
+	return requestId;
 }
 
 void PerformShellRequests(Scalpel::DocumentWorkspace &workspace,
@@ -267,10 +272,18 @@ void PerformShellRequests(Scalpel::DocumentWorkspace &workspace,
 		workspace.TakeRequests()) {
 		switch (request) {
 		case Scalpel::DocumentShellRequest::ShowOpen:
-			StartOpenDialog(window, workspace.Path());
+			if (const std::optional<uint64_t> requestId =
+					StartOpenDialog(window, workspace.Path())) {
+				workspace.RegisterOpenRequest(*requestId);
+			}
 			break;
 		case Scalpel::DocumentShellRequest::ShowSaveAs:
-			RequestSaveAsDialog(window, workspace.Path());
+			if (const std::optional<uint64_t> requestId =
+					RequestSaveAsDialog(window, workspace.Path())) {
+				workspace.RegisterSaveAsRequest(*requestId);
+			} else {
+				workspace.NoteSaveAsDialogFailed();
+			}
 			break;
 		case Scalpel::DocumentShellRequest::AcceptClose:
 			quitAccepted = true;
@@ -293,14 +306,7 @@ void ApplyFileDialogResults(Scalpel::WaylandWindow &window,
 		const bool accepted =
 			result.status == Scalpel::FileDialogResultStatus::Accepted &&
 			!result.paths.empty();
-		const std::string_view path = accepted ?
-			std::string_view(result.paths.front()) :
-			std::string_view{};
-		if (result.mode == Scalpel::FileDialogMode::Open) {
-			workspace.HandleOpenResult(accepted, path);
-		} else {
-			workspace.HandleSaveResult(accepted, path);
-		}
+		workspace.HandlePortalResult(result.id, accepted, result.paths);
 	}
 }
 

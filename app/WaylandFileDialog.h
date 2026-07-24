@@ -4,6 +4,7 @@
 #define WAYLANDFILEDIALOG_H
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -36,6 +37,12 @@ struct FileDialogRequest {
 	std::string currentFolder;
 	/** Save mode only: the default file name shown in the dialog. */
 	std::string suggestedName;
+	/**
+	 * Open mode only: allow selecting more than one file. Maps to the portal
+	 * FileChooser "multiple" option (documented as type b in the local
+	 * org.freedesktop.portal.FileChooser interface).
+	 */
+	bool multiple = false;
 	std::vector<FileDialogFilter> filters;
 };
 
@@ -120,10 +127,11 @@ public:
 
 	/**
 	 * Start an open or save dialog. parentHandle is the xdg-foreign
-	 * "wayland:…" token or empty for an unparented dialog. Returns false when
-	 * the session bus or portal is unavailable; no result is queued then.
+	 * "wayland:…" token or empty for an unparented dialog. Returns the stable
+	 * request ID allocated by the dialog state on success, or nullopt when the
+	 * session bus or portal is unavailable (no result is queued then).
 	 */
-	[[nodiscard]] bool Show(DBusConnection *connection,
+	[[nodiscard]] std::optional<uint64_t> Show(DBusConnection *connection,
 		std::string_view parentHandle, const FileDialogRequest &request);
 	[[nodiscard]] std::vector<FileDialogResult> TakeResults() {
 		return state.TakeResults();
@@ -148,6 +156,7 @@ private:
 /** Append helpers used by Show and covered by unit tests. */
 void FileDialogAppendDictString(DBusMessageIter *dict, const char *key,
 	const char *value);
+void FileDialogAppendDictBool(DBusMessageIter *dict, const char *key, bool value);
 void FileDialogAppendDictPath(DBusMessageIter *dict, const char *key,
 	std::string_view path);
 void FileDialogAppendDictFilters(DBusMessageIter *dict,

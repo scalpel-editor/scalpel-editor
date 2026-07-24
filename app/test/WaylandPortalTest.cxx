@@ -1,5 +1,7 @@
 #include "catch.hpp"
 
+#include <string>
+
 #include <dbus/dbus.h>
 
 #include "WaylandFileDialog.h"
@@ -152,6 +154,110 @@ TEST_CASE("Wayland file dialog state rejects invalid begin arguments") {
 	CHECK_THROWS(state.Begin(Scalpel::FileDialogMode::Open, "/path", ""));
 	(void)state.Begin(Scalpel::FileDialogMode::Open, "/path", ":1.1");
 	CHECK_THROWS(state.Begin(Scalpel::FileDialogMode::Open, "/path", ":1.1"));
+}
+
+TEST_CASE("Wayland file dialog request IDs stay unique across concurrent pending") {
+	Scalpel::WaylandFileDialogState state;
+	const uint64_t openId = state.Begin(Scalpel::FileDialogMode::Open,
+		"/path/open", ":1.1");
+	const uint64_t saveId = state.Begin(Scalpel::FileDialogMode::Save,
+		"/path/save", ":1.1");
+	CHECK(openId != saveId);
+	CHECK(openId != 0);
+	CHECK(saveId != 0);
+
+	state.DeliverResponse("/path/save", ":1.1", 0, {"file:///tmp/save.txt"});
+	state.DeliverResponse("/path/open", ":1.1", 0, {"file:///tmp/open.txt"});
+	const auto results = state.TakeResults();
+	REQUIRE(results.size() == 2);
+	CHECK(results[0].id == saveId);
+	CHECK(results[0].mode == Scalpel::FileDialogMode::Save);
+	CHECK(results[0].paths.front() == "/tmp/save.txt");
+	CHECK(results[1].id == openId);
+	CHECK(results[1].mode == Scalpel::FileDialogMode::Open);
+	CHECK(results[1].paths.front() == "/tmp/open.txt");
+}
+
+TEST_CASE("Wayland file dialog request IDs survive retarget") {
+	Scalpel::WaylandFileDialogState state;
+	const uint64_t id = state.Begin(Scalpel::FileDialogMode::Open,
+		"/path/predicted", ":1.1");
+	REQUIRE(state.Retarget("/path/predicted", "/path/actual", ":1.9"));
+	state.DeliverResponse("/path/actual", ":1.9", 0,
+		{"file:///tmp/a.txt", "file:///tmp/b.txt"});
+	const auto results = state.TakeResults();
+	REQUIRE(results.size() == 1);
+	CHECK(results.front().id == id);
+	REQUIRE(results.front().paths.size() == 2);
+	CHECK(results.front().paths[0] == "/tmp/a.txt");
+	CHECK(results.front().paths[1] == "/tmp/b.txt");
+}
+
+TEST_CASE("Wayland file dialog request IDs appear on cancel and failure") {
+	Scalpel::WaylandFileDialogState state;
+	const uint64_t cancelId = state.Begin(Scalpel::FileDialogMode::Open,
+		"/path/cancel", ":1.1");
+	const uint64_t failId = state.Begin(Scalpel::FileDialogMode::Save,
+		"/path/fail", ":1.1");
+	state.DeliverResponse("/path/cancel", ":1.1", 1, {});
+	state.DeliverResponse("/path/fail", ":1.1", 2, {});
+	const auto results = state.TakeResults();
+	REQUIRE(results.size() == 2);
+	CHECK(results[0].id == cancelId);
+	CHECK(results[0].status == Scalpel::FileDialogResultStatus::Cancelled);
+	CHECK(results[1].id == failId);
+	CHECK(results[1].status == Scalpel::FileDialogResultStatus::Failed);
+}
+
+TEST_CASE("Wayland file dialog request IDs option multiple for open") {
+	DBusMessage *message = dbus_message_new_method_call(
+		"org.freedesktop.portal.Desktop",
+		"/org/freedesktop/portal/desktop", "org.freedesktop.portal.FileChooser",
+		"OpenFile");
+	REQUIRE(message);
+	DBusMessageIter iter;
+	dbus_message_iter_init_append(message, &iter);
+	const char *parent = "";
+	const char *title = "Open";
+	REQUIRE(dbus_message_iter_append_basic(&iter, DBUS_TYPE_STRING, &parent));
+	REQUIRE(dbus_message_iter_append_basic(&iter, DBUS_TYPE_STRING, &title));
+	DBusMessageIter options;
+	REQUIRE(dbus_message_iter_open_container(
+		&iter, DBUS_TYPE_ARRAY, "{sv}", &options));
+	Scalpel::FileDialogAppendDictString(&options, "handle_token", "token1");
+	Scalpel::FileDialogAppendDictBool(&options, "multiple", true);
+	REQUIRE(dbus_message_iter_close_container(&iter, &options));
+
+	DBusMessageIter read;
+	REQUIRE(dbus_message_iter_init(message, &read));
+	REQUIRE(dbus_message_iter_next(&read));
+	REQUIRE(dbus_message_iter_next(&read));
+	REQUIRE(dbus_message_iter_get_arg_type(&read) == DBUS_TYPE_ARRAY);
+	DBusMessageIter dict;
+	dbus_message_iter_recurse(&read, &dict);
+	bool foundMultiple = false;
+	while (dbus_message_iter_get_arg_type(&dict) == DBUS_TYPE_DICT_ENTRY) {
+		DBusMessageIter entry;
+		dbus_message_iter_recurse(&dict, &entry);
+		const char *key = nullptr;
+		if (dbus_message_iter_get_arg_type(&entry) == DBUS_TYPE_STRING) {
+			dbus_message_iter_get_basic(&entry, &key);
+		}
+		if (key && std::string(key) == "multiple") {
+			REQUIRE(dbus_message_iter_next(&entry));
+			REQUIRE(dbus_message_iter_get_arg_type(&entry) == DBUS_TYPE_VARIANT);
+			DBusMessageIter variant;
+			dbus_message_iter_recurse(&entry, &variant);
+			REQUIRE(dbus_message_iter_get_arg_type(&variant) == DBUS_TYPE_BOOLEAN);
+			dbus_bool_t value = FALSE;
+			dbus_message_iter_get_basic(&variant, &value);
+			CHECK(value == TRUE);
+			foundMultiple = true;
+		}
+		dbus_message_iter_next(&dict);
+	}
+	CHECK(foundMultiple);
+	dbus_message_unref(message);
 }
 
 TEST_CASE("Wayland file dialog appends filters and path options") {
