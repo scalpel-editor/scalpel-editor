@@ -3,11 +3,13 @@
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
 #include "ApplicationEditor.h"
+#include "DocumentFile.h"
 #include "GlContext.h"
 #include "WaylandWindow.h"
 
@@ -215,6 +217,92 @@ std::vector<int> EglDamage(
 	return rectangles;
 }
 
+std::vector<Scalpel::FileDialogFilter> TextDialogFilters() {
+	return {
+		{"Text files", {"*.txt", "*.md"}},
+		{"All files", {"*"}},
+	};
+}
+
+void RequestOpenDialog(Scalpel::WaylandWindow &window,
+	const std::string &documentPath) {
+	Scalpel::FileDialogRequest request;
+	request.mode = Scalpel::FileDialogMode::Open;
+	request.title = "Open File";
+	request.currentFolder = Scalpel::DocumentDirectory(documentPath);
+	request.filters = TextDialogFilters();
+	if (!window.ShowFileDialog(request)) {
+		std::cerr << "scalpel-editor: file dialog unavailable\n";
+	}
+}
+
+void RequestSaveAsDialog(Scalpel::WaylandWindow &window,
+	const std::string &documentPath) {
+	Scalpel::FileDialogRequest request;
+	request.mode = Scalpel::FileDialogMode::Save;
+	request.title = "Save File As";
+	request.currentFolder = Scalpel::DocumentDirectory(documentPath);
+	request.suggestedName = documentPath.empty() ?
+		"untitled.txt" :
+		Scalpel::DocumentBaseName(documentPath);
+	request.filters = TextDialogFilters();
+	if (!window.ShowFileDialog(request)) {
+		std::cerr << "scalpel-editor: file dialog unavailable\n";
+	}
+}
+
+bool SaveDocumentToPath(Scalpel::ApplicationEditor &editor,
+	const std::string &path) {
+	if (!Scalpel::WriteDocumentFile(path, editor.Text())) {
+		std::cerr << "scalpel-editor: failed to write " << path << '\n';
+		return false;
+	}
+	editor.MarkSaved();
+	return true;
+}
+
+void ApplyFileDialogResults(Scalpel::WaylandWindow &window,
+	Scalpel::ApplicationEditor &editor, std::string &documentPath) {
+	for (const Scalpel::FileDialogResult &result :
+		window.TakeFileDialogResults()) {
+		if (result.status != Scalpel::FileDialogResultStatus::Accepted ||
+			result.paths.empty()) {
+			continue;
+		}
+		const std::string &path = result.paths.front();
+		if (result.mode == Scalpel::FileDialogMode::Open) {
+			const std::optional<std::string> text =
+				Scalpel::ReadDocumentFile(path);
+			if (!text) {
+				std::cerr << "scalpel-editor: failed to read " << path << '\n';
+				continue;
+			}
+			editor.LoadInitialBuffer(*text);
+			documentPath = path;
+		} else if (SaveDocumentToPath(editor, path)) {
+			documentPath = path;
+		}
+	}
+}
+
+[[nodiscard]] bool IsOpenShortcut(const Scalpel::KeyboardInput &input) {
+	return input.pressed &&
+		input.key == static_cast<Scintilla::Keys>('O') &&
+		input.modifiers == Scintilla::KeyMod::Ctrl;
+}
+
+[[nodiscard]] bool IsSaveShortcut(const Scalpel::KeyboardInput &input) {
+	return input.pressed &&
+		input.key == static_cast<Scintilla::Keys>('S') &&
+		input.modifiers == Scintilla::KeyMod::Ctrl;
+}
+
+[[nodiscard]] bool IsSaveAsShortcut(const Scalpel::KeyboardInput &input) {
+	return input.pressed &&
+		input.key == static_cast<Scintilla::Keys>('S') &&
+		input.modifiers == (Scintilla::KeyMod::Ctrl | Scintilla::KeyMod::Shift);
+}
+
 }
 
 int main() {
@@ -230,13 +318,15 @@ int main() {
 		constexpr std::string_view initialText =
 			"scalpel-editor\n\n"
 			"A direct Scintilla editor for Wayland.\n"
-			"The first application frame is rendered in an xdg-toplevel.\n";
+			"Ctrl+O open, Ctrl+S save, Ctrl+Shift+S save as.\n";
 		editor.LoadInitialBuffer(initialText);
+		std::string documentPath;
 		while (!window.CloseRequested()) {
 			(void)window.TakePresentationResults();
 			DeliverClipboardResults(window, editor);
 			DeliverPrimarySelectionResults(window, editor);
 			DeliverTextInputBatches(window, editor);
+			ApplyFileDialogResults(window, editor, documentPath);
 			SynchronizeTextInput(editor, window);
 			if (const std::optional<Scalpel::WaylandScaleConfiguration> scale =
 				window.TakeScaleConfiguration()) {
@@ -250,7 +340,19 @@ int main() {
 				if (const auto *focus = std::get_if<Scalpel::KeyboardFocusInput>(&input)) {
 					editor.SetKeyboardFocus(focus->focused);
 				} else if (const auto *keyboard = std::get_if<Scalpel::KeyboardInput>(&input)) {
-					editor.HandleKeyboardInput(*keyboard);
+					if (IsOpenShortcut(*keyboard)) {
+						RequestOpenDialog(window, documentPath);
+					} else if (IsSaveAsShortcut(*keyboard)) {
+						RequestSaveAsDialog(window, documentPath);
+					} else if (IsSaveShortcut(*keyboard)) {
+						if (documentPath.empty()) {
+							RequestSaveAsDialog(window, documentPath);
+						} else {
+							(void)SaveDocumentToPath(editor, documentPath);
+						}
+					} else {
+						editor.HandleKeyboardInput(*keyboard);
+					}
 				} else {
 					editor.HandlePointerInput(std::get<Scalpel::PointerInput>(input));
 				}

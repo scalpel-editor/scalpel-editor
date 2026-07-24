@@ -11,6 +11,19 @@ target_compile_options(applicationHostTest PRIVATE -Wall -Wextra)
 
 add_test(NAME application-host COMMAND applicationHostTest)
 
+add_executable(documentFileTest
+  DocumentFileTest.cxx
+  ApplicationTestMain.cxx
+)
+target_include_directories(documentFileTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(documentFileTest PRIVATE scalpel_application)
+target_compile_options(documentFileTest PRIVATE -Wall -Wextra)
+
+add_test(NAME document-file COMMAND documentFileTest)
+
 add_executable(applicationImeTest
   ApplicationImeTest.cxx
   ApplicationTestMain.cxx

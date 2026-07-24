@@ -68,6 +68,8 @@ Bespoke, compile-time-known chrome: scrollbar, find bar, and only the other cont
 
 Define "daily usable" with observable behavior: dirty-buffer prompts on close and replacement, atomic saves with explicit symlink and permission handling, external-file change detection and conflict handling, a tested invalid-UTF-8 file policy, preserved or deliberately normalized line endings, clear portal cancellation and failure behavior, and a documented response to files too large for comfortable editing. Test open, edit, save, save-as, failed save, external change, and close-with-unsaved-work flows.
 
+In progress: asynchronous portal open and save dialogs, host load/dirty/mark-saved methods, whole-file disk I/O, and Ctrl+O / Ctrl+S / Ctrl+Shift+S bindings are in place. Remaining work is chrome and the full file-lifecycle policy above.
+
 Deliverable: daily-usable plain text editing that satisfies the file-lifecycle checks above, with application workflow tests and no generic UI framework.
 
 ## After this roadmap
