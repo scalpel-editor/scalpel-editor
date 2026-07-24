@@ -145,6 +145,9 @@ public:
 	/**
 	 * Optional post-paint chrome. Called after a successful Scintilla Paint on
 	 * the same surface, with logical frame width and height, before swap.
+	 * While set, PresentFrame and RenderFrame expand paint to the full client
+	 * and PresentFrame uses a full buffer swap so alpha overlays do not darken
+	 * preserved pixels outside partial damage.
 	 */
 	using OverlayPainter = std::function<void(Scintilla::Internal::Surface &surface,
 		int width, int height)>;

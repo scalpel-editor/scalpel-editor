@@ -291,6 +291,9 @@ void HandleUnsavedOutcome(Scalpel::UnsavedOutcome outcome,
 		editor.InvalidateClient();
 		break;
 	case Scalpel::UnsavedOutcome::PerformOpen:
+		// Discard leaves the buffer dirty; clear so ApplyFileDialogResults
+		// accepts the chosen path. Save already cleared via MarkSaved.
+		editor.MarkSaved();
 		editor.InvalidateClient();
 		StartOpenDialog(window, documentPath);
 		break;
@@ -545,13 +548,11 @@ int main() {
 		Scalpel::UnsavedChangesCardPainter cardPainter;
 		int cardFocus = 0;
 		bool quitAccepted = false;
+		bool cardOverlayBound = false;
 		std::optional<Scalpel::UnsavedCardHit> promptPressHit;
 
-		editor.SetOverlayPainter(
+		const auto paintUnsavedCard =
 			[&](Scintilla::Internal::Surface &surface, int width, int height) {
-				if (!unsavedPrompt.Active()) {
-					return;
-				}
 				const Scalpel::UnsavedChangesCardLayout layout =
 					Scalpel::LayoutUnsavedChangesCard(width, height);
 				const std::string subtitle = documentPath.empty() ?
@@ -559,7 +560,7 @@ int main() {
 					Scalpel::DocumentBaseName(documentPath);
 				cardPainter.Paint(surface, layout, "Save changes?", subtitle,
 					cardFocus);
-			});
+			};
 
 		while (!quitAccepted && !window.ForceCloseRequested()) {
 			(void)window.TakePresentationResults();
@@ -659,8 +660,19 @@ int main() {
 			SynchronizeTextInput(editor, window);
 			if (unsavedPrompt.Active()) {
 				window.SetCursor(Scintilla::Internal::Window::Cursor::arrow);
+				// Bind only while active so PresentFrame full-swaps only then.
+				if (!cardOverlayBound) {
+					editor.SetOverlayPainter(paintUnsavedCard);
+					cardOverlayBound = true;
+				}
+				// Full client damage so Wayland/EGL damage matches the scrim.
+				editor.InvalidateClient();
 			} else {
 				window.SetCursor(editor.WindowState().cursor);
+				if (cardOverlayBound) {
+					editor.SetOverlayPainter(nullptr);
+					cardOverlayBound = false;
+				}
 			}
 			QueueFrameDamage(editor, window);
 			if (window.CanSubmitFrame()) {

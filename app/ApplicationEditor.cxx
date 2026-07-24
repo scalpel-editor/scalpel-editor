@@ -608,8 +608,13 @@ void ApplicationEditor::RenderFrame(const std::vector<PRectangle> &damage) {
 	const int height = FrameHeight();
 	frame = Scintilla::Internal::CreateDrawSurface(*renderer, width, height);
 	paintState = PaintState::painting;
-	rcPaint = DamageBounds(damage, GetClientRectangle());
-	paintingAllText = rcPaint == GetClientRectangle();
+	const PRectangle client = GetClientRectangle();
+	rcPaint = DamageBounds(damage, client);
+	// Overlay chrome spans the client; partial rcPaint would leave it inconsistent.
+	if (overlayPainter) {
+		rcPaint = client;
+	}
+	paintingAllText = rcPaint == client;
 	try {
 		Paint(frame.get(), rcPaint);
 		if (overlayPainter) {
@@ -646,8 +651,14 @@ void ApplicationEditor::PresentFrame(
 	frame = Scintilla::Internal::CreateExternalDrawSurface(
 		*renderer, 0, bufferWidth, bufferHeight, width, height);
 	paintState = PaintState::painting;
-	rcPaint = DamageBounds(damage, GetClientRectangle());
-	paintingAllText = rcPaint == GetClientRectangle();
+	const PRectangle client = GetClientRectangle();
+	rcPaint = DamageBounds(damage, client);
+	// Overlay alpha (scrim) must not re-blend outside the reported EGL damage.
+	if (overlayPainter) {
+		rcPaint = client;
+		fullSwap = true;
+	}
+	paintingAllText = rcPaint == client;
 	try {
 		Paint(frame.get(), rcPaint);
 		if (overlayPainter) {

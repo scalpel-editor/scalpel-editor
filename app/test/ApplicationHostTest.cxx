@@ -127,6 +127,26 @@ TEST_CASE("production editor overlay painter draws after Paint") {
 	CHECK(pixels[offset + 2] == 0x00);
 }
 
+TEST_CASE("production editor overlay expands partial damage to full client") {
+	using Scintilla::Internal::PRectangle;
+	using Scintilla::Internal::Surface;
+
+	Scalpel::ApplicationEditor editor(80, 60);
+	editor.LoadInitialBuffer("base\n");
+	(void)editor.TakeFrameDamage();
+
+	bool painterCalled = false;
+	editor.SetOverlayPainter(
+		[&](Surface &, int, int) {
+			painterCalled = true;
+		});
+	// Partial damage must still paint the full client while an overlay is set.
+	editor.RenderFrame({PRectangle::FromInts(10, 10, 20, 20)});
+	CHECK(painterCalled);
+	CHECK(editor.LastPaintRectangle() ==
+		PRectangle::FromInts(0, 0, 80, 60));
+}
+
 TEST_CASE("production editor without overlay painter is unchanged") {
 	Scalpel::ApplicationEditor editor(80, 60);
 	editor.LoadInitialBuffer("plain\n");
