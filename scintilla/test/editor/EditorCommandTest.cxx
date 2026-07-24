@@ -275,6 +275,17 @@ TEST_CASE("LineDown command moves the caret to the next line") {
 	CHECK(editor.CurrentPos() == 4);
 }
 
+TEST_CASE("Editor commands use a non-zero client top as the view origin") {
+	TestHost host;
+	TestEditor editor(host, PRectangle(0, 28, 640, 480));
+	editor.SetText("one\ntwo\nthree\n");
+	Goto(editor, 0);
+
+	editor.RunCommand(EditorCommand::MoveSelectedLinesDown);
+
+	CHECK(editor.Text() == "two\none\nthree\n");
+}
+
 TEST_CASE("Bound keyboard commands remain observable to macro recording") {
 	TestHost host;
 	TestEditor editor(host);

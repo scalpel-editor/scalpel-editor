@@ -374,7 +374,9 @@ Sci::Position Editor::PositionFromLineX(Sci::Line lineDoc, int x) {
 }
 
 Sci::Line Editor::LineFromLocation(Point pt) const noexcept {
-	return pcs->DocFromDisplay(static_cast<int>(pt.y) / vs.lineHeight + topLine);
+	const XYPOSITION clientTop = GetClientRectangle().top;
+	return pcs->DocFromDisplay(
+		static_cast<int>(pt.y - clientTop) / vs.lineHeight + topLine);
 }
 
 void Editor::SetTopLine(Sci::Line topLineNew) {
@@ -498,12 +500,14 @@ PRectangle Editor::RectangleFromRange(Range r, int overlap) {
 	PRectangle rc;
 	const int leftTextOverlap = ((xOffset == 0) && (vs.leftMarginWidth > 0)) ? 1 : 0;
 	rc.left = static_cast<XYPOSITION>(vs.textStart - leftTextOverlap);
-	rc.top = static_cast<XYPOSITION>((minLine - TopLineOfMain()) * vs.lineHeight - overlap);
+	rc.top = rcClientDrawing.top +
+		static_cast<XYPOSITION>((minLine - TopLineOfMain()) * vs.lineHeight - overlap);
 	if (rc.top < rcClientDrawing.top)
 		rc.top = rcClientDrawing.top;
 	// Extend to right of prepared area if any to prevent artifacts from caret line highlight
 	rc.right = rcClientDrawing.right;
-	rc.bottom = static_cast<XYPOSITION>((maxLine - TopLineOfMain() + 1) * vs.lineHeight + overlap);
+	rc.bottom = rcClientDrawing.top +
+		static_cast<XYPOSITION>((maxLine - TopLineOfMain() + 1) * vs.lineHeight + overlap);
 
 	return rc;
 }
@@ -4059,7 +4063,9 @@ Sci::Position Editor::PositionAfterArea(PRectangle rcArea) const {
 	// The start of the document line after the display line after the area
 	// This often means that the line after a modification is restyled which helps
 	// detect multiline comment additions and heals single line comments
-	const Sci::Line lineAfter = TopLineOfMain() + static_cast<Sci::Line>(rcArea.bottom - 1) / vs.lineHeight + 1;
+	const XYPOSITION clientTop = GetClientRectangle().top;
+	const Sci::Line lineAfter = TopLineOfMain() +
+		static_cast<Sci::Line>(rcArea.bottom - clientTop - 1) / vs.lineHeight + 1;
 	if (lineAfter < pcs->LinesDisplayed()) {
 		return pdoc->LineStart(pcs->DocFromDisplay(lineAfter) + 1);
 	}
@@ -4208,6 +4214,7 @@ std::unique_ptr<Surface> Editor::CreateMeasurementSurface() const {
 	return surf;
 }
 
+
 std::unique_ptr<Surface> Editor::CreateDrawingSurface(SurfaceID sid) const {
 	if (!wMain.GetID()) {
 		return {};
@@ -4217,4 +4224,3 @@ std::unique_ptr<Surface> Editor::CreateDrawingSurface(SurfaceID sid) const {
 	surf->SetMode(CurrentSurfaceMode());
 	return surf;
 }
-

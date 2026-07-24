@@ -592,6 +592,25 @@ TEST_CASE("production editor top chrome caret geometry is below the inset") {
 	CHECK(state->cursorRectangle.height > 0);
 }
 
+TEST_CASE("production editor top chrome offsets range invalidation") {
+	using Scintilla::Internal::PRectangle;
+
+	Scalpel::ApplicationEditor editor(240, 120);
+	editor.LoadInitialBuffer("one\ntwo\nthree\n");
+	const int inset = 28;
+	editor.SetTopChromeInset(inset);
+	editor.RenderFrame();
+	(void)editor.TakeFrameDamage();
+
+	editor.SetSel(0, 1);
+	const auto damage = editor.TakeFrameDamage();
+	REQUIRE_FALSE(damage.empty());
+	CHECK(std::any_of(damage.begin(), damage.end(),
+		[inset](const PRectangle &rectangle) {
+			return rectangle.top == inset && rectangle.bottom > inset;
+		}));
+}
+
 TEST_CASE("production editor top chrome permanent painter is damage-aware") {
 	using Scintilla::Internal::ColourRGBA;
 	using Scintilla::Internal::Fill;
