@@ -140,6 +140,15 @@ public:
 	void PresentFrame(
 		const std::vector<Scintilla::Internal::PRectangle> &damage,
 		const std::vector<int> &eglDamage, bool fullSwap);
+	/**
+	 * Optional post-paint chrome. Called after a successful Scintilla Paint on
+	 * the same surface, with logical frame width and height, before swap.
+	 */
+	using OverlayPainter = std::function<void(Scintilla::Internal::Surface &surface,
+		int width, int height)>;
+	void SetOverlayPainter(OverlayPainter painter);
+	/** Full-client invalidate so modal chrome appears or disappears cleanly. */
+	void InvalidateClient();
 	[[nodiscard]] std::vector<Scintilla::Internal::PRectangle> TakeFrameDamage();
 	void RunPendingWork();
 	[[nodiscard]] std::optional<std::chrono::milliseconds> TimeUntilNextWork() const;
@@ -256,6 +265,7 @@ private:
 	ApplicationTextChangeCause textInputChangeCause =
 		ApplicationTextChangeCause::Other;
 	NowFunction now;
+	OverlayPainter overlayPainter;
 	double horizontalWheelRemainder = 0;
 	double verticalWheelRemainder = 0;
 	int bufferWidth = 0;

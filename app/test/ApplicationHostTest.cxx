@@ -92,6 +92,70 @@ TEST_CASE("production editor load marks the buffer clean and edits dirty it") {
 	CHECK(editor.Text() == "replacement");
 }
 
+TEST_CASE("production editor overlay painter draws after Paint") {
+	using Scintilla::Internal::ColourRGBA;
+	using Scintilla::Internal::Fill;
+	using Scintilla::Internal::PRectangle;
+	using Scintilla::Internal::Surface;
+
+	Scalpel::ApplicationEditor editor(80, 60);
+	editor.LoadInitialBuffer("base\n");
+	// Clear startup damage so the overlay test owns the paint path.
+	(void)editor.TakeFrameDamage();
+
+	const ColourRGBA marker(0xff, 0x00, 0x00, 0xff);
+	const PRectangle markRect = PRectangle::FromInts(10, 10, 30, 30);
+	bool painterCalled = false;
+	editor.SetOverlayPainter(
+		[&](Surface &surface, int width, int height) {
+			painterCalled = true;
+			CHECK(width == 80);
+			CHECK(height == 60);
+			surface.FillRectangle(markRect, Fill(marker));
+		});
+	editor.RenderFrame({PRectangle::FromInts(0, 0, 80, 60)});
+	CHECK(painterCalled);
+
+	const std::vector<uint8_t> pixels = editor.FramePixels();
+	REQUIRE(pixels.size() == 80U * 60U * 4U);
+	// FramePixels are top-left origin RGBA; sample the filled marker center.
+	const size_t sampleX = 20;
+	const size_t sampleY = 20;
+	const size_t offset = (sampleY * 80U + sampleX) * 4U;
+	CHECK(pixels[offset + 0] == 0xff);
+	CHECK(pixels[offset + 1] == 0x00);
+	CHECK(pixels[offset + 2] == 0x00);
+}
+
+TEST_CASE("production editor without overlay painter is unchanged") {
+	Scalpel::ApplicationEditor editor(80, 60);
+	editor.LoadInitialBuffer("plain\n");
+	editor.RenderFrame();
+	const std::vector<uint8_t> pixels = editor.FramePixels();
+	REQUIRE(pixels.size() == 80U * 60U * 4U);
+	bool hasNonBackgroundPixel = false;
+	for (size_t offset = 4; offset < pixels.size(); offset += 4) {
+		if (!std::equal(pixels.begin(), pixels.begin() + 4, pixels.begin() + offset)) {
+			hasNonBackgroundPixel = true;
+			break;
+		}
+	}
+	CHECK(hasNonBackgroundPixel);
+}
+
+TEST_CASE("production editor InvalidateClient marks the full client") {
+	Scalpel::ApplicationEditor editor(100, 50);
+	(void)editor.TakeFrameDamage();
+	CHECK_FALSE(editor.NeedsRedraw());
+	editor.InvalidateClient();
+	CHECK(editor.NeedsRedraw());
+	const auto damage = editor.TakeFrameDamage();
+	REQUIRE_FALSE(damage.empty());
+	CHECK(std::find(damage.begin(), damage.end(),
+		Scintilla::Internal::PRectangle::FromInts(0, 0, 100, 50)) !=
+		damage.end());
+}
+
 TEST_CASE("production editor host rejects presentation without a window surface") {
 	Scalpel::ApplicationEditor editor(320, 180);
 

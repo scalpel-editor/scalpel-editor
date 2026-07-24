@@ -612,6 +612,9 @@ void ApplicationEditor::RenderFrame(const std::vector<PRectangle> &damage) {
 	paintingAllText = rcPaint == GetClientRectangle();
 	try {
 		Paint(frame.get(), rcPaint);
+		if (overlayPainter) {
+			overlayPainter(*frame, width, height);
+		}
 	} catch (...) {
 		paintState = PaintState::notPainting;
 		paintingAllText = false;
@@ -647,6 +650,9 @@ void ApplicationEditor::PresentFrame(
 	paintingAllText = rcPaint == GetClientRectangle();
 	try {
 		Paint(frame.get(), rcPaint);
+		if (overlayPainter) {
+			overlayPainter(*frame, width, height);
+		}
 	} catch (...) {
 		paintState = PaintState::notPainting;
 		paintingAllText = false;
@@ -660,6 +666,14 @@ void ApplicationEditor::PresentFrame(
 		glContext->SwapBuffersWithDamage(
 			eglDamage.data(), eglDamage.size() / 4);
 	}
+}
+
+void ApplicationEditor::SetOverlayPainter(OverlayPainter painter) {
+	overlayPainter = std::move(painter);
+}
+
+void ApplicationEditor::InvalidateClient() {
+	wMain.InvalidateAll();
 }
 
 std::vector<PRectangle> ApplicationEditor::TakeFrameDamage() {
