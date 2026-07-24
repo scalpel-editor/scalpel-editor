@@ -137,6 +137,7 @@ target_include_directories(scalpel_xdg_shell PUBLIC "${WAYLAND_PROTOCOL_OUTPUT_D
 target_link_libraries(scalpel_xdg_shell PUBLIC PkgConfig::WAYLAND_CLIENT)
 
 add_library(scalpel_wayland STATIC
+  PortalUri.cxx
   WaylandClipboard.cxx
   WaylandCursor.cxx
   WaylandDbus.cxx

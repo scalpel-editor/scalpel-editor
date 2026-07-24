@@ -220,6 +220,7 @@ target_compile_options(waylandDbusTest PRIVATE -Wall -Wextra)
 add_test(NAME wayland-dbus COMMAND waylandDbusTest)
 
 add_executable(waylandPortalTest
+  PortalUriTest.cxx
   WaylandPortalTest.cxx
   WaylandTestMain.cxx
 )
