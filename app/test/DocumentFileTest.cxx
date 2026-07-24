@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <string>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "DocumentFile.h"
@@ -32,6 +33,23 @@ public:
 	std::string path;
 };
 
+class TempLink {
+public:
+	TempLink(const std::string &target, const std::string &linkPath) :
+		path(linkPath) {
+		REQUIRE(symlink(target.c_str(), path.c_str()) == 0);
+	}
+	~TempLink() {
+		if (!path.empty()) {
+			(void)std::remove(path.c_str());
+		}
+	}
+	TempLink(const TempLink &) = delete;
+	TempLink &operator=(const TempLink &) = delete;
+
+	std::string path;
+};
+
 }
 
 TEST_CASE("document file round-trips bytes including invalid UTF-8") {
@@ -51,6 +69,46 @@ TEST_CASE("document file round-trips bytes including invalid UTF-8") {
 TEST_CASE("document file read fails for a missing path") {
 	CHECK_FALSE(Scalpel::ReadDocumentFile(
 		"/tmp/scalpel-document-file-missing-path").has_value());
+}
+
+TEST_CASE("document file write fails for an empty path") {
+	CHECK_FALSE(Scalpel::WriteDocumentFile({}, "text"));
+}
+
+TEST_CASE("document file write fails without destroying a missing parent") {
+	CHECK_FALSE(Scalpel::WriteDocumentFile(
+		"/tmp/scalpel-document-file-missing-dir/nested.txt", "text"));
+}
+
+TEST_CASE("document file rewrite preserves mode bits") {
+	TempFile file("original");
+	REQUIRE(chmod(file.path.c_str(), 0600) == 0);
+
+	REQUIRE(Scalpel::WriteDocumentFile(file.path, "rewritten"));
+	struct stat after {};
+	REQUIRE(stat(file.path.c_str(), &after) == 0);
+	CHECK((after.st_mode & 0777) == 0600);
+
+	const std::optional<std::string> read = Scalpel::ReadDocumentFile(file.path);
+	REQUIRE(read.has_value());
+	CHECK(*read == "rewritten");
+}
+
+TEST_CASE("document file write follows a symlink to the target file") {
+	TempFile target("old-target");
+	const std::string linkPath = target.path + ".link";
+	TempLink link(target.path, linkPath);
+
+	REQUIRE(Scalpel::WriteDocumentFile(linkPath, "through-link"));
+
+	const std::optional<std::string> targetText =
+		Scalpel::ReadDocumentFile(target.path);
+	REQUIRE(targetText.has_value());
+	CHECK(*targetText == "through-link");
+
+	struct stat linkStat {};
+	REQUIRE(lstat(linkPath.c_str(), &linkStat) == 0);
+	CHECK(S_ISLNK(linkStat.st_mode));
 }
 
 TEST_CASE("document file path helpers split directories") {
