@@ -78,12 +78,14 @@ TEST_CASE("document workspace single-document dirty close prompts") {
 	editor.LoadInitialBuffer("dirty\n");
 	DirtyBuffer(editor);
 	DocumentWorkspace workspace(editor);
+	const DocumentId only = workspace.ActiveTab();
 
 	workspace.RequestClose();
 	const auto requests = workspace.TakeRequests();
 	CHECK(HasRequest(requests, DocumentShellRequest::PromptBegan));
 	CHECK(workspace.PromptActive());
-	CHECK(workspace.Pending() == UnsavedPending::Close);
+	CHECK(workspace.Pending() == UnsavedPending::CloseWindow);
+	CHECK(workspace.PromptTab() == only);
 	CHECK_FALSE(HasRequest(requests, DocumentShellRequest::AcceptClose));
 }
 
@@ -178,7 +180,7 @@ TEST_CASE("document workspace single-document Save As cancel keeps prompt") {
 
 	workspace.HandleSaveResult(false, {});
 	CHECK(workspace.PromptActive());
-	CHECK(workspace.Pending() == UnsavedPending::Close);
+	CHECK(workspace.Pending() == UnsavedPending::CloseWindow);
 	CHECK_FALSE(workspace.AwaitingSaveAs());
 	CHECK(workspace.TakeRequests().empty());
 }
@@ -457,7 +459,8 @@ TEST_CASE("document workspace tabs close dirty prompts then discard") {
 	workspace.CloseTab(second);
 	CHECK(workspace.ActiveTab() == second);
 	CHECK(workspace.PromptActive());
-	CHECK(workspace.Pending() == UnsavedPending::Close);
+	CHECK(workspace.Pending() == UnsavedPending::CloseTab);
+	CHECK(workspace.PromptTab() == second);
 	CHECK(HasRequest(workspace.TakeRequests(), DocumentShellRequest::PromptBegan));
 
 	workspace.Choose(UnsavedChoice::Discard);
@@ -694,7 +697,7 @@ TEST_CASE("document workspace portal routing Save As cancel keeps prompt") {
 
 	workspace.HandlePortalResult(44, false, {});
 	CHECK(workspace.PromptActive());
-	CHECK(workspace.Pending() == UnsavedPending::Close);
+	CHECK(workspace.Pending() == UnsavedPending::CloseWindow);
 	CHECK_FALSE(workspace.AwaitingSaveAs());
 }
 
@@ -722,7 +725,7 @@ TEST_CASE("document workspace portal routing stale Save As keeps newer prompt") 
 
 	workspace.HandlePortalResult(45, true, {file.path});
 	CHECK(workspace.PromptActive());
-	CHECK(workspace.Pending() == UnsavedPending::Close);
+	CHECK(workspace.Pending() == UnsavedPending::CloseWindow);
 	CHECK_FALSE(HasRequest(workspace.TakeRequests(),
 		DocumentShellRequest::AcceptClose));
 	CHECK(workspace.Path() == file.path);
@@ -771,4 +774,210 @@ TEST_CASE("document workspace portal routing note Save As dialog failed") {
 	workspace.NoteSaveAsDialogFailed();
 	CHECK(workspace.PromptActive());
 	CHECK_FALSE(workspace.AwaitingSaveAs());
+}
+
+TEST_CASE("document workspace window close multi dirty advances in order") {
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("first\n");
+	DocumentWorkspace workspace(editor);
+	const DocumentId first = workspace.ActiveTab();
+	DirtyBuffer(editor);
+
+	workspace.NewTab();
+	editor.LoadInitialBuffer("second\n");
+	const DocumentId second = workspace.ActiveTab();
+	DirtyBuffer(editor);
+
+	workspace.NewTab();
+	editor.LoadInitialBuffer("clean\n");
+	const DocumentId clean = workspace.ActiveTab();
+	REQUIRE_FALSE(editor.Modified());
+	(void)workspace.TakeRequests();
+
+	// Active is clean; window close must still find the first dirty tab.
+	workspace.RequestClose();
+	CHECK(workspace.PromptActive());
+	CHECK(workspace.Pending() == UnsavedPending::CloseWindow);
+	CHECK(workspace.PromptTab() == first);
+	CHECK(workspace.ActiveTab() == first);
+	CHECK(HasRequest(workspace.TakeRequests(), DocumentShellRequest::PromptBegan));
+
+	workspace.Choose(UnsavedChoice::Discard);
+	CHECK(workspace.PromptActive());
+	CHECK(workspace.Pending() == UnsavedPending::CloseWindow);
+	CHECK(workspace.PromptTab() == second);
+	CHECK(workspace.ActiveTab() == second);
+	CHECK(workspace.TabCount() == 3);
+	CHECK(editor.HasDocument(first));
+	CHECK(editor.HasDocument(second));
+	CHECK(editor.HasDocument(clean));
+	CHECK_FALSE(HasRequest(workspace.TakeRequests(),
+		DocumentShellRequest::AcceptClose));
+
+	workspace.Choose(UnsavedChoice::Discard);
+	CHECK_FALSE(workspace.PromptActive());
+	CHECK(workspace.TabCount() == 3);
+	const auto requests = workspace.TakeRequests();
+	CHECK(HasRequest(requests, DocumentShellRequest::AcceptClose));
+}
+
+TEST_CASE("document workspace window close cancel keeps all tabs") {
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("first\n");
+	DocumentWorkspace workspace(editor);
+	const DocumentId first = workspace.ActiveTab();
+	DirtyBuffer(editor);
+	const std::string firstText = editor.Text();
+
+	workspace.NewTab();
+	editor.LoadInitialBuffer("second\n");
+	const DocumentId second = workspace.ActiveTab();
+	DirtyBuffer(editor);
+	const std::string secondText = editor.Text();
+	(void)workspace.TakeRequests();
+
+	workspace.RequestClose();
+	REQUIRE(workspace.PromptTab() == first);
+	workspace.Choose(UnsavedChoice::Discard);
+	REQUIRE(workspace.PromptTab() == second);
+
+	workspace.Choose(UnsavedChoice::Cancel);
+	CHECK_FALSE(workspace.PromptActive());
+	CHECK(workspace.TabCount() == 2);
+	CHECK(editor.HasDocument(first));
+	CHECK(editor.HasDocument(second));
+	CHECK_FALSE(HasRequest(workspace.TakeRequests(),
+		DocumentShellRequest::AcceptClose));
+
+	// Both tabs remain dirty; cancel did not finish the walk.
+	workspace.ActivateTab(first);
+	CHECK(editor.Text() == firstText);
+	CHECK(editor.Modified(first));
+	workspace.ActivateTab(second);
+	CHECK(editor.Text() == secondText);
+	CHECK(editor.Modified(second));
+}
+
+TEST_CASE("document workspace window close cancel after save keeps remaining dirty") {
+	TempFile file("original");
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("original");
+	DocumentWorkspace workspace(editor);
+	workspace.HandleSaveResult(true, file.path);
+	(void)workspace.TakeRequests();
+	const DocumentId first = workspace.ActiveTab();
+	DirtyBuffer(editor);
+
+	workspace.NewTab();
+	editor.LoadInitialBuffer("second\n");
+	const DocumentId second = workspace.ActiveTab();
+	DirtyBuffer(editor);
+	(void)workspace.TakeRequests();
+
+	workspace.RequestClose();
+	REQUIRE(workspace.PromptTab() == first);
+	workspace.Choose(UnsavedChoice::Save);
+	REQUIRE(workspace.PromptTab() == second);
+	CHECK_FALSE(editor.Modified(first));
+
+	workspace.Choose(UnsavedChoice::Cancel);
+	CHECK_FALSE(workspace.PromptActive());
+	CHECK(workspace.TabCount() == 2);
+	CHECK_FALSE(HasRequest(workspace.TakeRequests(),
+		DocumentShellRequest::AcceptClose));
+	CHECK(editor.Modified(second));
+	CHECK_FALSE(editor.Modified(first));
+}
+
+TEST_CASE("document workspace window close skips clean tabs") {
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("clean first\n");
+	DocumentWorkspace workspace(editor);
+	const DocumentId clean = workspace.ActiveTab();
+
+	workspace.NewTab();
+	editor.LoadInitialBuffer("dirty\n");
+	const DocumentId dirty = workspace.ActiveTab();
+	DirtyBuffer(editor);
+
+	workspace.NewTab();
+	editor.LoadInitialBuffer("also clean\n");
+	(void)workspace.TakeRequests();
+
+	workspace.RequestClose();
+	CHECK(workspace.PromptTab() == dirty);
+	CHECK(workspace.ActiveTab() == dirty);
+	CHECK(workspace.Pending() == UnsavedPending::CloseWindow);
+
+	workspace.Choose(UnsavedChoice::Discard);
+	CHECK_FALSE(workspace.PromptActive());
+	CHECK(HasRequest(workspace.TakeRequests(), DocumentShellRequest::AcceptClose));
+	CHECK(workspace.TabCount() == 3);
+	CHECK(editor.HasDocument(clean));
+	CHECK(editor.HasDocument(dirty));
+}
+
+TEST_CASE("document workspace window close Save As failure keeps same tab prompt") {
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("first\n");
+	DocumentWorkspace workspace(editor);
+	const DocumentId first = workspace.ActiveTab();
+	DirtyBuffer(editor);
+	workspace.NewTab();
+	editor.LoadInitialBuffer("second\n");
+	const DocumentId second = workspace.ActiveTab();
+	DirtyBuffer(editor);
+	(void)workspace.TakeRequests();
+
+	workspace.RequestClose();
+	REQUIRE(workspace.PromptTab() == first);
+	workspace.Choose(UnsavedChoice::Save);
+	REQUIRE(workspace.AwaitingSaveAs());
+	REQUIRE(HasRequest(workspace.TakeRequests(), DocumentShellRequest::ShowSaveAs));
+
+	workspace.HandleSaveResult(false, {});
+	CHECK(workspace.PromptActive());
+	CHECK(workspace.Pending() == UnsavedPending::CloseWindow);
+	CHECK(workspace.PromptTab() == first);
+	CHECK_FALSE(workspace.AwaitingSaveAs());
+	CHECK(workspace.TabCount() == 2);
+	CHECK(editor.HasDocument(second));
+	CHECK_FALSE(HasRequest(workspace.TakeRequests(),
+		DocumentShellRequest::AcceptClose));
+}
+
+TEST_CASE("document workspace window close delayed Save As advances walk") {
+	TempFile file("");
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("first\n");
+	DocumentWorkspace workspace(editor);
+	const DocumentId first = workspace.ActiveTab();
+	DirtyBuffer(editor);
+	workspace.NewTab();
+	editor.LoadInitialBuffer("second\n");
+	const DocumentId second = workspace.ActiveTab();
+	DirtyBuffer(editor);
+	(void)workspace.TakeRequests();
+
+	workspace.RequestClose();
+	REQUIRE(workspace.PromptTab() == first);
+	workspace.Choose(UnsavedChoice::Save);
+	REQUIRE(HasRequest(workspace.TakeRequests(), DocumentShellRequest::ShowSaveAs));
+	workspace.RegisterSaveAsRequest(77);
+
+	workspace.HandlePortalResult(77, true, {file.path});
+	CHECK(workspace.PromptActive());
+	CHECK(workspace.Pending() == UnsavedPending::CloseWindow);
+	CHECK(workspace.PromptTab() == second);
+	CHECK(workspace.ActiveTab() == second);
+	CHECK_FALSE(editor.Modified(first));
+	CHECK(editor.Modified(second));
+	// Prompt blocks tab switches; the card still names the next dirty tab.
+	workspace.ActivateTab(first);
+	CHECK(workspace.ActiveTab() == second);
+	CHECK_FALSE(HasRequest(workspace.TakeRequests(),
+		DocumentShellRequest::AcceptClose));
+	const auto read = Scalpel::ReadDocumentFile(file.path);
+	REQUIRE(read.has_value());
+	CHECK(read->find('x') != std::string::npos);
 }

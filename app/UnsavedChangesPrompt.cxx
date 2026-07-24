@@ -2,29 +2,33 @@
 
 namespace Scalpel {
 
-bool UnsavedChangesPrompt::TryBegin(UnsavedPending next) noexcept {
+bool UnsavedChangesPrompt::TryBegin(UnsavedPending next, uint64_t nextTabId) noexcept {
 	if (pending != UnsavedPending::None) {
 		return false;
 	}
-	if (next == UnsavedPending::None) {
+	if (next == UnsavedPending::None || nextTabId == 0) {
 		return false;
 	}
 	pending = next;
+	tabId = nextTabId;
 	awaitingSaveAs = false;
 	return true;
 }
 
 void UnsavedChangesPrompt::Dismiss() noexcept {
 	pending = UnsavedPending::None;
+	tabId = 0;
 	awaitingSaveAs = false;
 }
 
 UnsavedOutcome UnsavedChangesPrompt::PerformPendingAndClear() noexcept {
 	const UnsavedPending was = pending;
 	pending = UnsavedPending::None;
+	tabId = 0;
 	awaitingSaveAs = false;
 	switch (was) {
-	case UnsavedPending::Close:
+	case UnsavedPending::CloseTab:
+	case UnsavedPending::CloseWindow:
 		return UnsavedOutcome::PerformClose;
 	case UnsavedPending::None:
 		return UnsavedOutcome::None;
@@ -66,7 +70,8 @@ void UnsavedChangesPrompt::NotifySaveIncomplete() noexcept {
 	if (pending == UnsavedPending::None) {
 		return;
 	}
-	// Stay active with the same pending; clear awaiting so the user can choose again.
+	// Stay active with the same pending and tab; clear awaiting so the user
+	// can choose again.
 	awaitingSaveAs = false;
 }
 

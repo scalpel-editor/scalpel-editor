@@ -3,11 +3,16 @@
 #ifndef UNSAVEDCHANGESPROMPT_H
 #define UNSAVEDCHANGESPROMPT_H
 
+#include <cstdint>
+
 namespace Scalpel {
 
 enum class UnsavedPending {
 	None,
-	Close,
+	/** Close one named tab after Save or Discard. */
+	CloseTab,
+	/** One step of a window-close walk over dirty tabs. */
+	CloseWindow,
 };
 
 enum class UnsavedChoice {
@@ -26,12 +31,16 @@ enum class UnsavedOutcome {
 
 /**
  * Pure state machine for the unsaved-changes prompt. Owns no drawing and no
- * file I/O; the host maps outcomes to save, portal Save As, or quit/close-tab.
+ * file I/O; the host maps outcomes to save, portal Save As, close-tab, or
+ * window-close advance. Each active prompt names the tab the card is about.
  */
 class UnsavedChangesPrompt final {
 public:
-	/** Start a prompt for pending. No-op (returns false) when already active. */
-	bool TryBegin(UnsavedPending pending) noexcept;
+	/**
+	 * Start a prompt for pending on tabId. No-op (returns false) when already
+	 * active, when pending is None, or when tabId is zero.
+	 */
+	bool TryBegin(UnsavedPending pending, uint64_t tabId) noexcept;
 
 	void Dismiss() noexcept;
 
@@ -39,6 +48,8 @@ public:
 		return pending != UnsavedPending::None;
 	}
 	[[nodiscard]] UnsavedPending Pending() const noexcept { return pending; }
+	/** Tab the card names while active; zero when inactive. */
+	[[nodiscard]] uint64_t TabId() const noexcept { return tabId; }
 	[[nodiscard]] bool AwaitingSaveAs() const noexcept { return awaitingSaveAs; }
 
 	/**
@@ -53,7 +64,7 @@ public:
 
 	/**
 	 * Host reports write or Save As failure/cancel while awaiting. Stays
-	 * active with the same pending so the user can choose again.
+	 * active with the same pending and tab so the user can choose again.
 	 */
 	void NotifySaveIncomplete() noexcept;
 
@@ -61,6 +72,7 @@ private:
 	[[nodiscard]] UnsavedOutcome PerformPendingAndClear() noexcept;
 
 	UnsavedPending pending = UnsavedPending::None;
+	uint64_t tabId = 0;
 	bool awaitingSaveAs = false;
 };
 

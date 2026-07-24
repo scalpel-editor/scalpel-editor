@@ -7,88 +7,112 @@ using Scalpel::UnsavedChoice;
 using Scalpel::UnsavedOutcome;
 using Scalpel::UnsavedPending;
 
-TEST_CASE("UnsavedChangesPrompt begins Close when inactive") {
+TEST_CASE("UnsavedChangesPrompt tab close begins CloseTab with tab id") {
 	UnsavedChangesPrompt prompt;
 	CHECK_FALSE(prompt.Active());
 	CHECK(prompt.Pending() == UnsavedPending::None);
+	CHECK(prompt.TabId() == 0);
 
-	CHECK(prompt.TryBegin(UnsavedPending::Close));
+	CHECK(prompt.TryBegin(UnsavedPending::CloseTab, 7));
 	CHECK(prompt.Active());
-	CHECK(prompt.Pending() == UnsavedPending::Close);
+	CHECK(prompt.Pending() == UnsavedPending::CloseTab);
+	CHECK(prompt.TabId() == 7);
 	CHECK_FALSE(prompt.AwaitingSaveAs());
 }
 
-TEST_CASE("UnsavedChangesPrompt ignores second Begin while active") {
+TEST_CASE("UnsavedChangesPrompt tab close begins CloseWindow with tab id") {
 	UnsavedChangesPrompt prompt;
-	REQUIRE(prompt.TryBegin(UnsavedPending::Close));
-	CHECK_FALSE(prompt.TryBegin(UnsavedPending::Close));
-	CHECK(prompt.Pending() == UnsavedPending::Close);
+	CHECK(prompt.TryBegin(UnsavedPending::CloseWindow, 3));
+	CHECK(prompt.Pending() == UnsavedPending::CloseWindow);
+	CHECK(prompt.TabId() == 3);
 }
 
-TEST_CASE("UnsavedChangesPrompt Cancel dismisses") {
+TEST_CASE("UnsavedChangesPrompt tab close rejects zero tab id") {
 	UnsavedChangesPrompt prompt;
-	REQUIRE(prompt.TryBegin(UnsavedPending::Close));
+	CHECK_FALSE(prompt.TryBegin(UnsavedPending::CloseTab, 0));
+	CHECK_FALSE(prompt.TryBegin(UnsavedPending::CloseWindow, 0));
+	CHECK_FALSE(prompt.Active());
+}
+
+TEST_CASE("UnsavedChangesPrompt tab close ignores second Begin while active") {
+	UnsavedChangesPrompt prompt;
+	REQUIRE(prompt.TryBegin(UnsavedPending::CloseTab, 1));
+	CHECK_FALSE(prompt.TryBegin(UnsavedPending::CloseWindow, 2));
+	CHECK(prompt.Pending() == UnsavedPending::CloseTab);
+	CHECK(prompt.TabId() == 1);
+}
+
+TEST_CASE("UnsavedChangesPrompt tab close Cancel dismisses and clears tab id") {
+	UnsavedChangesPrompt prompt;
+	REQUIRE(prompt.TryBegin(UnsavedPending::CloseTab, 9));
 	CHECK(prompt.Choose(UnsavedChoice::Cancel, true) == UnsavedOutcome::Dismissed);
 	CHECK_FALSE(prompt.Active());
 	CHECK(prompt.Pending() == UnsavedPending::None);
+	CHECK(prompt.TabId() == 0);
 }
 
-TEST_CASE("UnsavedChangesPrompt Discard with Close performs close") {
+TEST_CASE("UnsavedChangesPrompt tab close Discard performs close") {
 	UnsavedChangesPrompt prompt;
-	REQUIRE(prompt.TryBegin(UnsavedPending::Close));
+	REQUIRE(prompt.TryBegin(UnsavedPending::CloseTab, 4));
 	CHECK(prompt.Choose(UnsavedChoice::Discard, false) ==
 		UnsavedOutcome::PerformClose);
 	CHECK_FALSE(prompt.Active());
+	CHECK(prompt.TabId() == 0);
 }
 
-TEST_CASE("UnsavedChangesPrompt Save with path performs pending") {
+TEST_CASE("UnsavedChangesPrompt tab close Save with path performs pending") {
 	UnsavedChangesPrompt prompt;
-	REQUIRE(prompt.TryBegin(UnsavedPending::Close));
+	REQUIRE(prompt.TryBegin(UnsavedPending::CloseWindow, 5));
 	CHECK(prompt.Choose(UnsavedChoice::Save, true) ==
 		UnsavedOutcome::PerformClose);
 	CHECK_FALSE(prompt.Active());
 }
 
-TEST_CASE("UnsavedChangesPrompt Save without path needs Save As") {
+TEST_CASE("UnsavedChangesPrompt tab close Save without path needs Save As") {
 	UnsavedChangesPrompt prompt;
-	REQUIRE(prompt.TryBegin(UnsavedPending::Close));
+	REQUIRE(prompt.TryBegin(UnsavedPending::CloseTab, 8));
 	CHECK(prompt.Choose(UnsavedChoice::Save, false) == UnsavedOutcome::NeedSaveAs);
 	CHECK(prompt.Active());
-	CHECK(prompt.Pending() == UnsavedPending::Close);
+	CHECK(prompt.Pending() == UnsavedPending::CloseTab);
+	CHECK(prompt.TabId() == 8);
 	CHECK(prompt.AwaitingSaveAs());
 }
 
-TEST_CASE("UnsavedChangesPrompt NotifySaved after NeedSaveAs performs pending") {
+TEST_CASE("UnsavedChangesPrompt tab close preserves tab across Save As incomplete") {
 	UnsavedChangesPrompt prompt;
-	REQUIRE(prompt.TryBegin(UnsavedPending::Close));
+	REQUIRE(prompt.TryBegin(UnsavedPending::CloseWindow, 11));
+	REQUIRE(prompt.Choose(UnsavedChoice::Save, false) ==
+		UnsavedOutcome::NeedSaveAs);
+	REQUIRE(prompt.AwaitingSaveAs());
+	REQUIRE(prompt.TabId() == 11);
+
+	prompt.NotifySaveIncomplete();
+	CHECK(prompt.Active());
+	CHECK(prompt.Pending() == UnsavedPending::CloseWindow);
+	CHECK(prompt.TabId() == 11);
+	CHECK_FALSE(prompt.AwaitingSaveAs());
+}
+
+TEST_CASE("UnsavedChangesPrompt tab close NotifySaved after NeedSaveAs performs pending") {
+	UnsavedChangesPrompt prompt;
+	REQUIRE(prompt.TryBegin(UnsavedPending::CloseTab, 2));
 	REQUIRE(prompt.Choose(UnsavedChoice::Save, false) ==
 		UnsavedOutcome::NeedSaveAs);
 	CHECK(prompt.NotifySaved() == UnsavedOutcome::PerformClose);
 	CHECK_FALSE(prompt.Active());
 	CHECK_FALSE(prompt.AwaitingSaveAs());
+	CHECK(prompt.TabId() == 0);
 }
 
-TEST_CASE("UnsavedChangesPrompt NotifySaveIncomplete keeps pending") {
+TEST_CASE("UnsavedChangesPrompt tab close Cancel while awaiting Save As dismisses") {
 	UnsavedChangesPrompt prompt;
-	REQUIRE(prompt.TryBegin(UnsavedPending::Close));
-	REQUIRE(prompt.Choose(UnsavedChoice::Save, false) ==
-		UnsavedOutcome::NeedSaveAs);
-	REQUIRE(prompt.AwaitingSaveAs());
-
-	prompt.NotifySaveIncomplete();
-	CHECK(prompt.Active());
-	CHECK(prompt.Pending() == UnsavedPending::Close);
-	CHECK_FALSE(prompt.AwaitingSaveAs());
-}
-
-TEST_CASE("UnsavedChangesPrompt Cancel while awaiting Save As dismisses") {
-	UnsavedChangesPrompt prompt;
-	REQUIRE(prompt.TryBegin(UnsavedPending::Close));
+	REQUIRE(prompt.TryBegin(UnsavedPending::CloseWindow, 6));
 	REQUIRE(prompt.Choose(UnsavedChoice::Save, false) ==
 		UnsavedOutcome::NeedSaveAs);
 	CHECK(prompt.Choose(UnsavedChoice::Cancel, false) == UnsavedOutcome::Dismissed);
 	CHECK_FALSE(prompt.Active());
 	CHECK_FALSE(prompt.AwaitingSaveAs());
+	CHECK(prompt.TabId() == 0);
 }
 
 TEST_CASE("UnsavedChangesPrompt inactive Choose and Notify are no-ops") {
@@ -103,11 +127,12 @@ TEST_CASE("UnsavedChangesPrompt inactive Choose and Notify are no-ops") {
 
 TEST_CASE("UnsavedChangesPrompt Dismiss clears active state") {
 	UnsavedChangesPrompt prompt;
-	REQUIRE(prompt.TryBegin(UnsavedPending::Close));
+	REQUIRE(prompt.TryBegin(UnsavedPending::CloseTab, 10));
 	REQUIRE(prompt.Choose(UnsavedChoice::Save, false) ==
 		UnsavedOutcome::NeedSaveAs);
 	prompt.Dismiss();
 	CHECK_FALSE(prompt.Active());
 	CHECK_FALSE(prompt.AwaitingSaveAs());
 	CHECK(prompt.Pending() == UnsavedPending::None);
+	CHECK(prompt.TabId() == 0);
 }

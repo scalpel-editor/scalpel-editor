@@ -44,7 +44,7 @@ void DocumentWorkspace::Queue(DocumentShellRequest request) {
 }
 
 void DocumentWorkspace::QueueShowSaveAs() {
-	pendingSaveAsTab = closingTabId.value_or(activeId);
+	pendingSaveAsTab = prompt.Active() ? dirtyCloseTabId : activeId;
 	pendingSaveAsPromptGeneration =
 		prompt.AwaitingSaveAs() ? activePromptGeneration : 0;
 	Queue(DocumentShellRequest::ShowSaveAs);
@@ -73,39 +73,83 @@ bool DocumentWorkspace::SaveToPath(DocumentId tabId,
 	return true;
 }
 
-void DocumentWorkspace::BeginPrompt(UnsavedPending pending) {
-	if (!prompt.TryBegin(pending)) {
+void DocumentWorkspace::ClearDirtyCloseState() noexcept {
+	dirtyCloseTabId = 0;
+	windowCloseResolved.clear();
+	activePromptGeneration = 0;
+}
+
+void DocumentWorkspace::BeginPrompt(UnsavedPending pending, DocumentId tabId) {
+	if (!prompt.TryBegin(pending, tabId)) {
 		return;
 	}
+	dirtyCloseTabId = tabId;
 	activePromptGeneration = ++lastPromptGeneration;
 	if (activePromptGeneration == 0) {
 		activePromptGeneration = ++lastPromptGeneration;
+	}
+	// The card names this document; keep it active for path, save, and subtitle.
+	if (activeId != tabId && FindIndex(tabId)) {
+		editor.ActivateDocument(tabId);
+		activeId = tabId;
+		Queue(DocumentShellRequest::RefreshTabs);
 	}
 	editor.CancelActiveTextInput();
 	editor.InvalidateClient();
 	Queue(DocumentShellRequest::PromptBegan);
 }
 
-void DocumentWorkspace::ApplyOutcome(UnsavedOutcome outcome) {
+std::optional<DocumentId> DocumentWorkspace::NextWindowCloseDirty() const {
+	for (const Tab &tab : tabs) {
+		if (windowCloseResolved.count(tab.id) != 0) {
+			continue;
+		}
+		if (editor.Modified(tab.id)) {
+			return tab.id;
+		}
+	}
+	return std::nullopt;
+}
+
+void DocumentWorkspace::AdvanceOrAcceptWindowClose() {
+	if (const std::optional<DocumentId> next = NextWindowCloseDirty()) {
+		// Keep windowCloseResolved; start the next card on the next dirty tab.
+		dirtyCloseTabId = 0;
+		activePromptGeneration = 0;
+		BeginPrompt(UnsavedPending::CloseWindow, *next);
+		return;
+	}
+	ClearDirtyCloseState();
+	Queue(DocumentShellRequest::AcceptClose);
+}
+
+void DocumentWorkspace::ApplyOutcome(UnsavedOutcome outcome,
+	UnsavedPending completedKind, DocumentId completedTabId) {
 	switch (outcome) {
 	case UnsavedOutcome::None:
 	case UnsavedOutcome::SaveFailed:
 		break;
 	case UnsavedOutcome::Dismissed:
-		activePromptGeneration = 0;
-		closingTabId.reset();
+		// Cancel aborts tab close and the whole window-close walk.
+		ClearDirtyCloseState();
 		editor.InvalidateClient();
 		break;
 	case UnsavedOutcome::PerformClose:
-		activePromptGeneration = 0;
-		if (closingTabId) {
-			const DocumentId id = *closingTabId;
-			closingTabId.reset();
-			if (const std::optional<std::size_t> index = FindIndex(id)) {
+		if (completedKind == UnsavedPending::CloseTab) {
+			ClearDirtyCloseState();
+			if (const std::optional<std::size_t> index =
+					FindIndex(completedTabId)) {
 				RemoveTabAt(*index);
 			}
+		} else if (completedKind == UnsavedPending::CloseWindow) {
+			// Discard leaves the buffer dirty; remember so it is not re-prompted.
+			if (editor.HasDocument(completedTabId) &&
+				editor.Modified(completedTabId)) {
+				windowCloseResolved.insert(completedTabId);
+			}
+			AdvanceOrAcceptWindowClose();
 		} else {
-			Queue(DocumentShellRequest::AcceptClose);
+			ClearDirtyCloseState();
 		}
 		editor.InvalidateClient();
 		break;
@@ -168,9 +212,7 @@ void DocumentWorkspace::CloseTab(DocumentId id) {
 		return;
 	}
 	if (editor.Modified(id)) {
-		ActivateTab(id);
-		closingTabId = id;
-		BeginPrompt(UnsavedPending::Close);
+		BeginPrompt(UnsavedPending::CloseTab, id);
 		return;
 	}
 	RemoveTabAt(*index);
@@ -206,9 +248,9 @@ void DocumentWorkspace::RequestClose() {
 		// Pending action already owns the close decision.
 		return;
 	}
-	if (editor.Modified()) {
-		closingTabId.reset();
-		BeginPrompt(UnsavedPending::Close);
+	windowCloseResolved.clear();
+	if (const std::optional<DocumentId> firstDirty = NextWindowCloseDirty()) {
+		BeginPrompt(UnsavedPending::CloseWindow, *firstDirty);
 		return;
 	}
 	Queue(DocumentShellRequest::AcceptClose);
@@ -218,15 +260,18 @@ void DocumentWorkspace::Choose(UnsavedChoice choice) {
 	if (!prompt.Active()) {
 		return;
 	}
-	if (choice == UnsavedChoice::Save && !Path().empty()) {
+	const UnsavedPending kind = prompt.Pending();
+	const DocumentId tabId = prompt.TabId();
+	const std::string &path = PathOf(tabId);
+	if (choice == UnsavedChoice::Save && !path.empty()) {
 		// Write before clearing the prompt so a failed write keeps the card.
-		if (!SaveToPath(activeId, Path())) {
+		if (!SaveToPath(tabId, path)) {
 			return;
 		}
-		ApplyOutcome(prompt.Choose(UnsavedChoice::Save, true));
+		ApplyOutcome(prompt.Choose(UnsavedChoice::Save, true), kind, tabId);
 		return;
 	}
-	ApplyOutcome(prompt.Choose(choice, !Path().empty()));
+	ApplyOutcome(prompt.Choose(choice, !path.empty()), kind, tabId);
 }
 
 void DocumentWorkspace::RegisterOpenRequest(uint64_t requestId) {
@@ -318,7 +363,7 @@ void DocumentWorkspace::HandleSaveResult(bool accepted,
 void DocumentWorkspace::HandleSaveResult(DocumentId tabId, bool accepted,
 	std::string_view savedPath) {
 	const bool continuePrompt = prompt.AwaitingSaveAs() &&
-		(closingTabId ? *closingTabId == tabId : activeId == tabId);
+		prompt.TabId() == tabId;
 	ApplySaveResult(tabId, accepted, savedPath,
 		continuePrompt ? activePromptGeneration : 0);
 }
@@ -362,13 +407,11 @@ void DocumentWorkspace::ApplyOpenPaths(const std::vector<std::string> &paths) {
 
 void DocumentWorkspace::ApplySaveResult(DocumentId tabId, bool accepted,
 	std::string_view savedPath, uint64_t promptGeneration) {
-	const bool promptTargetsTab =
-		closingTabId ? *closingTabId == tabId : activeId == tabId;
 	const bool continuePrompt =
 		promptGeneration != 0 &&
 		promptGeneration == activePromptGeneration &&
 		prompt.AwaitingSaveAs() &&
-		promptTargetsTab;
+		prompt.TabId() == tabId;
 	if (!accepted || savedPath.empty()) {
 		if (continuePrompt) {
 			prompt.NotifySaveIncomplete();
@@ -382,7 +425,9 @@ void DocumentWorkspace::ApplySaveResult(DocumentId tabId, bool accepted,
 	const std::string pathString(savedPath);
 	if (SaveToPath(tabId, pathString)) {
 		if (continuePrompt) {
-			ApplyOutcome(prompt.NotifySaved());
+			const UnsavedPending kind = prompt.Pending();
+			const DocumentId completedTabId = prompt.TabId();
+			ApplyOutcome(prompt.NotifySaved(), kind, completedTabId);
 		}
 	} else if (continuePrompt) {
 		prompt.NotifySaveIncomplete();
@@ -422,6 +467,13 @@ DocumentWorkspace::Tab &DocumentWorkspace::ActiveTabRecord() {
 
 const DocumentWorkspace::Tab &DocumentWorkspace::ActiveTabRecord() const {
 	return tabs[IndexOf(activeId)];
+}
+
+const std::string &DocumentWorkspace::PathOf(DocumentId tabId) const noexcept {
+	if (const std::optional<std::size_t> index = FindIndex(tabId)) {
+		return tabs[*index].path;
+	}
+	return ActiveTabRecord().path;
 }
 
 std::string DocumentWorkspace::LabelFor(const Tab &tab) const {

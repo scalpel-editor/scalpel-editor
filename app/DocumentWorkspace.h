@@ -9,6 +9,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "ApplicationEditor.h"
@@ -48,6 +49,10 @@ struct DocumentTabInfo {
  * tab (or activates the existing exact path) instead of replacing the buffer.
  * Portal results are matched by the stable request ID returned from Show, not
  * by dialog order alone.
+ *
+ * Dirty CloseTab prompts remove one tab after Save or Discard. Dirty window
+ * close walks dirty tabs in strip order; Save or Discard advances, and Cancel
+ * aborts without removing tabs.
  */
 class DocumentWorkspace final {
 public:
@@ -60,6 +65,10 @@ public:
 	[[nodiscard]] bool PromptActive() const noexcept { return prompt.Active(); }
 	[[nodiscard]] UnsavedPending Pending() const noexcept {
 		return prompt.Pending();
+	}
+	/** Tab named by the active dirty-close card; zero when no prompt. */
+	[[nodiscard]] DocumentId PromptTab() const noexcept {
+		return prompt.TabId();
 	}
 	[[nodiscard]] bool AwaitingSaveAs() const noexcept {
 		return prompt.AwaitingSaveAs();
@@ -86,9 +95,11 @@ public:
 	/** Ctrl+Shift+S: always Save As. */
 	void RequestSaveAs();
 	/**
-	 * Compositor or user window close. Accepts immediately when the active
-	 * buffer is clean; otherwise starts the Close prompt. No-op while a prompt
-	 * is already active. Multi-tab dirty window close is a later step.
+	 * Compositor or user window close. Accepts immediately when every tab is
+	 * clean; otherwise activates the first dirty tab in strip order and starts
+	 * a CloseWindow prompt. Save or Discard advances through remaining dirty
+	 * tabs; Cancel aborts the sequence without removing tabs. No-op while a
+	 * prompt is already active.
 	 */
 	void RequestClose();
 
@@ -166,8 +177,12 @@ private:
 
 	void Queue(DocumentShellRequest request);
 	void QueueShowSaveAs();
-	void BeginPrompt(UnsavedPending pending);
-	void ApplyOutcome(UnsavedOutcome outcome);
+	void BeginPrompt(UnsavedPending pending, DocumentId tabId);
+	void ClearDirtyCloseState() noexcept;
+	void ApplyOutcome(UnsavedOutcome outcome, UnsavedPending completedKind,
+		DocumentId completedTabId);
+	void AdvanceOrAcceptWindowClose();
+	[[nodiscard]] std::optional<DocumentId> NextWindowCloseDirty() const;
 	[[nodiscard]] bool SaveToPath(DocumentId tabId, const std::string &destination);
 	[[nodiscard]] std::size_t IndexOf(DocumentId id) const;
 	[[nodiscard]] std::optional<std::size_t> FindIndex(DocumentId id) const;
@@ -175,6 +190,7 @@ private:
 		std::string_view path) const;
 	[[nodiscard]] Tab &ActiveTabRecord();
 	[[nodiscard]] const Tab &ActiveTabRecord() const;
+	[[nodiscard]] const std::string &PathOf(DocumentId tabId) const noexcept;
 	[[nodiscard]] std::string LabelFor(const Tab &tab) const;
 	/** Append a new untitled tab record using an already-created document. */
 	Tab &AppendUntitled(DocumentId id);
@@ -189,8 +205,16 @@ private:
 	std::vector<Tab> tabs;
 	DocumentId activeId = 0;
 	int nextUntitledNumber = 1;
-	/** Set while the close prompt is for CloseTab rather than window close. */
-	std::optional<DocumentId> closingTabId;
+	/**
+	 * Tab named by the active dirty-close card. Survives the prompt clear
+	 * inside Choose so Save As and ApplyOutcome still know the target.
+	 */
+	DocumentId dirtyCloseTabId = 0;
+	/**
+	 * Tabs discarded (without save) during the current window-close walk so
+	 * they are not prompted again while still modified.
+	 */
+	std::unordered_set<DocumentId> windowCloseResolved;
 	/**
 	 * Tab that should receive the next Save As dialog result. Set when
 	 * ShowSaveAs is queued; consumed by RegisterSaveAsRequest or failure.
