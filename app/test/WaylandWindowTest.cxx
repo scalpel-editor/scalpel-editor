@@ -100,6 +100,28 @@ TEST_CASE("Wayland lifecycle clears a user close request") {
 	CHECK_FALSE(lifecycle.ForceCloseRequested());
 }
 
+TEST_CASE("Wayland lifecycle accepts globals during clearable user close") {
+	Scalpel::WaylandLifecycle lifecycle(800, 600);
+
+	lifecycle.RequestClose();
+	CHECK(lifecycle.CloseRequested());
+	CHECK_FALSE(lifecycle.ForceCloseRequested());
+	const auto seat = lifecycle.AddGlobal(
+		Scalpel::WaylandGlobalKind::Seat, 40, 9);
+	REQUIRE(seat.size() == 1);
+	CHECK(seat.front().type == Scalpel::WaylandLifecycleActionType::BindSeat);
+	CHECK(lifecycle.SeatCount() == 1);
+
+	lifecycle.ClearCloseRequest();
+	CHECK_FALSE(lifecycle.CloseRequested());
+	// Announcement during the prompt window remains after Cancel.
+	CHECK(lifecycle.SeatCount() == 1);
+	const auto output = lifecycle.AddGlobal(
+		Scalpel::WaylandGlobalKind::Output, 30, 4);
+	REQUIRE(output.size() == 1);
+	CHECK(lifecycle.OutputCount() == 1);
+}
+
 TEST_CASE("Wayland lifecycle force close is not cleared") {
 	Scalpel::WaylandLifecycle lifecycle(800, 600);
 

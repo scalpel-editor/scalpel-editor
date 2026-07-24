@@ -28,7 +28,9 @@ WaylandLifecycle::WaylandLifecycle(int width, int height) : currentSize{width, h
 
 std::vector<WaylandLifecycleAction> WaylandLifecycle::AddGlobal(
 	WaylandGlobalKind kind, uint32_t name, uint32_t version) {
-	if (closeRequested || forceCloseRequested || HasGlobal(name)) {
+	// Only force-close suppresses additions. A clearable user close can be
+	// canceled after a dirty prompt; announcements in that window must stick.
+	if (forceCloseRequested || HasGlobal(name)) {
 		return {};
 	}
 	globals.push_back(Global{kind, name, version});
