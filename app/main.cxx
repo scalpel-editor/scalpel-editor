@@ -512,6 +512,8 @@ int main() {
 						HandlePromptPointer(*pointer, promptLayout,
 							promptPressHit, workspace, editor, cardFocus);
 					}
+					PerformShellRequests(workspace, window, quitAccepted,
+						cardFocus, promptPressHit);
 					continue;
 				}
 				if (const auto *keyboard =
@@ -529,9 +531,9 @@ int main() {
 					editor.HandlePointerInput(
 						std::get<Scalpel::PointerInput>(input));
 				}
+				PerformShellRequests(workspace, window, quitAccepted, cardFocus,
+					promptPressHit);
 			}
-			PerformShellRequests(workspace, window, quitAccepted, cardFocus,
-				promptPressHit);
 
 			if (quitAccepted || window.ForceCloseRequested()) {
 				break;
