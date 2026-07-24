@@ -82,7 +82,9 @@ using DocumentId = uint64_t;
  * Multiple Scintilla documents can be retained and switched without
  * constructing another host: one document is active for input and paint; the
  * rest keep their text, undo, save point, and a snapshot of selection and
- * scroll until activated again.
+ * scroll until activated again. DocumentWorkspace maps tabs and file paths onto
+ * these IDs; main paints the tab strip as permanent top chrome and the unsaved
+ * card as the only full-client modal overlay.
  */
 class ApplicationEditor final : private ApplicationResources, public Scintilla::Internal::ScintillaBase {
 public:

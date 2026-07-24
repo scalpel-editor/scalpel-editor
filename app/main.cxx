@@ -1,3 +1,16 @@
+// Production Wayland editor process entry.
+//
+// Ownership: ApplicationEditor retains Scintilla documents and paints one
+// surface (one renderer, one EGL context). DocumentWorkspace owns tab order,
+// paths, untitled numbering, portal request intents, and dirty-close prompts;
+// it returns shell requests and owns no Wayland or drawing. TabStrip is
+// permanent top chrome; UnsavedChangesCard is the modal overlay above tabs and
+// editor content. This file is the event and rendering adapter: it delivers
+// input and portal results into the workspace, performs shell requests
+// (dialogs, quit, strip refresh), and paints chrome. Open/save policy and
+// prompt transitions live in DocumentWorkspace, not here. Required-global loss
+// force-closes without prompting the workspace.
+
 #include <cmath>
 #include <exception>
 #include <iostream>

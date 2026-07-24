@@ -1,4 +1,5 @@
 // Multi-document open, save, tab, dirty-prompt, and close workflow.
+// Paired with ApplicationEditor (document bytes) and main (Wayland adapter).
 
 #ifndef DOCUMENTWORKSPACE_H
 #define DOCUMENTWORKSPACE_H

@@ -981,3 +981,202 @@ TEST_CASE("document workspace window close delayed Save As advances walk") {
 	REQUIRE(read.has_value());
 	CHECK(read->find('x') != std::string::npos);
 }
+
+// Combined multi-document flows exercise several operations in one session,
+// matching the product paths wired through main rather than isolated units.
+
+TEST_CASE("document workspace multi-document open-many edit switch and inactive Save As") {
+	TempFile alpha("alpha body\n");
+	TempFile beta("beta body\n");
+	TempFile saveAsTarget("");
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("startup\n");
+	DocumentWorkspace workspace(editor);
+	const DocumentId startup = workspace.ActiveTab();
+
+	// Open many: every accepted path becomes its own tab.
+	workspace.RegisterOpenRequest(101);
+	workspace.HandlePortalResult(101, true, {alpha.path, beta.path});
+	REQUIRE(workspace.TabCount() == 3);
+	CHECK(workspace.Path() == beta.path);
+	CHECK(editor.Text() == "beta body\n");
+	CHECK(HasRequest(workspace.TakeRequests(), DocumentShellRequest::RefreshTabs));
+
+	// Edit and switch: each document keeps independent text and dirty state.
+	DirtyBuffer(editor);
+	const std::string dirtyBeta = editor.Text();
+	const DocumentId betaId = workspace.ActiveTab();
+	workspace.ActivateTab(startup);
+	CHECK(editor.Text() == "startup\n");
+	CHECK_FALSE(editor.Modified());
+	workspace.ActivateTab(betaId);
+	CHECK(editor.Text() == dirtyBeta);
+	CHECK(editor.Modified());
+
+	// Save As was started on beta; finishing it while another tab is active
+	// still writes beta and leaves the visible tab alone.
+	workspace.RequestSaveAs();
+	REQUIRE(HasRequest(workspace.TakeRequests(), DocumentShellRequest::ShowSaveAs));
+	workspace.RegisterSaveAsRequest(102);
+	workspace.ActivateTab(startup);
+	REQUIRE(workspace.ActiveTab() == startup);
+	workspace.HandlePortalResult(102, true, {saveAsTarget.path});
+	CHECK(workspace.ActiveTab() == startup);
+	CHECK(editor.Text() == "startup\n");
+	workspace.ActivateTab(betaId);
+	CHECK(workspace.Path() == saveAsTarget.path);
+	CHECK_FALSE(editor.Modified());
+	const auto saved = Scalpel::ReadDocumentFile(saveAsTarget.path);
+	REQUIRE(saved.has_value());
+	CHECK(*saved == dirtyBeta);
+
+	// Alpha remains as opened, still clean.
+	bool foundAlpha = false;
+	for (const auto &tab : workspace.Tabs()) {
+		if (tab.path == alpha.path) {
+			foundAlpha = true;
+			workspace.ActivateTab(tab.id);
+			CHECK(editor.Text() == "alpha body\n");
+			CHECK_FALSE(editor.Modified());
+		}
+	}
+	CHECK(foundAlpha);
+}
+
+TEST_CASE("document workspace multi-document close dirty inactive cancel window close and last tab") {
+	TempFile known("known\n");
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("first\n");
+	DocumentWorkspace workspace(editor);
+	const DocumentId first = workspace.ActiveTab();
+	DirtyBuffer(editor);
+	const std::string firstText = editor.Text();
+
+	workspace.NewTab();
+	editor.LoadInitialBuffer("second\n");
+	const DocumentId second = workspace.ActiveTab();
+	DirtyBuffer(editor);
+	(void)workspace.TakeRequests();
+
+	// Close a dirty inactive tab: it becomes active and receives the card.
+	workspace.ActivateTab(first);
+	(void)workspace.TakeRequests();
+	workspace.CloseTab(second);
+	CHECK(workspace.ActiveTab() == second);
+	CHECK(workspace.PromptActive());
+	CHECK(workspace.Pending() == UnsavedPending::CloseTab);
+	CHECK(workspace.PromptTab() == second);
+	workspace.Choose(UnsavedChoice::Discard);
+	CHECK_FALSE(workspace.PromptActive());
+	CHECK(workspace.TabCount() == 1);
+	CHECK(workspace.ActiveTab() == first);
+	CHECK_FALSE(editor.HasDocument(second));
+	CHECK(editor.Text() == firstText);
+
+	// Rebuild two dirty tabs, then cancel a multi-dirty window close.
+	workspace.NewTab();
+	editor.LoadInitialBuffer("third\n");
+	const DocumentId third = workspace.ActiveTab();
+	DirtyBuffer(editor);
+	const std::string thirdText = editor.Text();
+	(void)workspace.TakeRequests();
+
+	workspace.RequestClose();
+	REQUIRE(workspace.PromptTab() == first);
+	workspace.Choose(UnsavedChoice::Discard);
+	REQUIRE(workspace.PromptTab() == third);
+	workspace.Choose(UnsavedChoice::Cancel);
+	CHECK_FALSE(workspace.PromptActive());
+	CHECK(workspace.TabCount() == 2);
+	CHECK(editor.HasDocument(first));
+	CHECK(editor.HasDocument(third));
+	CHECK_FALSE(HasRequest(workspace.TakeRequests(),
+		DocumentShellRequest::AcceptClose));
+	workspace.ActivateTab(first);
+	CHECK(editor.Text() == firstText);
+	CHECK(editor.Modified(first));
+	workspace.ActivateTab(third);
+	CHECK(editor.Text() == thirdText);
+	CHECK(editor.Modified(third));
+
+	// Closing the last clean tab creates a fresh untitled instead of quitting.
+	workspace.ActivateTab(first);
+	workspace.HandleSaveResult(true, known.path);
+	(void)workspace.TakeRequests();
+	REQUIRE_FALSE(editor.Modified(first));
+	workspace.CloseTab(third);
+	REQUIRE(workspace.PromptActive());
+	workspace.Choose(UnsavedChoice::Discard);
+	REQUIRE(workspace.TabCount() == 1);
+	REQUIRE(workspace.ActiveTab() == first);
+	workspace.CloseTab(first);
+	CHECK(workspace.TabCount() == 1);
+	CHECK(workspace.ActiveTab() != first);
+	CHECK_FALSE(editor.HasDocument(first));
+	CHECK(editor.Text().empty());
+	CHECK(workspace.Path().empty());
+	// first was Untitled 1, second 2, third 3; next free number is 4.
+	CHECK(workspace.Tabs()[0].label == "Untitled 4");
+	CHECK_FALSE(HasRequest(workspace.TakeRequests(),
+		DocumentShellRequest::AcceptClose));
+}
+
+TEST_CASE("document workspace multi-document portal failure and force-close contract") {
+	TempFile file("on disk\n");
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("startup\n");
+	DocumentWorkspace workspace(editor);
+	const DocumentId startup = workspace.ActiveTab();
+	DirtyBuffer(editor);
+	const std::string dirtyText = editor.Text();
+
+	// Portal open failure (cancel or error) leaves tabs and dirty state alone.
+	workspace.RegisterOpenRequest(201);
+	workspace.HandlePortalResult(201, false, {});
+	CHECK(workspace.TabCount() == 1);
+	CHECK(workspace.ActiveTab() == startup);
+	CHECK(editor.Text() == dirtyText);
+	CHECK(editor.Modified());
+
+	// Save As dialog failure while a close prompt awaits keeps the card.
+	workspace.RequestClose();
+	REQUIRE(workspace.PromptActive());
+	workspace.Choose(UnsavedChoice::Save);
+	REQUIRE(HasRequest(workspace.TakeRequests(), DocumentShellRequest::ShowSaveAs));
+	REQUIRE(workspace.AwaitingSaveAs());
+	workspace.NoteSaveAsDialogFailed();
+	CHECK(workspace.PromptActive());
+	CHECK(workspace.Pending() == UnsavedPending::CloseWindow);
+	CHECK_FALSE(workspace.AwaitingSaveAs());
+	CHECK_FALSE(HasRequest(workspace.TakeRequests(),
+		DocumentShellRequest::AcceptClose));
+
+	// A later successful open still creates a sibling tab.
+	workspace.Choose(UnsavedChoice::Cancel);
+	REQUIRE_FALSE(workspace.PromptActive());
+	workspace.RegisterOpenRequest(202);
+	workspace.HandlePortalResult(202, true, {file.path});
+	CHECK(workspace.TabCount() == 2);
+	CHECK(editor.Text() == "on disk\n");
+	workspace.ActivateTab(startup);
+	CHECK(editor.Text() == dirtyText);
+
+	// Force close (required-global loss) is shell-only: main exits on
+	// ForceCloseRequested without RequestClose or Choose. The workspace
+	// therefore never queues AcceptClose for dirty tabs unless the user
+	// completes the prompt walk or every tab is already clean.
+	CHECK(editor.Modified(startup));
+	CHECK_FALSE(HasRequest(workspace.TakeRequests(),
+		DocumentShellRequest::AcceptClose));
+	workspace.RequestClose();
+	CHECK(workspace.PromptActive());
+	CHECK(workspace.PromptTab() == startup);
+	CHECK_FALSE(HasRequest(workspace.TakeRequests(),
+		DocumentShellRequest::AcceptClose));
+	// Shell force-close would abandon here; a clean AcceptClose needs Discard
+	// or Save through the remaining dirty tabs.
+	workspace.Choose(UnsavedChoice::Discard);
+	// The opened file is clean, so the window-close walk accepts.
+	CHECK_FALSE(workspace.PromptActive());
+	CHECK(HasRequest(workspace.TakeRequests(), DocumentShellRequest::AcceptClose));
+}
