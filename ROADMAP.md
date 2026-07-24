@@ -70,6 +70,8 @@ Define "daily usable" with observable behavior: dirty-buffer prompts on close an
 
 In progress: asynchronous portal open and save dialogs, host load/dirty/mark-saved methods, atomic whole-file saves (temp file plus rename, symlink follow and mode preserve), and Ctrl+O / Ctrl+S / Ctrl+Shift+S bindings are in place. Dirty-buffer close and open-replacement use an in-window centered Save / Discard / Cancel card drawn after Scintilla paint; portals stay for path picking only. Force-close from required-global loss still exits without a prompt. Apply of a pending open still refuses while dirty if the buffer was re-dirtied after Discard. Portal response code 1 is cancel and other nonzero codes are failure; the predicted Request path is tracked before the method call. Remaining work is the rest of the chrome and file-lifecycle policy above.
 
+Tabs now precede the remaining per-file lifecycle work. [tools/phase8-tabs.md](tools/phase8-tabs.md) defines the one-editor/multiple-document ownership boundary, tab behavior, portal and dirty-close routing, chrome integration, focused tests, and nine-commit implementation sequence. Once tabs land, open creates documents instead of replacing the active buffer, and external-change handling can attach to stable per-document state.
+
 Deliverable: daily-usable plain text editing that satisfies the file-lifecycle checks above, with application workflow tests and no generic UI framework.
 
 ## After this roadmap
