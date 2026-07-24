@@ -142,6 +142,7 @@ add_library(scalpel_wayland STATIC
   WaylandCursor.cxx
   WaylandDbus.cxx
   WaylandEventLoop.cxx
+  WaylandFileDialog.cxx
   WaylandFrame.cxx
   WaylandInput.cxx
   WaylandLifecycle.cxx
