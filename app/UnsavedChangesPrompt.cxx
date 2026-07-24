@@ -26,8 +26,6 @@ UnsavedOutcome UnsavedChangesPrompt::PerformPendingAndClear() noexcept {
 	switch (was) {
 	case UnsavedPending::Close:
 		return UnsavedOutcome::PerformClose;
-	case UnsavedPending::Open:
-		return UnsavedOutcome::PerformOpen;
 	case UnsavedPending::None:
 		return UnsavedOutcome::None;
 	}

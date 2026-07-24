@@ -9,6 +9,7 @@
 #include "DocumentWorkspace.h"
 
 using Scalpel::ApplicationEditor;
+using Scalpel::DocumentId;
 using Scalpel::DocumentShellRequest;
 using Scalpel::DocumentWorkspace;
 using Scalpel::UnsavedChoice;
@@ -194,7 +195,8 @@ TEST_CASE("document workspace single-document open while clean") {
 	CHECK_FALSE(workspace.PromptActive());
 }
 
-TEST_CASE("document workspace single-document open while dirty prompts") {
+TEST_CASE("document workspace single-document open while dirty still opens") {
+	// Open no longer prompts; a new tab is created on accept.
 	ApplicationEditor editor(320, 180);
 	editor.LoadInitialBuffer("dirty\n");
 	DirtyBuffer(editor);
@@ -202,24 +204,10 @@ TEST_CASE("document workspace single-document open while dirty prompts") {
 
 	workspace.RequestOpen();
 	const auto requests = workspace.TakeRequests();
-	CHECK(HasRequest(requests, DocumentShellRequest::PromptBegan));
-	CHECK(workspace.Pending() == UnsavedPending::Open);
-}
-
-TEST_CASE("document workspace single-document open discard then dialog") {
-	ApplicationEditor editor(320, 180);
-	editor.LoadInitialBuffer("dirty\n");
-	DirtyBuffer(editor);
-	DocumentWorkspace workspace(editor);
-	workspace.RequestOpen();
-	(void)workspace.TakeRequests();
-
-	workspace.Choose(UnsavedChoice::Discard);
-	const auto requests = workspace.TakeRequests();
-	CHECK(HasRequest(requests, DocumentShellRequest::ShowOpen));
+	REQUIRE(requests.size() == 1);
+	CHECK(requests[0] == DocumentShellRequest::ShowOpen);
 	CHECK_FALSE(workspace.PromptActive());
-	// Discard must clear dirty so a later Open result is accepted.
-	CHECK_FALSE(editor.Modified());
+	CHECK(editor.Modified());
 }
 
 TEST_CASE("document workspace single-document open result loads path") {
@@ -227,23 +215,31 @@ TEST_CASE("document workspace single-document open result loads path") {
 	ApplicationEditor editor(320, 180);
 	editor.LoadInitialBuffer("startup\n");
 	DocumentWorkspace workspace(editor);
+	const DocumentId startupId = workspace.ActiveTab();
 
 	workspace.HandleOpenResult(true, file.path);
 	CHECK(workspace.Path() == file.path);
 	CHECK(editor.Text() == "file contents\n");
 	CHECK_FALSE(editor.Modified());
+	CHECK(workspace.TabCount() == 2);
+	CHECK(workspace.ActiveTab() != startupId);
 }
 
-TEST_CASE("document workspace single-document open result rejects dirty") {
+TEST_CASE("document workspace single-document open result keeps dirty sibling") {
 	TempFile file("other\n");
 	ApplicationEditor editor(320, 180);
 	editor.LoadInitialBuffer("startup\n");
 	DirtyBuffer(editor);
 	DocumentWorkspace workspace(editor);
+	const std::string dirtyText = editor.Text();
+	const DocumentId dirtyId = workspace.ActiveTab();
 
 	workspace.HandleOpenResult(true, file.path);
-	CHECK(workspace.Path().empty());
-	CHECK(editor.Text() != "other\n");
+	CHECK(workspace.Path() == file.path);
+	CHECK(editor.Text() == "other\n");
+	CHECK(workspace.TabCount() == 2);
+	workspace.ActivateTab(dirtyId);
+	CHECK(editor.Text() == dirtyText);
 	CHECK(editor.Modified());
 }
 
@@ -264,7 +260,8 @@ TEST_CASE("document workspace single-document save and save as requests") {
 		(void)workspace.TakeRequests();
 		DirtyBuffer(editor);
 		workspace.RequestSave();
-		CHECK(workspace.TakeRequests().empty());
+		CHECK_FALSE(HasRequest(workspace.TakeRequests(),
+			DocumentShellRequest::ShowSaveAs));
 		CHECK_FALSE(editor.Modified());
 		const auto read = Scalpel::ReadDocumentFile(file.path);
 		REQUIRE(read.has_value());
@@ -293,4 +290,259 @@ TEST_CASE("document workspace single-document close while prompt is no-op") {
 	workspace.RequestClose();
 	CHECK(workspace.TakeRequests().empty());
 	CHECK(workspace.PromptActive());
+}
+
+TEST_CASE("document workspace tabs start with one untitled") {
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("startup\n");
+	DocumentWorkspace workspace(editor);
+
+	REQUIRE(workspace.TabCount() == 1);
+	const auto tabs = workspace.Tabs();
+	REQUIRE(tabs.size() == 1);
+	CHECK(tabs[0].id == workspace.ActiveTab());
+	CHECK(tabs[0].path.empty());
+	CHECK(tabs[0].untitledNumber == 1);
+	CHECK(tabs[0].label == "Untitled 1");
+	CHECK_FALSE(tabs[0].dirty);
+	CHECK(tabs[0].active);
+	CHECK(editor.Text() == "startup\n");
+}
+
+TEST_CASE("document workspace tabs new activate and cycle") {
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("first\n");
+	DocumentWorkspace workspace(editor);
+	const DocumentId first = workspace.ActiveTab();
+
+	workspace.NewTab();
+	const DocumentId second = workspace.ActiveTab();
+	CHECK(second != first);
+	CHECK(workspace.TabCount() == 2);
+	CHECK(editor.Text().empty());
+	CHECK_FALSE(editor.Modified());
+	{
+		const auto tabs = workspace.Tabs();
+		REQUIRE(tabs.size() == 2);
+		CHECK(tabs[0].id == first);
+		CHECK(tabs[0].label == "Untitled 1");
+		CHECK_FALSE(tabs[0].active);
+		CHECK(tabs[1].id == second);
+		CHECK(tabs[1].untitledNumber == 2);
+		CHECK(tabs[1].label == "Untitled 2");
+		CHECK(tabs[1].active);
+	}
+	CHECK(HasRequest(workspace.TakeRequests(), DocumentShellRequest::RefreshTabs));
+
+	workspace.ActivateTab(first);
+	CHECK(workspace.ActiveTab() == first);
+	CHECK(editor.Text() == "first\n");
+
+	workspace.CycleTab(1);
+	CHECK(workspace.ActiveTab() == second);
+	workspace.CycleTab(1);
+	CHECK(workspace.ActiveTab() == first);
+	workspace.CycleTab(-1);
+	CHECK(workspace.ActiveTab() == second);
+}
+
+TEST_CASE("document workspace tabs dirty labels") {
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("body");
+	DocumentWorkspace workspace(editor);
+
+	CHECK(workspace.Tabs()[0].label == "Untitled 1");
+	DirtyBuffer(editor);
+	CHECK(workspace.Tabs()[0].dirty);
+	CHECK(workspace.Tabs()[0].label == "Untitled 1 *");
+
+	TempFile file("saved");
+	workspace.HandleSaveResult(true, file.path);
+	(void)workspace.TakeRequests();
+	CHECK_FALSE(workspace.Tabs()[0].dirty);
+	CHECK(workspace.Tabs()[0].label == Scalpel::DocumentBaseName(file.path));
+	CHECK(workspace.Tabs()[0].untitledNumber == 0);
+
+	DirtyBuffer(editor);
+	CHECK(workspace.Tabs()[0].label ==
+		Scalpel::DocumentBaseName(file.path) + " *");
+}
+
+TEST_CASE("document workspace tabs open creates tab not replace") {
+	TempFile file("opened body\n");
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("keep me\n");
+	DocumentWorkspace workspace(editor);
+	const DocumentId original = workspace.ActiveTab();
+
+	workspace.HandleOpenResult(true, file.path);
+	CHECK(workspace.TabCount() == 2);
+	CHECK(workspace.ActiveTab() != original);
+	CHECK(editor.Text() == "opened body\n");
+	CHECK(workspace.Path() == file.path);
+
+	workspace.ActivateTab(original);
+	CHECK(editor.Text() == "keep me\n");
+	CHECK(workspace.Path().empty());
+}
+
+TEST_CASE("document workspace tabs open selects existing path") {
+	TempFile file("once\n");
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("startup\n");
+	DocumentWorkspace workspace(editor);
+
+	workspace.HandleOpenResult(true, file.path);
+	const DocumentId opened = workspace.ActiveTab();
+	CHECK(workspace.TabCount() == 2);
+	workspace.NewTab();
+	CHECK(workspace.TabCount() == 3);
+	CHECK(workspace.ActiveTab() != opened);
+
+	workspace.HandleOpenResult(true, file.path);
+	CHECK(workspace.ActiveTab() == opened);
+	CHECK(workspace.TabCount() == 3);
+	CHECK(editor.Text() == "once\n");
+}
+
+TEST_CASE("document workspace tabs close clean tab") {
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("first\n");
+	DocumentWorkspace workspace(editor);
+	const DocumentId first = workspace.ActiveTab();
+	workspace.NewTab();
+	const DocumentId second = workspace.ActiveTab();
+	(void)workspace.TakeRequests();
+
+	workspace.CloseTab(first);
+	CHECK(workspace.TabCount() == 1);
+	CHECK(workspace.ActiveTab() == second);
+	CHECK_FALSE(editor.HasDocument(first));
+	CHECK(HasRequest(workspace.TakeRequests(), DocumentShellRequest::RefreshTabs));
+}
+
+TEST_CASE("document workspace tabs close last clean creates untitled") {
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("only\n");
+	DocumentWorkspace workspace(editor);
+	const DocumentId only = workspace.ActiveTab();
+	(void)workspace.TakeRequests();
+
+	workspace.CloseTab(only);
+	CHECK(workspace.TabCount() == 1);
+	CHECK(workspace.ActiveTab() != only);
+	CHECK_FALSE(editor.HasDocument(only));
+	CHECK(editor.Text().empty());
+	CHECK(workspace.Path().empty());
+	const auto tabs = workspace.Tabs();
+	REQUIRE(tabs.size() == 1);
+	CHECK(tabs[0].untitledNumber == 2);
+	CHECK(tabs[0].label == "Untitled 2");
+	CHECK_FALSE(HasRequest(workspace.TakeRequests(),
+		DocumentShellRequest::AcceptClose));
+}
+
+TEST_CASE("document workspace tabs close dirty prompts then discard") {
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("keep\n");
+	DocumentWorkspace workspace(editor);
+	const DocumentId first = workspace.ActiveTab();
+	workspace.NewTab();
+	const DocumentId second = workspace.ActiveTab();
+	DirtyBuffer(editor);
+	(void)workspace.TakeRequests();
+
+	workspace.ActivateTab(first);
+	(void)workspace.TakeRequests();
+	workspace.CloseTab(second);
+	CHECK(workspace.ActiveTab() == second);
+	CHECK(workspace.PromptActive());
+	CHECK(workspace.Pending() == UnsavedPending::Close);
+	CHECK(HasRequest(workspace.TakeRequests(), DocumentShellRequest::PromptBegan));
+
+	workspace.Choose(UnsavedChoice::Discard);
+	CHECK_FALSE(workspace.PromptActive());
+	CHECK(workspace.TabCount() == 1);
+	CHECK(workspace.ActiveTab() == first);
+	CHECK_FALSE(editor.HasDocument(second));
+	CHECK_FALSE(HasRequest(workspace.TakeRequests(),
+		DocumentShellRequest::AcceptClose));
+}
+
+TEST_CASE("document workspace tabs close dirty last then discard") {
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("only\n");
+	DirtyBuffer(editor);
+	DocumentWorkspace workspace(editor);
+	const DocumentId only = workspace.ActiveTab();
+
+	workspace.CloseTab(only);
+	REQUIRE(workspace.PromptActive());
+	workspace.Choose(UnsavedChoice::Discard);
+	CHECK(workspace.TabCount() == 1);
+	CHECK(workspace.ActiveTab() != only);
+	CHECK_FALSE(editor.HasDocument(only));
+	CHECK(editor.Text().empty());
+	CHECK_FALSE(HasRequest(workspace.TakeRequests(),
+		DocumentShellRequest::AcceptClose));
+}
+
+TEST_CASE("document workspace tabs close dirty save with path") {
+	TempFile file("original");
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("original");
+	DocumentWorkspace workspace(editor);
+	workspace.HandleSaveResult(true, file.path);
+	(void)workspace.TakeRequests();
+	workspace.NewTab();
+	const DocumentId other = workspace.ActiveTab();
+	workspace.ActivateTab(workspace.Tabs()[0].id);
+	DirtyBuffer(editor);
+	const DocumentId dirty = workspace.ActiveTab();
+	(void)workspace.TakeRequests();
+
+	workspace.CloseTab(dirty);
+	REQUIRE(workspace.PromptActive());
+	workspace.Choose(UnsavedChoice::Save);
+	CHECK_FALSE(workspace.PromptActive());
+	CHECK(workspace.TabCount() == 1);
+	CHECK(workspace.ActiveTab() == other);
+	const auto read = Scalpel::ReadDocumentFile(file.path);
+	REQUIRE(read.has_value());
+	CHECK(read->find('x') != std::string::npos);
+}
+
+TEST_CASE("document workspace tabs untitled numbers stay stable") {
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	workspace.NewTab();
+	workspace.NewTab();
+	const auto before = workspace.Tabs();
+	REQUIRE(before.size() == 3);
+	CHECK(before[0].untitledNumber == 1);
+	CHECK(before[1].untitledNumber == 2);
+	CHECK(before[2].untitledNumber == 3);
+
+	workspace.CloseTab(before[1].id);
+	workspace.NewTab();
+	const auto after = workspace.Tabs();
+	REQUIRE(after.size() == 3);
+	CHECK(after[0].untitledNumber == 1);
+	CHECK(after[1].untitledNumber == 3);
+	CHECK(after[2].untitledNumber == 4);
+}
+
+TEST_CASE("document workspace tabs independent text after switch") {
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("alpha");
+	DocumentWorkspace workspace(editor);
+	const DocumentId first = workspace.ActiveTab();
+	workspace.NewTab();
+	editor.LoadInitialBuffer("beta");
+	const DocumentId second = workspace.ActiveTab();
+
+	workspace.ActivateTab(first);
+	CHECK(editor.Text() == "alpha");
+	workspace.ActivateTab(second);
+	CHECK(editor.Text() == "beta");
 }

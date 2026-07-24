@@ -279,6 +279,9 @@ void PerformShellRequests(Scalpel::DocumentWorkspace &workspace,
 			cardFocus = 0;
 			pressHit.reset();
 			break;
+		case Scalpel::DocumentShellRequest::RefreshTabs:
+			// Tab strip wiring is a later step; keep the request for the model.
+			break;
 		}
 	}
 }

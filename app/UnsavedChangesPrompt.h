@@ -1,4 +1,4 @@
-// Modal dirty-buffer decision: Save / Discard / Cancel before close or open.
+// Modal dirty-buffer decision: Save / Discard / Cancel before close.
 
 #ifndef UNSAVEDCHANGESPROMPT_H
 #define UNSAVEDCHANGESPROMPT_H
@@ -8,7 +8,6 @@ namespace Scalpel {
 enum class UnsavedPending {
 	None,
 	Close,
-	Open,
 };
 
 enum class UnsavedChoice {
@@ -21,14 +20,13 @@ enum class UnsavedOutcome {
 	None,
 	Dismissed,
 	PerformClose,
-	PerformOpen,
 	NeedSaveAs,
 	SaveFailed,
 };
 
 /**
  * Pure state machine for the unsaved-changes prompt. Owns no drawing and no
- * file I/O; the host maps outcomes to save, portal Save As, open, or quit.
+ * file I/O; the host maps outcomes to save, portal Save As, or quit/close-tab.
  */
 class UnsavedChangesPrompt final {
 public:
