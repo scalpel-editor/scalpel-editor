@@ -1,5 +1,45 @@
 #include "RendererTest.h"
 
+TEST_CASE("DrawGlyph places ink in logical space when buffer is scaled") {
+	// HiDPI path: buffer pixels are 2x logical. Solid fills and glyphs both
+	// take logical coordinates; ink must land in the scaled buffer region.
+	FontCache fonts;
+	const std::filesystem::path primary =
+		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "FallbackPrimary.ttf";
+	std::shared_ptr<FontFace> face = fonts.LoadPath(primary, FontParameters("fixture", 16.0));
+	const ShapedRun run = ShapeText("A", face);
+	REQUIRE_FALSE(run.glyphs.empty());
+
+	GlContext context;
+	Renderer renderer(context);
+	ColourBuffer buffer;
+	buffer.Resize(80, 80);
+	constexpr int logical = 40;
+	renderer.SetDrawTarget(buffer.FramebufferName(), buffer.Width(), buffer.Height(),
+		logical, logical);
+	const ColourRGBA bg(0, 0, 0, 255);
+	const ColourRGBA fg(255, 255, 255, 255);
+	const ColourRGBA marker(0, 255, 0, 255);
+	renderer.Clear(bg);
+
+	// Logical marker square at (20,20)-(30,30) → buffer (40,40)-(60,60).
+	renderer.FillRectangle(PRectangle::FromInts(20, 20, 30, 30), marker);
+
+	const FontMetrics metrics = face->Metrics();
+	const XYPOSITION baseline = 20.0 + metrics.ascent;
+	// Pen near the marker so glyph ink should appear near buffer x>=40, y around 40+.
+	renderer.DrawGlyph(20.0, baseline, face, run.glyphs[0].glyphId, fg);
+
+	const InkBounds ink = FindInkBounds(buffer, bg);
+	REQUIRE_FALSE(ink.Empty());
+	// Before the fix, buffer-space ortho put glyphs near half-size coords (x~20).
+	// With logical ortho, ink near pen 20 should start around buffer x 40.
+	CHECK(ink.left >= 30);
+	CHECK(ink.top >= 30);
+	// Marker still present in its scaled band (or covered by glyph ink).
+	CHECK_FALSE(ExactColour(buffer.ReadPixel(50, 50), bg));
+}
+
 TEST_CASE("DrawGlyph paints shaped coverage and reuses the glyph cache") {
 	FontCache fonts;
 	const std::filesystem::path primary =

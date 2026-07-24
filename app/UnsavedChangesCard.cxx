@@ -176,6 +176,7 @@ constexpr float PixelSizeFromPoints(float points) noexcept {
 /**
  * Centre label ink with DrawTextTransparent. DrawTextNoClip fills an opaque
  * background rectangle that erases button borders drawn underneath.
+ * Pen is pixel-aligned so GL_NEAREST glyph samples stay stable.
  */
 void DrawCenteredLabel(Surface &surface, const PRectangle &rc, const Font *font,
 	std::string_view text, ColourRGBA fore) {
@@ -185,9 +186,11 @@ void DrawCenteredLabel(Surface &surface, const PRectangle &rc, const Font *font,
 	const XYPOSITION textWidth = surface.WidthText(font, text);
 	const XYPOSITION ascent = surface.Ascent(font);
 	const XYPOSITION height = surface.Height(font);
-	const XYPOSITION x = rc.left + (rc.Width() - textWidth) / 2.0;
-	const XYPOSITION ybase = rc.top + (rc.Height() - height) / 2.0 + ascent;
-	// Tight text box around the ink advance; height still needs room for ascent.
+	// Integer pen so GL_NEAREST glyph samples stay stable.
+	const XYPOSITION x = static_cast<XYPOSITION>(static_cast<int>(
+		rc.left + (rc.Width() - textWidth) / 2.0));
+	const XYPOSITION ybase = static_cast<XYPOSITION>(static_cast<int>(
+		rc.top + (rc.Height() - height) / 2.0 + ascent));
 	const PRectangle textRc(x, rc.top, x + textWidth, rc.bottom);
 	surface.DrawTextTransparent(textRc, font, ybase, text, fore);
 }
@@ -224,9 +227,10 @@ void DrawButton(Surface &surface, const PRectangle &rc, const Font *font,
 }
 
 UnsavedChangesCardPainter::UnsavedChangesCardPainter() {
-	// 14pt / 12pt → same device sizes the editor uses for similar point sizes.
-	titleFont = Font::Allocate(FontParameters{"system-ui", PixelSizeFromPoints(14.0f)});
-	bodyFont = Font::Allocate(FontParameters{"system-ui", PixelSizeFromPoints(12.0f)});
+	// Match Platform::DefaultFontSize (16pt) and a slightly smaller body, using
+	// the same 96-DPI pixel conversion as ViewStyle::FontRealised.
+	titleFont = Font::Allocate(FontParameters{"system-ui", PixelSizeFromPoints(16.0f)});
+	bodyFont = Font::Allocate(FontParameters{"system-ui", PixelSizeFromPoints(14.0f)});
 }
 
 void UnsavedChangesCardPainter::Paint(Surface &surface,

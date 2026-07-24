@@ -1017,7 +1017,12 @@ void Renderer::DrawTexturedQuad(float x0, float y0, float x1, float y1,
 	};
 	glUseProgram(programTexture);
 	float mat[16];
-	OrthoTopLeft(static_cast<float>(targetWidth), static_cast<float>(targetHeight), mat);
+	// Same logical surface space as solid fills. Buffer pixels are the viewport
+	// only; callers pass pen and destination rectangles in logical coordinates
+	// (including DrawGlyph, Copy, and DrawRGBAImage). Using buffer size here
+	// misplaces glyphs on HiDPI when bufferWidth != logicalWidth.
+	OrthoTopLeft(static_cast<float>(targetLogicalWidth),
+		static_cast<float>(targetLogicalHeight), mat);
 	glUniformMatrix4fv(uniformTexTransform, 1, GL_FALSE, mat);
 	glUniform1i(uniformTexSampler, 0);
 	glUniform1i(uniformTexStraightAlpha, sourceStraightAlpha ? 1 : 0);
@@ -1167,7 +1172,8 @@ void Renderer::GradientRectangle(PRectangle rc, const std::vector<ColourStop> &s
 
 	glUseProgram(programGradient);
 	float mat[16];
-	OrthoTopLeft(static_cast<float>(targetWidth), static_cast<float>(targetHeight), mat);
+	OrthoTopLeft(static_cast<float>(targetLogicalWidth),
+		static_cast<float>(targetLogicalHeight), mat);
 	glUniformMatrix4fv(uniformGradTransform, 1, GL_FALSE, mat);
 	glUniform2f(uniformGradStart, sx, sy);
 	glUniform2f(uniformGradEnd, ex, ey);
