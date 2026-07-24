@@ -28,7 +28,7 @@ WaylandLifecycle::WaylandLifecycle(int width, int height) : currentSize{width, h
 
 std::vector<WaylandLifecycleAction> WaylandLifecycle::AddGlobal(
 	WaylandGlobalKind kind, uint32_t name, uint32_t version) {
-	if (closeRequested || HasGlobal(name)) {
+	if (closeRequested || forceCloseRequested || HasGlobal(name)) {
 		return {};
 	}
 	globals.push_back(Global{kind, name, version});
@@ -122,7 +122,8 @@ std::vector<WaylandLifecycleAction> WaylandLifecycle::RemoveGlobal(uint32_t name
 	globals.erase(found);
 	if ((compositorName && *compositorName == name) ||
 		(wmBaseName && *wmBaseName == name)) {
-		RequestClose();
+		// Unsaved work is dropped: the compositor or xdg-shell is gone.
+		RequestForceClose();
 		return {{WaylandLifecycleActionType::Close, name}};
 	}
 	if (removed.kind == WaylandGlobalKind::Output) {
@@ -437,6 +438,17 @@ std::optional<WindowSize> WaylandLifecycle::CommitConfigure() noexcept {
 
 void WaylandLifecycle::RequestClose() noexcept {
 	closeRequested = true;
+}
+
+void WaylandLifecycle::RequestForceClose() noexcept {
+	forceCloseRequested = true;
+}
+
+void WaylandLifecycle::ClearCloseRequest() noexcept {
+	if (forceCloseRequested) {
+		return;
+	}
+	closeRequested = false;
 }
 
 std::optional<WindowSize> WaylandLifecycle::TakeResize() noexcept {

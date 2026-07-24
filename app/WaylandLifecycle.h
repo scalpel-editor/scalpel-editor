@@ -117,12 +117,23 @@ public:
 	void ProposeWmCapabilities(const std::vector<uint32_t> &capabilities) noexcept;
 	void ProposeDecoration(bool serverSide) noexcept;
 	[[nodiscard]] std::optional<WindowSize> CommitConfigure() noexcept;
+	/** User / xdg_toplevel.close — clearable while the window remains usable. */
 	void RequestClose() noexcept;
+	/** Required-global loss — uncancelable; the display path is going away. */
+	void RequestForceClose() noexcept;
+	/** Clears a user close only; no-op when force-close is latched. */
+	void ClearCloseRequest() noexcept;
 
 	[[nodiscard]] std::optional<WindowSize> TakeResize() noexcept;
 	[[nodiscard]] int Width() const noexcept { return currentSize.width; }
 	[[nodiscard]] int Height() const noexcept { return currentSize.height; }
-	[[nodiscard]] bool CloseRequested() const noexcept { return closeRequested; }
+	/** True for either user or force close. */
+	[[nodiscard]] bool CloseRequested() const noexcept {
+		return closeRequested || forceCloseRequested;
+	}
+	[[nodiscard]] bool ForceCloseRequested() const noexcept {
+		return forceCloseRequested;
+	}
 	[[nodiscard]] const WaylandToplevelState &ToplevelState() const noexcept {
 		return toplevelState;
 	}
@@ -165,6 +176,7 @@ private:
 	WaylandToplevelState toplevelState;
 	std::optional<WaylandToplevelState> proposedToplevelState;
 	bool closeRequested = false;
+	bool forceCloseRequested = false;
 };
 
 /** Retains only the current xdg-foreign export and delivered portal token. */

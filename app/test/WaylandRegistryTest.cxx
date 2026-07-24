@@ -240,6 +240,10 @@ TEST_CASE("Wayland registry closes when an active required global disappears") {
 	REQUIRE(actions.size() == 1);
 	CHECK(actions.front().type == Scalpel::WaylandLifecycleActionType::Close);
 	CHECK(lifecycle.CloseRequested());
+	CHECK(lifecycle.ForceCloseRequested());
+	lifecycle.ClearCloseRequest();
+	CHECK(lifecycle.CloseRequested());
+	CHECK(lifecycle.ForceCloseRequested());
 	CHECK(lifecycle.AddGlobal(
 		Scalpel::WaylandGlobalKind::Compositor, 12, 4).empty());
 	CHECK(lifecycle.AddGlobal(

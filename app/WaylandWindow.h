@@ -98,6 +98,10 @@ public:
 	[[nodiscard]] int Height() const noexcept { return lifecycle.Height(); }
 	[[nodiscard]] bool Configured() const noexcept { return configured; }
 	[[nodiscard]] bool CloseRequested() const noexcept { return lifecycle.CloseRequested(); }
+	[[nodiscard]] bool ForceCloseRequested() const noexcept {
+		return lifecycle.ForceCloseRequested();
+	}
+	void ClearCloseRequest() noexcept { lifecycle.ClearCloseRequest(); }
 	[[nodiscard]] bool CallbackFailed() const noexcept { return callbackFailed; }
 	[[nodiscard]] bool PresentationAvailable() const noexcept {
 		return presentation != nullptr;

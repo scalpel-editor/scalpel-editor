@@ -84,6 +84,41 @@ TEST_CASE("Wayland lifecycle retains a close request") {
 	Scalpel::WaylandLifecycle lifecycle(800, 600);
 
 	CHECK_FALSE(lifecycle.CloseRequested());
+	CHECK_FALSE(lifecycle.ForceCloseRequested());
 	lifecycle.RequestClose();
 	CHECK(lifecycle.CloseRequested());
+	CHECK_FALSE(lifecycle.ForceCloseRequested());
+}
+
+TEST_CASE("Wayland lifecycle clears a user close request") {
+	Scalpel::WaylandLifecycle lifecycle(800, 600);
+
+	lifecycle.RequestClose();
+	CHECK(lifecycle.CloseRequested());
+	lifecycle.ClearCloseRequest();
+	CHECK_FALSE(lifecycle.CloseRequested());
+	CHECK_FALSE(lifecycle.ForceCloseRequested());
+}
+
+TEST_CASE("Wayland lifecycle force close is not cleared") {
+	Scalpel::WaylandLifecycle lifecycle(800, 600);
+
+	lifecycle.RequestForceClose();
+	CHECK(lifecycle.CloseRequested());
+	CHECK(lifecycle.ForceCloseRequested());
+	lifecycle.ClearCloseRequest();
+	CHECK(lifecycle.CloseRequested());
+	CHECK(lifecycle.ForceCloseRequested());
+}
+
+TEST_CASE("Wayland lifecycle force close coexists with user close") {
+	Scalpel::WaylandLifecycle lifecycle(800, 600);
+
+	lifecycle.RequestClose();
+	lifecycle.RequestForceClose();
+	CHECK(lifecycle.CloseRequested());
+	CHECK(lifecycle.ForceCloseRequested());
+	lifecycle.ClearCloseRequest();
+	CHECK(lifecycle.CloseRequested());
+	CHECK(lifecycle.ForceCloseRequested());
 }
