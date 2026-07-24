@@ -1,9 +1,13 @@
-// Fixed layout and hit-testing for the centered unsaved-changes card.
+// Fixed layout, hit-testing, and painting for the centered unsaved-changes card.
 
 #ifndef UNSAVEDCHANGESCARD_H
 #define UNSAVEDCHANGESCARD_H
 
+#include <memory>
+#include <string_view>
+
 #include "Geometry.h"
+#include "Platform.h"
 
 namespace Scalpel {
 
@@ -34,6 +38,29 @@ enum class UnsavedCardHit {
 
 /** Focus index: 0 Save, 1 Discard, 2 Cancel. */
 [[nodiscard]] int CycleUnsavedCardFocus(int focusedIndex, int delta) noexcept;
+
+/**
+ * Owns chrome fonts for the card. Construct once beside the prompt and reuse
+ * across frames.
+ */
+class UnsavedChangesCardPainter final {
+public:
+	UnsavedChangesCardPainter();
+	~UnsavedChangesCardPainter() = default;
+
+	UnsavedChangesCardPainter(const UnsavedChangesCardPainter &) = delete;
+	UnsavedChangesCardPainter &operator=(const UnsavedChangesCardPainter &) = delete;
+
+	void Paint(Scintilla::Internal::Surface &surface,
+		const UnsavedChangesCardLayout &layout,
+		std::string_view title,
+		std::string_view subtitle,
+		int focusedButtonIndex) const;
+
+private:
+	std::shared_ptr<Scintilla::Internal::Font> titleFont;
+	std::shared_ptr<Scintilla::Internal::Font> bodyFont;
+};
 
 }
 

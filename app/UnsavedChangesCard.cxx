@@ -145,4 +145,87 @@ int CycleUnsavedCardFocus(int focusedIndex, int delta) noexcept {
 	return index;
 }
 
+namespace {
+
+using Scintilla::Internal::ColourRGBA;
+using Scintilla::Internal::Fill;
+using Scintilla::Internal::FillStroke;
+using Scintilla::Internal::Font;
+using Scintilla::Internal::FontParameters;
+using Scintilla::Internal::PRectangle;
+using Scintilla::Internal::Surface;
+using Scintilla::Internal::XYPOSITION;
+
+// Near Platform::Chrome for the card body; dark text like the gutter.
+const ColourRGBA kScrimFill(0x00, 0x00, 0x00, 0x59); // ~0.35 alpha
+const ColourRGBA kCardFill(0xf0, 0xf0, 0xf0, 0xff);
+const ColourRGBA kCardBorder(0x90, 0x90, 0x90, 0xff);
+const ColourRGBA kText(0x20, 0x20, 0x20, 0xff);
+const ColourRGBA kMutedText(0x60, 0x60, 0x60, 0xff);
+const ColourRGBA kButtonFill(0xe0, 0xe0, 0xe0, 0xff);
+const ColourRGBA kButtonBorder(0xa0, 0xa0, 0xa0, 0xff);
+const ColourRGBA kFocusedFill(0xd0, 0xe4, 0xf8, 0xff);
+const ColourRGBA kFocusedBorder(0x30, 0x70, 0xb0, 0xff);
+
+void DrawCenteredLabel(Surface &surface, const PRectangle &rc, const Font *font,
+	std::string_view text, ColourRGBA fore, ColourRGBA back) {
+	if (!font || text.empty() || rc.Empty()) {
+		return;
+	}
+	const XYPOSITION textWidth = surface.WidthText(font, text);
+	const XYPOSITION ascent = surface.Ascent(font);
+	const XYPOSITION height = surface.Height(font);
+	const XYPOSITION x = rc.left + (rc.Width() - textWidth) / 2.0;
+	const XYPOSITION ybase = rc.top + (rc.Height() - height) / 2.0 + ascent;
+	const PRectangle textRc(x, rc.top, x + textWidth, rc.bottom);
+	surface.DrawTextNoClip(textRc, font, ybase, text, fore, back);
+}
+
+void DrawButton(Surface &surface, const PRectangle &rc, const Font *font,
+	std::string_view label, bool focused) {
+	if (rc.Empty()) {
+		return;
+	}
+	const ColourRGBA fill = focused ? kFocusedFill : kButtonFill;
+	const ColourRGBA border = focused ? kFocusedBorder : kButtonBorder;
+	const XYPOSITION borderWidth = focused ? 2.0 : 1.0;
+	surface.FillRectangle(rc, Fill(fill));
+	surface.RectangleFrame(rc, Scintilla::Internal::Stroke(border, borderWidth));
+	DrawCenteredLabel(surface, rc, font, label, kText, fill);
+}
+
+}
+
+UnsavedChangesCardPainter::UnsavedChangesCardPainter() {
+	titleFont = Font::Allocate(FontParameters{"system-ui", 13.0});
+	bodyFont = Font::Allocate(FontParameters{"system-ui", 11.0});
+}
+
+void UnsavedChangesCardPainter::Paint(Surface &surface,
+	const UnsavedChangesCardLayout &layout,
+	std::string_view title,
+	std::string_view subtitle,
+	int focusedButtonIndex) const {
+	// Dim the whole client; corner radius 0 for a flat scrim.
+	surface.AlphaRectangle(layout.scrim, 0.0,
+		FillStroke(kScrimFill, ColourRGBA(0, 0, 0, 0), 0.0));
+
+	if (!layout.card.Empty()) {
+		surface.FillRectangle(layout.card, Fill(kCardFill));
+		surface.RectangleFrame(layout.card,
+			Scintilla::Internal::Stroke(kCardBorder, 1.0));
+	}
+
+	DrawCenteredLabel(surface, layout.title, titleFont.get(), title, kText, kCardFill);
+	DrawCenteredLabel(surface, layout.subtitle, bodyFont.get(), subtitle,
+		kMutedText, kCardFill);
+
+	DrawButton(surface, layout.saveButton, bodyFont.get(), "Save",
+		focusedButtonIndex == 0);
+	DrawButton(surface, layout.discardButton, bodyFont.get(), "Discard",
+		focusedButtonIndex == 1);
+	DrawButton(surface, layout.cancelButton, bodyFont.get(), "Cancel",
+		focusedButtonIndex == 2);
+}
+
 }

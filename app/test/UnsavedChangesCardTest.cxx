@@ -1,11 +1,13 @@
 #include "catch.hpp"
 
+#include "ApplicationEditor.h"
 #include "UnsavedChangesCard.h"
 
 using Scalpel::HitTestUnsavedChangesCard;
 using Scalpel::LayoutUnsavedChangesCard;
 using Scalpel::UnsavedCardHit;
 using Scalpel::UnsavedChangesCardLayout;
+using Scalpel::UnsavedChangesCardPainter;
 using Scintilla::Internal::Point;
 using Scintilla::Internal::PRectangle;
 
@@ -111,4 +113,48 @@ TEST_CASE("UnsavedChangesCard focus cycles through three buttons") {
 	CHECK(Scalpel::CycleUnsavedCardFocus(2, 1) == 0);
 	CHECK(Scalpel::CycleUnsavedCardFocus(0, -1) == 2);
 	CHECK(Scalpel::CycleUnsavedCardFocus(2, -1) == 1);
+}
+
+TEST_CASE("UnsavedChangesCard paint draws non-background pixels in the card") {
+	Scalpel::ApplicationEditor editor(320, 200);
+	editor.LoadInitialBuffer("paint probe\n");
+	(void)editor.TakeFrameDamage();
+
+	UnsavedChangesCardPainter painter;
+	const UnsavedChangesCardLayout layout = LayoutUnsavedChangesCard(320, 200);
+	editor.SetOverlayPainter(
+		[&](Scintilla::Internal::Surface &surface, int width, int height) {
+			CHECK(width == 320);
+			CHECK(height == 200);
+			painter.Paint(surface, layout, "Save changes?", "Untitled", 0);
+		});
+	editor.RenderFrame({PRectangle::FromInts(0, 0, 320, 200)});
+
+	const std::vector<uint8_t> pixels = editor.FramePixels();
+	REQUIRE(pixels.size() == 320U * 200U * 4U);
+
+	// Sample the card center; the light card fill differs from a dimmed corner.
+	const int cardCx = static_cast<int>((layout.card.left + layout.card.right) / 2);
+	const int cardCy = static_cast<int>((layout.card.top + layout.card.bottom) / 2);
+	const size_t cardOffset =
+		(static_cast<size_t>(cardCy) * 320U + static_cast<size_t>(cardCx)) * 4U;
+	const size_t cornerOffset = 0;
+	const bool cardDiffersFromCorner =
+		!std::equal(pixels.begin() + static_cast<std::ptrdiff_t>(cardOffset),
+			pixels.begin() + static_cast<std::ptrdiff_t>(cardOffset) + 4,
+			pixels.begin() + static_cast<std::ptrdiff_t>(cornerOffset));
+	CHECK(cardDiffersFromCorner);
+
+	// Focused Save button center should also be non-empty painted chrome.
+	const int btnCx = static_cast<int>(
+		(layout.saveButton.left + layout.saveButton.right) / 2);
+	const int btnCy = static_cast<int>(
+		(layout.saveButton.top + layout.saveButton.bottom) / 2);
+	const size_t btnOffset =
+		(static_cast<size_t>(btnCy) * 320U + static_cast<size_t>(btnCx)) * 4U;
+	const bool buttonDiffersFromCorner =
+		!std::equal(pixels.begin() + static_cast<std::ptrdiff_t>(btnOffset),
+			pixels.begin() + static_cast<std::ptrdiff_t>(btnOffset) + 4,
+			pixels.begin() + static_cast<std::ptrdiff_t>(cornerOffset));
+	CHECK(buttonDiffersFromCorner);
 }
