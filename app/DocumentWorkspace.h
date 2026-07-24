@@ -47,9 +47,9 @@ struct DocumentTabInfo {
  * drawing.
  *
  * A running workspace always has at least one tab. Opening a path creates a
- * tab (or activates the existing exact path) instead of replacing the buffer.
- * Portal results are matched by the stable request ID returned from Show, not
- * by dialog order alone.
+ * tab (or activates the existing lexically normalized path) instead of
+ * replacing the buffer. Portal results are matched by the stable request ID
+ * returned from Show, not by dialog order alone.
  *
  * Dirty CloseTab prompts remove one tab after Save or Discard. Dirty window
  * close walks dirty tabs in strip order; Save or Discard advances, and Cancel
@@ -135,8 +135,9 @@ public:
 
 	/**
 	 * Apply open paths without a portal request ID (tests and direct loads).
-	 * accepted is false for cancel, failure, or no path. An existing exact path
-	 * selects that tab; otherwise a new tab is created for each path.
+	 * accepted is false for cancel, failure, or no path. An existing lexically
+	 * normalized path selects that tab; otherwise a new tab is created for each
+	 * path.
 	 */
 	void HandleOpenResult(bool accepted, std::string_view openedPath);
 	void HandleOpenResult(bool accepted, const std::vector<std::string> &paths);

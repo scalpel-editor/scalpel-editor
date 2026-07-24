@@ -993,10 +993,13 @@ TEST_CASE("document workspace multi-document open-many edit switch and inactive 
 	editor.LoadInitialBuffer("startup\n");
 	DocumentWorkspace workspace(editor);
 	const DocumentId startup = workspace.ActiveTab();
+	const std::string alphaAlias =
+		"/tmp/./" + Scalpel::DocumentBaseName(alpha.path);
 
-	// Open many: every accepted path becomes its own tab.
+	// Open many: every distinct normalized path becomes its own tab.
 	workspace.RegisterOpenRequest(101);
-	workspace.HandlePortalResult(101, true, {alpha.path, beta.path});
+	workspace.HandlePortalResult(
+		101, true, {alpha.path, alphaAlias, beta.path});
 	REQUIRE(workspace.TabCount() == 3);
 	CHECK(workspace.Path() == beta.path);
 	CHECK(editor.Text() == "beta body\n");
@@ -1121,7 +1124,7 @@ TEST_CASE("document workspace multi-document close dirty inactive cancel window 
 		DocumentShellRequest::AcceptClose));
 }
 
-TEST_CASE("document workspace multi-document portal failure and force-close contract") {
+TEST_CASE("document workspace multi-document portal failure preserves tabs") {
 	TempFile file("on disk\n");
 	ApplicationEditor editor(320, 180);
 	editor.LoadInitialBuffer("startup\n");
@@ -1160,23 +1163,5 @@ TEST_CASE("document workspace multi-document portal failure and force-close cont
 	CHECK(editor.Text() == "on disk\n");
 	workspace.ActivateTab(startup);
 	CHECK(editor.Text() == dirtyText);
-
-	// Force close (required-global loss) is shell-only: main exits on
-	// ForceCloseRequested without RequestClose or Choose. The workspace
-	// therefore never queues AcceptClose for dirty tabs unless the user
-	// completes the prompt walk or every tab is already clean.
 	CHECK(editor.Modified(startup));
-	CHECK_FALSE(HasRequest(workspace.TakeRequests(),
-		DocumentShellRequest::AcceptClose));
-	workspace.RequestClose();
-	CHECK(workspace.PromptActive());
-	CHECK(workspace.PromptTab() == startup);
-	CHECK_FALSE(HasRequest(workspace.TakeRequests(),
-		DocumentShellRequest::AcceptClose));
-	// Shell force-close would abandon here; a clean AcceptClose needs Discard
-	// or Save through the remaining dirty tabs.
-	workspace.Choose(UnsavedChoice::Discard);
-	// The opened file is clean, so the window-close walk accepts.
-	CHECK_FALSE(workspace.PromptActive());
-	CHECK(HasRequest(workspace.TakeRequests(), DocumentShellRequest::AcceptClose));
 }

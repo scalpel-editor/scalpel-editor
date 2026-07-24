@@ -1,11 +1,19 @@
 #include "DocumentWorkspace.h"
 
+#include <filesystem>
 #include <iostream>
 #include <utility>
 
 #include "DocumentFile.h"
 
 namespace Scalpel {
+namespace {
+
+[[nodiscard]] std::string NormalizePath(std::string_view path) {
+	return std::filesystem::path(std::string(path)).lexically_normal().string();
+}
+
+}
 
 DocumentWorkspace::DocumentWorkspace(ApplicationEditor &editorHost) :
 	editor(editorHost) {
@@ -370,10 +378,11 @@ void DocumentWorkspace::HandleSaveResult(DocumentId tabId, bool accepted,
 
 void DocumentWorkspace::ApplyOpenPaths(const std::vector<std::string> &paths) {
 	std::optional<DocumentId> lastActivated;
-	for (const std::string &pathString : paths) {
-		if (pathString.empty()) {
+	for (const std::string &path : paths) {
+		if (path.empty()) {
 			continue;
 		}
+		const std::string pathString = NormalizePath(path);
 		if (const std::optional<std::size_t> existing =
 				FindIndexByPath(pathString)) {
 			lastActivated = tabs[*existing].id;
@@ -422,7 +431,7 @@ void DocumentWorkspace::ApplySaveResult(DocumentId tabId, bool accepted,
 	if (!FindIndex(tabId)) {
 		return;
 	}
-	const std::string pathString(savedPath);
+	const std::string pathString = NormalizePath(savedPath);
 	if (SaveToPath(tabId, pathString)) {
 		if (continuePrompt) {
 			const UnsavedPending kind = prompt.Pending();

@@ -97,7 +97,9 @@ public:
 	[[nodiscard]] int Width() const noexcept { return lifecycle.Width(); }
 	[[nodiscard]] int Height() const noexcept { return lifecycle.Height(); }
 	[[nodiscard]] bool Configured() const noexcept { return configured; }
-	[[nodiscard]] bool CloseRequested() const noexcept { return lifecycle.CloseRequested(); }
+	[[nodiscard]] bool UserCloseRequested() const noexcept {
+		return lifecycle.UserCloseRequested();
+	}
 	[[nodiscard]] bool ForceCloseRequested() const noexcept {
 		return lifecycle.ForceCloseRequested();
 	}

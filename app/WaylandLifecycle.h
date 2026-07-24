@@ -131,6 +131,10 @@ public:
 	[[nodiscard]] bool CloseRequested() const noexcept {
 		return closeRequested || forceCloseRequested;
 	}
+	/** True only for a user / xdg_toplevel.close request. */
+	[[nodiscard]] bool UserCloseRequested() const noexcept {
+		return closeRequested;
+	}
 	[[nodiscard]] bool ForceCloseRequested() const noexcept {
 		return forceCloseRequested;
 	}

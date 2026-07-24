@@ -757,7 +757,7 @@ int main() {
 			if (window.ForceCloseRequested()) {
 				break;
 			}
-			if (window.CloseRequested()) {
+			if (window.UserCloseRequested()) {
 				workspace.RequestClose();
 				PerformShellRequests(workspace, window, editor, stripModel,
 					quitAccepted, cardFocus, promptPressHit);
