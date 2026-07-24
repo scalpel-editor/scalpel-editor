@@ -115,6 +115,38 @@ uint64_t WaylandFileDialogState::Begin(FileDialogMode mode,
 	return id;
 }
 
+bool WaylandFileDialogState::Abandon(std::string_view requestPath) noexcept {
+	const auto it = Find(requestPath);
+	if (it == pending.end()) {
+		return false;
+	}
+	pending.erase(it);
+	return true;
+}
+
+bool WaylandFileDialogState::Retarget(std::string_view predictedPath,
+	std::string actualPath, std::string portalOwner) {
+	if (actualPath.empty()) {
+		throw std::invalid_argument(
+			"WaylandFileDialogState::Retarget requires an actual request path");
+	}
+	if (portalOwner.empty()) {
+		throw std::invalid_argument(
+			"WaylandFileDialogState::Retarget requires a portal owner");
+	}
+	const auto it = Find(predictedPath);
+	if (it == pending.end()) {
+		return false;
+	}
+	if (predictedPath != actualPath && Find(actualPath) != pending.end()) {
+		throw std::invalid_argument(
+			"WaylandFileDialogState::Retarget rejects a duplicate request path");
+	}
+	it->requestPath = std::move(actualPath);
+	it->portalOwner = std::move(portalOwner);
+	return true;
+}
+
 bool WaylandFileDialogState::HasPending(std::string_view requestPath) const {
 	return Find(requestPath) != pending.end();
 }
@@ -135,8 +167,13 @@ void WaylandFileDialogState::DeliverResponse(std::string_view requestPath,
 	result.mode = it->mode;
 	pending.erase(it);
 
-	if (responseCode != 0) {
+	if (responseCode == 1) {
 		result.status = FileDialogResultStatus::Cancelled;
+		results.push_back(std::move(result));
+		return;
+	}
+	if (responseCode != 0) {
+		result.status = FileDialogResultStatus::Failed;
 		results.push_back(std::move(result));
 		return;
 	}
@@ -443,15 +480,9 @@ bool WaylandFileDialog::Show(DBusConnection *busConnection,
 
 	DBusMessageIter iter;
 	dbus_message_iter_init_append(message, &iter);
-	const char *parent = parentHandle.data();
-	std::string parentOwned;
-	if (!parentHandle.empty() &&
-		parentHandle.data()[parentHandle.size()] != '\0') {
-		parentOwned.assign(parentHandle);
-		parent = parentOwned.c_str();
-	} else if (parentHandle.empty()) {
-		parent = "";
-	}
+	// Materialize an owned string so c_str() is always valid for libdbus.
+	const std::string parentOwned(parentHandle);
+	const char *parent = parentOwned.c_str();
 	const char *title = request.title.c_str();
 	if (!dbus_message_iter_append_basic(&iter, DBUS_TYPE_STRING, &parent) ||
 		!dbus_message_iter_append_basic(&iter, DBUS_TYPE_STRING, &title)) {
@@ -482,6 +513,12 @@ bool WaylandFileDialog::Show(DBusConnection *busConnection,
 		return false;
 	}
 
+	// Track the predicted Request path before the method call so a Response
+	// that arrives during the blocking send still matches.
+	const std::string predictedPath = requestPath;
+	const std::string predictedOwner = portalOwner;
+	(void)state.Begin(request.mode, predictedPath, predictedOwner);
+
 	DBusError error = DBUS_ERROR_INIT;
 	DBusMessage *reply = dbus_connection_send_with_reply_and_block(
 		connection, message, DBUS_TIMEOUT_USE_DEFAULT, &error);
@@ -490,6 +527,7 @@ bool WaylandFileDialog::Show(DBusConnection *busConnection,
 		if (dbus_error_is_set(&error)) {
 			dbus_error_free(&error);
 		}
+		(void)state.Abandon(predictedPath);
 		return false;
 	}
 
@@ -502,17 +540,22 @@ bool WaylandFileDialog::Show(DBusConnection *busConnection,
 	if (!dbus_message_iter_init(reply, &replyIter) ||
 		dbus_message_iter_get_arg_type(&replyIter) != DBUS_TYPE_OBJECT_PATH) {
 		dbus_message_unref(reply);
+		(void)state.Abandon(predictedPath);
 		return false;
 	}
 	const char *handle = nullptr;
 	dbus_message_iter_get_basic(&replyIter, &handle);
-	if (handle && requestPath != handle) {
-		requestPath = handle;
-	}
 	dbus_message_unref(reply);
+	if (!handle || handle[0] == '\0') {
+		(void)state.Abandon(predictedPath);
+		return false;
+	}
 
-	(void)state.Begin(request.mode, std::move(requestPath),
-		std::move(portalOwner));
+	// Retarget is a no-op when a Response already completed the predicted path
+	// during the method call.
+	if (predictedPath != handle || predictedOwner != portalOwner) {
+		(void)state.Retarget(predictedPath, handle, std::move(portalOwner));
+	}
 	return true;
 }
 

@@ -58,14 +58,26 @@ class WaylandFileDialogState final {
 public:
 	[[nodiscard]] uint64_t Begin(FileDialogMode mode, std::string requestPath,
 		std::string portalOwner);
+	/**
+	 * Drop a pending request without producing a result. Used when the portal
+	 * method call fails after the predicted path was already tracked.
+	 */
+	bool Abandon(std::string_view requestPath) noexcept;
+	/**
+	 * Replace the predicted request path and portal owner with the values from
+	 * the method reply. No-op when the predicted entry is already gone (for
+	 * example after a Response arrived during the blocking call).
+	 */
+	bool Retarget(std::string_view predictedPath, std::string actualPath,
+		std::string portalOwner);
 	[[nodiscard]] bool HasPending(std::string_view requestPath) const;
 	[[nodiscard]] bool HasPending() const noexcept {
 		return !pending.empty();
 	}
 	/**
 	 * Match a Response by object path and portal owner. responseCode 0 is
-	 * success; any other code is cancellation. URIs are converted to local
-	 * paths; acceptance requires at least one usable path.
+	 * success, 1 is user cancellation, and any other code is failure. URIs are
+	 * converted to local paths; acceptance requires at least one usable path.
 	 */
 	void DeliverResponse(std::string_view requestPath,
 		std::string_view portalOwner, std::uint32_t responseCode,

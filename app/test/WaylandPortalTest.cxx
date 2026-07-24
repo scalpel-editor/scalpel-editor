@@ -76,6 +76,18 @@ TEST_CASE("Wayland file dialog state records cancellation") {
 	CHECK(results.front().paths.empty());
 }
 
+TEST_CASE("Wayland file dialog state records non-cancel portal failure") {
+	Scalpel::WaylandFileDialogState state;
+	const uint64_t id = state.Begin(Scalpel::FileDialogMode::Open,
+		"/path/request", ":1.1");
+	state.DeliverResponse("/path/request", ":1.1", 2, {"file:///tmp/x"});
+	const auto results = state.TakeResults();
+	REQUIRE(results.size() == 1);
+	CHECK(results.front().id == id);
+	CHECK(results.front().status == Scalpel::FileDialogResultStatus::Failed);
+	CHECK(results.front().paths.empty());
+}
+
 TEST_CASE("Wayland file dialog state fails when no usable URI remains") {
 	Scalpel::WaylandFileDialogState state;
 	(void)state.Begin(Scalpel::FileDialogMode::Open, "/path/request", ":1.1");
@@ -85,6 +97,43 @@ TEST_CASE("Wayland file dialog state fails when no usable URI remains") {
 	REQUIRE(results.size() == 1);
 	CHECK(results.front().status == Scalpel::FileDialogResultStatus::Failed);
 	CHECK(results.front().paths.empty());
+}
+
+TEST_CASE("Wayland file dialog state abandons a predicted request path") {
+	Scalpel::WaylandFileDialogState state;
+	(void)state.Begin(Scalpel::FileDialogMode::Open, "/path/predicted", ":1.1");
+	CHECK(state.Abandon("/path/predicted"));
+	CHECK_FALSE(state.HasPending());
+	CHECK_FALSE(state.Abandon("/path/predicted"));
+	state.DeliverResponse("/path/predicted", ":1.1", 0,
+		{"file:///tmp/x.txt"});
+	CHECK(state.TakeResults().empty());
+}
+
+TEST_CASE("Wayland file dialog state retargets a predicted request path") {
+	Scalpel::WaylandFileDialogState state;
+	const uint64_t id = state.Begin(Scalpel::FileDialogMode::Save,
+		"/path/predicted", ":1.1");
+	CHECK(state.Retarget("/path/predicted", "/path/actual", ":1.2"));
+	CHECK_FALSE(state.HasPending("/path/predicted"));
+	CHECK(state.HasPending("/path/actual"));
+
+	state.DeliverResponse("/path/actual", ":1.2", 0, {"file:///tmp/save.txt"});
+	const auto results = state.TakeResults();
+	REQUIRE(results.size() == 1);
+	CHECK(results.front().id == id);
+	CHECK(results.front().status == Scalpel::FileDialogResultStatus::Accepted);
+	CHECK(results.front().paths.front() == "/tmp/save.txt");
+}
+
+TEST_CASE("Wayland file dialog state retarget is a no-op after delivery") {
+	Scalpel::WaylandFileDialogState state;
+	(void)state.Begin(Scalpel::FileDialogMode::Open, "/path/predicted", ":1.1");
+	state.DeliverResponse("/path/predicted", ":1.1", 0,
+		{"file:///tmp/chosen.txt"});
+	CHECK_FALSE(state.Retarget("/path/predicted", "/path/actual", ":1.1"));
+	CHECK_FALSE(state.HasPending());
+	REQUIRE(state.TakeResults().size() == 1);
 }
 
 TEST_CASE("Wayland file dialog state drops pending work on clear") {
