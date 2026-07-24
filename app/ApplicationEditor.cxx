@@ -215,6 +215,14 @@ std::string ApplicationEditor::Text() const {
 	return GetText();
 }
 
+bool ApplicationEditor::Modified() const noexcept {
+	return GetModify();
+}
+
+void ApplicationEditor::MarkSaved() {
+	SetSavePoint();
+}
+
 Scintilla::Line ApplicationEditor::LineCount() const noexcept {
 	return GetLineCount();
 }

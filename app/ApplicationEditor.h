@@ -90,8 +90,17 @@ public:
 	ApplicationEditor &operator=(const ApplicationEditor &) = delete;
 	ApplicationEditor &operator=(ApplicationEditor &&) = delete;
 
+	/**
+	 * Replace the whole document for open or startup. Cancels text input,
+	 * bumps the document generation used by asynchronous paste, clears undo,
+	 * and marks the buffer clean.
+	 */
 	void LoadInitialBuffer(std::string_view text);
 	[[nodiscard]] std::string Text() const;
+	/** True when the document is not at its save point. */
+	[[nodiscard]] bool Modified() const noexcept;
+	/** Mark the current document bytes as saved without clearing undo. */
+	void MarkSaved();
 	// Document line count used for the gutter and status (Scintilla's line count).
 	[[nodiscard]] Scintilla::Line LineCount() const noexcept;
 	// Effective pixel width of the left fixed column (margins plus text-left gap).

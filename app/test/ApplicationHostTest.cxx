@@ -5,6 +5,7 @@ TEST_CASE("production editor host constructs and renders its initial buffer") {
 	editor.LoadInitialBuffer("scalpel-editor\nvisible text\n");
 
 	CHECK(editor.Text() == "scalpel-editor\nvisible text\n");
+	CHECK_FALSE(editor.Modified());
 	editor.RenderFrame();
 
 	const std::vector<uint8_t> pixels = editor.FramePixels();
@@ -67,6 +68,28 @@ TEST_CASE("production editor line-number margin tracks line-count digits") {
 		{}, 7, true});
 	CHECK(editor.LineCount() == 99);
 	CHECK(editor.LineNumberMarginWidth() == twoDigitWidth);
+}
+
+TEST_CASE("production editor load marks the buffer clean and edits dirty it") {
+	Scalpel::ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("clean");
+	CHECK_FALSE(editor.Modified());
+	CHECK(editor.Text() == "clean");
+
+	editor.HandleKeyboardInput({Scintilla::Keys::End, Scintilla::KeyMod::Norm,
+		{}, 1, true});
+	editor.HandleKeyboardInput({static_cast<Scintilla::Keys>(0),
+		Scintilla::KeyMod::Norm, "x", 2, true});
+	CHECK(editor.Modified());
+	CHECK(editor.Text() == "cleanx");
+
+	editor.MarkSaved();
+	CHECK_FALSE(editor.Modified());
+	CHECK(editor.Text() == "cleanx");
+
+	editor.LoadInitialBuffer("replacement");
+	CHECK_FALSE(editor.Modified());
+	CHECK(editor.Text() == "replacement");
 }
 
 TEST_CASE("production editor host rejects presentation without a window surface") {
