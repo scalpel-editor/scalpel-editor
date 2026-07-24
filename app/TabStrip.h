@@ -32,8 +32,8 @@ struct TabStripTab {
 
 /**
  * Transient strip input: tabs, hover, and horizontal scroll of the tab row.
- * scrollOffset is in logical pixels; Layout clamps it to the valid range and
- * may advance it so the active tab stays fully visible when possible.
+ * scrollOffset is in logical pixels; Layout clamps it to the valid range.
+ * Call ScrollTabStripToIndex when activation should reveal a tab.
  */
 struct TabStripModel {
 	std::vector<TabStripTab> tabs;
@@ -97,7 +97,7 @@ struct TabStripHitResult {
 	const TabStripModel &model) noexcept;
 
 /**
- * Content width of tabCount preferred-width tabs (no clamp).
+ * Content width of tabCount preferred-width tabs, saturated at INT_MAX.
  * Used by scroll helpers without a full layout.
  */
 [[nodiscard]] int TabStripContentWidth(std::size_t tabCount) noexcept;

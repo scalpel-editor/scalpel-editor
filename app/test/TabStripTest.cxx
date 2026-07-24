@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 #include "ApplicationEditor.h"
@@ -177,6 +178,24 @@ TEST_CASE("tab strip hit-test activates tab close and add") {
 	CHECK(outside.kind == TabStripHit::None);
 }
 
+TEST_CASE("tab strip hit-test uses half-open tab and strip bounds") {
+	const TabStripModel model = ModelWith({
+		MakeTab(10, "one", true),
+		MakeTab(20, "two", false),
+	});
+	const TabStripLayout layout = LayoutTabStrip(400, model);
+
+	const TabStripHitResult sharedEdge = HitTestTabStrip(layout,
+		Point(layout.tabs[0].bounds.right, TabStripHeight() / 2.0));
+	CHECK(sharedEdge.kind == TabStripHit::Tab);
+	CHECK(sharedEdge.tabId == 20);
+
+	CHECK(HitTestTabStrip(layout, Point(layout.strip.right, 4)).kind ==
+		TabStripHit::None);
+	CHECK(HitTestTabStrip(layout, Point(4, layout.strip.bottom)).kind ==
+		TabStripHit::None);
+}
+
 TEST_CASE("tab strip overflow scrolls and keeps active visible") {
 	std::vector<TabStripTab> tabs;
 	for (uint64_t i = 1; i <= 8; ++i) {
@@ -184,10 +203,12 @@ TEST_CASE("tab strip overflow scrolls and keeps active visible") {
 	}
 	// Narrow strip: viewport holds fewer than 8 preferred tabs.
 	const int stripWidth = TabStripPreferredTabWidth() * 2 + 28;
-	TabStripModel model = ModelWith(std::move(tabs), 0);
+	const int visibleScroll = ScrollTabStripToIndex(
+		stripWidth, tabs.size(), tabs.size() - 1, 0);
+	TabStripModel model = ModelWith(std::move(tabs), visibleScroll);
 	const TabStripLayout layout = LayoutTabStrip(stripWidth, model);
 	CHECK(layout.maxScroll > 0);
-	// Active is last; layout must scroll it into the viewport.
+	// The requested activation scroll keeps the last tab in the viewport.
 	CHECK(layout.scrollOffset == layout.maxScroll);
 	const auto &active = layout.tabs.back();
 	CHECK(active.active);
@@ -222,6 +243,34 @@ TEST_CASE("tab strip scroll helpers clamp and adjust") {
 	CHECK(wheeled == 40);
 	const int back = AdjustTabStripScroll(stripWidth, count, 40, -1, 40);
 	CHECK(back == 0);
+
+	CHECK(Scalpel::TabStripContentWidth(
+		std::numeric_limits<std::size_t>::max()) ==
+		std::numeric_limits<int>::max());
+	CHECK(AdjustTabStripScroll(stripWidth,
+		std::numeric_limits<std::size_t>::max(),
+		std::numeric_limits<int>::max(), std::numeric_limits<int>::max(),
+		std::numeric_limits<int>::max()) ==
+		std::numeric_limits<int>::max() - stripWidth + 28);
+}
+
+TEST_CASE("tab strip layout preserves wheel scrolling after active reveal") {
+	std::vector<TabStripTab> tabs;
+	for (uint64_t i = 1; i <= 5; ++i) {
+		tabs.push_back(MakeTab(i, "tab " + std::to_string(i), i == 5));
+	}
+	const int stripWidth = TabStripPreferredTabWidth() * 2 + 28;
+	const int activeScroll = ScrollTabStripToIndex(
+		stripWidth, tabs.size(), tabs.size() - 1, 0);
+	REQUIRE(activeScroll > 0);
+	const int wheeledLeft = AdjustTabStripScroll(
+		stripWidth, tabs.size(), activeScroll, -1, TabStripPreferredTabWidth());
+	REQUIRE(wheeledLeft < activeScroll);
+
+	const TabStripLayout layout = LayoutTabStrip(
+		stripWidth, ModelWith(std::move(tabs), wheeledLeft));
+	CHECK(layout.scrollOffset == wheeledLeft);
+	CHECK(layout.tabs.back().bounds.left >= layout.tabsViewport.right);
 }
 
 TEST_CASE("tab strip truncation shortens long labels with ellipsis") {
@@ -294,7 +343,9 @@ TEST_CASE("tab strip paint active dirty overflowed hovered and scaled layouts") 
 		}
 		const int stripWidth = TabStripPreferredTabWidth() * 2 + 28;
 		editor.Resize(stripWidth, 120);
-		const TabStripModel model = ModelWith(std::move(tabs), 0);
+		const int scroll = ScrollTabStripToIndex(
+			stripWidth, tabs.size(), tabs.size() - 1, 0);
+		const TabStripModel model = ModelWith(std::move(tabs), scroll);
 		const TabStripLayout layout = LayoutTabStrip(stripWidth, model);
 		REQUIRE(layout.scrollOffset > 0);
 		const auto pixels = PaintStrip(editor, painter, layout, model);
@@ -358,12 +409,13 @@ TEST_CASE("tab strip hit-test ignores overflow outside the viewport") {
 		tabs.push_back(MakeTab(i, "n", i == 1));
 	}
 	const int stripWidth = TabStripPreferredTabWidth() + 28;
-	// Keep first tab active and scroll far right manually by forcing scroll
-	// via a later active tab then checking a point past the viewport edge.
+	// Scroll to a later active tab, then check a point past the viewport edge.
 	tabs[0].active = false;
 	tabs.back().active = true;
+	const int scroll = ScrollTabStripToIndex(
+		stripWidth, tabs.size(), tabs.size() - 1, 0);
 	const TabStripLayout layout = LayoutTabStrip(stripWidth,
-		ModelWith(std::move(tabs), 0));
+		ModelWith(std::move(tabs), scroll));
 	// Point on the add button is Add, not a scrolled tab under it.
 	const TabStripHitResult add = HitTestTabStrip(layout, Center(layout.addButton));
 	CHECK(add.kind == TabStripHit::Add);

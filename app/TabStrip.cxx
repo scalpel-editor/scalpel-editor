@@ -1,6 +1,7 @@
 #include "TabStrip.h"
 
 #include <algorithm>
+#include <limits>
 
 namespace Scalpel {
 
@@ -34,7 +35,11 @@ bool NonEmpty(const PRectangle &rc) noexcept {
 }
 
 bool NonEmptyContains(const PRectangle &rc, Point point) noexcept {
-	return NonEmpty(rc) && rc.Contains(point);
+	// PRectangle documents half-open bounds, but Contains currently includes
+	// right and bottom. Keep adjacent tab hit regions unambiguous here.
+	return NonEmpty(rc) &&
+		point.x >= rc.left && point.x < rc.right &&
+		point.y >= rc.top && point.y < rc.bottom;
 }
 
 PRectangle CloseButtonRect(const PRectangle &tabBounds) noexcept {
@@ -148,13 +153,22 @@ void DrawPlusGlyph(Surface &surface, const PRectangle &rc, ColourRGBA ink) {
 		Scintilla::Internal::Stroke(ink, 1.5));
 }
 
-std::size_t ActiveIndex(const TabStripModel &model) noexcept {
-	for (std::size_t i = 0; i < model.tabs.size(); ++i) {
-		if (model.tabs[i].active) {
-			return i;
-		}
+int SaturatingTabPosition(std::size_t tabIndex) noexcept {
+	constexpr std::size_t maxIndex =
+		static_cast<std::size_t>(std::numeric_limits<int>::max()) /
+		static_cast<std::size_t>(kPreferredTabWidth);
+	if (tabIndex > maxIndex) {
+		return std::numeric_limits<int>::max();
 	}
-	return model.tabs.size();
+	return static_cast<int>(tabIndex) * kPreferredTabWidth;
+}
+
+int SaturatingAdd(int value, int delta) noexcept {
+	const int64_t result = static_cast<int64_t>(value) + delta;
+	return static_cast<int>(std::clamp(
+		result,
+		static_cast<int64_t>(std::numeric_limits<int>::min()),
+		static_cast<int64_t>(std::numeric_limits<int>::max())));
 }
 
 }
@@ -168,10 +182,7 @@ int TabStripPreferredTabWidth() noexcept {
 }
 
 int TabStripContentWidth(std::size_t tabCount) noexcept {
-	if (tabCount == 0) {
-		return 0;
-	}
-	return static_cast<int>(tabCount) * kPreferredTabWidth;
+	return SaturatingTabPosition(tabCount);
 }
 
 int TabStripViewportWidth(int stripWidth) noexcept {
@@ -200,12 +211,13 @@ int ScrollTabStripToIndex(int stripWidth, std::size_t tabCount,
 		return ClampTabStripScroll(stripWidth, tabCount, scroll);
 	}
 	const int viewport = TabStripViewportWidth(stripWidth);
-	const int tabLeft = static_cast<int>(tabIndex) * kPreferredTabWidth;
-	const int tabRight = tabLeft + kPreferredTabWidth;
+	const int tabLeft = SaturatingTabPosition(tabIndex);
+	const int tabRight = SaturatingAdd(tabLeft, kPreferredTabWidth);
 	int next = scroll;
 	if (tabLeft < next) {
 		next = tabLeft;
-	} else if (tabRight > next + viewport) {
+	} else if (static_cast<int64_t>(tabRight) >
+		static_cast<int64_t>(next) + viewport) {
 		next = tabRight - viewport;
 	}
 	return ClampTabStripScroll(stripWidth, tabCount, next);
@@ -215,7 +227,14 @@ int AdjustTabStripScroll(int stripWidth, std::size_t tabCount, int scroll,
 	int delta, int step) noexcept {
 	const int usedStep = step > 0 ? step : kDefaultScrollStep;
 	// Positive delta (typical wheel "down"/"right") reveals content to the right.
-	return ClampTabStripScroll(stripWidth, tabCount, scroll + delta * usedStep);
+	const int64_t adjustment =
+		static_cast<int64_t>(delta) * static_cast<int64_t>(usedStep);
+	const int64_t candidate = static_cast<int64_t>(scroll) + adjustment;
+	const int bounded = static_cast<int>(std::clamp(
+		candidate,
+		static_cast<int64_t>(std::numeric_limits<int>::min()),
+		static_cast<int64_t>(std::numeric_limits<int>::max())));
+	return ClampTabStripScroll(stripWidth, tabCount, bounded);
 }
 
 TabStripLayout LayoutTabStrip(int stripWidth, const TabStripModel &model) noexcept {
@@ -236,21 +255,15 @@ TabStripLayout LayoutTabStrip(int stripWidth, const TabStripModel &model) noexce
 	const int viewport = TabStripViewportWidth(stripWidth);
 	layout.maxScroll = std::max(0, layout.contentWidth - viewport);
 
-	int scroll = model.scrollOffset;
-	const std::size_t active = ActiveIndex(model);
-	if (active < model.tabs.size()) {
-		scroll = ScrollTabStripToIndex(stripWidth, model.tabs.size(), active, scroll);
-	} else {
-		scroll = ClampTabStripScroll(stripWidth, model.tabs.size(), scroll);
-	}
-	layout.scrollOffset = scroll;
+	layout.scrollOffset = ClampTabStripScroll(
+		stripWidth, model.tabs.size(), model.scrollOffset);
 
 	layout.tabs.reserve(model.tabs.size());
 	for (std::size_t i = 0; i < model.tabs.size(); ++i) {
 		const TabStripTab &src = model.tabs[i];
-		const int unshiftedLeft = static_cast<int>(i) * kPreferredTabWidth;
-		const int left = unshiftedLeft - scroll;
-		const int right = left + kPreferredTabWidth;
+		const int unshiftedLeft = SaturatingTabPosition(i);
+		const int left = unshiftedLeft - layout.scrollOffset;
+		const int right = SaturatingAdd(left, kPreferredTabWidth);
 		const PRectangle bounds = PRectangle::FromInts(left, 0, right, height);
 		const PRectangle closeButton = CloseButtonRect(bounds);
 		const PRectangle label = LabelRect(bounds, closeButton);
