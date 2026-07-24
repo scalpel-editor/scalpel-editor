@@ -167,8 +167,18 @@ const ColourRGBA kButtonBorder(0xa0, 0xa0, 0xa0, 0xff);
 const ColourRGBA kFocusedFill(0xd0, 0xe4, 0xf8, 0xff);
 const ColourRGBA kFocusedBorder(0x30, 0x70, 0xb0, 0xff);
 
+// FontParameters.size is device pixels (see FontPlatform FC_PIXEL_SIZE). Match
+// ViewStyle at 96 DPI: points * 96/72, same as DeviceHeightFont / 100.
+constexpr float PixelSizeFromPoints(float points) noexcept {
+	return points * 96.0f / 72.0f;
+}
+
+/**
+ * Centre label ink with DrawTextTransparent. DrawTextNoClip fills an opaque
+ * background rectangle that erases button borders drawn underneath.
+ */
 void DrawCenteredLabel(Surface &surface, const PRectangle &rc, const Font *font,
-	std::string_view text, ColourRGBA fore, ColourRGBA back) {
+	std::string_view text, ColourRGBA fore) {
 	if (!font || text.empty() || rc.Empty()) {
 		return;
 	}
@@ -177,8 +187,24 @@ void DrawCenteredLabel(Surface &surface, const PRectangle &rc, const Font *font,
 	const XYPOSITION height = surface.Height(font);
 	const XYPOSITION x = rc.left + (rc.Width() - textWidth) / 2.0;
 	const XYPOSITION ybase = rc.top + (rc.Height() - height) / 2.0 + ascent;
+	// Tight text box around the ink advance; height still needs room for ascent.
 	const PRectangle textRc(x, rc.top, x + textWidth, rc.bottom);
-	surface.DrawTextNoClip(textRc, font, ybase, text, fore, back);
+	surface.DrawTextTransparent(textRc, font, ybase, text, fore);
+}
+
+/** Axis-aligned border that sits inside rc (integer-friendly, no poly-line miters). */
+void DrawInsideFrame(Surface &surface, const PRectangle &rc, ColourRGBA colour,
+	XYPOSITION thickness) {
+	if (rc.Empty() || thickness <= 0.0) {
+		return;
+	}
+	const XYPOSITION t = std::min(thickness, std::min(rc.Width(), rc.Height()) / 2.0);
+	const Fill fill(colour);
+	// Top and bottom span the full width; left and right sit between them.
+	surface.FillRectangle(PRectangle(rc.left, rc.top, rc.right, rc.top + t), fill);
+	surface.FillRectangle(PRectangle(rc.left, rc.bottom - t, rc.right, rc.bottom), fill);
+	surface.FillRectangle(PRectangle(rc.left, rc.top + t, rc.left + t, rc.bottom - t), fill);
+	surface.FillRectangle(PRectangle(rc.right - t, rc.top + t, rc.right, rc.bottom - t), fill);
 }
 
 void DrawButton(Surface &surface, const PRectangle &rc, const Font *font,
@@ -190,15 +216,17 @@ void DrawButton(Surface &surface, const PRectangle &rc, const Font *font,
 	const ColourRGBA border = focused ? kFocusedBorder : kButtonBorder;
 	const XYPOSITION borderWidth = focused ? 2.0 : 1.0;
 	surface.FillRectangle(rc, Fill(fill));
-	surface.RectangleFrame(rc, Scintilla::Internal::Stroke(border, borderWidth));
-	DrawCenteredLabel(surface, rc, font, label, kText, fill);
+	// Label first, then frame so border edges stay continuous over the text band.
+	DrawCenteredLabel(surface, rc, font, label, kText);
+	DrawInsideFrame(surface, rc, border, borderWidth);
 }
 
 }
 
 UnsavedChangesCardPainter::UnsavedChangesCardPainter() {
-	titleFont = Font::Allocate(FontParameters{"system-ui", 13.0});
-	bodyFont = Font::Allocate(FontParameters{"system-ui", 11.0});
+	// 14pt / 12pt → same device sizes the editor uses for similar point sizes.
+	titleFont = Font::Allocate(FontParameters{"system-ui", PixelSizeFromPoints(14.0f)});
+	bodyFont = Font::Allocate(FontParameters{"system-ui", PixelSizeFromPoints(12.0f)});
 }
 
 void UnsavedChangesCardPainter::Paint(Surface &surface,
@@ -212,13 +240,11 @@ void UnsavedChangesCardPainter::Paint(Surface &surface,
 
 	if (!layout.card.Empty()) {
 		surface.FillRectangle(layout.card, Fill(kCardFill));
-		surface.RectangleFrame(layout.card,
-			Scintilla::Internal::Stroke(kCardBorder, 1.0));
+		DrawInsideFrame(surface, layout.card, kCardBorder, 1.0);
 	}
 
-	DrawCenteredLabel(surface, layout.title, titleFont.get(), title, kText, kCardFill);
-	DrawCenteredLabel(surface, layout.subtitle, bodyFont.get(), subtitle,
-		kMutedText, kCardFill);
+	DrawCenteredLabel(surface, layout.title, titleFont.get(), title, kText);
+	DrawCenteredLabel(surface, layout.subtitle, bodyFont.get(), subtitle, kMutedText);
 
 	DrawButton(surface, layout.saveButton, bodyFont.get(), "Save",
 		focusedButtonIndex == 0);
@@ -227,5 +253,4 @@ void UnsavedChangesCardPainter::Paint(Surface &surface,
 	DrawButton(surface, layout.cancelButton, bodyFont.get(), "Cancel",
 		focusedButtonIndex == 2);
 }
-
 }
