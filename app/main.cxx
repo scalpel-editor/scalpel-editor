@@ -10,6 +10,7 @@
 
 #include "ApplicationEditor.h"
 #include "DocumentFile.h"
+#include "DocumentWorkspace.h"
 #include "GlContext.h"
 #include "UnsavedChangesCard.h"
 #include "UnsavedChangesPrompt.h"
@@ -257,125 +258,45 @@ void RequestSaveAsDialog(Scalpel::WaylandWindow &window,
 	}
 }
 
-bool SaveDocumentToPath(Scalpel::ApplicationEditor &editor,
-	const std::string &path) {
-	if (!Scalpel::WriteDocumentFile(path, editor.Text())) {
-		std::cerr << "scalpel-editor: failed to write " << path << '\n';
-		return false;
-	}
-	editor.MarkSaved();
-	return true;
-}
-
-void RefreshPromptChrome(Scalpel::ApplicationEditor &editor, int &cardFocus) {
-	cardFocus = 0;
-	editor.CancelActiveTextInput();
-	editor.InvalidateClient();
-}
-
-void HandleUnsavedOutcome(Scalpel::UnsavedOutcome outcome,
+void PerformShellRequests(Scalpel::DocumentWorkspace &workspace,
 	Scalpel::WaylandWindow &window,
-	Scalpel::ApplicationEditor &editor,
-	const std::string &documentPath,
 	bool &quitAccepted,
-	int &cardFocus) {
-	switch (outcome) {
-	case Scalpel::UnsavedOutcome::None:
-	case Scalpel::UnsavedOutcome::SaveFailed:
-		break;
-	case Scalpel::UnsavedOutcome::Dismissed:
-		editor.InvalidateClient();
-		break;
-	case Scalpel::UnsavedOutcome::PerformClose:
-		quitAccepted = true;
-		editor.InvalidateClient();
-		break;
-	case Scalpel::UnsavedOutcome::PerformOpen:
-		// Discard leaves the buffer dirty; clear so ApplyFileDialogResults
-		// accepts the chosen path. Save already cleared via MarkSaved.
-		editor.MarkSaved();
-		editor.InvalidateClient();
-		StartOpenDialog(window, documentPath);
-		break;
-	case Scalpel::UnsavedOutcome::NeedSaveAs:
-		RequestSaveAsDialog(window, documentPath);
-		// Keep the card visible while the portal runs.
-		editor.InvalidateClient();
-		break;
-	}
-	(void)cardFocus;
-}
-
-void ApplyUnsavedChoice(Scalpel::UnsavedChoice choice,
-	Scalpel::UnsavedChangesPrompt &prompt,
-	Scalpel::WaylandWindow &window,
-	Scalpel::ApplicationEditor &editor,
-	std::string &documentPath,
-	bool &quitAccepted,
-	int &cardFocus) {
-	if (!prompt.Active()) {
-		return;
-	}
-	if (choice == Scalpel::UnsavedChoice::Save && !documentPath.empty()) {
-		// Write before clearing the prompt so a failed write keeps the card.
-		if (!SaveDocumentToPath(editor, documentPath)) {
-			return;
+	int &cardFocus,
+	std::optional<Scalpel::UnsavedCardHit> &pressHit) {
+	for (const Scalpel::DocumentShellRequest request :
+		workspace.TakeRequests()) {
+		switch (request) {
+		case Scalpel::DocumentShellRequest::ShowOpen:
+			StartOpenDialog(window, workspace.Path());
+			break;
+		case Scalpel::DocumentShellRequest::ShowSaveAs:
+			RequestSaveAsDialog(window, workspace.Path());
+			break;
+		case Scalpel::DocumentShellRequest::AcceptClose:
+			quitAccepted = true;
+			break;
+		case Scalpel::DocumentShellRequest::PromptBegan:
+			cardFocus = 0;
+			pressHit.reset();
+			break;
 		}
-		const Scalpel::UnsavedOutcome outcome =
-			prompt.Choose(Scalpel::UnsavedChoice::Save, true);
-		HandleUnsavedOutcome(outcome, window, editor, documentPath,
-			quitAccepted, cardFocus);
-		return;
 	}
-	const Scalpel::UnsavedOutcome outcome =
-		prompt.Choose(choice, !documentPath.empty());
-	HandleUnsavedOutcome(outcome, window, editor, documentPath,
-		quitAccepted, cardFocus);
 }
 
 void ApplyFileDialogResults(Scalpel::WaylandWindow &window,
-	Scalpel::ApplicationEditor &editor,
-	std::string &documentPath,
-	Scalpel::UnsavedChangesPrompt &prompt,
-	bool &quitAccepted,
-	int &cardFocus) {
+	Scalpel::DocumentWorkspace &workspace) {
 	for (const Scalpel::FileDialogResult &result :
 		window.TakeFileDialogResults()) {
-		const bool awaitingSaveAs = prompt.AwaitingSaveAs();
-		if (result.status != Scalpel::FileDialogResultStatus::Accepted ||
-			result.paths.empty()) {
-			if (awaitingSaveAs &&
-				result.mode == Scalpel::FileDialogMode::Save) {
-				prompt.NotifySaveIncomplete();
-				editor.InvalidateClient();
-			}
-			continue;
-		}
-		const std::string &path = result.paths.front();
+		const bool accepted =
+			result.status == Scalpel::FileDialogResultStatus::Accepted &&
+			!result.paths.empty();
+		const std::string_view path = accepted ?
+			std::string_view(result.paths.front()) :
+			std::string_view{};
 		if (result.mode == Scalpel::FileDialogMode::Open) {
-			if (editor.Modified()) {
-				std::cerr << "scalpel-editor: save or discard changes before "
-					"opening another file\n";
-				continue;
-			}
-			const std::optional<std::string> text =
-				Scalpel::ReadDocumentFile(path);
-			if (!text) {
-				std::cerr << "scalpel-editor: failed to read " << path << '\n';
-				continue;
-			}
-			editor.LoadInitialBuffer(*text);
-			documentPath = path;
-		} else if (SaveDocumentToPath(editor, path)) {
-			documentPath = path;
-			if (awaitingSaveAs) {
-				const Scalpel::UnsavedOutcome outcome = prompt.NotifySaved();
-				HandleUnsavedOutcome(outcome, window, editor, documentPath,
-					quitAccepted, cardFocus);
-			}
-		} else if (awaitingSaveAs) {
-			prompt.NotifySaveIncomplete();
-			editor.InvalidateClient();
+			workspace.HandleOpenResult(accepted, path);
+		} else {
+			workspace.HandleSaveResult(accepted, path);
 		}
 	}
 }
@@ -412,18 +333,14 @@ void ApplyFileDialogResults(Scalpel::WaylandWindow &window,
 }
 
 bool HandlePromptKeyboard(const Scalpel::KeyboardInput &input,
-	Scalpel::UnsavedChangesPrompt &prompt,
-	Scalpel::WaylandWindow &window,
+	Scalpel::DocumentWorkspace &workspace,
 	Scalpel::ApplicationEditor &editor,
-	std::string &documentPath,
-	bool &quitAccepted,
 	int &cardFocus) {
 	if (!input.pressed) {
 		return true;
 	}
 	if (input.key == Scintilla::Keys::Escape) {
-		ApplyUnsavedChoice(Scalpel::UnsavedChoice::Cancel, prompt, window,
-			editor, documentPath, quitAccepted, cardFocus);
+		workspace.Choose(Scalpel::UnsavedChoice::Cancel);
 		return true;
 	}
 	if (input.key == Scintilla::Keys::Tab) {
@@ -450,18 +367,15 @@ bool HandlePromptKeyboard(const Scalpel::KeyboardInput &input,
 			Scalpel::UnsavedChoice::Save :
 			(cardFocus == 1 ? Scalpel::UnsavedChoice::Discard :
 				Scalpel::UnsavedChoice::Cancel);
-		ApplyUnsavedChoice(choice, prompt, window, editor, documentPath,
-			quitAccepted, cardFocus);
+		workspace.Choose(choice);
 		return true;
 	}
 	if (IsSaveShortcut(input) || IsLetterKey(input, 'S', 's')) {
-		ApplyUnsavedChoice(Scalpel::UnsavedChoice::Save, prompt, window,
-			editor, documentPath, quitAccepted, cardFocus);
+		workspace.Choose(Scalpel::UnsavedChoice::Save);
 		return true;
 	}
 	if (IsLetterKey(input, 'D', 'd')) {
-		ApplyUnsavedChoice(Scalpel::UnsavedChoice::Discard, prompt, window,
-			editor, documentPath, quitAccepted, cardFocus);
+		workspace.Choose(Scalpel::UnsavedChoice::Discard);
 		return true;
 	}
 	// Ignore other keys while the prompt owns input.
@@ -471,11 +385,8 @@ bool HandlePromptKeyboard(const Scalpel::KeyboardInput &input,
 bool HandlePromptPointer(const Scalpel::PointerInput &input,
 	const Scalpel::UnsavedChangesCardLayout &layout,
 	std::optional<Scalpel::UnsavedCardHit> &pressHit,
-	Scalpel::UnsavedChangesPrompt &prompt,
-	Scalpel::WaylandWindow &window,
+	Scalpel::DocumentWorkspace &workspace,
 	Scalpel::ApplicationEditor &editor,
-	std::string &documentPath,
-	bool &quitAccepted,
 	int &cardFocus) {
 	const Scintilla::Internal::Point point(input.x, input.y);
 	if (input.action == Scalpel::PointerAction::Press && input.button == 0) {
@@ -497,14 +408,11 @@ bool HandlePromptPointer(const Scalpel::PointerInput &input,
 			Scalpel::HitTestUnsavedChangesCard(layout, point);
 		if (pressHit && *pressHit == hit) {
 			if (hit == Scalpel::UnsavedCardHit::Save) {
-				ApplyUnsavedChoice(Scalpel::UnsavedChoice::Save, prompt,
-					window, editor, documentPath, quitAccepted, cardFocus);
+				workspace.Choose(Scalpel::UnsavedChoice::Save);
 			} else if (hit == Scalpel::UnsavedCardHit::Discard) {
-				ApplyUnsavedChoice(Scalpel::UnsavedChoice::Discard, prompt,
-					window, editor, documentPath, quitAccepted, cardFocus);
+				workspace.Choose(Scalpel::UnsavedChoice::Discard);
 			} else if (hit == Scalpel::UnsavedCardHit::Cancel) {
-				ApplyUnsavedChoice(Scalpel::UnsavedChoice::Cancel, prompt,
-					window, editor, documentPath, quitAccepted, cardFocus);
+				workspace.Choose(Scalpel::UnsavedChoice::Cancel);
 			}
 		}
 		pressHit.reset();
@@ -512,18 +420,6 @@ bool HandlePromptPointer(const Scalpel::PointerInput &input,
 	}
 	// Scrim clicks, move, and scroll do not cancel or edit.
 	return true;
-}
-
-void BeginUnsavedPrompt(Scalpel::UnsavedPending pending,
-	Scalpel::UnsavedChangesPrompt &prompt,
-	Scalpel::ApplicationEditor &editor,
-	int &cardFocus,
-	std::optional<Scalpel::UnsavedCardHit> &pressHit) {
-	if (!prompt.TryBegin(pending)) {
-		return;
-	}
-	pressHit.reset();
-	RefreshPromptChrome(editor, cardFocus);
 }
 
 }
@@ -543,8 +439,7 @@ int main() {
 			"A direct Scintilla editor for Wayland.\n"
 			"Ctrl+O open, Ctrl+S save, Ctrl+Shift+S save as.\n";
 		editor.LoadInitialBuffer(initialText);
-		std::string documentPath;
-		Scalpel::UnsavedChangesPrompt unsavedPrompt;
+		Scalpel::DocumentWorkspace workspace(editor);
 		Scalpel::UnsavedChangesCardPainter cardPainter;
 		int cardFocus = 0;
 		bool quitAccepted = false;
@@ -555,9 +450,9 @@ int main() {
 			[&](Scintilla::Internal::Surface &surface, int width, int height) {
 				const Scalpel::UnsavedChangesCardLayout layout =
 					Scalpel::LayoutUnsavedChangesCard(width, height);
-				const std::string subtitle = documentPath.empty() ?
+				const std::string subtitle = workspace.Path().empty() ?
 					"Untitled" :
-					Scalpel::DocumentBaseName(documentPath);
+					Scalpel::DocumentBaseName(workspace.Path());
 				cardPainter.Paint(surface, layout, "Save changes?", subtitle,
 					cardFocus);
 			};
@@ -566,24 +461,21 @@ int main() {
 			(void)window.TakePresentationResults();
 			DeliverClipboardResults(window, editor);
 			DeliverPrimarySelectionResults(window, editor);
-			DeliverTextInputBatches(window, editor, unsavedPrompt.Active());
-			ApplyFileDialogResults(window, editor, documentPath, unsavedPrompt,
-				quitAccepted, cardFocus);
+			DeliverTextInputBatches(window, editor, workspace.PromptActive());
+			ApplyFileDialogResults(window, workspace);
+			PerformShellRequests(workspace, window, quitAccepted, cardFocus,
+				promptPressHit);
 			SynchronizeTextInput(editor, window);
 
 			if (window.ForceCloseRequested()) {
 				break;
 			}
 			if (window.CloseRequested()) {
-				if (unsavedPrompt.Active()) {
-					// Pending action already owns the close/open decision.
-					window.ClearCloseRequest();
-				} else if (editor.Modified()) {
-					BeginUnsavedPrompt(Scalpel::UnsavedPending::Close,
-						unsavedPrompt, editor, cardFocus, promptPressHit);
-					window.ClearCloseRequest();
-				} else {
-					quitAccepted = true;
+				workspace.RequestClose();
+				PerformShellRequests(workspace, window, quitAccepted, cardFocus,
+					promptPressHit);
+				window.ClearCloseRequest();
+				if (quitAccepted) {
 					break;
 				}
 			}
@@ -595,7 +487,7 @@ int main() {
 					editor.Resize(scale->logicalWidth, scale->logicalHeight);
 				}
 				editor.SetFrameBufferSize(scale->bufferWidth, scale->bufferHeight);
-				if (unsavedPrompt.Active()) {
+				if (workspace.PromptActive()) {
 					editor.InvalidateClient();
 				}
 			}
@@ -610,37 +502,26 @@ int main() {
 					editor.SetKeyboardFocus(focus->focused);
 					continue;
 				}
-				if (unsavedPrompt.Active()) {
+				if (workspace.PromptActive()) {
 					if (const auto *keyboard =
 						std::get_if<Scalpel::KeyboardInput>(&input)) {
-						HandlePromptKeyboard(*keyboard, unsavedPrompt, window,
-							editor, documentPath, quitAccepted, cardFocus);
+						HandlePromptKeyboard(*keyboard, workspace, editor,
+							cardFocus);
 					} else if (const auto *pointer =
 						std::get_if<Scalpel::PointerInput>(&input)) {
 						HandlePromptPointer(*pointer, promptLayout,
-							promptPressHit, unsavedPrompt, window, editor,
-							documentPath, quitAccepted, cardFocus);
+							promptPressHit, workspace, editor, cardFocus);
 					}
 					continue;
 				}
 				if (const auto *keyboard =
 					std::get_if<Scalpel::KeyboardInput>(&input)) {
 					if (IsOpenShortcut(*keyboard)) {
-						if (editor.Modified()) {
-							BeginUnsavedPrompt(Scalpel::UnsavedPending::Open,
-								unsavedPrompt, editor, cardFocus,
-								promptPressHit);
-						} else {
-							StartOpenDialog(window, documentPath);
-						}
+						workspace.RequestOpen();
 					} else if (IsSaveAsShortcut(*keyboard)) {
-						RequestSaveAsDialog(window, documentPath);
+						workspace.RequestSaveAs();
 					} else if (IsSaveShortcut(*keyboard)) {
-						if (documentPath.empty()) {
-							RequestSaveAsDialog(window, documentPath);
-						} else {
-							(void)SaveDocumentToPath(editor, documentPath);
-						}
+						workspace.RequestSave();
 					} else {
 						editor.HandleKeyboardInput(*keyboard);
 					}
@@ -649,6 +530,8 @@ int main() {
 						std::get<Scalpel::PointerInput>(input));
 				}
 			}
+			PerformShellRequests(workspace, window, quitAccepted, cardFocus,
+				promptPressHit);
 
 			if (quitAccepted || window.ForceCloseRequested()) {
 				break;
@@ -658,7 +541,7 @@ int main() {
 			DispatchPrimarySelectionRequests(editor, window);
 			editor.RunPendingWork();
 			SynchronizeTextInput(editor, window);
-			if (unsavedPrompt.Active()) {
+			if (workspace.PromptActive()) {
 				window.SetCursor(Scintilla::Internal::Window::Cursor::arrow);
 				// Bind only while active so PresentFrame full-swaps only then.
 				if (!cardOverlayBound) {

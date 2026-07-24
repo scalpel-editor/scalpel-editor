@@ -173,6 +173,7 @@ add_library(scalpel_application OBJECT
   ApplicationEditor.cxx
   ApplicationPlatform.cxx
   DocumentFile.cxx
+  DocumentWorkspace.cxx
   UnsavedChangesCard.cxx
   UnsavedChangesPrompt.cxx
 )
