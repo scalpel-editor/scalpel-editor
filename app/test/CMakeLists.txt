@@ -89,6 +89,19 @@ target_compile_options(tabStripTest PRIVATE -Wall -Wextra)
 
 add_test(NAME tab-strip COMMAND tabStripTest)
 
+add_executable(menuBarTest
+  MenuBarTest.cxx
+  ApplicationTestMain.cxx
+)
+target_include_directories(menuBarTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(menuBarTest PRIVATE scalpel_application)
+target_compile_options(menuBarTest PRIVATE -Wall -Wextra)
+
+add_test(NAME menu-bar COMMAND menuBarTest)
+
 add_executable(applicationImeTest
   ApplicationImeTest.cxx
   ApplicationTestMain.cxx

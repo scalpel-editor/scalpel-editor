@@ -1,0 +1,411 @@
+#include "catch.hpp"
+
+#include <cmath>
+#include <cstdint>
+#include <vector>
+
+#include "ApplicationAction.h"
+#include "ApplicationEditor.h"
+#include "MenuBar.h"
+
+using Scalpel::ApplicationAction;
+using Scalpel::ApplicationActionCount;
+using Scalpel::ApplicationActionInfo;
+using Scalpel::ApplicationActionTable;
+using Scalpel::ApplicationEditor;
+using Scalpel::ApplicationMenu;
+using Scalpel::HitTestMenuBar;
+using Scalpel::LayoutMenuBar;
+using Scalpel::MenuBarHeight;
+using Scalpel::MenuBarHit;
+using Scalpel::MenuBarHitResult;
+using Scalpel::MenuBarItemLayout;
+using Scalpel::MenuBarLayout;
+using Scalpel::MenuBarModel;
+using Scalpel::MenuBarPainter;
+using Scintilla::Internal::PRectangle;
+using Scintilla::Internal::Point;
+
+namespace {
+
+bool NonEmpty(const PRectangle &rc) {
+	return rc.right > rc.left && rc.bottom > rc.top;
+}
+
+Point Center(const PRectangle &rc) {
+	return Point((rc.left + rc.right) / 2.0, (rc.top + rc.bottom) / 2.0);
+}
+
+MenuBarModel ClosedBar() {
+	return {};
+}
+
+MenuBarModel OpenMenu(ApplicationMenu menu) {
+	MenuBarModel model;
+	model.openMenu = menu;
+	return model;
+}
+
+struct Rgba {
+	uint8_t r = 0;
+	uint8_t g = 0;
+	uint8_t b = 0;
+	uint8_t a = 0;
+};
+
+Rgba Sample(const std::vector<uint8_t> &pixels, int width, int x, int y) {
+	const size_t offset =
+		(static_cast<size_t>(y) * static_cast<size_t>(width) +
+			static_cast<size_t>(x)) *
+		4U;
+	REQUIRE(offset + 3 < pixels.size());
+	return {pixels[offset], pixels[offset + 1], pixels[offset + 2],
+		pixels[offset + 3]};
+}
+
+bool Differs(Rgba a, Rgba b, int tol = 2) {
+	return std::abs(static_cast<int>(a.r) - static_cast<int>(b.r)) > tol ||
+		std::abs(static_cast<int>(a.g) - static_cast<int>(b.g)) > tol ||
+		std::abs(static_cast<int>(a.b) - static_cast<int>(b.b)) > tol;
+}
+
+std::vector<uint8_t> PaintMenu(ApplicationEditor &editor, MenuBarPainter &painter,
+	const MenuBarLayout &layout, const MenuBarModel &model) {
+	(void)editor.TakeFrameDamage();
+	editor.SetOverlayPainter(
+		[&](Scintilla::Internal::Surface &surface, int width, int height) {
+			CHECK(width == editor.FrameWidth());
+			CHECK(height == editor.FrameHeight());
+			painter.Paint(surface, layout, model);
+		});
+	editor.RenderFrame({PRectangle::FromInts(0, 0, editor.FrameWidth(),
+		editor.FrameHeight())});
+	return editor.FramePixels();
+}
+
+std::size_t CountMenuItems(ApplicationMenu menu) {
+	std::size_t n = 0;
+	const ApplicationActionInfo *table = ApplicationActionTable();
+	for (std::size_t i = 0; i < ApplicationActionCount(); ++i) {
+		if (table[i].menu == menu) {
+			++n;
+		}
+	}
+	return n;
+}
+
+const MenuBarItemLayout *FindItem(const MenuBarLayout &layout,
+	ApplicationAction action) {
+	for (const auto &item : layout.items) {
+		if (item.action == action) {
+			return &item;
+		}
+	}
+	return nullptr;
+}
+
+}
+
+TEST_CASE("menu bar height is fixed and positive") {
+	CHECK(MenuBarHeight() > 0);
+	CHECK(MenuBarHeight() < 40);
+}
+
+TEST_CASE("menu bar layout places File and Edit headings") {
+	const MenuBarLayout layout = LayoutMenuBar(400, 300, ClosedBar());
+	CHECK(layout.bar == PRectangle::FromInts(0, 0, 400, MenuBarHeight()));
+	REQUIRE(layout.headings.size() == 2);
+	CHECK(layout.headings[0].menu == ApplicationMenu::File);
+	CHECK(layout.headings[0].label == "File");
+	CHECK(layout.headings[1].menu == ApplicationMenu::Edit);
+	CHECK(layout.headings[1].label == "Edit");
+	CHECK(NonEmpty(layout.headings[0].bounds));
+	CHECK(NonEmpty(layout.headings[1].bounds));
+	CHECK(layout.headings[0].bounds.left == 0);
+	CHECK(layout.headings[0].bounds.right == layout.headings[1].bounds.left);
+	CHECK(layout.headings[1].bounds.right <= 400);
+	CHECK_FALSE(NonEmpty(layout.dropdown));
+	CHECK(layout.items.empty());
+}
+
+TEST_CASE("menu bar zero width yields empty layout") {
+	const MenuBarLayout layout = LayoutMenuBar(0, 300, OpenMenu(ApplicationMenu::File));
+	CHECK_FALSE(NonEmpty(layout.bar));
+	CHECK(layout.headings.empty());
+	CHECK(HitTestMenuBar(layout, Point(0, 0)).kind == MenuBarHit::None);
+}
+
+TEST_CASE("menu bar File dropdown lists actions separators and columns") {
+	const MenuBarLayout layout = LayoutMenuBar(400, 300, OpenMenu(ApplicationMenu::File));
+	CHECK(NonEmpty(layout.dropdown));
+	CHECK(layout.dropdown.top == MenuBarHeight());
+	// Dropdown hangs under the File heading when space allows.
+	CHECK(layout.dropdown.left == layout.headings[0].bounds.left);
+	REQUIRE(layout.items.size() == CountMenuItems(ApplicationMenu::File));
+
+	const auto *newTab = FindItem(layout, ApplicationAction::NewTab);
+	const auto *open = FindItem(layout, ApplicationAction::Open);
+	const auto *save = FindItem(layout, ApplicationAction::Save);
+	const auto *saveAs = FindItem(layout, ApplicationAction::SaveAs);
+	const auto *closeTab = FindItem(layout, ApplicationAction::CloseTab);
+	const auto *quit = FindItem(layout, ApplicationAction::Quit);
+	REQUIRE(newTab);
+	REQUIRE(open);
+	REQUIRE(save);
+	REQUIRE(saveAs);
+	REQUIRE(closeTab);
+	REQUIRE(quit);
+
+	CHECK_FALSE(newTab->separatorBefore);
+	CHECK_FALSE(open->separatorBefore);
+	CHECK(save->separatorBefore);
+	CHECK_FALSE(saveAs->separatorBefore);
+	CHECK(closeTab->separatorBefore);
+	CHECK(quit->separatorBefore);
+	CHECK(NonEmpty(save->separator));
+	CHECK(NonEmpty(newTab->label));
+	CHECK(NonEmpty(newTab->shortcut));
+	CHECK(newTab->labelText == "New Tab");
+	CHECK(newTab->shortcutText == "Ctrl+N");
+	CHECK(newTab->label.right <= newTab->shortcut.left + 0.5);
+	// Rows stack top to bottom.
+	CHECK(newTab->row.bottom <= open->row.top + 0.5);
+	CHECK(open->row.bottom <= save->row.top + 0.5);
+}
+
+TEST_CASE("menu bar Edit dropdown reflects enablement flags") {
+	MenuBarModel model = OpenMenu(ApplicationMenu::Edit);
+	model.undoEnabled = false;
+	model.cutEnabled = false;
+	model.pasteEnabled = true;
+	const MenuBarLayout layout = LayoutMenuBar(400, 300, model);
+	REQUIRE(layout.items.size() == CountMenuItems(ApplicationMenu::Edit));
+
+	const auto *undo = FindItem(layout, ApplicationAction::Undo);
+	const auto *cut = FindItem(layout, ApplicationAction::Cut);
+	const auto *paste = FindItem(layout, ApplicationAction::Paste);
+	const auto *selectAll = FindItem(layout, ApplicationAction::SelectAll);
+	REQUIRE(undo);
+	REQUIRE(cut);
+	REQUIRE(paste);
+	REQUIRE(selectAll);
+	CHECK_FALSE(undo->enabled);
+	CHECK_FALSE(cut->enabled);
+	CHECK(paste->enabled);
+	CHECK(selectAll->enabled);
+	CHECK(selectAll->separatorBefore);
+}
+
+TEST_CASE("menu bar narrow window clamps dropdown into the frame") {
+	// Frame narrower than the preferred dropdown and headings.
+	const int width = 120;
+	const MenuBarLayout layout = LayoutMenuBar(width, 200,
+		OpenMenu(ApplicationMenu::Edit));
+	REQUIRE(NonEmpty(layout.dropdown));
+	CHECK(layout.dropdown.left >= 0);
+	CHECK(layout.dropdown.right <= width);
+	CHECK(layout.dropdown.Width() <= width);
+	// Edit is the second heading; dropdown may shift left off the heading.
+	const bool clampedToRight = layout.dropdown.right == width;
+	const bool alignedToEdit =
+		layout.dropdown.left == layout.headings[1].bounds.left;
+	CHECK((clampedToRight || alignedToEdit));
+
+	// Extremely narrow: bar still lays out what fits.
+	const MenuBarLayout tiny = LayoutMenuBar(20, 100, OpenMenu(ApplicationMenu::File));
+	CHECK(NonEmpty(tiny.bar));
+	CHECK(tiny.bar.right == 20);
+	if (NonEmpty(tiny.dropdown)) {
+		CHECK(tiny.dropdown.left >= 0);
+		CHECK(tiny.dropdown.right <= 20);
+	}
+}
+
+TEST_CASE("menu bar short frame clamps dropdown bottom") {
+	MenuBarModel model = OpenMenu(ApplicationMenu::File);
+	// Barely taller than the bar; dropdown must not extend past the frame.
+	const int height = MenuBarHeight() + 40;
+	const MenuBarLayout layout = LayoutMenuBar(400, height, model);
+	REQUIRE(NonEmpty(layout.dropdown));
+	CHECK(layout.dropdown.bottom <= height);
+	CHECK(layout.dropdown.top == MenuBarHeight());
+}
+
+TEST_CASE("menu bar hit-test headings items and outside") {
+	const MenuBarLayout closed = LayoutMenuBar(400, 300, ClosedBar());
+	const MenuBarHitResult onFile = HitTestMenuBar(closed,
+		Center(closed.headings[0].bounds));
+	CHECK(onFile.kind == MenuBarHit::Heading);
+	CHECK(onFile.menu == ApplicationMenu::File);
+
+	const MenuBarHitResult onEdit = HitTestMenuBar(closed,
+		Center(closed.headings[1].bounds));
+	CHECK(onEdit.kind == MenuBarHit::Heading);
+	CHECK(onEdit.menu == ApplicationMenu::Edit);
+
+	// Empty bar chrome past the headings.
+	const MenuBarHitResult onBar = HitTestMenuBar(closed,
+		Point(300, MenuBarHeight() / 2.0));
+	CHECK(onBar.kind == MenuBarHit::Bar);
+
+	const MenuBarHitResult outside = HitTestMenuBar(closed,
+		Point(10, MenuBarHeight() + 5));
+	CHECK(outside.kind == MenuBarHit::None);
+
+	const MenuBarLayout open = LayoutMenuBar(400, 300, OpenMenu(ApplicationMenu::File));
+	const auto *save = FindItem(open, ApplicationAction::Save);
+	REQUIRE(save);
+	const MenuBarHitResult onItem = HitTestMenuBar(open, Center(save->row));
+	CHECK(onItem.kind == MenuBarHit::Item);
+	CHECK(onItem.action == ApplicationAction::Save);
+	CHECK(onItem.menu == ApplicationMenu::File);
+
+	// Separator band is not an item activation.
+	if (NonEmpty(save->separator)) {
+		const MenuBarHitResult onSep = HitTestMenuBar(open,
+			Point((save->separator.left + save->separator.right) / 2.0,
+				save->separator.top));
+		CHECK(onSep.kind == MenuBarHit::Dropdown);
+	}
+
+	// Point inside dropdown padding but not on a row.
+	const MenuBarHitResult onPad = HitTestMenuBar(open,
+		Point(open.dropdown.left + 2, open.dropdown.top + 1));
+	CHECK(onPad.kind == MenuBarHit::Dropdown);
+}
+
+TEST_CASE("menu bar hit-test uses half-open heading bounds") {
+	const MenuBarLayout layout = LayoutMenuBar(400, 300, ClosedBar());
+	const MenuBarHitResult sharedEdge = HitTestMenuBar(layout,
+		Point(layout.headings[0].bounds.right, MenuBarHeight() / 2.0));
+	CHECK(sharedEdge.kind == MenuBarHit::Heading);
+	CHECK(sharedEdge.menu == ApplicationMenu::Edit);
+
+	CHECK(HitTestMenuBar(layout, Point(layout.bar.right, 4)).kind ==
+		MenuBarHit::None);
+	CHECK(HitTestMenuBar(layout, Point(4, layout.bar.bottom)).kind ==
+		MenuBarHit::None);
+}
+
+TEST_CASE("menu bar paint closed open hovered focused and disabled") {
+	ApplicationEditor editor(360, 220);
+	editor.LoadInitialBuffer("menu paint\n");
+	MenuBarPainter painter;
+
+	SECTION("closed bar differs from editor body") {
+		const MenuBarModel model = ClosedBar();
+		const MenuBarLayout layout = LayoutMenuBar(360, 220, model);
+		const auto pixels = PaintMenu(editor, painter, layout, model);
+		REQUIRE(pixels.size() == 360U * 220U * 4U);
+		const Rgba barPx = Sample(pixels, 360, 20, MenuBarHeight() / 2);
+		const Rgba bodyPx = Sample(pixels, 360, 20, MenuBarHeight() + 20);
+		CHECK(Differs(barPx, bodyPx));
+		CHECK(barPx.a == 0xff);
+	}
+
+	SECTION("open heading highlight differs from idle heading") {
+		MenuBarModel open = OpenMenu(ApplicationMenu::File);
+		const MenuBarLayout openLayout = LayoutMenuBar(360, 220, open);
+		const auto openPixels = PaintMenu(editor, painter, openLayout, open);
+		const int fileX = static_cast<int>(Center(openLayout.headings[0].bounds).x);
+		const int editX = static_cast<int>(Center(openLayout.headings[1].bounds).x);
+		const int y = MenuBarHeight() / 2;
+		const Rgba fileOpen = Sample(openPixels, 360, fileX, y);
+		const Rgba editIdle = Sample(openPixels, 360, editX, y);
+		CHECK(Differs(fileOpen, editIdle));
+	}
+
+	SECTION("hovered heading paints distinctly") {
+		MenuBarModel model = ClosedBar();
+		model.hoveredHeading = ApplicationMenu::Edit;
+		const MenuBarLayout layout = LayoutMenuBar(360, 220, model);
+		const auto pixels = PaintMenu(editor, painter, layout, model);
+		const int fileX = static_cast<int>(Center(layout.headings[0].bounds).x);
+		const int editX = static_cast<int>(Center(layout.headings[1].bounds).x);
+		const int y = MenuBarHeight() / 2;
+		CHECK(Differs(Sample(pixels, 360, fileX, y), Sample(pixels, 360, editX, y)));
+	}
+
+	SECTION("dropdown panel and focus fill differ from the bar") {
+		MenuBarModel model = OpenMenu(ApplicationMenu::Edit);
+		model.focusedItem = ApplicationAction::Copy;
+		const MenuBarLayout layout = LayoutMenuBar(360, 220, model);
+		const auto *copy = FindItem(layout, ApplicationAction::Copy);
+		REQUIRE(copy);
+		const auto pixels = PaintMenu(editor, painter, layout, model);
+		const int rowX = static_cast<int>(Center(copy->row).x);
+		const int rowY = static_cast<int>(Center(copy->row).y);
+		const Rgba focused = Sample(pixels, 360, rowX, rowY);
+		const Rgba barPx = Sample(pixels, 360, 200, MenuBarHeight() / 2);
+		CHECK(Differs(focused, barPx));
+		// Focused row is cooler (blue-tinted) than a neutral bar gray.
+		CHECK(focused.b >= focused.r);
+	}
+
+	SECTION("disabled item ink is lighter than enabled item ink") {
+		MenuBarModel model = OpenMenu(ApplicationMenu::Edit);
+		model.undoEnabled = false;
+		model.redoEnabled = true;
+		const MenuBarLayout layout = LayoutMenuBar(360, 220, model);
+		const auto *undo = FindItem(layout, ApplicationAction::Undo);
+		const auto *redo = FindItem(layout, ApplicationAction::Redo);
+		REQUIRE(undo);
+		REQUIRE(redo);
+		const auto pixels = PaintMenu(editor, painter, layout, model);
+		// Sample the label column, not the focus/hover fill.
+		const int undoX = static_cast<int>(undo->label.left + 4);
+		const int undoY = static_cast<int>(Center(undo->row).y);
+		const int redoX = static_cast<int>(redo->label.left + 4);
+		const int redoY = static_cast<int>(Center(redo->row).y);
+		const Rgba disabled = Sample(pixels, 360, undoX, undoY);
+		const Rgba enabled = Sample(pixels, 360, redoX, redoY);
+		// Disabled text is lighter gray; luminance of disabled >= enabled.
+		const int disabledLum = static_cast<int>(disabled.r) + disabled.g + disabled.b;
+		const int enabledLum = static_cast<int>(enabled.r) + enabled.g + enabled.b;
+		CHECK(disabledLum >= enabledLum);
+	}
+
+	SECTION("hover item fill differs from unhovered row") {
+		MenuBarModel model = OpenMenu(ApplicationMenu::File);
+		model.hoveredItem = ApplicationAction::Open;
+		const MenuBarLayout layout = LayoutMenuBar(360, 220, model);
+		const auto *openItem = FindItem(layout, ApplicationAction::Open);
+		const auto *newTab = FindItem(layout, ApplicationAction::NewTab);
+		REQUIRE(openItem);
+		REQUIRE(newTab);
+		const auto pixels = PaintMenu(editor, painter, layout, model);
+		const Rgba hovered = Sample(pixels, 360,
+			static_cast<int>(Center(openItem->row).x),
+			static_cast<int>(Center(openItem->row).y));
+		const Rgba idle = Sample(pixels, 360,
+			static_cast<int>(Center(newTab->row).x),
+			static_cast<int>(Center(newTab->row).y));
+		CHECK(Differs(hovered, idle));
+	}
+
+	SECTION("scaled framebuffer still paints bar chrome in logical coords") {
+		editor.Resize(200, 120);
+		editor.SetFrameBufferSize(400, 240);
+		const MenuBarModel model = OpenMenu(ApplicationMenu::File);
+		const MenuBarLayout layout = LayoutMenuBar(200, 120, model);
+		CHECK(layout.bar.right == 200);
+		const auto pixels = PaintMenu(editor, painter, layout, model);
+		REQUIRE(pixels.size() == 200U * 120U * 4U);
+		const Rgba barMid = Sample(pixels, 200, 20, MenuBarHeight() / 2);
+		const Rgba client = Sample(pixels, 200, 20, MenuBarHeight() + 10);
+		CHECK(Differs(barMid, client));
+		CHECK(barMid.a == 0xff);
+	}
+}
+
+TEST_CASE("menu bar model enablement matches edit flags") {
+	MenuBarModel model;
+	CHECK(model.IsEnabled(ApplicationAction::Save));
+	CHECK(model.IsEnabled(ApplicationAction::Undo));
+	model.undoEnabled = false;
+	model.copyEnabled = false;
+	CHECK_FALSE(model.IsEnabled(ApplicationAction::Undo));
+	CHECK_FALSE(model.IsEnabled(ApplicationAction::Copy));
+	CHECK(model.IsEnabled(ApplicationAction::Paste));
+	CHECK(model.IsEnabled(ApplicationAction::Quit));
+}
