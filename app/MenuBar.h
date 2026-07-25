@@ -1,7 +1,8 @@
-// Fixed logical layout, hit-testing, and opaque painting for the File / Edit menu bar.
-// main owns MenuBarModel, converts input into model transitions, and paints via
-// ApplicationEditor permanent chrome and the overlay slot for open dropdowns.
-// Layout and hit-testing stay Wayland-free.
+// Fixed logical layout, hit-testing, open-menu pointer navigation, and opaque
+// painting for the File / Edit menu bar. main owns MenuBarModel, converts input
+// into model transitions via HandleMenuBarPointer, dispatches returned actions,
+// and paints the permanent bar plus the overlay slot for open dropdowns.
+// Layout, hit-testing, and pointer transitions stay Wayland-free.
 
 #ifndef MENUBAR_H
 #define MENUBAR_H
@@ -13,6 +14,7 @@
 #include <vector>
 
 #include "ApplicationAction.h"
+#include "ApplicationInput.h"
 #include "Geometry.h"
 #include "Platform.h"
 
@@ -21,9 +23,21 @@ namespace Scalpel {
 /** Fixed menu bar height in logical client pixels. */
 [[nodiscard]] int MenuBarHeight() noexcept;
 
+/** What a left-button press started on, for matching release activation. */
+enum class MenuBarPressKind {
+	Heading,
+	Item,
+};
+
+struct MenuBarPressOrigin {
+	MenuBarPressKind kind = MenuBarPressKind::Heading;
+	ApplicationMenu menu = ApplicationMenu::File;
+	ApplicationAction action = ApplicationAction::NewTab;
+};
+
 /**
- * Transient menu bar state: open dropdown, hover, keyboard focus, and item
- * enablement. Pointer press tracking is added with input handling.
+ * Transient menu bar state: open dropdown, hover, keyboard focus, press origin,
+ * and item enablement.
  */
 struct MenuBarModel {
 	/** Open dropdown; nullopt means closed. */
@@ -34,6 +48,8 @@ struct MenuBarModel {
 	std::optional<ApplicationAction> hoveredItem;
 	/** Keyboard-focused actionable item while a dropdown is open. */
 	std::optional<ApplicationAction> focusedItem;
+	/** Left-button press origin for press/release matching. */
+	std::optional<MenuBarPressOrigin> pressOrigin;
 
 	bool undoEnabled = true;
 	bool redoEnabled = true;
@@ -95,6 +111,25 @@ struct MenuBarHitResult {
 };
 
 /**
+ * Result of applying one pointer event to the menu bar model.
+ * main uses consumed to stop tab-strip and editor delivery, dirty flags for
+ * repaint, activated for the shared action dispatcher, and pointerOverMenu for
+ * the arrow cursor over headings and the open dropdown.
+ */
+struct MenuBarPointerResult {
+	/** True when the event must not reach the tab strip or editor. */
+	bool consumed = false;
+	/** Permanent bar paint needs InvalidateTopChrome (hover / open heading). */
+	bool barDirty = false;
+	/** Open, close, or dropdown hover needs full-frame invalidation. */
+	bool frameDirty = false;
+	/** Enabled item activated by a matching press and release. */
+	std::optional<ApplicationAction> activated;
+	/** Pointer is over the bar band or the open dropdown panel. */
+	bool pointerOverMenu = false;
+};
+
+/**
  * Lay out the permanent bar for frameWidth logical pixels at y = 0.
  * When model.openMenu is set, places the dropdown under that heading and
  * clamps it into the frame. Zero or negative width yields an empty layout.
@@ -105,6 +140,22 @@ struct MenuBarHitResult {
 
 [[nodiscard]] MenuBarHitResult HitTestMenuBar(const MenuBarLayout &layout,
 	Scintilla::Internal::Point point) noexcept;
+
+/**
+ * Close the open dropdown and clear focus, item hover, and press origin.
+ * Leaves heading hover alone so the bar can still show hover after close.
+ */
+void CloseMenuBar(MenuBarModel &model) noexcept;
+
+/**
+ * Apply one pointer event to the menu model.
+ * layout must match the current openMenu and frame size. When
+ * editorMouseCaptured is true, the menu does not consume motion or release so
+ * Scintilla can finish an in-progress selection drag.
+ */
+[[nodiscard]] MenuBarPointerResult HandleMenuBarPointer(MenuBarModel &model,
+	const MenuBarLayout &layout, const PointerInput &input,
+	bool editorMouseCaptured) noexcept;
 
 /**
  * Owns the menu font. Construct once beside the shell and reuse across frames.

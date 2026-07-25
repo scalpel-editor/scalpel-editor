@@ -349,6 +349,211 @@ MenuBarHitResult HitTestMenuBar(const MenuBarLayout &layout, Point point) noexce
 	return {MenuBarHit::Bar, ApplicationMenu::File, ApplicationAction::NewTab};
 }
 
+void CloseMenuBar(MenuBarModel &model) noexcept {
+	model.openMenu.reset();
+	model.hoveredItem.reset();
+	model.focusedItem.reset();
+	model.pressOrigin.reset();
+}
+
+namespace {
+
+bool ItemEnabled(const MenuBarLayout &layout, ApplicationAction action) noexcept {
+	for (const MenuBarItemLayout &item : layout.items) {
+		if (item.action == action) {
+			return item.enabled;
+		}
+	}
+	return false;
+}
+
+bool SetOptional(std::optional<ApplicationMenu> &slot,
+	std::optional<ApplicationMenu> next) noexcept {
+	if (slot == next) {
+		return false;
+	}
+	slot = next;
+	return true;
+}
+
+bool SetOptional(std::optional<ApplicationAction> &slot,
+	std::optional<ApplicationAction> next) noexcept {
+	if (slot == next) {
+		return false;
+	}
+	slot = next;
+	return true;
+}
+
+bool PointerOverMenuChrome(const MenuBarLayout &layout, Point point) noexcept {
+	return NonEmptyContains(layout.bar, point) ||
+		NonEmptyContains(layout.dropdown, point);
+}
+
+}
+
+MenuBarPointerResult HandleMenuBarPointer(MenuBarModel &model,
+	const MenuBarLayout &layout, const PointerInput &input,
+	bool editorMouseCaptured) noexcept {
+	MenuBarPointerResult result;
+	const Point point(input.x, input.y);
+
+	if (input.action == PointerAction::Leave) {
+		result.barDirty = SetOptional(model.hoveredHeading, std::nullopt);
+		const bool itemCleared = SetOptional(model.hoveredItem, std::nullopt);
+		if (itemCleared) {
+			result.frameDirty = model.openMenu.has_value();
+		}
+		// Leave does not close the menu; focus loss does that later.
+		model.pressOrigin.reset();
+		result.pointerOverMenu = false;
+		// Surface leave still needs to clear editor hover and capture.
+		result.consumed = false;
+		return result;
+	}
+
+	const MenuBarHitResult hit = HitTestMenuBar(layout, point);
+	result.pointerOverMenu = PointerOverMenuChrome(layout, point) ||
+		hit.kind != MenuBarHit::None;
+
+	// A selection drag that began in the editor keeps motion and release.
+	// The menu must not steal that release or intercept capture motion.
+	if (editorMouseCaptured) {
+		result.consumed = false;
+		return result;
+	}
+
+	const bool menuOpen = model.openMenu.has_value();
+
+	if (input.action == PointerAction::Move) {
+		if (hit.kind == MenuBarHit::Heading) {
+			result.barDirty = SetOptional(model.hoveredHeading, hit.menu);
+			// Moving across headings while open switches menus.
+			if (menuOpen && *model.openMenu != hit.menu) {
+				model.openMenu = hit.menu;
+				model.hoveredItem.reset();
+				model.focusedItem.reset();
+				model.pressOrigin.reset();
+				result.frameDirty = true;
+			}
+			if (SetOptional(model.hoveredItem, std::nullopt) && menuOpen) {
+				result.frameDirty = true;
+			}
+		} else if (hit.kind == MenuBarHit::Item) {
+			result.barDirty = SetOptional(model.hoveredHeading, std::nullopt);
+			if (SetOptional(model.hoveredItem, hit.action)) {
+				result.frameDirty = true;
+			}
+		} else {
+			result.barDirty = SetOptional(model.hoveredHeading, std::nullopt);
+			if (SetOptional(model.hoveredItem, std::nullopt) && menuOpen) {
+				result.frameDirty = true;
+			}
+		}
+		// Consume moves over the bar or open dropdown so the editor does not
+		// show text-cursor hover under chrome.
+		result.consumed = menuOpen || hit.kind != MenuBarHit::None;
+		return result;
+	}
+
+	if (input.action == PointerAction::Scroll) {
+		// Wheel over chrome or an open menu must not scroll the document.
+		result.consumed = menuOpen || hit.kind != MenuBarHit::None;
+		return result;
+	}
+
+	if (input.action == PointerAction::Press && input.button == 0) {
+		if (hit.kind == MenuBarHit::Heading) {
+			if (menuOpen && *model.openMenu == hit.menu) {
+				// Toggle: press the open heading again to close.
+				CloseMenuBar(model);
+				result.barDirty = true;
+				result.frameDirty = true;
+			} else {
+				const bool opening = !menuOpen;
+				const bool switching = menuOpen && *model.openMenu != hit.menu;
+				model.openMenu = hit.menu;
+				model.hoveredItem.reset();
+				model.focusedItem.reset();
+				model.pressOrigin = MenuBarPressOrigin{
+					MenuBarPressKind::Heading, hit.menu, ApplicationAction::NewTab};
+				model.hoveredHeading = hit.menu;
+				result.barDirty = true;
+				result.frameDirty = opening || switching;
+			}
+			result.consumed = true;
+			return result;
+		}
+
+		if (menuOpen && hit.kind == MenuBarHit::Item) {
+			model.pressOrigin = MenuBarPressOrigin{
+				MenuBarPressKind::Item, hit.menu, hit.action};
+			model.hoveredItem = hit.action;
+			result.frameDirty = true;
+			result.consumed = true;
+			return result;
+		}
+
+		if (menuOpen) {
+			// Press on dropdown padding, empty bar, or outside: close and
+			// consume so the click cannot activate a tab or move the caret.
+			CloseMenuBar(model);
+			result.barDirty = true;
+			result.frameDirty = true;
+			result.consumed = true;
+			return result;
+		}
+
+		// Closed: empty bar chrome still swallows presses.
+		result.consumed = hit.kind != MenuBarHit::None;
+		return result;
+	}
+
+	if (input.action == PointerAction::Release && input.button == 0) {
+		if (!model.pressOrigin.has_value()) {
+			// Outside dismissal closed on press; still consume releases that
+			// land on chrome or while a menu was open for this gesture.
+			result.consumed = menuOpen || hit.kind != MenuBarHit::None;
+			return result;
+		}
+
+		const MenuBarPressOrigin origin = *model.pressOrigin;
+		model.pressOrigin.reset();
+
+		if (origin.kind == MenuBarPressKind::Item &&
+			hit.kind == MenuBarHit::Item &&
+			hit.action == origin.action &&
+			ItemEnabled(layout, hit.action)) {
+			// Matching press/release on an enabled item runs the action and
+			// closes before the caller dispatches application state changes.
+			CloseMenuBar(model);
+			result.activated = hit.action;
+			result.barDirty = true;
+			result.frameDirty = true;
+			result.consumed = true;
+			return result;
+		}
+
+		// Mismatched release, disabled item, or heading press: no activation.
+		// Disabled items stay open so the user can try another row.
+		if (origin.kind == MenuBarPressKind::Item &&
+			hit.kind == MenuBarHit::Item &&
+			hit.action == origin.action &&
+			!ItemEnabled(layout, hit.action)) {
+			result.consumed = true;
+			return result;
+		}
+
+		result.consumed = menuOpen || hit.kind != MenuBarHit::None;
+		return result;
+	}
+
+	// Other buttons: swallow over chrome / open menu only.
+	result.consumed = menuOpen || hit.kind != MenuBarHit::None;
+	return result;
+}
+
+
 MenuBarPainter::MenuBarPainter() {
 	labelFont = Font::Allocate(FontParameters{"system-ui", PixelSizeFromPoints(12.0f)});
 }

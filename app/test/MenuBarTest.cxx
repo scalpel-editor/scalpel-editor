@@ -7,6 +7,7 @@
 
 #include "ApplicationAction.h"
 #include "ApplicationEditor.h"
+#include "ApplicationInput.h"
 #include "MenuBar.h"
 #include "TabStrip.h"
 
@@ -16,6 +17,8 @@ using Scalpel::ApplicationActionInfo;
 using Scalpel::ApplicationActionTable;
 using Scalpel::ApplicationEditor;
 using Scalpel::ApplicationMenu;
+using Scalpel::CloseMenuBar;
+using Scalpel::HandleMenuBarPointer;
 using Scalpel::HitTestMenuBar;
 using Scalpel::LayoutMenuBar;
 using Scalpel::MenuBarHeight;
@@ -25,6 +28,10 @@ using Scalpel::MenuBarItemLayout;
 using Scalpel::MenuBarLayout;
 using Scalpel::MenuBarModel;
 using Scalpel::MenuBarPainter;
+using Scalpel::MenuBarPointerResult;
+using Scalpel::MenuBarPressKind;
+using Scalpel::PointerAction;
+using Scalpel::PointerInput;
 using Scintilla::Internal::PRectangle;
 using Scintilla::Internal::Point;
 
@@ -106,6 +113,278 @@ const MenuBarItemLayout *FindItem(const MenuBarLayout &layout,
 	return nullptr;
 }
 
+PointerInput MakePointer(PointerAction action, double x, double y,
+	int button = -1) {
+	PointerInput input;
+	input.action = action;
+	input.x = x;
+	input.y = y;
+	input.button = button;
+	return input;
+}
+
+MenuBarLayout Layout(const MenuBarModel &model, int width = 400,
+	int height = 300) {
+	return LayoutMenuBar(width, height, model);
+}
+
+}
+
+TEST_CASE("menu bar pointer opens toggles and switches headings") {
+	MenuBarModel model;
+	const int width = 400;
+	const int height = 300;
+
+	SECTION("left press on File opens the File menu") {
+		const MenuBarLayout closed = Layout(model, width, height);
+		const Point file = Center(closed.headings[0].bounds);
+		const MenuBarPointerResult open = HandleMenuBarPointer(model, closed,
+			MakePointer(PointerAction::Press, file.x, file.y, 0), false);
+		CHECK(open.consumed);
+		CHECK(open.frameDirty);
+		CHECK_FALSE(open.activated.has_value());
+		REQUIRE(model.openMenu.has_value());
+		CHECK(*model.openMenu == ApplicationMenu::File);
+		CHECK(model.pressOrigin.has_value());
+		CHECK(model.pressOrigin->kind == MenuBarPressKind::Heading);
+	}
+
+	SECTION("pressing the open heading again closes it") {
+		model.openMenu = ApplicationMenu::File;
+		const MenuBarLayout openLayout = Layout(model, width, height);
+		const Point file = Center(openLayout.headings[0].bounds);
+		const MenuBarPointerResult closed = HandleMenuBarPointer(model,
+			openLayout, MakePointer(PointerAction::Press, file.x, file.y, 0),
+			false);
+		CHECK(closed.consumed);
+		CHECK(closed.frameDirty);
+		CHECK_FALSE(model.openMenu.has_value());
+		CHECK_FALSE(model.pressOrigin.has_value());
+	}
+
+	SECTION("moving across headings while open switches menus") {
+		model.openMenu = ApplicationMenu::File;
+		const MenuBarLayout fileLayout = Layout(model, width, height);
+		const Point edit = Center(fileLayout.headings[1].bounds);
+		const MenuBarPointerResult switched = HandleMenuBarPointer(model,
+			fileLayout, MakePointer(PointerAction::Move, edit.x, edit.y),
+			false);
+		CHECK(switched.consumed);
+		CHECK(switched.frameDirty);
+		REQUIRE(model.openMenu.has_value());
+		CHECK(*model.openMenu == ApplicationMenu::Edit);
+		CHECK(model.hoveredHeading.has_value());
+		CHECK(*model.hoveredHeading == ApplicationMenu::Edit);
+		CHECK_FALSE(model.hoveredItem.has_value());
+	}
+
+	SECTION("press on Edit while File is open switches without closing") {
+		model.openMenu = ApplicationMenu::File;
+		const MenuBarLayout fileLayout = Layout(model, width, height);
+		const Point edit = Center(fileLayout.headings[1].bounds);
+		const MenuBarPointerResult switched = HandleMenuBarPointer(model,
+			fileLayout, MakePointer(PointerAction::Press, edit.x, edit.y, 0),
+			false);
+		CHECK(switched.consumed);
+		CHECK(switched.frameDirty);
+		REQUIRE(model.openMenu.has_value());
+		CHECK(*model.openMenu == ApplicationMenu::Edit);
+	}
+}
+
+TEST_CASE("menu bar pointer item hover and press release activation") {
+	MenuBarModel model;
+	model.openMenu = ApplicationMenu::File;
+	const MenuBarLayout layout = Layout(model);
+	const auto *save = FindItem(layout, ApplicationAction::Save);
+	const auto *open = FindItem(layout, ApplicationAction::Open);
+	REQUIRE(save);
+	REQUIRE(open);
+	const Point savePt = Center(save->row);
+	const Point openPt = Center(open->row);
+
+	SECTION("move over an item sets hoveredItem") {
+		const MenuBarPointerResult hover = HandleMenuBarPointer(model, layout,
+			MakePointer(PointerAction::Move, savePt.x, savePt.y), false);
+		CHECK(hover.consumed);
+		CHECK(hover.frameDirty);
+		CHECK(hover.pointerOverMenu);
+		REQUIRE(model.hoveredItem.has_value());
+		CHECK(*model.hoveredItem == ApplicationAction::Save);
+	}
+
+	SECTION("matching press and release activates and closes") {
+		const MenuBarPointerResult press = HandleMenuBarPointer(model, layout,
+			MakePointer(PointerAction::Press, savePt.x, savePt.y, 0), false);
+		CHECK(press.consumed);
+		CHECK_FALSE(press.activated.has_value());
+		REQUIRE(model.pressOrigin.has_value());
+		CHECK(model.pressOrigin->kind == MenuBarPressKind::Item);
+		CHECK(model.pressOrigin->action == ApplicationAction::Save);
+
+		// Release layout still open File with Save.
+		const MenuBarPointerResult release = HandleMenuBarPointer(model, layout,
+			MakePointer(PointerAction::Release, savePt.x, savePt.y, 0), false);
+		CHECK(release.consumed);
+		CHECK(release.frameDirty);
+		REQUIRE(release.activated.has_value());
+		CHECK(*release.activated == ApplicationAction::Save);
+		CHECK_FALSE(model.openMenu.has_value());
+		CHECK_FALSE(model.pressOrigin.has_value());
+	}
+
+	SECTION("press on one item and release on another does not activate") {
+		(void)HandleMenuBarPointer(model, layout,
+			MakePointer(PointerAction::Press, savePt.x, savePt.y, 0), false);
+		const MenuBarPointerResult release = HandleMenuBarPointer(model, layout,
+			MakePointer(PointerAction::Release, openPt.x, openPt.y, 0), false);
+		CHECK(release.consumed);
+		CHECK_FALSE(release.activated.has_value());
+		// Menu stays open after a mismatched release.
+		REQUIRE(model.openMenu.has_value());
+		CHECK(*model.openMenu == ApplicationMenu::File);
+		CHECK_FALSE(model.pressOrigin.has_value());
+	}
+}
+
+TEST_CASE("menu bar pointer rejects disabled items") {
+	MenuBarModel model;
+	model.openMenu = ApplicationMenu::Edit;
+	model.undoEnabled = false;
+	const MenuBarLayout layout = Layout(model);
+	const auto *undo = FindItem(layout, ApplicationAction::Undo);
+	REQUIRE(undo);
+	CHECK_FALSE(undo->enabled);
+	const Point undoPt = Center(undo->row);
+
+	(void)HandleMenuBarPointer(model, layout,
+		MakePointer(PointerAction::Press, undoPt.x, undoPt.y, 0), false);
+	const MenuBarPointerResult release = HandleMenuBarPointer(model, layout,
+		MakePointer(PointerAction::Release, undoPt.x, undoPt.y, 0), false);
+	CHECK(release.consumed);
+	CHECK_FALSE(release.activated.has_value());
+	// Disabled rows do not close the menu.
+	REQUIRE(model.openMenu.has_value());
+	CHECK(*model.openMenu == ApplicationMenu::Edit);
+}
+
+TEST_CASE("menu bar pointer outside dismissal without click-through") {
+	MenuBarModel model;
+	model.openMenu = ApplicationMenu::File;
+	const MenuBarLayout layout = Layout(model);
+
+	SECTION("press outside bar and dropdown closes and is consumed") {
+		const MenuBarPointerResult outside = HandleMenuBarPointer(model, layout,
+			MakePointer(PointerAction::Press, 200, 250, 0), false);
+		CHECK(outside.consumed);
+		CHECK(outside.frameDirty);
+		CHECK_FALSE(model.openMenu.has_value());
+		CHECK_FALSE(outside.activated.has_value());
+	}
+
+	SECTION("press on empty bar chrome while open closes and is consumed") {
+		const MenuBarPointerResult bar = HandleMenuBarPointer(model, layout,
+			MakePointer(PointerAction::Press, 300, MenuBarHeight() / 2.0, 0),
+			false);
+		CHECK(bar.consumed);
+		CHECK(bar.frameDirty);
+		CHECK_FALSE(model.openMenu.has_value());
+	}
+
+	SECTION("press on dropdown padding closes without activating") {
+		const Point pad(layout.dropdown.left + 2, layout.dropdown.top + 1);
+		const MenuBarPointerResult padPress = HandleMenuBarPointer(model,
+			layout, MakePointer(PointerAction::Press, pad.x, pad.y, 0), false);
+		CHECK(padPress.consumed);
+		CHECK_FALSE(model.openMenu.has_value());
+		CHECK_FALSE(padPress.activated.has_value());
+	}
+
+	SECTION("closed menu does not consume presses in the editor body") {
+		CloseMenuBar(model);
+		const MenuBarLayout closed = Layout(model);
+		const MenuBarPointerResult body = HandleMenuBarPointer(model, closed,
+			MakePointer(PointerAction::Press, 200, 200, 0), false);
+		CHECK_FALSE(body.consumed);
+		CHECK_FALSE(model.openMenu.has_value());
+	}
+}
+
+TEST_CASE("menu bar pointer leave clears hover and keeps menu open") {
+	MenuBarModel model;
+	model.openMenu = ApplicationMenu::File;
+	model.hoveredHeading = ApplicationMenu::File;
+	model.hoveredItem = ApplicationAction::Save;
+	model.pressOrigin = {MenuBarPressKind::Item, ApplicationMenu::File,
+		ApplicationAction::Save};
+	const MenuBarLayout layout = Layout(model);
+
+	const MenuBarPointerResult leave = HandleMenuBarPointer(model, layout,
+		MakePointer(PointerAction::Leave, 0, 0), false);
+	CHECK_FALSE(leave.consumed);
+	CHECK_FALSE(leave.pointerOverMenu);
+	CHECK(leave.barDirty);
+	CHECK(leave.frameDirty);
+	REQUIRE(model.openMenu.has_value());
+	CHECK(*model.openMenu == ApplicationMenu::File);
+	CHECK_FALSE(model.hoveredHeading.has_value());
+	CHECK_FALSE(model.hoveredItem.has_value());
+	CHECK_FALSE(model.pressOrigin.has_value());
+}
+
+TEST_CASE("menu bar pointer respects editor capture") {
+	MenuBarModel model;
+	const MenuBarLayout closed = Layout(model);
+	const Point file = Center(closed.headings[0].bounds);
+
+	// Capture blocks open.
+	const MenuBarPointerResult press = HandleMenuBarPointer(model, closed,
+		MakePointer(PointerAction::Press, file.x, file.y, 0), true);
+	CHECK_FALSE(press.consumed);
+	CHECK_FALSE(model.openMenu.has_value());
+
+	// Capture blocks activation release while a menu is already open.
+	model.openMenu = ApplicationMenu::File;
+	model.pressOrigin = {MenuBarPressKind::Item, ApplicationMenu::File,
+		ApplicationAction::Save};
+	const MenuBarLayout openLayout = Layout(model);
+	const auto *save = FindItem(openLayout, ApplicationAction::Save);
+	REQUIRE(save);
+	const Point savePt = Center(save->row);
+	const MenuBarPointerResult release = HandleMenuBarPointer(model, openLayout,
+		MakePointer(PointerAction::Release, savePt.x, savePt.y, 0), true);
+	CHECK_FALSE(release.consumed);
+	CHECK_FALSE(release.activated.has_value());
+	// Capture path does not clear open state; the drag still owns the pointer.
+	REQUIRE(model.openMenu.has_value());
+}
+
+TEST_CASE("menu bar pointer reports arrow cursor over bar and dropdown") {
+	MenuBarModel model;
+	const MenuBarLayout closed = Layout(model);
+	const Point file = Center(closed.headings[0].bounds);
+	const MenuBarPointerResult overHeading = HandleMenuBarPointer(model, closed,
+		MakePointer(PointerAction::Move, file.x, file.y), false);
+	CHECK(overHeading.pointerOverMenu);
+	CHECK(overHeading.consumed);
+	REQUIRE(model.hoveredHeading.has_value());
+	CHECK(*model.hoveredHeading == ApplicationMenu::File);
+
+	model.openMenu = ApplicationMenu::File;
+	const MenuBarLayout openLayout = Layout(model);
+	const auto *save = FindItem(openLayout, ApplicationAction::Save);
+	REQUIRE(save);
+	const Point savePt = Center(save->row);
+	const MenuBarPointerResult overItem = HandleMenuBarPointer(model, openLayout,
+		MakePointer(PointerAction::Move, savePt.x, savePt.y), false);
+	CHECK(overItem.pointerOverMenu);
+	CHECK(overItem.consumed);
+
+	const MenuBarPointerResult overBody = HandleMenuBarPointer(model, openLayout,
+		MakePointer(PointerAction::Move, 50, 280), false);
+	// Open menu consumes body moves so editor hover does not run underneath.
+	CHECK(overBody.consumed);
+	CHECK_FALSE(overBody.pointerOverMenu);
 }
 
 TEST_CASE("menu bar height is fixed and positive") {

@@ -587,33 +587,88 @@ Scalpel::TabStripHitResult UpdateTabStripPointerState(
 }
 
 /**
- * Handle pointer events in permanent top chrome (menu bar + tab strip).
- * Returns true when the event must not reach the editor. Menu heading and
- * dropdown activation land with menu pointer work; the bar still consumes
- * input so chrome clicks cannot move the caret.
+ * Apply menu pointer transitions, then tab-strip handling.
+ * Returns true when the event must not reach the editor. An open menu owns
+ * outside presses so they cannot activate tabs or move the caret. Editor
+ * capture still bypasses both chrome paths so selection release is delivered.
  */
-bool HandleTabStripPointer(const Scalpel::PointerInput &input,
-	Scalpel::TabStripModel &model,
+bool HandleTopChromePointer(const Scalpel::PointerInput &input,
+	Scalpel::MenuBarModel &menuModel,
+	Scalpel::TabStripModel &stripModel,
 	Scalpel::DocumentWorkspace &workspace,
 	Scalpel::ApplicationEditor &editor,
 	bool &pointerOverChrome) {
-	const int stripWidth = editor.FrameWidth();
-	const Scalpel::TabStripHitResult hit =
-		UpdateTabStripPointerState(input, model, editor, pointerOverChrome);
-	const bool inStrip = hit.kind != Scalpel::TabStripHit::None;
-	const bool inChrome = inStrip || PointerInTopChrome(input, editor);
+	const bool captured = editor.WindowState().mouseCaptured;
+	const Scalpel::MenuBarLayout menuLayout = Scalpel::LayoutMenuBar(
+		editor.FrameWidth(), editor.FrameHeight(), menuModel);
+	const Scalpel::MenuBarPointerResult menuResult =
+		Scalpel::HandleMenuBarPointer(menuModel, menuLayout, input, captured);
+
+	if (menuResult.barDirty) {
+		editor.InvalidateTopChrome();
+	}
+	if (menuResult.frameDirty) {
+		// Open/close and dropdown hover need a full frame so the overlay path
+		// cannot leave a stale panel.
+		editor.InvalidateClient();
+	}
+	if (menuResult.activated) {
+		// Dropdown is already closed; run the shared action path.
+		Scalpel::DispatchApplicationAction(
+			*menuResult.activated, workspace, editor);
+	}
 
 	// A selection drag that began in the editor still owns motion and release
-	// over the strip. In particular, Scintilla must see release to drop capture.
-	if (editor.WindowState().mouseCaptured) {
+	// over chrome. Scintilla must see release to drop capture; the menu
+	// handler already refused to consume those events.
+	if (captured) {
+		(void)UpdateTabStripPointerState(input, stripModel, editor, pointerOverChrome);
+		if (menuResult.pointerOverMenu) {
+			pointerOverChrome = true;
+		}
 		return false;
 	}
+
+	// While a menu is open it owns presses and moves; keep strip hover clear
+	// so tabs under the dropdown do not highlight.
+	if (menuModel.openMenu.has_value()) {
+		if (stripModel.hoveredId != 0 || stripModel.closeHovered) {
+			stripModel.hoveredId = 0;
+			stripModel.closeHovered = false;
+			editor.InvalidateTopChrome();
+		}
+		pointerOverChrome = menuResult.pointerOverMenu ||
+			PointerInTopChrome(input, editor);
+		// Surface leave still needs to clear editor hover.
+		if (input.action == Scalpel::PointerAction::Leave) {
+			return false;
+		}
+		return true;
+	}
+
+	if (menuResult.consumed) {
+		// Closed menu still swallows bar-band events (heading open, empty bar).
+		(void)UpdateTabStripPointerState(input, stripModel, editor, pointerOverChrome);
+		if (menuResult.pointerOverMenu) {
+			pointerOverChrome = true;
+		}
+		return true;
+	}
+
+	const Scalpel::TabStripHitResult stripHit =
+		UpdateTabStripPointerState(input, stripModel, editor, pointerOverChrome);
+	if (menuResult.pointerOverMenu) {
+		pointerOverChrome = true;
+	}
+
+	const bool inStrip = stripHit.kind != Scalpel::TabStripHit::None;
+	const bool inChrome = inStrip || PointerInTopChrome(input, editor);
 	if (!inChrome) {
 		// Surface leave still needs to clear editor hover.
 		return false;
 	}
 	if (!inStrip) {
-		// Menu bar band: consume without action until menu pointer handling.
+		// Menu bar band already handled above when it owns the hit.
 		return true;
 	}
 
@@ -634,10 +689,11 @@ bool HandleTabStripPointer(const Scalpel::PointerInput &input,
 		}
 		if (delta != 0) {
 			const int next = Scalpel::AdjustTabStripScroll(
-				stripWidth, model.tabs.size(), model.scrollOffset, delta,
+				editor.FrameWidth(), stripModel.tabs.size(),
+				stripModel.scrollOffset, delta,
 				Scalpel::TabStripPreferredTabWidth() / 2);
-			if (next != model.scrollOffset) {
-				model.scrollOffset = next;
+			if (next != stripModel.scrollOffset) {
+				stripModel.scrollOffset = next;
 				editor.InvalidateTopChrome();
 			}
 		}
@@ -645,11 +701,11 @@ bool HandleTabStripPointer(const Scalpel::PointerInput &input,
 	}
 
 	if (input.action == Scalpel::PointerAction::Press && input.button == 0) {
-		if (hit.kind == Scalpel::TabStripHit::Tab) {
-			workspace.ActivateTab(hit.tabId);
-		} else if (hit.kind == Scalpel::TabStripHit::Close) {
-			workspace.CloseTab(hit.tabId);
-		} else if (hit.kind == Scalpel::TabStripHit::Add) {
+		if (stripHit.kind == Scalpel::TabStripHit::Tab) {
+			workspace.ActivateTab(stripHit.tabId);
+		} else if (stripHit.kind == Scalpel::TabStripHit::Close) {
+			workspace.CloseTab(stripHit.tabId);
+		} else if (stripHit.kind == Scalpel::TabStripHit::Add) {
 			workspace.NewTab();
 		}
 		return true;
@@ -711,6 +767,7 @@ int main() {
 		int cardFocus = 0;
 		bool quitAccepted = false;
 		bool cardOverlayBound = false;
+		bool menuOverlayBound = false;
 		bool pointerOverChrome = false;
 		std::optional<Scalpel::UnsavedCardHit> promptPressHit;
 
@@ -728,6 +785,13 @@ int main() {
 					width, stripModel, Scalpel::MenuBarHeight());
 				stripPainter.Paint(surface, stripLayout, stripModel);
 			});
+
+		const auto paintMenuDropdown =
+			[&](Scintilla::Internal::Surface &surface, int width, int height) {
+				const Scalpel::MenuBarLayout menuLayout =
+					Scalpel::LayoutMenuBar(width, height, menuModel);
+				menuPainter.PaintDropdown(surface, menuLayout, menuModel);
+			};
 
 		const auto paintUnsavedCard =
 			[&](Scintilla::Internal::Surface &surface, int width, int height) {
@@ -809,8 +873,8 @@ int main() {
 				} else {
 					const auto &pointer =
 						std::get<Scalpel::PointerInput>(input);
-					if (!HandleTabStripPointer(pointer, stripModel, workspace,
-						editor, pointerOverChrome)) {
+					if (!HandleTopChromePointer(pointer, menuModel, stripModel,
+						workspace, editor, pointerOverChrome)) {
 						editor.HandlePointerInput(pointer);
 					}
 				}
@@ -832,20 +896,37 @@ int main() {
 			SynchronizeTextInput(editor, window);
 			if (workspace.PromptActive()) {
 				window.SetCursor(Scintilla::Internal::Window::Cursor::arrow);
-				// Bind only while active so PresentFrame full-swaps only then.
+				// Unsaved card wins the overlay slot over an open menu.
+				if (menuOverlayBound) {
+					menuOverlayBound = false;
+				}
 				if (!cardOverlayBound) {
 					editor.SetOverlayPainter(paintUnsavedCard);
 					cardOverlayBound = true;
 				}
 				// Full client damage so Wayland/EGL damage matches the scrim.
 				editor.InvalidateClient();
-			} else {
+			} else if (menuModel.openMenu.has_value()) {
 				window.SetCursor(pointerOverChrome ?
 					Scintilla::Internal::Window::Cursor::arrow :
 					editor.WindowState().cursor);
 				if (cardOverlayBound) {
+					cardOverlayBound = false;
+				}
+				// Dropdown uses the overlay path only while a menu is open.
+				if (!menuOverlayBound) {
+					editor.SetOverlayPainter(paintMenuDropdown);
+					menuOverlayBound = true;
+					editor.InvalidateClient();
+				}
+			} else {
+				window.SetCursor(pointerOverChrome ?
+					Scintilla::Internal::Window::Cursor::arrow :
+					editor.WindowState().cursor);
+				if (cardOverlayBound || menuOverlayBound) {
 					editor.SetOverlayPainter(nullptr);
 					cardOverlayBound = false;
+					menuOverlayBound = false;
 				}
 			}
 			QueueFrameDamage(editor, window);
