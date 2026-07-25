@@ -50,6 +50,19 @@ target_compile_options(documentWorkspaceTest PRIVATE -Wall -Wextra)
 
 add_test(NAME document-workspace COMMAND documentWorkspaceTest)
 
+add_executable(recentFilesTest
+  RecentFilesTest.cxx
+  ApplicationTestMain.cxx
+)
+target_include_directories(recentFilesTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(recentFilesTest PRIVATE scalpel_application)
+target_compile_options(recentFilesTest PRIVATE -Wall -Wextra)
+
+add_test(NAME recent-files COMMAND recentFilesTest)
+
 add_executable(unsavedChangesPromptTest
   UnsavedChangesPromptTest.cxx
   ApplicationTestMain.cxx

@@ -176,6 +176,7 @@ add_library(scalpel_application OBJECT
   DocumentFile.cxx
   DocumentWorkspace.cxx
   MenuBar.cxx
+  RecentFiles.cxx
   TabStrip.cxx
   UnsavedChangesCard.cxx
   UnsavedChangesPrompt.cxx
