@@ -30,6 +30,17 @@ enum class DocumentShellRequest {
 	RefreshTabs,
 };
 
+enum class DocumentFileOperation {
+	Open,
+	Save,
+};
+
+/** One failed document read or write for the shell to present to the user. */
+struct DocumentFileError {
+	DocumentFileOperation operation = DocumentFileOperation::Open;
+	std::string path;
+};
+
 /** Snapshot of one tab for the strip and tests. */
 struct DocumentTabInfo {
 	DocumentId id = 0;
@@ -143,6 +154,11 @@ public:
 	void HandleOpenResult(bool accepted, std::string_view openedPath);
 	void HandleOpenResult(bool accepted, const std::vector<std::string> &paths);
 	/**
+	 * Open one path without a portal. Returns true when it selected an existing
+	 * tab or loaded a new one. Used by the Recent menu.
+	 */
+	[[nodiscard]] bool OpenPath(std::string_view path);
+	/**
 	 * Apply a Save As path to the active tab without a portal request ID.
 	 * When the prompt is awaiting Save As, success continues the pending close;
 	 * cancel or write failure keeps it.
@@ -156,6 +172,10 @@ public:
 		std::string_view savedPath);
 
 	[[nodiscard]] std::vector<DocumentShellRequest> TakeRequests();
+	/** Successful Open and Save As paths, in completion order. */
+	[[nodiscard]] std::vector<std::string> TakeRecentPaths();
+	/** Failed reads and writes, in occurrence order. */
+	[[nodiscard]] std::vector<DocumentFileError> TakeFileErrors();
 
 private:
 	struct Tab {
@@ -200,7 +220,7 @@ private:
 	/** Remove the tab at index; keeps at least one tab via a fresh untitled. */
 	void RemoveTabAt(std::size_t index);
 	void EnsureActiveMatchesEditor();
-	void ApplyOpenPaths(const std::vector<std::string> &paths);
+	[[nodiscard]] bool ApplyOpenPaths(const std::vector<std::string> &paths);
 	void ApplySaveResult(DocumentId tabId, bool accepted,
 		std::string_view savedPath, uint64_t promptGeneration);
 
@@ -231,6 +251,8 @@ private:
 	std::unordered_map<uint64_t, PortalIntent> portalIntents;
 	UnsavedChangesPrompt prompt;
 	std::vector<DocumentShellRequest> requests;
+	std::vector<std::string> recentPaths;
+	std::vector<DocumentFileError> fileErrors;
 };
 
 }

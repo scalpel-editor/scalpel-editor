@@ -72,6 +72,7 @@ bool DocumentWorkspace::SaveToPath(DocumentId tabId,
 	}
 	if (!WriteDocumentFile(destination, editor.Text(tabId))) {
 		std::cerr << "scalpel-editor: failed to write " << destination << '\n';
+		fileErrors.push_back({DocumentFileOperation::Save, destination});
 		return false;
 	}
 	editor.MarkSaved(tabId);
@@ -330,7 +331,7 @@ void DocumentWorkspace::HandlePortalResult(uint64_t requestId, bool accepted,
 
 	if (intent.kind == PortalIntentKind::Open) {
 		if (usable) {
-			ApplyOpenPaths(paths);
+			(void)ApplyOpenPaths(paths);
 		}
 		return;
 	}
@@ -350,7 +351,7 @@ void DocumentWorkspace::HandleOpenResult(bool accepted,
 	if (!accepted || openedPath.empty()) {
 		return;
 	}
-	ApplyOpenPaths({std::string(openedPath)});
+	(void)ApplyOpenPaths({std::string(openedPath)});
 }
 
 void DocumentWorkspace::HandleOpenResult(bool accepted,
@@ -358,7 +359,14 @@ void DocumentWorkspace::HandleOpenResult(bool accepted,
 	if (!accepted || paths.empty()) {
 		return;
 	}
-	ApplyOpenPaths(paths);
+	(void)ApplyOpenPaths(paths);
+}
+
+bool DocumentWorkspace::OpenPath(std::string_view path) {
+	if (path.empty()) {
+		return false;
+	}
+	return ApplyOpenPaths({std::string(path)});
 }
 
 void DocumentWorkspace::HandleSaveResult(bool accepted,
@@ -376,7 +384,7 @@ void DocumentWorkspace::HandleSaveResult(DocumentId tabId, bool accepted,
 		continuePrompt ? activePromptGeneration : 0);
 }
 
-void DocumentWorkspace::ApplyOpenPaths(const std::vector<std::string> &paths) {
+bool DocumentWorkspace::ApplyOpenPaths(const std::vector<std::string> &paths) {
 	std::optional<DocumentId> lastActivated;
 	for (const std::string &path : paths) {
 		if (path.empty()) {
@@ -386,11 +394,13 @@ void DocumentWorkspace::ApplyOpenPaths(const std::vector<std::string> &paths) {
 		if (const std::optional<std::size_t> existing =
 				FindIndexByPath(pathString)) {
 			lastActivated = tabs[*existing].id;
+			recentPaths.push_back(pathString);
 			continue;
 		}
 		const std::optional<std::string> text = ReadDocumentFile(pathString);
 		if (!text) {
 			std::cerr << "scalpel-editor: failed to read " << pathString << '\n';
+			fileErrors.push_back({DocumentFileOperation::Open, pathString});
 			continue;
 		}
 		const DocumentId id = editor.CreateDocument();
@@ -403,15 +413,17 @@ void DocumentWorkspace::ApplyOpenPaths(const std::vector<std::string> &paths) {
 		activeId = id;
 		editor.LoadInitialBuffer(*text);
 		lastActivated = id;
+		recentPaths.push_back(pathString);
 	}
 	if (!lastActivated) {
-		return;
+		return false;
 	}
 	if (*lastActivated != activeId) {
 		editor.ActivateDocument(*lastActivated);
 		activeId = *lastActivated;
 	}
 	Queue(DocumentShellRequest::RefreshTabs);
+	return true;
 }
 
 void DocumentWorkspace::ApplySaveResult(DocumentId tabId, bool accepted,
@@ -433,6 +445,7 @@ void DocumentWorkspace::ApplySaveResult(DocumentId tabId, bool accepted,
 	}
 	const std::string pathString = NormalizePath(savedPath);
 	if (SaveToPath(tabId, pathString)) {
+		recentPaths.push_back(pathString);
 		if (continuePrompt) {
 			const UnsavedPending kind = prompt.Pending();
 			const DocumentId completedTabId = prompt.TabId();
@@ -442,6 +455,18 @@ void DocumentWorkspace::ApplySaveResult(DocumentId tabId, bool accepted,
 		prompt.NotifySaveIncomplete();
 		editor.InvalidateClient();
 	}
+}
+
+std::vector<std::string> DocumentWorkspace::TakeRecentPaths() {
+	std::vector<std::string> result = std::move(recentPaths);
+	recentPaths.clear();
+	return result;
+}
+
+std::vector<DocumentFileError> DocumentWorkspace::TakeFileErrors() {
+	std::vector<DocumentFileError> result = std::move(fileErrors);
+	fileErrors.clear();
+	return result;
 }
 
 std::size_t DocumentWorkspace::IndexOf(DocumentId id) const {

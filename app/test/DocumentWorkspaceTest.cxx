@@ -10,6 +10,7 @@
 
 using Scalpel::ApplicationEditor;
 using Scalpel::DocumentId;
+using Scalpel::DocumentFileOperation;
 using Scalpel::DocumentShellRequest;
 using Scalpel::DocumentWorkspace;
 using Scalpel::UnsavedChoice;
@@ -225,6 +226,55 @@ TEST_CASE("document workspace single-document open result loads path") {
 	CHECK_FALSE(editor.Modified());
 	CHECK(workspace.TabCount() == 2);
 	CHECK(workspace.ActiveTab() != startupId);
+}
+
+TEST_CASE("document workspace recent paths report only successful file use") {
+	TempFile first("first\n");
+	TempFile second("second\n");
+	const std::string missing =
+		"/tmp/scalpel-missing-" + std::to_string(getpid());
+	(void)std::remove(missing.c_str());
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("startup\n");
+	DocumentWorkspace workspace(editor);
+
+	workspace.HandleOpenResult(true, {first.path, missing, second.path});
+	const std::vector<std::string> opened = workspace.TakeRecentPaths();
+	REQUIRE(opened.size() == 2);
+	CHECK(opened[0] == first.path);
+	CHECK(opened[1] == second.path);
+
+	CHECK(workspace.OpenPath(first.path));
+	REQUIRE(workspace.TakeRecentPaths().size() == 1);
+
+	TempFile saveTarget("");
+	workspace.HandleSaveResult(true, saveTarget.path);
+	const std::vector<std::string> saved = workspace.TakeRecentPaths();
+	REQUIRE(saved.size() == 1);
+	CHECK(saved.front() == saveTarget.path);
+}
+
+TEST_CASE("document workspace file errors report failed opens and saves") {
+	const std::string missing =
+		"/tmp/scalpel-missing-" + std::to_string(getpid());
+	(void)std::remove(missing.c_str());
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("body\n");
+	DocumentWorkspace workspace(editor);
+
+	CHECK_FALSE(workspace.OpenPath(missing));
+	std::vector<Scalpel::DocumentFileError> errors = workspace.TakeFileErrors();
+	REQUIRE(errors.size() == 1);
+	CHECK(errors[0].operation == DocumentFileOperation::Open);
+	CHECK(errors[0].path == missing);
+
+	const std::string unwritable = "/no-such-directory/scalpel/file.txt";
+	workspace.HandleSaveResult(true, unwritable);
+	errors = workspace.TakeFileErrors();
+	REQUIRE(errors.size() == 1);
+	CHECK(errors[0].operation == DocumentFileOperation::Save);
+	CHECK(errors[0].path == unwritable);
+	CHECK(workspace.TakeFileErrors().empty());
 }
 
 TEST_CASE("document workspace single-document open result keeps dirty sibling") {
