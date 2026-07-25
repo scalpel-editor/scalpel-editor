@@ -191,7 +191,7 @@ int MenuBarHeight() noexcept {
 MenuBarLayout LayoutMenuBar(int frameWidth, int frameHeight,
 	const MenuBarModel &model) noexcept {
 	const PRectangle empty = PRectangle::FromInts(0, 0, 0, 0);
-	MenuBarLayout layout{empty, {}, empty, {}};
+	MenuBarLayout layout{empty, {}, empty, std::nullopt, {}};
 	if (frameWidth <= 0) {
 		return layout;
 	}
@@ -250,15 +250,16 @@ MenuBarLayout LayoutMenuBar(int frameWidth, int frameHeight,
 	int dropdownTop = height;
 	int dropdownBottom = dropdownTop + contentHeight;
 	// Keep the panel on-screen when the frame is shorter than the menu.
-	if (frameHeight > height && dropdownBottom > frameHeight) {
+	if (frameHeight <= height) {
+		return layout;
+	}
+	if (dropdownBottom > frameHeight) {
 		dropdownBottom = frameHeight;
-		if (dropdownBottom <= dropdownTop) {
-			return layout;
-		}
 	}
 
 	layout.dropdown = PRectangle::FromInts(
 		dropdownLeft, dropdownTop, dropdownLeft + dropdownWidth, dropdownBottom);
+	layout.dropdownMenu = open;
 
 	const int innerLeft = dropdownLeft;
 	const int innerRight = dropdownLeft + dropdownWidth;
@@ -331,7 +332,8 @@ MenuBarHitResult HitTestMenuBar(const MenuBarLayout &layout, Point point) noexce
 			}
 		}
 		// Separators and padding inside the panel are not actionable.
-		return {MenuBarHit::Dropdown, ApplicationMenu::File,
+		return {MenuBarHit::Dropdown,
+			layout.dropdownMenu.value_or(ApplicationMenu::File),
 			ApplicationAction::NewTab};
 	}
 
@@ -404,7 +406,6 @@ void MenuBarPainter::PaintDropdown(Surface &surface, const MenuBarLayout &layout
 	surface.FillRectangle(shadow, Fill(kDropdownShadow));
 
 	surface.FillRectangle(layout.dropdown, Fill(kDropdownFill));
-	DrawInsideFrame(surface, layout.dropdown, kDropdownBorder, 1.0);
 
 	const Font *font = labelFont.get();
 	for (const MenuBarItemLayout &item : layout.items) {
@@ -433,6 +434,9 @@ void MenuBarPainter::PaintDropdown(Surface &surface, const MenuBarLayout &layout
 		DrawRightAlignedLabel(surface, item.shortcut, font, item.shortcutText,
 			shortcutInk);
 	}
+
+	// Draw last so row hover and focus fills cannot cover the panel edge.
+	DrawInsideFrame(surface, layout.dropdown, kDropdownBorder, 1.0);
 }
 
 void MenuBarPainter::Paint(Surface &surface, const MenuBarLayout &layout,

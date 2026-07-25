@@ -71,6 +71,8 @@ struct MenuBarLayout {
 	std::vector<MenuBarHeadingLayout> headings;
 	/** Dropdown panel while a menu is open; empty when closed. */
 	Scintilla::Internal::PRectangle dropdown;
+	/** Menu represented by dropdown; nullopt when no dropdown fits. */
+	std::optional<ApplicationMenu> dropdownMenu;
 	std::vector<MenuBarItemLayout> items;
 };
 

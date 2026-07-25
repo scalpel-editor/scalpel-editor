@@ -229,6 +229,14 @@ TEST_CASE("menu bar short frame clamps dropdown bottom") {
 	REQUIRE(NonEmpty(layout.dropdown));
 	CHECK(layout.dropdown.bottom <= height);
 	CHECK(layout.dropdown.top == MenuBarHeight());
+
+	SECTION("no dropdown fits when the frame ends at the bar") {
+		const MenuBarLayout barOnly =
+			LayoutMenuBar(400, MenuBarHeight(), model);
+		CHECK_FALSE(NonEmpty(barOnly.dropdown));
+		CHECK_FALSE(barOnly.dropdownMenu.has_value());
+		CHECK(barOnly.items.empty());
+	}
 }
 
 TEST_CASE("menu bar hit-test headings items and outside") {
@@ -272,6 +280,13 @@ TEST_CASE("menu bar hit-test headings items and outside") {
 	const MenuBarHitResult onPad = HitTestMenuBar(open,
 		Point(open.dropdown.left + 2, open.dropdown.top + 1));
 	CHECK(onPad.kind == MenuBarHit::Dropdown);
+
+	const MenuBarLayout edit = LayoutMenuBar(400, 300,
+		OpenMenu(ApplicationMenu::Edit));
+	const MenuBarHitResult onEditPad = HitTestMenuBar(edit,
+		Point(edit.dropdown.left + 2, edit.dropdown.top + 1));
+	CHECK(onEditPad.kind == MenuBarHit::Dropdown);
+	CHECK(onEditPad.menu == ApplicationMenu::Edit);
 }
 
 TEST_CASE("menu bar hit-test uses half-open heading bounds") {
@@ -340,6 +355,13 @@ TEST_CASE("menu bar paint closed open hovered focused and disabled") {
 		CHECK(Differs(focused, barPx));
 		// Focused row is cooler (blue-tinted) than a neutral bar gray.
 		CHECK(focused.b >= focused.r);
+		// Focus fill must not cover the panel's right border.
+		const Rgba edge = Sample(pixels, 360,
+			static_cast<int>(layout.dropdown.right) - 1, rowY);
+		CHECK(edge.r == 0xa0);
+		CHECK(edge.g == 0xa0);
+		CHECK(edge.b == 0xa0);
+		CHECK(edge.a == 0xff);
 	}
 
 	SECTION("disabled item ink is lighter than enabled item ink") {
