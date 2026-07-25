@@ -498,6 +498,9 @@ MenuBarPointerResult HandleMenuBarPointer(MenuBarModel &model,
 			// Press on dropdown padding, empty bar, or outside: close and
 			// consume so the click cannot activate a tab or move the caret.
 			CloseMenuBar(model);
+			model.pressOrigin = MenuBarPressOrigin{
+				MenuBarPressKind::Dismissal, ApplicationMenu::File,
+				ApplicationAction::NewTab};
 			result.barDirty = true;
 			result.frameDirty = true;
 			result.consumed = true;
@@ -519,6 +522,13 @@ MenuBarPointerResult HandleMenuBarPointer(MenuBarModel &model,
 
 		const MenuBarPressOrigin origin = *model.pressOrigin;
 		model.pressOrigin.reset();
+
+		if (origin.kind == MenuBarPressKind::Dismissal) {
+			// The press closed the menu, but its matching release still belongs
+			// to that dismissal gesture and must not reach the editor.
+			result.consumed = true;
+			return result;
+		}
 
 		if (origin.kind == MenuBarPressKind::Item &&
 			hit.kind == MenuBarHit::Item &&

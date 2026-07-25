@@ -280,6 +280,15 @@ TEST_CASE("menu bar pointer outside dismissal without click-through") {
 		CHECK(outside.frameDirty);
 		CHECK_FALSE(model.openMenu.has_value());
 		CHECK_FALSE(outside.activated.has_value());
+		REQUIRE(model.pressOrigin.has_value());
+		CHECK(model.pressOrigin->kind == MenuBarPressKind::Dismissal);
+
+		const MenuBarLayout closed = Layout(model);
+		const MenuBarPointerResult release = HandleMenuBarPointer(model, closed,
+			MakePointer(PointerAction::Release, 200, 250, 0), false);
+		CHECK(release.consumed);
+		CHECK_FALSE(release.activated.has_value());
+		CHECK_FALSE(model.pressOrigin.has_value());
 	}
 
 	SECTION("press on empty bar chrome while open closes and is consumed") {

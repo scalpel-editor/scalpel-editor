@@ -27,6 +27,8 @@ namespace Scalpel {
 enum class MenuBarPressKind {
 	Heading,
 	Item,
+	/** Outside press that closed an open menu; its release is also consumed. */
+	Dismissal,
 };
 
 struct MenuBarPressOrigin {
