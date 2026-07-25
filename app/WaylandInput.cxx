@@ -84,6 +84,12 @@ Scintilla::Keys KeyFromKeysym(xkb_keysym_t keysym) noexcept {
 		return Scintilla::Keys::Subtract;
 	case XKB_KEY_KP_Divide:
 		return Scintilla::Keys::Divide;
+	// F10 and the Menu key open the application menu bar. KEY_COMPOSE on a
+	// typical US layout yields XKB_KEY_Menu; KEY_MENU yields XF86MenuKB.
+	case XKB_KEY_F10:
+	case XKB_KEY_Menu:
+	case XKB_KEY_XF86MenuKB:
+		return Scintilla::Keys::Menu;
 	default:
 		break;
 	}

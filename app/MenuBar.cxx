@@ -563,6 +563,174 @@ MenuBarPointerResult HandleMenuBarPointer(MenuBarModel &model,
 	return result;
 }
 
+namespace {
+
+/** First enabled action in menu order for the open or named menu. */
+std::optional<ApplicationAction> FirstEnabledItem(const MenuBarModel &model,
+	ApplicationMenu menu) noexcept {
+	const ApplicationActionInfo *table = ApplicationActionTable();
+	const std::size_t count = ApplicationActionCount();
+	for (std::size_t i = 0; i < count; ++i) {
+		const ApplicationActionInfo &info = table[i];
+		if (info.menu == menu && model.IsEnabled(info.action)) {
+			return info.action;
+		}
+	}
+	return std::nullopt;
+}
+
+/** Enabled items in table order for keyboard Up/Down wrapping. */
+std::vector<ApplicationAction> EnabledItems(const MenuBarModel &model,
+	ApplicationMenu menu) {
+	std::vector<ApplicationAction> items;
+	const ApplicationActionInfo *table = ApplicationActionTable();
+	const std::size_t count = ApplicationActionCount();
+	for (std::size_t i = 0; i < count; ++i) {
+		const ApplicationActionInfo &info = table[i];
+		if (info.menu == menu && model.IsEnabled(info.action)) {
+			items.push_back(info.action);
+		}
+	}
+	return items;
+}
+
+void OpenMenuFromKeyboard(MenuBarModel &model, ApplicationMenu menu,
+	MenuBarKeyboardResult &result) noexcept {
+	const bool wasOpen = model.openMenu.has_value();
+	const bool sameMenu = wasOpen && *model.openMenu == menu;
+	const std::optional<ApplicationAction> first = FirstEnabledItem(model, menu);
+	const bool focusChanged = model.focusedItem != first;
+	model.openMenu = menu;
+	model.focusedItem = first;
+	model.hoveredItem.reset();
+	model.pressOrigin.reset();
+	result.barDirty = true;
+	result.frameDirty = !wasOpen || !sameMenu || focusChanged;
+	result.consumed = true;
+}
+
+bool IsBareMenuKey(const KeyboardInput &input) noexcept {
+	return input.key == Scintilla::Keys::Menu &&
+		input.modifiers == Scintilla::KeyMod::Norm;
+}
+
+bool IsAltLetter(const KeyboardInput &input, char letter) noexcept {
+	return input.modifiers == Scintilla::KeyMod::Alt &&
+		input.key == static_cast<Scintilla::Keys>(letter);
+}
+
+ApplicationMenu OtherMenu(ApplicationMenu menu) noexcept {
+	return menu == ApplicationMenu::File ? ApplicationMenu::Edit :
+		ApplicationMenu::File;
+}
+
+}
+
+MenuBarKeyboardResult HandleMenuBarKeyboard(MenuBarModel &model,
+	const MenuBarLayout &layout, const KeyboardInput &input) noexcept {
+	(void)layout;
+	MenuBarKeyboardResult result;
+	const bool menuOpen = model.openMenu.has_value();
+
+	// Releases never change menu state, but an open menu still owns them so
+	// they cannot fall through into the editor as text or command keys.
+	if (!input.pressed) {
+		result.consumed = menuOpen;
+		return result;
+	}
+
+	// Closed: only the open accelerators are handled.
+	if (!menuOpen) {
+		if (IsBareMenuKey(input) || IsAltLetter(input, 'F')) {
+			OpenMenuFromKeyboard(model, ApplicationMenu::File, result);
+			return result;
+		}
+		if (IsAltLetter(input, 'E')) {
+			OpenMenuFromKeyboard(model, ApplicationMenu::Edit, result);
+			return result;
+		}
+		result.consumed = false;
+		return result;
+	}
+
+	// Open: the menu owns every key so shortcuts and typing cannot leak.
+	result.consumed = true;
+
+	if (input.key == Scintilla::Keys::Escape) {
+		CloseMenuBar(model);
+		result.barDirty = true;
+		result.frameDirty = true;
+		return result;
+	}
+
+	// F10 / Menu re-opens File and focuses its first enabled item.
+	if (IsBareMenuKey(input)) {
+		OpenMenuFromKeyboard(model, ApplicationMenu::File, result);
+		return result;
+	}
+	if (IsAltLetter(input, 'F')) {
+		OpenMenuFromKeyboard(model, ApplicationMenu::File, result);
+		return result;
+	}
+	if (IsAltLetter(input, 'E')) {
+		OpenMenuFromKeyboard(model, ApplicationMenu::Edit, result);
+		return result;
+	}
+
+	if (input.key == Scintilla::Keys::Left ||
+		input.key == Scintilla::Keys::Right) {
+		const ApplicationMenu next = OtherMenu(*model.openMenu);
+		OpenMenuFromKeyboard(model, next, result);
+		return result;
+	}
+
+	if (input.key == Scintilla::Keys::Down ||
+		input.key == Scintilla::Keys::Up) {
+		const std::vector<ApplicationAction> items =
+			EnabledItems(model, *model.openMenu);
+		if (items.empty()) {
+			return result;
+		}
+		const int delta = input.key == Scintilla::Keys::Down ? 1 : -1;
+		int index = -1;
+		if (model.focusedItem.has_value()) {
+			for (std::size_t i = 0; i < items.size(); ++i) {
+				if (items[i] == *model.focusedItem) {
+					index = static_cast<int>(i);
+					break;
+				}
+			}
+		}
+		int nextIndex = 0;
+		if (index < 0) {
+			// No current focus: Down lands on the first item, Up on the last.
+			nextIndex = delta > 0 ? 0 : static_cast<int>(items.size()) - 1;
+		} else {
+			nextIndex = index + delta;
+			const int n = static_cast<int>(items.size());
+			nextIndex = ((nextIndex % n) + n) % n;
+		}
+		if (SetOptional(model.focusedItem, items[static_cast<std::size_t>(nextIndex)])) {
+			result.frameDirty = true;
+		}
+		return result;
+	}
+
+	if (input.key == Scintilla::Keys::Return) {
+		if (model.focusedItem.has_value() &&
+			model.IsEnabled(*model.focusedItem)) {
+			result.activated = *model.focusedItem;
+			CloseMenuBar(model);
+			result.barDirty = true;
+			result.frameDirty = true;
+		}
+		// Disabled focus or empty focus: swallow Enter without activating.
+		return result;
+	}
+
+	// Unrelated keys while open: consumed, no state change.
+	return result;
+}
 
 MenuBarPainter::MenuBarPainter() {
 	labelFont = Font::Allocate(FontParameters{"system-ui", PixelSizeFromPoints(12.0f)});

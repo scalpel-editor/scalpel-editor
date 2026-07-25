@@ -715,6 +715,32 @@ bool HandleTopChromePointer(const Scalpel::PointerInput &input,
 	return true;
 }
 
+/**
+ * Apply menu keyboard transitions before editor shortcuts.
+ * Returns true when the event must not reach the editor (open accelerators
+ * while closed, or any key while a menu owns input).
+ */
+bool HandleMenuBarKeyboardInput(const Scalpel::KeyboardInput &input,
+	Scalpel::MenuBarModel &menuModel,
+	Scalpel::DocumentWorkspace &workspace,
+	Scalpel::ApplicationEditor &editor) {
+	const Scalpel::MenuBarLayout menuLayout = Scalpel::LayoutMenuBar(
+		editor.FrameWidth(), editor.FrameHeight(), menuModel);
+	const Scalpel::MenuBarKeyboardResult menuResult =
+		Scalpel::HandleMenuBarKeyboard(menuModel, menuLayout, input);
+	if (menuResult.barDirty) {
+		editor.InvalidateTopChrome();
+	}
+	if (menuResult.frameDirty) {
+		editor.InvalidateClient();
+	}
+	if (menuResult.activated) {
+		Scalpel::DispatchApplicationAction(
+			*menuResult.activated, workspace, editor);
+	}
+	return menuResult.consumed;
+}
+
 bool HandleEditorKeyboard(const Scalpel::KeyboardInput &input,
 	Scalpel::DocumentWorkspace &workspace,
 	Scalpel::ApplicationEditor &editor) {
@@ -869,7 +895,12 @@ int main() {
 				}
 				if (const auto *keyboard =
 					std::get_if<Scalpel::KeyboardInput>(&input)) {
-					HandleEditorKeyboard(*keyboard, workspace, editor);
+					// Menu accelerators and open-menu navigation run before
+					// application shortcuts and editor typing.
+					if (!HandleMenuBarKeyboardInput(*keyboard, menuModel,
+						workspace, editor)) {
+						HandleEditorKeyboard(*keyboard, workspace, editor);
+					}
 				} else {
 					const auto &pointer =
 						std::get<Scalpel::PointerInput>(input);

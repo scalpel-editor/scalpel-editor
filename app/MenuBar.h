@@ -1,8 +1,9 @@
-// Fixed logical layout, hit-testing, open-menu pointer navigation, and opaque
-// painting for the File / Edit menu bar. main owns MenuBarModel, converts input
-// into model transitions via HandleMenuBarPointer, dispatches returned actions,
-// and paints the permanent bar plus the overlay slot for open dropdowns.
-// Layout, hit-testing, and pointer transitions stay Wayland-free.
+// Fixed logical layout, hit-testing, open-menu pointer and keyboard navigation,
+// and opaque painting for the File / Edit menu bar. main owns MenuBarModel,
+// converts input into model transitions via HandleMenuBarPointer and
+// HandleMenuBarKeyboard, dispatches returned actions, and paints the permanent
+// bar plus the overlay slot for open dropdowns. Layout, hit-testing, and input
+// transitions stay Wayland-free.
 
 #ifndef MENUBAR_H
 #define MENUBAR_H
@@ -132,6 +133,18 @@ struct MenuBarPointerResult {
 };
 
 /**
+ * Result of applying one keyboard event to the menu bar model.
+ * Matches MenuBarPointerResult dirty and activation fields; consumed stops
+ * delivery to the editor (and while open, all keys including releases).
+ */
+struct MenuBarKeyboardResult {
+	bool consumed = false;
+	bool barDirty = false;
+	bool frameDirty = false;
+	std::optional<ApplicationAction> activated;
+};
+
+/**
  * Lay out the permanent bar for frameWidth logical pixels at y = 0.
  * When model.openMenu is set, places the dropdown under that heading and
  * clamps it into the frame. Zero or negative width yields an empty layout.
@@ -158,6 +171,19 @@ void CloseMenuBar(MenuBarModel &model) noexcept;
 [[nodiscard]] MenuBarPointerResult HandleMenuBarPointer(MenuBarModel &model,
 	const MenuBarLayout &layout, const PointerInput &input,
 	bool editorMouseCaptured) noexcept;
+
+/**
+ * Apply one keyboard event to the menu model.
+ * F10 / Keys::Menu open File with the first enabled item focused. Alt+F and
+ * Alt+E open the named menu. While open: Left/Right switch menus, Up/Down move
+ * among enabled items with wrapping, Enter activates the focused enabled item,
+ * Escape closes, and all other keys plus releases are consumed so they cannot
+ * reach the editor. When closed, only the open accelerators are consumed.
+ * layout is unused today but kept so callers match the pointer path and so a
+ * future layout-aware focus clamp can use the same signature.
+ */
+[[nodiscard]] MenuBarKeyboardResult HandleMenuBarKeyboard(MenuBarModel &model,
+	const MenuBarLayout &layout, const KeyboardInput &input) noexcept;
 
 /**
  * Owns the menu font. Construct once beside the shell and reuse across frames.

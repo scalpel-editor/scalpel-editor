@@ -309,3 +309,56 @@ TEST_CASE("Wayland keyboard teardown removes stale input and reports focus loss"
 	const auto pointer = std::get<Scalpel::PointerInput>(input.TakeInputs().front());
 	CHECK(pointer.modifiers == Scintilla::KeyMod::Norm);
 }
+
+TEST_CASE("Wayland keyboard menu keys map F10 and Menu") {
+	const TestKeymap keymap = MakeTestKeymap();
+	Scalpel::WaylandInput input;
+	REQUIRE(input.SetKeymap(keymap.text));
+
+	// F10 is the primary menu-bar accelerator on many desktops.
+	input.RecordKey(40, KEY_F10, true);
+	input.RecordKey(41, KEY_F10, false);
+	// KEY_COMPOSE yields XKB_KEY_Menu on the US layout.
+	input.RecordKey(42, KEY_COMPOSE, true);
+	input.RecordKey(43, KEY_COMPOSE, false);
+	// KEY_MENU yields XF86MenuKB; map it to the same Scintilla key.
+	input.RecordKey(44, KEY_MENU, true);
+	input.RecordKey(45, KEY_MENU, false);
+	// Alt+F / Alt+E stay ordinary letter keys with the Alt modifier.
+	input.UpdateModifiers(keymap.altMask, 0, 0, 0);
+	input.RecordKey(46, KEY_F, true);
+	input.RecordKey(47, KEY_E, true);
+	input.UpdateModifiers(0, 0, 0, 0);
+
+	const std::vector<Scalpel::InputEvent> events = input.TakeInputs();
+	REQUIRE(events.size() == 8);
+	const auto &f10Press = std::get<Scalpel::KeyboardInput>(events[0]);
+	const auto &f10Release = std::get<Scalpel::KeyboardInput>(events[1]);
+	const auto &composePress = std::get<Scalpel::KeyboardInput>(events[2]);
+	const auto &menuPress = std::get<Scalpel::KeyboardInput>(events[4]);
+	const auto &altF = std::get<Scalpel::KeyboardInput>(events[6]);
+	const auto &altE = std::get<Scalpel::KeyboardInput>(events[7]);
+
+	CHECK(f10Press.key == Scintilla::Keys::Menu);
+	CHECK(f10Press.modifiers == Scintilla::KeyMod::Norm);
+	CHECK(f10Press.pressed);
+	CHECK(f10Press.text.empty());
+	CHECK_FALSE(f10Release.pressed);
+	CHECK(f10Release.key == Scintilla::Keys::Menu);
+
+	CHECK(composePress.key == Scintilla::Keys::Menu);
+	CHECK(composePress.modifiers == Scintilla::KeyMod::Norm);
+	CHECK(composePress.text.empty());
+
+	CHECK(menuPress.key == Scintilla::Keys::Menu);
+	CHECK(menuPress.modifiers == Scintilla::KeyMod::Norm);
+	CHECK(menuPress.text.empty());
+
+	CHECK(altF.key == static_cast<Scintilla::Keys>('F'));
+	CHECK(altF.modifiers == Scintilla::KeyMod::Alt);
+	CHECK(altF.pressed);
+	CHECK(altF.text.empty());
+	CHECK(altE.key == static_cast<Scintilla::Keys>('E'));
+	CHECK(altE.modifiers == Scintilla::KeyMod::Alt);
+	CHECK(altE.text.empty());
+}

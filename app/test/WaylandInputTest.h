@@ -20,6 +20,7 @@ struct TestKeymap {
 	std::string text;
 	uint32_t shiftMask = 0;
 	uint32_t controlMask = 0;
+	uint32_t altMask = 0;
 };
 
 TestKeymap MakeTestKeymap(const char *variant = nullptr) {
@@ -37,10 +38,13 @@ TestKeymap MakeTestKeymap(const char *variant = nullptr) {
 	std::free(text);
 	const xkb_mod_index_t shift = xkb_keymap_mod_get_index(keymap, XKB_MOD_NAME_SHIFT);
 	const xkb_mod_index_t control = xkb_keymap_mod_get_index(keymap, XKB_MOD_NAME_CTRL);
+	const xkb_mod_index_t alt = xkb_keymap_mod_get_index(keymap, XKB_MOD_NAME_ALT);
 	REQUIRE(shift != XKB_MOD_INVALID);
 	REQUIRE(control != XKB_MOD_INVALID);
+	REQUIRE(alt != XKB_MOD_INVALID);
 	result.shiftMask = uint32_t{1} << shift;
 	result.controlMask = uint32_t{1} << control;
+	result.altMask = uint32_t{1} << alt;
 	xkb_keymap_unref(keymap);
 	xkb_context_unref(context);
 	return result;
