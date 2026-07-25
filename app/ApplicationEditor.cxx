@@ -713,12 +713,28 @@ void ApplicationEditor::SetPointerCapture(bool captured) {
 	ChangeMouseCapture(captured);
 }
 
+void ApplicationEditor::RequestUndo() {
+	ExecuteCommand(Scintilla::Internal::EditorCommand::Undo);
+}
+
+void ApplicationEditor::RequestRedo() {
+	ExecuteCommand(Scintilla::Internal::EditorCommand::Redo);
+}
+
+void ApplicationEditor::RequestCut() {
+	ExecuteCommand(Scintilla::Internal::EditorCommand::Cut);
+}
+
+void ApplicationEditor::RequestSelectAll() {
+	ExecuteCommand(Scintilla::Internal::EditorCommand::SelectAll);
+}
+
 void ApplicationEditor::RequestClipboardCopy() {
-	Copy();
+	ExecuteCommand(Scintilla::Internal::EditorCommand::Copy);
 }
 
 void ApplicationEditor::RequestClipboardPaste() {
-	Paste();
+	ExecuteCommand(Scintilla::Internal::EditorCommand::Paste);
 }
 
 void ApplicationEditor::SetClipboardPasteAvailable(bool available) noexcept {
@@ -727,6 +743,30 @@ void ApplicationEditor::SetClipboardPasteAvailable(bool available) noexcept {
 
 bool ApplicationEditor::ClipboardPasteAvailable() {
 	return clipboardPasteAvailable && CanPaste();
+}
+
+bool ApplicationEditor::HasSelection() const noexcept {
+	return !GetSelectionEmpty();
+}
+
+bool ApplicationEditor::CanSelectAll() const noexcept {
+	return GetTextLength() > 0;
+}
+
+bool ApplicationEditor::CanUndoEdit() const noexcept {
+	return CanUndo();
+}
+
+bool ApplicationEditor::CanRedoEdit() const noexcept {
+	return CanRedo();
+}
+
+bool ApplicationEditor::CanCut() const noexcept {
+	return !GetReadOnly() && HasSelection();
+}
+
+bool ApplicationEditor::CanCopy() const noexcept {
+	return HasSelection();
 }
 
 std::vector<ApplicationClipboardRequest> ApplicationEditor::TakeClipboardRequests() {

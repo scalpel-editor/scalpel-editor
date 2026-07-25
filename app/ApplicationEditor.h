@@ -163,10 +163,31 @@ public:
 	void HandleKeyboardInput(const KeyboardInput &input);
 	void HandlePointerInput(const PointerInput &input);
 	void SetPointerCapture(bool captured);
+	/**
+	 * Named edit operations for the application action path (menus and matching
+	 * shortcuts). They call the retained Scintilla commands; they do not
+	 * reimplement editing.
+	 */
+	void RequestUndo();
+	void RequestRedo();
+	void RequestCut();
+	void RequestSelectAll();
 	void RequestClipboardCopy();
 	void RequestClipboardPaste();
 	void SetClipboardPasteAvailable(bool available) noexcept;
 	[[nodiscard]] bool ClipboardPasteAvailable();
+	/** True when the active document has a non-empty selection. */
+	[[nodiscard]] bool HasSelection() const noexcept;
+	/** True when Select All would cover at least one byte. */
+	[[nodiscard]] bool CanSelectAll() const noexcept;
+	/** True when undo history is available and the document is not read-only. */
+	[[nodiscard]] bool CanUndoEdit() const noexcept;
+	/** True when redo history is available and the document is not read-only. */
+	[[nodiscard]] bool CanRedoEdit() const noexcept;
+	/** True when cut is allowed: writable document with a non-empty selection. */
+	[[nodiscard]] bool CanCut() const noexcept;
+	/** True when copy is allowed: non-empty selection. */
+	[[nodiscard]] bool CanCopy() const noexcept;
 	[[nodiscard]] std::vector<ApplicationClipboardRequest> TakeClipboardRequests();
 	[[nodiscard]] std::vector<ApplicationClipboardResult> TakeClipboardResults();
 	void HandleClipboardResult(uint64_t id, ApplicationClipboardOperation operation,

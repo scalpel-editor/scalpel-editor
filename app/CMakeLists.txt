@@ -170,6 +170,7 @@ add_dependencies(scalpel_wayland scalpel_xdg_shell)
 # Keep the platform definitions as object files in each final target. The core
 # static archive refers back to Window and Platform functions supplied here.
 add_library(scalpel_application OBJECT
+  ApplicationAction.cxx
   ApplicationEditor.cxx
   ApplicationPlatform.cxx
   DocumentFile.cxx

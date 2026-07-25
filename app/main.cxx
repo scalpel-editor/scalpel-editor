@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "ApplicationAction.h"
 #include "ApplicationEditor.h"
 #include "DocumentFile.h"
 #include "DocumentWorkspace.h"
@@ -417,33 +418,9 @@ void ApplyFileDialogResults(Scalpel::WaylandWindow &window,
 	}
 }
 
-[[nodiscard]] bool IsOpenShortcut(const Scalpel::KeyboardInput &input) {
-	return input.pressed &&
-		input.key == static_cast<Scintilla::Keys>('O') &&
-		input.modifiers == Scintilla::KeyMod::Ctrl;
-}
-
 [[nodiscard]] bool IsSaveShortcut(const Scalpel::KeyboardInput &input) {
 	return input.pressed &&
 		input.key == static_cast<Scintilla::Keys>('S') &&
-		input.modifiers == Scintilla::KeyMod::Ctrl;
-}
-
-[[nodiscard]] bool IsSaveAsShortcut(const Scalpel::KeyboardInput &input) {
-	return input.pressed &&
-		input.key == static_cast<Scintilla::Keys>('S') &&
-		input.modifiers == (Scintilla::KeyMod::Ctrl | Scintilla::KeyMod::Shift);
-}
-
-[[nodiscard]] bool IsNewTabShortcut(const Scalpel::KeyboardInput &input) {
-	return input.pressed &&
-		input.key == static_cast<Scintilla::Keys>('N') &&
-		input.modifiers == Scintilla::KeyMod::Ctrl;
-}
-
-[[nodiscard]] bool IsCloseTabShortcut(const Scalpel::KeyboardInput &input) {
-	return input.pressed &&
-		input.key == static_cast<Scintilla::Keys>('W') &&
 		input.modifiers == Scintilla::KeyMod::Ctrl;
 }
 
@@ -661,26 +638,13 @@ bool HandleTabStripPointer(const Scalpel::PointerInput &input,
 bool HandleEditorKeyboard(const Scalpel::KeyboardInput &input,
 	Scalpel::DocumentWorkspace &workspace,
 	Scalpel::ApplicationEditor &editor) {
-	if (IsOpenShortcut(input)) {
-		workspace.RequestOpen();
+	// File/Edit shortcuts and Ctrl+Q share the menu action dispatcher.
+	if (const std::optional<Scalpel::ApplicationAction> action =
+		Scalpel::MatchApplicationAction(input)) {
+		Scalpel::DispatchApplicationAction(*action, workspace, editor);
 		return true;
 	}
-	if (IsSaveAsShortcut(input)) {
-		workspace.RequestSaveAs();
-		return true;
-	}
-	if (IsSaveShortcut(input)) {
-		workspace.RequestSave();
-		return true;
-	}
-	if (IsNewTabShortcut(input)) {
-		workspace.NewTab();
-		return true;
-	}
-	if (IsCloseTabShortcut(input)) {
-		workspace.CloseTab(workspace.ActiveTab());
-		return true;
-	}
+	// Tab cycling stays outside the File/Edit action list.
 	if (IsPrevTabShortcut(input)) {
 		workspace.CycleTab(-1);
 		return true;
@@ -709,7 +673,7 @@ int main() {
 			"scalpel-editor\n\n"
 			"A direct Scintilla editor for Wayland.\n"
 			"Ctrl+N new tab, Ctrl+W close tab, Ctrl+Tab cycle tabs.\n"
-			"Ctrl+O open, Ctrl+S save, Ctrl+Shift+S save as.\n";
+			"Ctrl+O open, Ctrl+S save, Ctrl+Shift+S save as, Ctrl+Q quit.\n";
 		editor.LoadInitialBuffer(initialText);
 		editor.SetTopChromeInset(Scalpel::TabStripHeight());
 		Scalpel::DocumentWorkspace workspace(editor);

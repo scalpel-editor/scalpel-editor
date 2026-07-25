@@ -1,3 +1,16 @@
+add_executable(applicationActionTest
+  ApplicationActionTest.cxx
+  ApplicationTestMain.cxx
+)
+target_include_directories(applicationActionTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(applicationActionTest PRIVATE scalpel_application)
+target_compile_options(applicationActionTest PRIVATE -Wall -Wextra)
+
+add_test(NAME application-action COMMAND applicationActionTest)
+
 add_executable(applicationHostTest
   ApplicationHostTest.cxx
   ApplicationTestMain.cxx
