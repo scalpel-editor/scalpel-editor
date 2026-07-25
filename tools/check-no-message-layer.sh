@@ -40,7 +40,7 @@ check_absent() {
 path_excluded() {
 	path=$1
 	case $path in
-	./seed/*|seed/*|./build/*|build/*|./build-asan/*|build-asan/*|./build-ubsan/*|build-ubsan/*|./.git/*|.git/*)
+	./seed/*|seed/*|./build/*|build/*|./build-asan/*|build-asan/*|./build-ubsan/*|build-ubsan/*|./build-nixos/*|build-nixos/*|./build-asan-nixos/*|build-asan-nixos/*|./build-ubsan-nixos/*|build-ubsan-nixos/*|./.git/*|.git/*)
 		return 0 ;;
 	./tools/phase5-boundary.md|tools/phase5-boundary.md|./tools/check-no-message-layer.sh|tools/check-no-message-layer.sh)
 		return 0 ;;

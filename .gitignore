@@ -2,5 +2,8 @@
 /build/
 /build-asan/
 /build-ubsan/
+/build-nixos/
+/build-asan-nixos/
+/build-ubsan-nixos/
 /.review/
 /.scalps/

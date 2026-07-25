@@ -31,12 +31,33 @@
         "CMAKE_CXX_FLAGS": "-fsanitize=undefined -fno-sanitize-recover=undefined",
         "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=undefined"
       }
+    },
+    {
+      "name": "dev-nixos",
+      "inherits": "dev",
+      "displayName": "NixOS development build (Debug, Ninja)",
+      "binaryDir": "${sourceDir}/build-nixos"
+    },
+    {
+      "name": "asan-nixos",
+      "inherits": "asan",
+      "displayName": "NixOS AddressSanitizer build (Debug, Ninja)",
+      "binaryDir": "${sourceDir}/build-asan-nixos"
+    },
+    {
+      "name": "ubsan-nixos",
+      "inherits": "ubsan",
+      "displayName": "NixOS UndefinedBehaviorSanitizer build (Debug, Ninja)",
+      "binaryDir": "${sourceDir}/build-ubsan-nixos"
     }
   ],
   "buildPresets": [
     { "name": "dev", "configurePreset": "dev" },
     { "name": "asan", "configurePreset": "asan" },
-    { "name": "ubsan", "configurePreset": "ubsan" }
+    { "name": "ubsan", "configurePreset": "ubsan" },
+    { "name": "dev-nixos", "configurePreset": "dev-nixos" },
+    { "name": "asan-nixos", "configurePreset": "asan-nixos" },
+    { "name": "ubsan-nixos", "configurePreset": "ubsan-nixos" }
   ],
   "testPresets": [
     { "name": "dev", "configurePreset": "dev", "output": { "outputOnFailure": true } },
@@ -46,7 +67,15 @@
       "environment": { "ASAN_OPTIONS": "detect_leaks=0" },
       "output": { "outputOnFailure": true }
     },
-    { "name": "ubsan", "configurePreset": "ubsan", "output": { "outputOnFailure": true } }
+    { "name": "ubsan", "configurePreset": "ubsan", "output": { "outputOnFailure": true } },
+    { "name": "dev-nixos", "configurePreset": "dev-nixos", "output": { "outputOnFailure": true } },
+    {
+      "name": "asan-nixos",
+      "configurePreset": "asan-nixos",
+      "environment": { "ASAN_OPTIONS": "detect_leaks=0" },
+      "output": { "outputOnFailure": true }
+    },
+    { "name": "ubsan-nixos", "configurePreset": "ubsan-nixos", "output": { "outputOnFailure": true } }
   ],
   "workflowPresets": [
     {
@@ -71,6 +100,30 @@
         { "type": "configure", "name": "ubsan" },
         { "type": "build", "name": "ubsan" },
         { "type": "test", "name": "ubsan" }
+      ]
+    },
+    {
+      "name": "dev-nixos",
+      "steps": [
+        { "type": "configure", "name": "dev-nixos" },
+        { "type": "build", "name": "dev-nixos" },
+        { "type": "test", "name": "dev-nixos" }
+      ]
+    },
+    {
+      "name": "asan-nixos",
+      "steps": [
+        { "type": "configure", "name": "asan-nixos" },
+        { "type": "build", "name": "asan-nixos" },
+        { "type": "test", "name": "asan-nixos" }
+      ]
+    },
+    {
+      "name": "ubsan-nixos",
+      "steps": [
+        { "type": "configure", "name": "ubsan-nixos" },
+        { "type": "build", "name": "ubsan-nixos" },
+        { "type": "test", "name": "ubsan-nixos" }
       ]
     }
   ]

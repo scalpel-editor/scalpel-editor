@@ -19,6 +19,8 @@ The build uses CMake with the Ninja generator. Always configure from the reposit
 cmake --preset dev          # configure into build/ (Debug)
 ```
 
+The checkout is shared with NixOS, whose compiler and dependency paths must not be mixed into the openSUSE build trees above. On NixOS, enter `nix develop` and use the parallel `dev-nixos`, `asan-nixos`, and `ubsan-nixos` presets, which configure into `build-nixos/`, `build-asan-nixos/`, and `build-ubsan-nixos/`. See `BUILDING.md`.
+
 ### Default verification (almost every change)
 
 Use only the smallest build and test scope that covers the code being changed. Build one target. Run one Catch2 name pattern that matches the concern under edit. Do not build other test targets "just in case." Do not run an entire test binary without a pattern when a pattern exists. Do not reconfigure, rebuild sanitizer trees, or run the full matrix as routine session work.

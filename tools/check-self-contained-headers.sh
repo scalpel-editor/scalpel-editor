@@ -18,14 +18,19 @@ root=$(CDPATH= cd -- "$script_dir/.." && pwd)
 cd "$root"
 
 compile_db=
-for candidate in build/compile_commands.json build-asan/compile_commands.json; do
+if [ -n "${IN_NIX_SHELL:-}" ]; then
+	compile_db_candidates="build-nixos/compile_commands.json build-asan-nixos/compile_commands.json build/compile_commands.json build-asan/compile_commands.json"
+else
+	compile_db_candidates="build/compile_commands.json build-asan/compile_commands.json build-nixos/compile_commands.json build-asan-nixos/compile_commands.json"
+fi
+for candidate in $compile_db_candidates; do
 	if [ -f "$candidate" ]; then
 		compile_db=$candidate
 		break
 	fi
 done
 if [ -z "$compile_db" ]; then
-	printf '%s\n' "error: no compile_commands.json under build/ (run: cmake --preset dev)" >&2
+	printf '%s\n' "error: no development compile_commands.json (run: cmake --preset dev or dev-nixos)" >&2
 	exit 2
 fi
 
