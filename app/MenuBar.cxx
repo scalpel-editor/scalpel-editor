@@ -2,7 +2,48 @@
 
 #include <algorithm>
 
+#include "DocumentFile.h"
+
 namespace Scalpel {
+
+MenuBarItemId MenuBarItemId::RecentFile(std::size_t index) noexcept {
+	MenuBarItemId item;
+	item.kind = MenuBarItemKind::RecentFile;
+	item.recentIndex = index;
+	return item;
+}
+
+MenuBarItemId MenuBarItemId::ClearRecentFiles() noexcept {
+	MenuBarItemId item;
+	item.kind = MenuBarItemKind::ClearRecentFiles;
+	return item;
+}
+
+MenuBarItemId MenuBarItemId::EmptyRecentFiles() noexcept {
+	MenuBarItemId item;
+	item.kind = MenuBarItemKind::EmptyRecentFiles;
+	return item;
+}
+
+bool operator==(const MenuBarItemId &left,
+	const MenuBarItemId &right) noexcept {
+	return left.kind == right.kind && left.action == right.action &&
+		left.recentIndex == right.recentIndex;
+}
+
+bool operator!=(const MenuBarItemId &left,
+	const MenuBarItemId &right) noexcept {
+	return !(left == right);
+}
+
+bool operator==(const MenuBarItemId &left, ApplicationAction right) noexcept {
+	return left.kind == MenuBarItemKind::ApplicationAction &&
+		left.action == right;
+}
+
+bool operator!=(const MenuBarItemId &left, ApplicationAction right) noexcept {
+	return !(left == right);
+}
 
 namespace {
 
@@ -19,6 +60,7 @@ constexpr int kBarHeight = 24;
 constexpr int kHeadingPadX = 12;
 constexpr int kFileHeadingWidth = 48;
 constexpr int kEditHeadingWidth = 48;
+constexpr int kRecentHeadingWidth = 68;
 constexpr int kItemHeight = 24;
 constexpr int kSeparatorHeight = 9;
 constexpr int kDropdownPadY = 4;
@@ -28,16 +70,41 @@ constexpr int kLabelShortcutGap = 24;
 constexpr int kShortcutColumnWidth = 100;
 // Fits "Save As…" + gap + "Ctrl+Shift+S" at the menu font with padding.
 constexpr int kDropdownPreferredWidth = 220;
+constexpr int kRecentDropdownPreferredWidth = 440;
 
-/** First enabled action in menu order for the open or named menu. */
-std::optional<ApplicationAction> FirstEnabledItem(const MenuBarModel &model,
-	ApplicationMenu menu) noexcept {
+std::vector<MenuBarItemId> OrderedItems(const MenuBarModel &model,
+	ApplicationMenu menu) {
+	std::vector<MenuBarItemId> items;
+	if (menu == ApplicationMenu::Recent) {
+		if (model.recentFiles.empty()) {
+			items.push_back(MenuBarItemId::EmptyRecentFiles());
+			return items;
+		}
+		items.reserve(model.recentFiles.size() + 1);
+		for (std::size_t index = 0; index < model.recentFiles.size(); ++index) {
+			items.push_back(MenuBarItemId::RecentFile(index));
+		}
+		items.push_back(MenuBarItemId::ClearRecentFiles());
+		return items;
+	}
+
 	const ApplicationActionInfo *table = ApplicationActionTable();
 	const std::size_t count = ApplicationActionCount();
 	for (std::size_t i = 0; i < count; ++i) {
 		const ApplicationActionInfo &info = table[i];
-		if (info.menu == menu && model.IsEnabled(info.action)) {
-			return info.action;
+		if (info.menu == menu) {
+			items.emplace_back(info.action);
+		}
+	}
+	return items;
+}
+
+/** First enabled item in menu order for the open or named menu. */
+std::optional<MenuBarItemId> FirstEnabledItem(const MenuBarModel &model,
+	ApplicationMenu menu) {
+	for (const MenuBarItemId item : OrderedItems(model, menu)) {
+		if (model.IsEnabled(item)) {
+			return item;
 		}
 	}
 	return std::nullopt;
@@ -66,6 +133,8 @@ std::string_view HeadingLabel(ApplicationMenu menu) noexcept {
 		return "File";
 	case ApplicationMenu::Edit:
 		return "Edit";
+	case ApplicationMenu::Recent:
+		return "Recent";
 	}
 	return "File";
 }
@@ -76,25 +145,68 @@ int HeadingWidth(ApplicationMenu menu) noexcept {
 		return kFileHeadingWidth;
 	case ApplicationMenu::Edit:
 		return kEditHeadingWidth;
+	case ApplicationMenu::Recent:
+		return kRecentHeadingWidth;
 	}
 	return kFileHeadingWidth;
 }
 
-int DropdownContentHeight(ApplicationMenu menu) noexcept {
+int DropdownPreferredWidth(ApplicationMenu menu) noexcept {
+	return menu == ApplicationMenu::Recent ?
+		kRecentDropdownPreferredWidth : kDropdownPreferredWidth;
+}
+
+int DropdownContentHeight(const MenuBarModel &model, ApplicationMenu menu) {
 	int height = kDropdownPadY * 2;
-	const ApplicationActionInfo *table = ApplicationActionTable();
-	const std::size_t count = ApplicationActionCount();
-	for (std::size_t i = 0; i < count; ++i) {
-		const ApplicationActionInfo &info = table[i];
-		if (info.menu != menu) {
-			continue;
-		}
-		if (info.separatorBefore) {
+	for (const MenuBarItemId item : OrderedItems(model, menu)) {
+		if (item.kind == MenuBarItemKind::ClearRecentFiles ||
+			(item.kind == MenuBarItemKind::ApplicationAction &&
+				InfoFor(item.action).separatorBefore)) {
 			height += kSeparatorHeight;
 		}
 		height += kItemHeight;
 	}
 	return height;
+}
+
+bool SeparatorBefore(MenuBarItemId item) noexcept {
+	if (item.kind == MenuBarItemKind::ClearRecentFiles) {
+		return true;
+	}
+	return item.kind == MenuBarItemKind::ApplicationAction &&
+		InfoFor(item.action).separatorBefore;
+}
+
+std::string ItemLabel(const MenuBarModel &model, MenuBarItemId item) {
+	switch (item.kind) {
+	case MenuBarItemKind::ApplicationAction:
+		return std::string(InfoFor(item.action).label);
+	case MenuBarItemKind::RecentFile:
+		if (item.recentIndex >= model.recentFiles.size()) {
+			return {};
+		}
+		{
+			const std::string &path = model.recentFiles[item.recentIndex];
+			const std::string name = DocumentBaseName(path);
+			const std::string directory = DocumentDirectory(path);
+			if (directory.empty() || name.empty()) {
+				return path;
+			}
+			return name + " \xe2\x80\x94 " + directory;
+		}
+	case MenuBarItemKind::ClearRecentFiles:
+		return "Clear Recent Files";
+	case MenuBarItemKind::EmptyRecentFiles:
+		return "No Recent Files";
+	}
+	return {};
+}
+
+std::string ItemShortcut(MenuBarItemId item) {
+	if (item.kind == MenuBarItemKind::ApplicationAction) {
+		return std::string(InfoFor(item.action).shortcutLabel);
+	}
+	return {};
 }
 
 // Near Platform chrome and TabStrip fills.
@@ -198,6 +310,20 @@ bool MenuBarModel::IsEnabled(ApplicationAction action) const noexcept {
 	return false;
 }
 
+bool MenuBarModel::IsEnabled(MenuBarItemId item) const noexcept {
+	switch (item.kind) {
+	case MenuBarItemKind::ApplicationAction:
+		return IsEnabled(item.action);
+	case MenuBarItemKind::RecentFile:
+		return item.recentIndex < recentFiles.size();
+	case MenuBarItemKind::ClearRecentFiles:
+		return !recentFiles.empty();
+	case MenuBarItemKind::EmptyRecentFiles:
+		return false;
+	}
+	return false;
+}
+
 bool UpdateMenuBarActionState(MenuBarModel &model, ApplicationEditor &editor) {
 	const bool undo = ApplicationActionEnabled(ApplicationAction::Undo, editor);
 	const bool redo = ApplicationActionEnabled(ApplicationAction::Redo, editor);
@@ -242,7 +368,11 @@ MenuBarLayout LayoutMenuBar(int frameWidth, int frameHeight,
 
 	// Headings pack left-to-right; clamp each to the remaining bar width.
 	int x = 0;
-	const ApplicationMenu menus[] = {ApplicationMenu::File, ApplicationMenu::Edit};
+	const ApplicationMenu menus[] = {
+		ApplicationMenu::File,
+		ApplicationMenu::Edit,
+		ApplicationMenu::Recent,
+	};
 	for (ApplicationMenu menu : menus) {
 		const int preferred = HeadingWidth(menu);
 		const int available = std::max(0, frameWidth - x);
@@ -278,7 +408,7 @@ MenuBarLayout LayoutMenuBar(int frameWidth, int frameHeight,
 		return layout;
 	}
 
-	int dropdownWidth = kDropdownPreferredWidth;
+	int dropdownWidth = DropdownPreferredWidth(open);
 	if (dropdownWidth > frameWidth) {
 		dropdownWidth = frameWidth;
 	}
@@ -287,7 +417,7 @@ MenuBarLayout LayoutMenuBar(int frameWidth, int frameHeight,
 		dropdownLeft = std::max(0, frameWidth - dropdownWidth);
 	}
 
-	const int contentHeight = DropdownContentHeight(open);
+	const int contentHeight = DropdownContentHeight(model, open);
 	int dropdownTop = height;
 	int dropdownBottom = dropdownTop + contentHeight;
 	// Keep the panel on-screen when the frame is shorter than the menu.
@@ -309,16 +439,10 @@ MenuBarLayout LayoutMenuBar(int frameWidth, int frameHeight,
 			kLabelShortcutGap / 2));
 
 	int y = dropdownTop + kDropdownPadY;
-	const ApplicationActionInfo *table = ApplicationActionTable();
-	const std::size_t count = ApplicationActionCount();
-	for (std::size_t i = 0; i < count; ++i) {
-		const ApplicationActionInfo &info = table[i];
-		if (info.menu != open) {
-			continue;
-		}
-
+	for (const MenuBarItemId item : OrderedItems(model, open)) {
+		const bool separatorBefore = SeparatorBefore(item);
 		PRectangle separator = empty;
-		if (info.separatorBefore) {
+		if (separatorBefore) {
 			const int sepBottom = y + kSeparatorHeight;
 			if (sepBottom > dropdownBottom) {
 				break;
@@ -347,15 +471,16 @@ MenuBarLayout LayoutMenuBar(int frameWidth, int frameHeight,
 			innerRight - kShortcutPadRight, rowBottom);
 
 		layout.items.push_back(MenuBarItemLayout{
-			info.action,
-			info.separatorBefore,
-			model.IsEnabled(info.action),
+			item,
+			item.action,
+			separatorBefore,
+			model.IsEnabled(item),
 			row,
 			separator,
 			label,
 			shortcut,
-			info.label,
-			info.shortcutLabel,
+			ItemLabel(model, item),
+			ItemShortcut(item),
 		});
 		y = rowBottom;
 	}
@@ -368,13 +493,18 @@ MenuBarHitResult HitTestMenuBar(const MenuBarLayout &layout, Point point) noexce
 	if (NonEmptyContains(layout.dropdown, point)) {
 		for (const MenuBarItemLayout &item : layout.items) {
 			if (NonEmptyContains(item.row, point)) {
-				const ApplicationActionInfo &info = InfoFor(item.action);
-				return {MenuBarHit::Item, info.menu, item.action};
+				return {
+					MenuBarHit::Item,
+					layout.dropdownMenu.value_or(ApplicationMenu::File),
+					item.item,
+					item.action,
+				};
 			}
 		}
 		// Separators and padding inside the panel are not actionable.
 		return {MenuBarHit::Dropdown,
 			layout.dropdownMenu.value_or(ApplicationMenu::File),
+			MenuBarItemId{},
 			ApplicationAction::NewTab};
 	}
 
@@ -384,10 +514,12 @@ MenuBarHitResult HitTestMenuBar(const MenuBarLayout &layout, Point point) noexce
 
 	for (const MenuBarHeadingLayout &heading : layout.headings) {
 		if (NonEmptyContains(heading.bounds, point)) {
-			return {MenuBarHit::Heading, heading.menu, ApplicationAction::NewTab};
+			return {MenuBarHit::Heading, heading.menu, MenuBarItemId{},
+				ApplicationAction::NewTab};
 		}
 	}
-	return {MenuBarHit::Bar, ApplicationMenu::File, ApplicationAction::NewTab};
+	return {MenuBarHit::Bar, ApplicationMenu::File, MenuBarItemId{},
+		ApplicationAction::NewTab};
 }
 
 void CloseMenuBar(MenuBarModel &model) noexcept {
@@ -399,9 +531,9 @@ void CloseMenuBar(MenuBarModel &model) noexcept {
 
 namespace {
 
-bool ItemEnabled(const MenuBarLayout &layout, ApplicationAction action) noexcept {
+bool ItemEnabled(const MenuBarLayout &layout, MenuBarItemId wanted) noexcept {
 	for (const MenuBarItemLayout &item : layout.items) {
-		if (item.action == action) {
+		if (item.item == wanted) {
 			return item.enabled;
 		}
 	}
@@ -417,8 +549,8 @@ bool SetOptional(std::optional<ApplicationMenu> &slot,
 	return true;
 }
 
-bool SetOptional(std::optional<ApplicationAction> &slot,
-	std::optional<ApplicationAction> next) noexcept {
+bool SetOptional(std::optional<MenuBarItemId> &slot,
+	std::optional<MenuBarItemId> next) noexcept {
 	if (slot == next) {
 		return false;
 	}
@@ -482,7 +614,7 @@ MenuBarPointerResult HandleMenuBarPointer(MenuBarModel &model,
 			}
 		} else if (hit.kind == MenuBarHit::Item) {
 			result.barDirty = SetOptional(model.hoveredHeading, std::nullopt);
-			if (SetOptional(model.hoveredItem, hit.action)) {
+			if (SetOptional(model.hoveredItem, hit.item)) {
 				result.frameDirty = true;
 			}
 		} else {
@@ -528,8 +660,8 @@ MenuBarPointerResult HandleMenuBarPointer(MenuBarModel &model,
 
 		if (menuOpen && hit.kind == MenuBarHit::Item) {
 			model.pressOrigin = MenuBarPressOrigin{
-				MenuBarPressKind::Item, hit.menu, hit.action};
-			model.hoveredItem = hit.action;
+				MenuBarPressKind::Item, hit.menu, hit.item};
+			model.hoveredItem = hit.item;
 			result.frameDirty = true;
 			result.consumed = true;
 			return result;
@@ -573,12 +705,12 @@ MenuBarPointerResult HandleMenuBarPointer(MenuBarModel &model,
 
 		if (origin.kind == MenuBarPressKind::Item &&
 			hit.kind == MenuBarHit::Item &&
-			hit.action == origin.action &&
-			ItemEnabled(layout, hit.action)) {
+			hit.item == origin.item &&
+			ItemEnabled(layout, hit.item)) {
 			// Matching press/release on an enabled item runs the action and
 			// closes before the caller dispatches application state changes.
 			CloseMenuBar(model);
-			result.activated = hit.action;
+			result.activated = hit.item;
 			result.barDirty = true;
 			result.frameDirty = true;
 			result.consumed = true;
@@ -589,8 +721,8 @@ MenuBarPointerResult HandleMenuBarPointer(MenuBarModel &model,
 		// Disabled items stay open so the user can try another row.
 		if (origin.kind == MenuBarPressKind::Item &&
 			hit.kind == MenuBarHit::Item &&
-			hit.action == origin.action &&
-			!ItemEnabled(layout, hit.action)) {
+			hit.item == origin.item &&
+			!ItemEnabled(layout, hit.item)) {
 			result.consumed = true;
 			return result;
 		}
@@ -606,17 +738,16 @@ MenuBarPointerResult HandleMenuBarPointer(MenuBarModel &model,
 
 namespace {
 
-/** Next enabled item in table order for keyboard Up/Down wrapping. */
-std::optional<ApplicationAction> AdjacentEnabledItem(const MenuBarModel &model,
-	ApplicationMenu menu, std::optional<ApplicationAction> focused,
-	bool forward) noexcept {
-	const ApplicationActionInfo *table = ApplicationActionTable();
-	const std::size_t count = ApplicationActionCount();
+/** Next enabled item in menu order for keyboard Up/Down wrapping. */
+std::optional<MenuBarItemId> AdjacentEnabledItem(const MenuBarModel &model,
+	ApplicationMenu menu, std::optional<MenuBarItemId> focused,
+	bool forward) {
+	const std::vector<MenuBarItemId> items = OrderedItems(model, menu);
+	const std::size_t count = items.size();
 	std::optional<std::size_t> focusedIndex;
 	for (std::size_t i = 0; i < count; ++i) {
-		const ApplicationActionInfo &info = table[i];
-		if (focused.has_value() && info.action == *focused &&
-			info.menu == menu && model.IsEnabled(info.action)) {
+		if (focused.has_value() && items[i] == *focused &&
+			model.IsEnabled(items[i])) {
 			focusedIndex = i;
 			break;
 		}
@@ -627,9 +758,8 @@ std::optional<ApplicationAction> AdjacentEnabledItem(const MenuBarModel &model,
 			return FirstEnabledItem(model, menu);
 		}
 		for (std::size_t i = count; i > 0; --i) {
-			const ApplicationActionInfo &info = table[i - 1];
-			if (info.menu == menu && model.IsEnabled(info.action)) {
-				return info.action;
+			if (model.IsEnabled(items[i - 1])) {
+				return items[i - 1];
 			}
 		}
 		return std::nullopt;
@@ -639,9 +769,8 @@ std::optional<ApplicationAction> AdjacentEnabledItem(const MenuBarModel &model,
 		const std::size_t index = forward ?
 			(*focusedIndex + step) % count :
 			(*focusedIndex + count - step) % count;
-		const ApplicationActionInfo &info = table[index];
-		if (info.menu == menu && model.IsEnabled(info.action)) {
-			return info.action;
+		if (model.IsEnabled(items[index])) {
+			return items[index];
 		}
 	}
 	return std::nullopt;
@@ -651,7 +780,7 @@ void OpenMenuFromKeyboard(MenuBarModel &model, ApplicationMenu menu,
 	MenuBarKeyboardResult &result) noexcept {
 	const bool wasOpen = model.openMenu.has_value();
 	const bool sameMenu = wasOpen && *model.openMenu == menu;
-	const std::optional<ApplicationAction> first = FirstEnabledItem(model, menu);
+	const std::optional<MenuBarItemId> first = FirstEnabledItem(model, menu);
 	const bool focusChanged = model.focusedItem != first;
 	const bool hoverChanged = model.hoveredItem.has_value();
 	model.openMenu = menu;
@@ -673,9 +802,21 @@ bool IsAltLetter(const KeyboardInput &input, char letter) noexcept {
 		input.key == static_cast<Scintilla::Keys>(letter);
 }
 
-ApplicationMenu OtherMenu(ApplicationMenu menu) noexcept {
-	return menu == ApplicationMenu::File ? ApplicationMenu::Edit :
-		ApplicationMenu::File;
+ApplicationMenu AdjacentMenu(ApplicationMenu menu, bool forward) noexcept {
+	const ApplicationMenu menus[] = {
+		ApplicationMenu::File,
+		ApplicationMenu::Edit,
+		ApplicationMenu::Recent,
+	};
+	std::size_t index = 0;
+	for (std::size_t candidate = 0; candidate < 3; ++candidate) {
+		if (menus[candidate] == menu) {
+			index = candidate;
+			break;
+		}
+	}
+	index = forward ? (index + 1) % 3 : (index + 2) % 3;
+	return menus[index];
 }
 
 }
@@ -700,6 +841,10 @@ MenuBarKeyboardResult HandleMenuBarKeyboard(MenuBarModel &model,
 		}
 		if (IsAltLetter(input, 'E')) {
 			OpenMenuFromKeyboard(model, ApplicationMenu::Edit, result);
+			return result;
+		}
+		if (IsAltLetter(input, 'R')) {
+			OpenMenuFromKeyboard(model, ApplicationMenu::Recent, result);
 			return result;
 		}
 		result.consumed = false;
@@ -729,10 +874,15 @@ MenuBarKeyboardResult HandleMenuBarKeyboard(MenuBarModel &model,
 		OpenMenuFromKeyboard(model, ApplicationMenu::Edit, result);
 		return result;
 	}
+	if (IsAltLetter(input, 'R')) {
+		OpenMenuFromKeyboard(model, ApplicationMenu::Recent, result);
+		return result;
+	}
 
 	if (input.key == Scintilla::Keys::Left ||
 		input.key == Scintilla::Keys::Right) {
-		const ApplicationMenu next = OtherMenu(*model.openMenu);
+		const ApplicationMenu next = AdjacentMenu(*model.openMenu,
+			input.key == Scintilla::Keys::Right);
 		OpenMenuFromKeyboard(model, next, result);
 		return result;
 	}
@@ -743,7 +893,7 @@ MenuBarKeyboardResult HandleMenuBarKeyboard(MenuBarModel &model,
 			result.frameDirty = true;
 		}
 		model.pressOrigin.reset();
-		const std::optional<ApplicationAction> next = AdjacentEnabledItem(
+		const std::optional<MenuBarItemId> next = AdjacentEnabledItem(
 			model, *model.openMenu, model.focusedItem,
 			input.key == Scintilla::Keys::Down);
 		if (next.has_value() && SetOptional(model.focusedItem, next)) {
@@ -836,9 +986,9 @@ void MenuBarPainter::PaintDropdown(Surface &surface, const MenuBarLayout &layout
 		}
 
 		const bool hovered = model.hoveredItem.has_value() &&
-			*model.hoveredItem == item.action;
+			*model.hoveredItem == item.item;
 		const bool focused = model.focusedItem.has_value() &&
-			*model.focusedItem == item.action;
+			*model.focusedItem == item.item;
 		if (item.enabled && (hovered || focused)) {
 			surface.FillRectangle(item.row,
 				Fill(focused ? kItemFocus : kItemHover));

@@ -39,6 +39,8 @@ using Scalpel::LayoutUnsavedChangesCard;
 using Scalpel::MenuBarHeight;
 using Scalpel::MenuBarHit;
 using Scalpel::MenuBarHitResult;
+using Scalpel::MenuBarItemId;
+using Scalpel::MenuBarItemKind;
 using Scalpel::MenuBarItemLayout;
 using Scalpel::MenuBarKeyboardResult;
 using Scalpel::MenuBarLayout;
@@ -127,6 +129,18 @@ const MenuBarItemLayout *FindItem(const MenuBarLayout &layout,
 	ApplicationAction action) {
 	for (const auto &item : layout.items) {
 		if (item.action == action) {
+			return &item;
+		}
+	}
+	return nullptr;
+}
+
+const MenuBarItemLayout *FindMenuItem(const MenuBarLayout &layout,
+	MenuBarItemKind kind, std::size_t recentIndex = 0) {
+	for (const auto &item : layout.items) {
+		if (item.item.kind == kind &&
+			(kind != MenuBarItemKind::RecentFile ||
+				item.item.recentIndex == recentIndex)) {
 			return &item;
 		}
 	}
@@ -627,21 +641,118 @@ TEST_CASE("menu bar height is fixed and positive") {
 	CHECK(MenuBarHeight() < 40);
 }
 
-TEST_CASE("menu bar layout places File and Edit headings") {
+TEST_CASE("menu bar layout places File Edit and Recent headings") {
 	const MenuBarLayout layout = LayoutMenuBar(400, 300, ClosedBar());
 	CHECK(layout.bar == PRectangle::FromInts(0, 0, 400, MenuBarHeight()));
-	REQUIRE(layout.headings.size() == 2);
+	REQUIRE(layout.headings.size() == 3);
 	CHECK(layout.headings[0].menu == ApplicationMenu::File);
 	CHECK(layout.headings[0].label == "File");
 	CHECK(layout.headings[1].menu == ApplicationMenu::Edit);
 	CHECK(layout.headings[1].label == "Edit");
+	CHECK(layout.headings[2].menu == ApplicationMenu::Recent);
+	CHECK(layout.headings[2].label == "Recent");
 	CHECK(NonEmpty(layout.headings[0].bounds));
 	CHECK(NonEmpty(layout.headings[1].bounds));
+	CHECK(NonEmpty(layout.headings[2].bounds));
 	CHECK(layout.headings[0].bounds.left == 0);
 	CHECK(layout.headings[0].bounds.right == layout.headings[1].bounds.left);
-	CHECK(layout.headings[1].bounds.right <= 400);
+	CHECK(layout.headings[1].bounds.right == layout.headings[2].bounds.left);
+	CHECK(layout.headings[2].bounds.right <= 400);
 	CHECK_FALSE(NonEmpty(layout.dropdown));
 	CHECK(layout.items.empty());
+}
+
+TEST_CASE("menu bar Recent dropdown shows paths clear and empty state") {
+	MenuBarModel model = OpenMenu(ApplicationMenu::Recent);
+
+	SECTION("empty list has one disabled placeholder") {
+		const MenuBarLayout layout = Layout(model);
+		REQUIRE(layout.items.size() == 1);
+		const MenuBarItemLayout &empty = layout.items.front();
+		CHECK(empty.item.kind == MenuBarItemKind::EmptyRecentFiles);
+		CHECK(empty.labelText == "No Recent Files");
+		CHECK_FALSE(empty.enabled);
+		CHECK_FALSE(empty.separatorBefore);
+	}
+
+	SECTION("paths show filename first and Clear after a separator") {
+		model.recentFiles = {
+			"/work/project/notes.txt",
+			"/other/draft.md",
+		};
+		const MenuBarLayout layout = Layout(model, 600);
+		REQUIRE(layout.items.size() == 3);
+		CHECK(layout.dropdown.Width() == 440);
+		CHECK(layout.items[0].item == MenuBarItemId::RecentFile(0));
+		CHECK(layout.items[0].labelText == "notes.txt \xe2\x80\x94 /work/project");
+		CHECK(layout.items[1].item == MenuBarItemId::RecentFile(1));
+		const MenuBarItemLayout *clear =
+			FindMenuItem(layout, MenuBarItemKind::ClearRecentFiles);
+		REQUIRE(clear);
+		CHECK(clear->labelText == "Clear Recent Files");
+		CHECK(clear->separatorBefore);
+		CHECK(clear->enabled);
+	}
+
+	SECTION("wide Recent dropdown clamps to a narrow frame") {
+		model.recentFiles = {"/work/notes.txt"};
+		const MenuBarLayout layout = Layout(model, 180);
+		CHECK(layout.dropdown.left >= 0);
+		CHECK(layout.dropdown.right <= 180);
+	}
+}
+
+TEST_CASE("menu bar Recent pointer and keyboard activate dynamic rows") {
+	MenuBarModel model = OpenMenu(ApplicationMenu::Recent);
+	model.recentFiles = {"/work/one.txt", "/work/two.txt"};
+
+	SECTION("matching pointer press and release activates a recent path") {
+		const MenuBarLayout layout = Layout(model, 600);
+		const MenuBarItemLayout *first =
+			FindMenuItem(layout, MenuBarItemKind::RecentFile, 0);
+		REQUIRE(first);
+		const Point point = Center(first->row);
+		const MenuBarPointerResult press = HandleMenuBarPointer(model, layout,
+			MakePointer(PointerAction::Press, point.x, point.y, 0), false);
+		CHECK(press.consumed);
+		const MenuBarPointerResult release = HandleMenuBarPointer(model, layout,
+			MakePointer(PointerAction::Release, point.x, point.y, 0), false);
+		REQUIRE(release.activated.has_value());
+		CHECK(release.activated->kind == MenuBarItemKind::RecentFile);
+		CHECK(release.activated->recentIndex == 0);
+		CHECK_FALSE(model.openMenu.has_value());
+	}
+
+	SECTION("Alt R focuses Recent and arrows include Clear with wrapping") {
+		CloseMenuBar(model);
+		const MenuBarKeyboardResult open =
+			HandleMenuBarKeyboard(model, MakeLetter('R', KeyMod::Alt));
+		CHECK(open.consumed);
+		CHECK(model.openMenu == ApplicationMenu::Recent);
+		REQUIRE(model.focusedItem.has_value());
+		CHECK(*model.focusedItem == MenuBarItemId::RecentFile(0));
+
+		(void)HandleMenuBarKeyboard(model, MakeKey(Keys::Down));
+		CHECK(*model.focusedItem == MenuBarItemId::RecentFile(1));
+		(void)HandleMenuBarKeyboard(model, MakeKey(Keys::Down));
+		CHECK(model.focusedItem->kind == MenuBarItemKind::ClearRecentFiles);
+		(void)HandleMenuBarKeyboard(model, MakeKey(Keys::Down));
+		CHECK(*model.focusedItem == MenuBarItemId::RecentFile(0));
+
+		model.focusedItem = MenuBarItemId::ClearRecentFiles();
+		const MenuBarKeyboardResult activate =
+			HandleMenuBarKeyboard(model, MakeKey(Keys::Return));
+		REQUIRE(activate.activated.has_value());
+		CHECK(activate.activated->kind == MenuBarItemKind::ClearRecentFiles);
+	}
+
+	SECTION("empty Recent menu has no keyboard focus") {
+		CloseMenuBar(model);
+		model.recentFiles.clear();
+		(void)HandleMenuBarKeyboard(model, MakeLetter('R', KeyMod::Alt));
+		CHECK(model.openMenu == ApplicationMenu::Recent);
+		CHECK_FALSE(model.focusedItem.has_value());
+	}
 }
 
 TEST_CASE("menu bar zero width yields empty layout") {
@@ -1186,7 +1297,7 @@ TEST_CASE("menu bar shell integration closes before portal prompt and tab work")
 		REQUIRE(result.activated.has_value());
 		CHECK(*result.activated == ApplicationAction::Open);
 		CHECK_FALSE(model.openMenu.has_value());
-		DispatchApplicationAction(*result.activated, workspace, editor);
+		DispatchApplicationAction(result.activated->action, workspace, editor);
 		const auto requests = workspace.TakeRequests();
 		bool showOpen = false;
 		for (const DocumentShellRequest request : requests) {
@@ -1208,7 +1319,7 @@ TEST_CASE("menu bar shell integration closes before portal prompt and tab work")
 		REQUIRE(result.activated.has_value());
 		CHECK(*result.activated == ApplicationAction::Quit);
 		CHECK_FALSE(model.openMenu.has_value());
-		DispatchApplicationAction(*result.activated, workspace, editor);
+		DispatchApplicationAction(result.activated->action, workspace, editor);
 		CHECK(workspace.PromptActive());
 		const auto requests = workspace.TakeRequests();
 		bool promptBegan = false;
@@ -1477,7 +1588,7 @@ TEST_CASE("menu bar editor integration narrow resize and framebuffer scale") {
 		const MenuBarLayout narrow =
 			LayoutMenuBar(80, 100, menuModel);
 		CHECK(narrow.bar.right == 80);
-		REQUIRE(narrow.headings.size() == 2);
+		REQUIRE(narrow.headings.size() == 3);
 		CHECK(narrow.headings[0].bounds.left == 0);
 		CHECK(narrow.headings[0].bounds.right <= 80);
 		const auto stripLayout = LayoutTabStrip(80, stripModel, menuH);
@@ -1596,7 +1707,7 @@ TEST_CASE("menu bar workflow keyboard open pointer edit portal quit cancel") {
 
 	// Portal action: Open closes the menu first, then the workspace requests
 	// the dialog; accepting a path creates a sibling tab.
-	DispatchApplicationAction(*openRelease.activated, workspace, editor);
+	DispatchApplicationAction(openRelease.activated->action, workspace, editor);
 	CHECK(HasShellRequest(workspace.TakeRequests(),
 		DocumentShellRequest::ShowOpen));
 	char openPattern[] = "/tmp/scalpel-menu-wf-XXXXXX";
@@ -1633,7 +1744,7 @@ TEST_CASE("menu bar workflow keyboard open pointer edit portal quit cancel") {
 	REQUIRE(quit.activated.has_value());
 	CHECK(*quit.activated == ApplicationAction::Quit);
 	CHECK_FALSE(model.openMenu.has_value());
-	DispatchApplicationAction(*quit.activated, workspace, editor);
+	DispatchApplicationAction(quit.activated->action, workspace, editor);
 	CHECK(workspace.PromptActive());
 	CHECK(workspace.Pending() == UnsavedPending::CloseWindow);
 	CHECK(HasShellRequest(workspace.TakeRequests(),

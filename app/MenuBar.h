@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -34,10 +35,57 @@ enum class MenuBarPressKind {
 	Dismissal,
 };
 
+enum class MenuBarItemKind {
+	ApplicationAction,
+	RecentFile,
+	ClearRecentFiles,
+	EmptyRecentFiles,
+};
+
+/** Stable identity for either a fixed action or one dynamic Recent row. */
+struct MenuBarItemId {
+	MenuBarItemKind kind = MenuBarItemKind::ApplicationAction;
+	ApplicationAction action = ApplicationAction::NewTab;
+	std::size_t recentIndex = 0;
+
+	MenuBarItemId() = default;
+	MenuBarItemId(ApplicationAction action_) noexcept : action(action_) {
+	}
+
+	[[nodiscard]] static MenuBarItemId RecentFile(std::size_t index) noexcept;
+	[[nodiscard]] static MenuBarItemId ClearRecentFiles() noexcept;
+	[[nodiscard]] static MenuBarItemId EmptyRecentFiles() noexcept;
+
+	[[nodiscard]] bool IsApplicationAction() const noexcept {
+		return kind == MenuBarItemKind::ApplicationAction;
+	}
+};
+
+[[nodiscard]] bool operator==(const MenuBarItemId &left,
+	const MenuBarItemId &right) noexcept;
+[[nodiscard]] bool operator!=(const MenuBarItemId &left,
+	const MenuBarItemId &right) noexcept;
+[[nodiscard]] bool operator==(const MenuBarItemId &left,
+	ApplicationAction right) noexcept;
+[[nodiscard]] bool operator!=(const MenuBarItemId &left,
+	ApplicationAction right) noexcept;
+
 struct MenuBarPressOrigin {
 	MenuBarPressKind kind = MenuBarPressKind::Heading;
 	ApplicationMenu menu = ApplicationMenu::File;
+	/** Retained for fixed-action callers and tests. */
 	ApplicationAction action = ApplicationAction::NewTab;
+	MenuBarItemId item;
+
+	MenuBarPressOrigin() = default;
+	MenuBarPressOrigin(MenuBarPressKind kind_, ApplicationMenu menu_,
+		ApplicationAction action_) noexcept :
+		kind(kind_), menu(menu_), action(action_), item(action_) {
+	}
+	MenuBarPressOrigin(MenuBarPressKind kind_, ApplicationMenu menu_,
+		MenuBarItemId item_) noexcept :
+		kind(kind_), menu(menu_), action(item_.action), item(item_) {
+	}
 };
 
 /**
@@ -50,9 +98,9 @@ struct MenuBarModel {
 	/** Heading under the pointer (File or Edit). */
 	std::optional<ApplicationMenu> hoveredHeading;
 	/** Item under the pointer while a dropdown is open. */
-	std::optional<ApplicationAction> hoveredItem;
+	std::optional<MenuBarItemId> hoveredItem;
 	/** Keyboard-focused actionable item while a dropdown is open. */
-	std::optional<ApplicationAction> focusedItem;
+	std::optional<MenuBarItemId> focusedItem;
 	/** Left-button press origin for press/release matching. */
 	std::optional<MenuBarPressOrigin> pressOrigin;
 
@@ -62,9 +110,12 @@ struct MenuBarModel {
 	bool copyEnabled = true;
 	bool pasteEnabled = true;
 	bool selectAllEnabled = true;
+	/** Most-recent path first; owned strings keep layout labels stable. */
+	std::vector<std::string> recentFiles;
 
 	/** File actions are always enabled; edit flags follow the fields above. */
 	[[nodiscard]] bool IsEnabled(ApplicationAction action) const noexcept;
+	[[nodiscard]] bool IsEnabled(MenuBarItemId item) const noexcept;
 };
 
 /**
@@ -85,6 +136,8 @@ struct MenuBarHeadingLayout {
 };
 
 struct MenuBarItemLayout {
+	MenuBarItemId item;
+	/** Fixed-action compatibility; NewTab for dynamic rows. */
 	ApplicationAction action = ApplicationAction::NewTab;
 	bool separatorBefore = false;
 	bool enabled = true;
@@ -94,8 +147,8 @@ struct MenuBarItemLayout {
 	Scintilla::Internal::PRectangle separator;
 	Scintilla::Internal::PRectangle label;
 	Scintilla::Internal::PRectangle shortcut;
-	std::string_view labelText;
-	std::string_view shortcutText;
+	std::string labelText;
+	std::string shortcutText;
 };
 
 struct MenuBarLayout {
@@ -123,6 +176,8 @@ enum class MenuBarHit {
 struct MenuBarHitResult {
 	MenuBarHit kind = MenuBarHit::None;
 	ApplicationMenu menu = ApplicationMenu::File;
+	MenuBarItemId item;
+	/** Fixed-action compatibility; NewTab for dynamic rows. */
 	ApplicationAction action = ApplicationAction::NewTab;
 };
 
@@ -140,7 +195,7 @@ struct MenuBarPointerResult {
 	/** Open, close, or dropdown hover needs full-frame invalidation. */
 	bool frameDirty = false;
 	/** Enabled item activated by a matching press and release. */
-	std::optional<ApplicationAction> activated;
+	std::optional<MenuBarItemId> activated;
 	/** Pointer is over the bar band or the open dropdown panel. */
 	bool pointerOverMenu = false;
 };
@@ -154,7 +209,7 @@ struct MenuBarKeyboardResult {
 	bool consumed = false;
 	bool barDirty = false;
 	bool frameDirty = false;
-	std::optional<ApplicationAction> activated;
+	std::optional<MenuBarItemId> activated;
 };
 
 /**

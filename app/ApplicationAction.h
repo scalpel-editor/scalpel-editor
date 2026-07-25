@@ -38,6 +38,7 @@ enum class ApplicationAction {
 enum class ApplicationMenu {
 	File,
 	Edit,
+	Recent,
 };
 
 /**

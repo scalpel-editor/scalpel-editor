@@ -638,10 +638,11 @@ bool HandleTopChromePointer(const Scalpel::PointerInput &input,
 		// cannot leave a stale panel.
 		editor.InvalidateFrame();
 	}
-	if (menuResult.activated) {
+	if (menuResult.activated &&
+		menuResult.activated->IsApplicationAction()) {
 		// Dropdown is already closed; run the shared action path.
 		Scalpel::DispatchApplicationAction(
-			*menuResult.activated, workspace, editor);
+			menuResult.activated->action, workspace, editor);
 	}
 
 	// A selection drag that began in the editor still owns motion and release
@@ -767,9 +768,10 @@ bool HandleMenuBarKeyboardInput(const Scalpel::KeyboardInput &input,
 	if (menuResult.frameDirty) {
 		editor.InvalidateFrame();
 	}
-	if (menuResult.activated) {
+	if (menuResult.activated &&
+		menuResult.activated->IsApplicationAction()) {
 		Scalpel::DispatchApplicationAction(
-			*menuResult.activated, workspace, editor);
+			menuResult.activated->action, workspace, editor);
 	}
 	return menuResult.consumed;
 }
