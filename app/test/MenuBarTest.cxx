@@ -933,6 +933,50 @@ TEST_CASE("menu bar model enablement matches edit flags") {
 	CHECK(model.IsEnabled(ApplicationAction::Quit));
 }
 
+TEST_CASE("menu bar action state follows editor enablement") {
+	using Scalpel::UpdateMenuBarActionState;
+
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("state");
+	MenuBarModel model;
+	// Defaults look fully enabled until refreshed from the editor.
+	CHECK(model.IsEnabled(ApplicationAction::Undo));
+	CHECK(UpdateMenuBarActionState(model, editor));
+	CHECK_FALSE(model.IsEnabled(ApplicationAction::Undo));
+	CHECK_FALSE(model.IsEnabled(ApplicationAction::Redo));
+	CHECK_FALSE(model.IsEnabled(ApplicationAction::Cut));
+	CHECK_FALSE(model.IsEnabled(ApplicationAction::Copy));
+	CHECK_FALSE(model.IsEnabled(ApplicationAction::Paste));
+	CHECK(model.IsEnabled(ApplicationAction::SelectAll));
+	CHECK(model.IsEnabled(ApplicationAction::Save));
+	// Stable while nothing changes.
+	CHECK_FALSE(UpdateMenuBarActionState(model, editor));
+
+	editor.HandleKeyboardInput(
+		{Keys::End, KeyMod::Norm, {}, 1, true});
+	editor.HandleKeyboardInput(
+		{static_cast<Keys>(0), KeyMod::Norm, "x", 2, true});
+	CHECK(UpdateMenuBarActionState(model, editor));
+	CHECK(model.IsEnabled(ApplicationAction::Undo));
+
+	editor.SetClipboardPasteAvailable(true);
+	CHECK(UpdateMenuBarActionState(model, editor));
+	CHECK(model.IsEnabled(ApplicationAction::Paste));
+	editor.SetClipboardPasteAvailable(false);
+	CHECK(UpdateMenuBarActionState(model, editor));
+	CHECK_FALSE(model.IsEnabled(ApplicationAction::Paste));
+
+	// Layout reads the refreshed flags into item rows.
+	model.openMenu = ApplicationMenu::Edit;
+	const MenuBarLayout layout = LayoutMenuBar(400, 300, model);
+	const auto *undo = FindItem(layout, ApplicationAction::Undo);
+	const auto *paste = FindItem(layout, ApplicationAction::Paste);
+	REQUIRE(undo);
+	REQUIRE(paste);
+	CHECK(undo->enabled);
+	CHECK_FALSE(paste->enabled);
+}
+
 TEST_CASE("menu bar editor integration stacks chrome above the inset client") {
 	using Scalpel::LayoutTabStrip;
 	using Scalpel::TabStripHeight;

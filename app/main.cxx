@@ -599,6 +599,9 @@ bool HandleTopChromePointer(const Scalpel::PointerInput &input,
 	Scalpel::ApplicationEditor &editor,
 	bool &pointerOverChrome) {
 	const bool captured = editor.WindowState().mouseCaptured;
+	// Keep enablement current before open/toggle/hover so disabled items and
+	// keyboard-equivalent pointer activation match the active document.
+	(void)Scalpel::UpdateMenuBarActionState(menuModel, editor);
 	const Scalpel::MenuBarLayout menuLayout = Scalpel::LayoutMenuBar(
 		editor.FrameWidth(), editor.FrameHeight(), menuModel);
 	const Scalpel::MenuBarPointerResult menuResult =
@@ -724,6 +727,8 @@ bool HandleMenuBarKeyboardInput(const Scalpel::KeyboardInput &input,
 	Scalpel::MenuBarModel &menuModel,
 	Scalpel::DocumentWorkspace &workspace,
 	Scalpel::ApplicationEditor &editor) {
+	// Refresh before open accelerators so FirstEnabledItem uses live state.
+	(void)Scalpel::UpdateMenuBarActionState(menuModel, editor);
 	const Scalpel::MenuBarKeyboardResult menuResult =
 		Scalpel::HandleMenuBarKeyboard(menuModel, input);
 	if (menuResult.barDirty) {
@@ -800,6 +805,9 @@ int main() {
 
 		editor.SetPermanentChromePainter(
 			[&](Scintilla::Internal::Surface &surface, int width, int height) {
+				// Heading open styling does not depend on edit flags, but keep
+				// the model aligned with the editor before any chrome paint.
+				(void)Scalpel::UpdateMenuBarActionState(menuModel, editor);
 				const Scalpel::MenuBarLayout menuLayout =
 					Scalpel::LayoutMenuBar(width, height, menuModel);
 				menuPainter.PaintBar(surface, menuLayout, menuModel);
@@ -812,6 +820,9 @@ int main() {
 
 		const auto paintMenuDropdown =
 			[&](Scintilla::Internal::Surface &surface, int width, int height) {
+				// Open dropdown rows read enablement from the model; refresh so
+				// delayed clipboard and active-tab state paint correctly.
+				(void)Scalpel::UpdateMenuBarActionState(menuModel, editor);
 				const Scalpel::MenuBarLayout menuLayout =
 					Scalpel::LayoutMenuBar(width, height, menuModel);
 				menuPainter.PaintDropdown(surface, menuLayout, menuModel);
@@ -835,6 +846,12 @@ int main() {
 			PerformShellRequests(workspace, window, editor, stripModel,
 				quitAccepted, cardFocus, promptPressHit);
 			SynchronizeTextInput(editor, window);
+			// Clipboard offer can arrive while a dropdown is open; flip paste
+			// enablement and force a full-frame paint so the row updates.
+			if (menuModel.openMenu.has_value() &&
+				Scalpel::UpdateMenuBarActionState(menuModel, editor)) {
+				editor.InvalidateClient();
+			}
 
 			if (window.ForceCloseRequested()) {
 				break;

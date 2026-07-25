@@ -184,6 +184,29 @@ bool MenuBarModel::IsEnabled(ApplicationAction action) const noexcept {
 	return false;
 }
 
+bool UpdateMenuBarActionState(MenuBarModel &model, ApplicationEditor &editor) {
+	const bool undo = ApplicationActionEnabled(ApplicationAction::Undo, editor);
+	const bool redo = ApplicationActionEnabled(ApplicationAction::Redo, editor);
+	const bool cut = ApplicationActionEnabled(ApplicationAction::Cut, editor);
+	const bool copy = ApplicationActionEnabled(ApplicationAction::Copy, editor);
+	const bool paste = ApplicationActionEnabled(ApplicationAction::Paste, editor);
+	const bool selectAll =
+		ApplicationActionEnabled(ApplicationAction::SelectAll, editor);
+	const bool changed = model.undoEnabled != undo ||
+		model.redoEnabled != redo ||
+		model.cutEnabled != cut ||
+		model.copyEnabled != copy ||
+		model.pasteEnabled != paste ||
+		model.selectAllEnabled != selectAll;
+	model.undoEnabled = undo;
+	model.redoEnabled = redo;
+	model.cutEnabled = cut;
+	model.copyEnabled = copy;
+	model.pasteEnabled = paste;
+	model.selectAllEnabled = selectAll;
+	return changed;
+}
+
 int MenuBarHeight() noexcept {
 	return kBarHeight;
 }

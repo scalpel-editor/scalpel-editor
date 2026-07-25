@@ -128,7 +128,7 @@ TEST_CASE("application actions match listed shortcuts and ignore releases") {
 	CHECK_FALSE(MatchApplicationAction(Press('P', ctrl)).has_value());
 }
 
-TEST_CASE("application actions enablement follows edit state") {
+TEST_CASE("application actions state tracks selection history and empty buffer") {
 	ApplicationEditor editor(320, 180);
 	editor.LoadInitialBuffer("abc");
 	DocumentWorkspace workspace(editor);
@@ -152,9 +152,91 @@ TEST_CASE("application actions enablement follows edit state") {
 	CHECK(editor.Text() == "abc");
 	CHECK_FALSE(ApplicationActionEnabled(ApplicationAction::Undo, editor));
 	CHECK(ApplicationActionEnabled(ApplicationAction::Redo, editor));
+
+	DispatchApplicationAction(ApplicationAction::SelectAll, workspace, editor);
+	CHECK(ApplicationActionEnabled(ApplicationAction::Cut, editor));
+	CHECK(ApplicationActionEnabled(ApplicationAction::Copy, editor));
+	DispatchApplicationAction(ApplicationAction::Cut, workspace, editor);
+	REQUIRE(editor.Text().empty());
+	CHECK_FALSE(ApplicationActionEnabled(ApplicationAction::SelectAll, editor));
+	CHECK_FALSE(ApplicationActionEnabled(ApplicationAction::Cut, editor));
+	CHECK_FALSE(ApplicationActionEnabled(ApplicationAction::Copy, editor));
 }
 
-TEST_CASE("application actions dispatch file workspace commands") {
+TEST_CASE("application actions state isolates inactive tab history") {
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("first");
+	DocumentWorkspace workspace(editor);
+	const auto first = workspace.ActiveTab();
+
+	editor.HandleKeyboardInput(
+		Press(Scintilla::Keys::End, Scintilla::KeyMod::Norm));
+	TypeChar(editor, '!', 2);
+	REQUIRE(editor.Text() == "first!");
+	REQUIRE(ApplicationActionEnabled(ApplicationAction::Undo, editor));
+	DispatchApplicationAction(ApplicationAction::SelectAll, workspace, editor);
+	REQUIRE(ApplicationActionEnabled(ApplicationAction::Copy, editor));
+
+	// New empty tab is active; first tab's undo and selection must not leak.
+	DispatchApplicationAction(ApplicationAction::NewTab, workspace, editor);
+	CHECK(workspace.TabCount() == 2);
+	CHECK(workspace.ActiveTab() != first);
+	CHECK(editor.Text().empty());
+	CHECK_FALSE(ApplicationActionEnabled(ApplicationAction::Undo, editor));
+	CHECK_FALSE(ApplicationActionEnabled(ApplicationAction::Redo, editor));
+	CHECK_FALSE(ApplicationActionEnabled(ApplicationAction::Cut, editor));
+	CHECK_FALSE(ApplicationActionEnabled(ApplicationAction::Copy, editor));
+	CHECK_FALSE(ApplicationActionEnabled(ApplicationAction::SelectAll, editor));
+
+	// Returning to the first tab restores its history and selection.
+	workspace.ActivateTab(first);
+	CHECK(editor.Text() == "first!");
+	CHECK(ApplicationActionEnabled(ApplicationAction::Undo, editor));
+	CHECK(ApplicationActionEnabled(ApplicationAction::Copy, editor));
+
+	// Undo only affects the active document.
+	DispatchApplicationAction(ApplicationAction::Undo, workspace, editor);
+	CHECK(editor.Text() == "first");
+	CHECK(ApplicationActionEnabled(ApplicationAction::Redo, editor));
+
+	// Second tab is still empty with no history of its own.
+	const auto second = workspace.Tabs()[1].id;
+	workspace.ActivateTab(second);
+	CHECK(editor.Text().empty());
+	CHECK_FALSE(ApplicationActionEnabled(ApplicationAction::Undo, editor));
+	CHECK_FALSE(ApplicationActionEnabled(ApplicationAction::Redo, editor));
+	CHECK(editor.Text(first) == "first");
+}
+
+TEST_CASE("application actions state reflects delayed clipboard availability") {
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("clip");
+	DocumentWorkspace workspace(editor);
+
+	// Paste follows the offer flag, not merely having cut or copied earlier.
+	CHECK_FALSE(ApplicationActionEnabled(ApplicationAction::Paste, editor));
+	editor.SetClipboardPasteAvailable(true);
+	CHECK(ApplicationActionEnabled(ApplicationAction::Paste, editor));
+	editor.SetClipboardPasteAvailable(false);
+	CHECK_FALSE(ApplicationActionEnabled(ApplicationAction::Paste, editor));
+
+	// Offer can appear after the buffer already has a selection.
+	DispatchApplicationAction(ApplicationAction::SelectAll, workspace, editor);
+	CHECK_FALSE(ApplicationActionEnabled(ApplicationAction::Paste, editor));
+	editor.SetClipboardPasteAvailable(true);
+	CHECK(ApplicationActionEnabled(ApplicationAction::Paste, editor));
+
+	// Clearing the offer while selected still disables paste.
+	editor.SetClipboardPasteAvailable(false);
+	CHECK_FALSE(ApplicationActionEnabled(ApplicationAction::Paste, editor));
+	// Re-enable for a successful paste path check.
+	editor.SetClipboardPasteAvailable(true);
+	DispatchApplicationAction(ApplicationAction::Paste, workspace, editor);
+	const auto pasteRequests = editor.TakeClipboardRequests();
+	REQUIRE(pasteRequests.size() == 1);
+}
+
+TEST_CASE("application actions dispatch file portal tab close and save") {
 	ApplicationEditor editor(320, 180);
 	editor.LoadInitialBuffer("file actions\n");
 	DocumentWorkspace workspace(editor);
@@ -163,6 +245,7 @@ TEST_CASE("application actions dispatch file workspace commands") {
 	CHECK(workspace.TabCount() == 2);
 	CHECK(HasRequest(workspace.TakeRequests(), DocumentShellRequest::RefreshTabs));
 
+	// Portal request creation for Open and Save As.
 	DispatchApplicationAction(ApplicationAction::Open, workspace, editor);
 	CHECK(HasRequest(workspace.TakeRequests(), DocumentShellRequest::ShowOpen));
 
@@ -217,7 +300,7 @@ TEST_CASE("application actions quit is dirty-aware") {
 	CHECK_FALSE(dirtyWorkspace.PromptActive());
 }
 
-TEST_CASE("application actions dispatch edit operations") {
+TEST_CASE("application actions dispatch edit undo redo cut copy paste select all") {
 	ApplicationEditor editor(320, 180);
 	editor.LoadInitialBuffer("edit me");
 	DocumentWorkspace workspace(editor);
@@ -255,6 +338,16 @@ TEST_CASE("application actions dispatch edit operations") {
 	const auto cutRequests = editor.TakeClipboardRequests();
 	REQUIRE(cutRequests.size() == 1);
 	CHECK(cutRequests.front().text == "new");
+}
+
+TEST_CASE("application actions dispatch window close through quit") {
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("quit\n");
+	DocumentWorkspace workspace(editor);
+
+	DispatchApplicationAction(ApplicationAction::Quit, workspace, editor);
+	CHECK(HasRequest(workspace.TakeRequests(), DocumentShellRequest::AcceptClose));
+	CHECK_FALSE(workspace.PromptActive());
 }
 
 TEST_CASE("application actions cancel tentative input before editing") {

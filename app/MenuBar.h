@@ -1,5 +1,6 @@
 // Fixed logical layout, hit-testing, open-menu pointer and keyboard navigation,
 // and opaque painting for the File / Edit menu bar. main owns MenuBarModel,
+// refreshes edit enablement via UpdateMenuBarActionState before open and paint,
 // converts input into model transitions via HandleMenuBarPointer and
 // HandleMenuBarKeyboard, dispatches returned actions, and paints the permanent
 // bar plus the overlay slot for open dropdowns. Layout, hit-testing, and input
@@ -64,6 +65,15 @@ struct MenuBarModel {
 	/** File actions are always enabled; edit flags follow the fields above. */
 	[[nodiscard]] bool IsEnabled(ApplicationAction action) const noexcept;
 };
+
+/**
+ * Copy ApplicationActionEnabled results into the model edit flags.
+ * Call when a menu opens and whenever the open dropdown is about to paint so
+ * active-document history, selection, and clipboard offer stay current.
+ * Returns true when any flag changed (caller may invalidate for repaint).
+ */
+bool UpdateMenuBarActionState(MenuBarModel &model,
+	ApplicationEditor &editor);
 
 struct MenuBarHeadingLayout {
 	ApplicationMenu menu = ApplicationMenu::File;
