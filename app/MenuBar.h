@@ -69,7 +69,9 @@ struct MenuBarModel {
 /**
  * Copy ApplicationActionEnabled results into the model edit flags.
  * Call when a menu opens and whenever the open dropdown is about to paint so
- * active-document history, selection, and clipboard offer stay current.
+ * active-document history, selection, and clipboard offer stay current. If a
+ * live change disables the keyboard-focused item, focus moves to the first
+ * enabled item in the open menu.
  * Returns true when any flag changed (caller may invalidate for repaint).
  */
 bool UpdateMenuBarActionState(MenuBarModel &model,

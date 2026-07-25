@@ -962,12 +962,14 @@ TEST_CASE("menu bar action state follows editor enablement") {
 	editor.SetClipboardPasteAvailable(true);
 	CHECK(UpdateMenuBarActionState(model, editor));
 	CHECK(model.IsEnabled(ApplicationAction::Paste));
+	model.openMenu = ApplicationMenu::Edit;
+	model.focusedItem = ApplicationAction::Paste;
 	editor.SetClipboardPasteAvailable(false);
 	CHECK(UpdateMenuBarActionState(model, editor));
 	CHECK_FALSE(model.IsEnabled(ApplicationAction::Paste));
+	CHECK(model.focusedItem == ApplicationAction::Undo);
 
 	// Layout reads the refreshed flags into item rows.
-	model.openMenu = ApplicationMenu::Edit;
 	const MenuBarLayout layout = LayoutMenuBar(400, 300, model);
 	const auto *undo = FindItem(layout, ApplicationAction::Undo);
 	const auto *paste = FindItem(layout, ApplicationAction::Paste);

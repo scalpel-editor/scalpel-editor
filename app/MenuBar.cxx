@@ -29,6 +29,20 @@ constexpr int kShortcutColumnWidth = 100;
 // Fits "Save As…" + gap + "Ctrl+Shift+S" at the menu font with padding.
 constexpr int kDropdownPreferredWidth = 220;
 
+/** First enabled action in menu order for the open or named menu. */
+std::optional<ApplicationAction> FirstEnabledItem(const MenuBarModel &model,
+	ApplicationMenu menu) noexcept {
+	const ApplicationActionInfo *table = ApplicationActionTable();
+	const std::size_t count = ApplicationActionCount();
+	for (std::size_t i = 0; i < count; ++i) {
+		const ApplicationActionInfo &info = table[i];
+		if (info.menu == menu && model.IsEnabled(info.action)) {
+			return info.action;
+		}
+	}
+	return std::nullopt;
+}
+
 // FontParameters.size is device pixels (see FontPlatform FC_PIXEL_SIZE).
 constexpr float PixelSizeFromPoints(float points) noexcept {
 	return points * 96.0f / 72.0f;
@@ -204,6 +218,10 @@ bool UpdateMenuBarActionState(MenuBarModel &model, ApplicationEditor &editor) {
 	model.copyEnabled = copy;
 	model.pasteEnabled = paste;
 	model.selectAllEnabled = selectAll;
+	if (model.openMenu.has_value() && model.focusedItem.has_value() &&
+		!model.IsEnabled(*model.focusedItem)) {
+		model.focusedItem = FirstEnabledItem(model, *model.openMenu);
+	}
 	return changed;
 }
 
@@ -587,20 +605,6 @@ MenuBarPointerResult HandleMenuBarPointer(MenuBarModel &model,
 }
 
 namespace {
-
-/** First enabled action in menu order for the open or named menu. */
-std::optional<ApplicationAction> FirstEnabledItem(const MenuBarModel &model,
-	ApplicationMenu menu) noexcept {
-	const ApplicationActionInfo *table = ApplicationActionTable();
-	const std::size_t count = ApplicationActionCount();
-	for (std::size_t i = 0; i < count; ++i) {
-		const ApplicationActionInfo &info = table[i];
-		if (info.menu == menu && model.IsEnabled(info.action)) {
-			return info.action;
-		}
-	}
-	return std::nullopt;
-}
 
 /** Next enabled item in table order for keyboard Up/Down wrapping. */
 std::optional<ApplicationAction> AdjacentEnabledItem(const MenuBarModel &model,
