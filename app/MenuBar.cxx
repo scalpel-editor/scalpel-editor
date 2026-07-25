@@ -579,19 +579,45 @@ std::optional<ApplicationAction> FirstEnabledItem(const MenuBarModel &model,
 	return std::nullopt;
 }
 
-/** Enabled items in table order for keyboard Up/Down wrapping. */
-std::vector<ApplicationAction> EnabledItems(const MenuBarModel &model,
-	ApplicationMenu menu) {
-	std::vector<ApplicationAction> items;
+/** Next enabled item in table order for keyboard Up/Down wrapping. */
+std::optional<ApplicationAction> AdjacentEnabledItem(const MenuBarModel &model,
+	ApplicationMenu menu, std::optional<ApplicationAction> focused,
+	bool forward) noexcept {
 	const ApplicationActionInfo *table = ApplicationActionTable();
 	const std::size_t count = ApplicationActionCount();
+	std::optional<std::size_t> focusedIndex;
 	for (std::size_t i = 0; i < count; ++i) {
 		const ApplicationActionInfo &info = table[i];
-		if (info.menu == menu && model.IsEnabled(info.action)) {
-			items.push_back(info.action);
+		if (focused.has_value() && info.action == *focused &&
+			info.menu == menu && model.IsEnabled(info.action)) {
+			focusedIndex = i;
+			break;
 		}
 	}
-	return items;
+
+	if (!focusedIndex.has_value()) {
+		if (forward) {
+			return FirstEnabledItem(model, menu);
+		}
+		for (std::size_t i = count; i > 0; --i) {
+			const ApplicationActionInfo &info = table[i - 1];
+			if (info.menu == menu && model.IsEnabled(info.action)) {
+				return info.action;
+			}
+		}
+		return std::nullopt;
+	}
+
+	for (std::size_t step = 1; step <= count; ++step) {
+		const std::size_t index = forward ?
+			(*focusedIndex + step) % count :
+			(*focusedIndex + count - step) % count;
+		const ApplicationActionInfo &info = table[index];
+		if (info.menu == menu && model.IsEnabled(info.action)) {
+			return info.action;
+		}
+	}
+	return std::nullopt;
 }
 
 void OpenMenuFromKeyboard(MenuBarModel &model, ApplicationMenu menu,
@@ -600,12 +626,13 @@ void OpenMenuFromKeyboard(MenuBarModel &model, ApplicationMenu menu,
 	const bool sameMenu = wasOpen && *model.openMenu == menu;
 	const std::optional<ApplicationAction> first = FirstEnabledItem(model, menu);
 	const bool focusChanged = model.focusedItem != first;
+	const bool hoverChanged = model.hoveredItem.has_value();
 	model.openMenu = menu;
 	model.focusedItem = first;
 	model.hoveredItem.reset();
 	model.pressOrigin.reset();
 	result.barDirty = true;
-	result.frameDirty = !wasOpen || !sameMenu || focusChanged;
+	result.frameDirty = !wasOpen || !sameMenu || focusChanged || hoverChanged;
 	result.consumed = true;
 }
 
@@ -627,8 +654,7 @@ ApplicationMenu OtherMenu(ApplicationMenu menu) noexcept {
 }
 
 MenuBarKeyboardResult HandleMenuBarKeyboard(MenuBarModel &model,
-	const MenuBarLayout &layout, const KeyboardInput &input) noexcept {
-	(void)layout;
+	const KeyboardInput &input) noexcept {
 	MenuBarKeyboardResult result;
 	const bool menuOpen = model.openMenu.has_value();
 
@@ -686,31 +712,14 @@ MenuBarKeyboardResult HandleMenuBarKeyboard(MenuBarModel &model,
 
 	if (input.key == Scintilla::Keys::Down ||
 		input.key == Scintilla::Keys::Up) {
-		const std::vector<ApplicationAction> items =
-			EnabledItems(model, *model.openMenu);
-		if (items.empty()) {
-			return result;
+		if (SetOptional(model.hoveredItem, std::nullopt)) {
+			result.frameDirty = true;
 		}
-		const int delta = input.key == Scintilla::Keys::Down ? 1 : -1;
-		int index = -1;
-		if (model.focusedItem.has_value()) {
-			for (std::size_t i = 0; i < items.size(); ++i) {
-				if (items[i] == *model.focusedItem) {
-					index = static_cast<int>(i);
-					break;
-				}
-			}
-		}
-		int nextIndex = 0;
-		if (index < 0) {
-			// No current focus: Down lands on the first item, Up on the last.
-			nextIndex = delta > 0 ? 0 : static_cast<int>(items.size()) - 1;
-		} else {
-			nextIndex = index + delta;
-			const int n = static_cast<int>(items.size());
-			nextIndex = ((nextIndex % n) + n) % n;
-		}
-		if (SetOptional(model.focusedItem, items[static_cast<std::size_t>(nextIndex)])) {
+		model.pressOrigin.reset();
+		const std::optional<ApplicationAction> next = AdjacentEnabledItem(
+			model, *model.openMenu, model.focusedItem,
+			input.key == Scintilla::Keys::Down);
+		if (next.has_value() && SetOptional(model.focusedItem, next)) {
 			result.frameDirty = true;
 		}
 		return result;

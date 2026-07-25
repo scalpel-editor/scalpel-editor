@@ -151,10 +151,9 @@ KeyboardInput MakeLetter(char upper, KeyMod modifiers = KeyMod::Norm,
 
 TEST_CASE("menu bar keyboard opens with F10 Menu and Alt accelerators") {
 	MenuBarModel model;
-	const MenuBarLayout closed = Layout(model);
 
 	SECTION("F10 opens File and focuses the first enabled item") {
-		const MenuBarKeyboardResult open = HandleMenuBarKeyboard(model, closed,
+		const MenuBarKeyboardResult open = HandleMenuBarKeyboard(model,
 			MakeKey(Keys::Menu));
 		CHECK(open.consumed);
 		CHECK(open.frameDirty);
@@ -168,7 +167,7 @@ TEST_CASE("menu bar keyboard opens with F10 Menu and Alt accelerators") {
 	}
 
 	SECTION("Alt+F opens File") {
-		const MenuBarKeyboardResult open = HandleMenuBarKeyboard(model, closed,
+		const MenuBarKeyboardResult open = HandleMenuBarKeyboard(model,
 			MakeLetter('F', KeyMod::Alt));
 		CHECK(open.consumed);
 		REQUIRE(model.openMenu.has_value());
@@ -180,7 +179,7 @@ TEST_CASE("menu bar keyboard opens with F10 Menu and Alt accelerators") {
 	SECTION("Alt+E opens Edit and focuses the first enabled item") {
 		model.undoEnabled = false;
 		model.redoEnabled = true;
-		const MenuBarKeyboardResult open = HandleMenuBarKeyboard(model, closed,
+		const MenuBarKeyboardResult open = HandleMenuBarKeyboard(model,
 			MakeLetter('E', KeyMod::Alt));
 		CHECK(open.consumed);
 		REQUIRE(model.openMenu.has_value());
@@ -191,13 +190,13 @@ TEST_CASE("menu bar keyboard opens with F10 Menu and Alt accelerators") {
 	}
 
 	SECTION("unrelated keys while closed are not consumed") {
-		const MenuBarKeyboardResult letter = HandleMenuBarKeyboard(model, closed,
+		const MenuBarKeyboardResult letter = HandleMenuBarKeyboard(model,
 			MakeLetter('A'));
 		CHECK_FALSE(letter.consumed);
 		CHECK_FALSE(model.openMenu.has_value());
 
 		const MenuBarKeyboardResult shortcut = HandleMenuBarKeyboard(model,
-			closed, MakeLetter('S', KeyMod::Ctrl));
+			MakeLetter('S', KeyMod::Ctrl));
 		CHECK_FALSE(shortcut.consumed);
 	}
 }
@@ -206,30 +205,53 @@ TEST_CASE("menu bar keyboard navigates items and switches menus") {
 	MenuBarModel model;
 	model.openMenu = ApplicationMenu::File;
 	model.focusedItem = ApplicationAction::NewTab;
-	const MenuBarLayout fileLayout = Layout(model);
 
 	SECTION("Down and Up move among enabled items with wrapping") {
-		MenuBarKeyboardResult down = HandleMenuBarKeyboard(model, fileLayout,
+		model.hoveredItem = ApplicationAction::SaveAs;
+		model.pressOrigin = Scalpel::MenuBarPressOrigin{
+			Scalpel::MenuBarPressKind::Item,
+			ApplicationMenu::File,
+			ApplicationAction::SaveAs,
+		};
+		MenuBarKeyboardResult down = HandleMenuBarKeyboard(model,
 			MakeKey(Keys::Down));
 		CHECK(down.consumed);
 		CHECK(down.frameDirty);
 		REQUIRE(model.focusedItem.has_value());
 		CHECK(*model.focusedItem == ApplicationAction::Open);
+		CHECK_FALSE(model.hoveredItem.has_value());
+		CHECK_FALSE(model.pressOrigin.has_value());
 
-		down = HandleMenuBarKeyboard(model, fileLayout, MakeKey(Keys::Down));
+		down = HandleMenuBarKeyboard(model, MakeKey(Keys::Down));
 		CHECK(*model.focusedItem == ApplicationAction::Save);
 
 		// Walk to the last File item then wrap.
 		model.focusedItem = ApplicationAction::Quit;
 		const MenuBarKeyboardResult wrapDown = HandleMenuBarKeyboard(model,
-			fileLayout, MakeKey(Keys::Down));
+			MakeKey(Keys::Down));
 		CHECK(wrapDown.frameDirty);
 		CHECK(*model.focusedItem == ApplicationAction::NewTab);
 
 		const MenuBarKeyboardResult wrapUp = HandleMenuBarKeyboard(model,
-			fileLayout, MakeKey(Keys::Up));
+			MakeKey(Keys::Up));
 		CHECK(wrapUp.consumed);
 		CHECK(*model.focusedItem == ApplicationAction::Quit);
+	}
+
+	SECTION("keyboard reopen clears stale pointer state and repaints") {
+		model.hoveredItem = ApplicationAction::Open;
+		model.pressOrigin = Scalpel::MenuBarPressOrigin{
+			Scalpel::MenuBarPressKind::Item,
+			ApplicationMenu::File,
+			ApplicationAction::Open,
+		};
+		const MenuBarKeyboardResult reopen = HandleMenuBarKeyboard(model,
+			MakeKey(Keys::Menu));
+		CHECK(reopen.consumed);
+		CHECK(reopen.frameDirty);
+		CHECK(*model.focusedItem == ApplicationAction::NewTab);
+		CHECK_FALSE(model.hoveredItem.has_value());
+		CHECK_FALSE(model.pressOrigin.has_value());
 	}
 
 	SECTION("Down skips disabled items") {
@@ -237,17 +259,16 @@ TEST_CASE("menu bar keyboard navigates items and switches menus") {
 		model.focusedItem = ApplicationAction::Undo;
 		model.cutEnabled = false;
 		model.copyEnabled = false;
-		const MenuBarLayout editLayout = Layout(model);
 		// Undo -> Redo -> (skip Cut, Copy) -> Paste
-		(void)HandleMenuBarKeyboard(model, editLayout, MakeKey(Keys::Down));
+		(void)HandleMenuBarKeyboard(model, MakeKey(Keys::Down));
 		CHECK(*model.focusedItem == ApplicationAction::Redo);
-		(void)HandleMenuBarKeyboard(model, editLayout, MakeKey(Keys::Down));
+		(void)HandleMenuBarKeyboard(model, MakeKey(Keys::Down));
 		CHECK(*model.focusedItem == ApplicationAction::Paste);
 	}
 
 	SECTION("Left and Right switch menus and refocus the first enabled item") {
 		const MenuBarKeyboardResult toEdit = HandleMenuBarKeyboard(model,
-			fileLayout, MakeKey(Keys::Right));
+			MakeKey(Keys::Right));
 		CHECK(toEdit.consumed);
 		CHECK(toEdit.frameDirty);
 		REQUIRE(model.openMenu.has_value());
@@ -255,9 +276,8 @@ TEST_CASE("menu bar keyboard navigates items and switches menus") {
 		REQUIRE(model.focusedItem.has_value());
 		CHECK(*model.focusedItem == ApplicationAction::Undo);
 
-		const MenuBarLayout editLayout = Layout(model);
 		const MenuBarKeyboardResult toFile = HandleMenuBarKeyboard(model,
-			editLayout, MakeKey(Keys::Left));
+			MakeKey(Keys::Left));
 		CHECK(toFile.consumed);
 		CHECK(*model.openMenu == ApplicationMenu::File);
 		CHECK(*model.focusedItem == ApplicationAction::NewTab);
@@ -268,11 +288,10 @@ TEST_CASE("menu bar keyboard activates Escape and consumes while open") {
 	MenuBarModel model;
 	model.openMenu = ApplicationMenu::File;
 	model.focusedItem = ApplicationAction::Save;
-	const MenuBarLayout layout = Layout(model);
 
 	SECTION("Enter activates the focused enabled item and closes") {
 		const MenuBarKeyboardResult activate = HandleMenuBarKeyboard(model,
-			layout, MakeKey(Keys::Return));
+			MakeKey(Keys::Return));
 		CHECK(activate.consumed);
 		CHECK(activate.frameDirty);
 		REQUIRE(activate.activated.has_value());
@@ -285,9 +304,8 @@ TEST_CASE("menu bar keyboard activates Escape and consumes while open") {
 		model.openMenu = ApplicationMenu::Edit;
 		model.focusedItem = ApplicationAction::Cut;
 		model.cutEnabled = false;
-		const MenuBarLayout editLayout = Layout(model);
 		const MenuBarKeyboardResult refused = HandleMenuBarKeyboard(model,
-			editLayout, MakeKey(Keys::Return));
+			MakeKey(Keys::Return));
 		CHECK(refused.consumed);
 		CHECK_FALSE(refused.activated.has_value());
 		REQUIRE(model.openMenu.has_value());
@@ -295,7 +313,7 @@ TEST_CASE("menu bar keyboard activates Escape and consumes while open") {
 	}
 
 	SECTION("Escape closes without activating") {
-		const MenuBarKeyboardResult closed = HandleMenuBarKeyboard(model, layout,
+		const MenuBarKeyboardResult closed = HandleMenuBarKeyboard(model,
 			MakeKey(Keys::Escape));
 		CHECK(closed.consumed);
 		CHECK(closed.frameDirty);
@@ -304,12 +322,12 @@ TEST_CASE("menu bar keyboard activates Escape and consumes while open") {
 	}
 
 	SECTION("key releases and unrelated keys are consumed while open") {
-		const MenuBarKeyboardResult release = HandleMenuBarKeyboard(model, layout,
+		const MenuBarKeyboardResult release = HandleMenuBarKeyboard(model,
 			MakeKey(Keys::Down, KeyMod::Norm, false));
 		CHECK(release.consumed);
 		CHECK(*model.focusedItem == ApplicationAction::Save);
 
-		const MenuBarKeyboardResult letter = HandleMenuBarKeyboard(model, layout,
+		const MenuBarKeyboardResult letter = HandleMenuBarKeyboard(model,
 			MakeLetter('X'));
 		CHECK(letter.consumed);
 		CHECK_FALSE(letter.activated.has_value());
@@ -317,7 +335,7 @@ TEST_CASE("menu bar keyboard activates Escape and consumes while open") {
 		CHECK(*model.focusedItem == ApplicationAction::Save);
 
 		const MenuBarKeyboardResult shortcut = HandleMenuBarKeyboard(model,
-			layout, MakeLetter('S', KeyMod::Ctrl));
+			MakeLetter('S', KeyMod::Ctrl));
 		CHECK(shortcut.consumed);
 		CHECK_FALSE(shortcut.activated.has_value());
 	}

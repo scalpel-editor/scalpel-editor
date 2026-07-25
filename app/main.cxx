@@ -724,10 +724,8 @@ bool HandleMenuBarKeyboardInput(const Scalpel::KeyboardInput &input,
 	Scalpel::MenuBarModel &menuModel,
 	Scalpel::DocumentWorkspace &workspace,
 	Scalpel::ApplicationEditor &editor) {
-	const Scalpel::MenuBarLayout menuLayout = Scalpel::LayoutMenuBar(
-		editor.FrameWidth(), editor.FrameHeight(), menuModel);
 	const Scalpel::MenuBarKeyboardResult menuResult =
-		Scalpel::HandleMenuBarKeyboard(menuModel, menuLayout, input);
+		Scalpel::HandleMenuBarKeyboard(menuModel, input);
 	if (menuResult.barDirty) {
 		editor.InvalidateTopChrome();
 	}

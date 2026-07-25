@@ -179,11 +179,9 @@ void CloseMenuBar(MenuBarModel &model) noexcept;
  * among enabled items with wrapping, Enter activates the focused enabled item,
  * Escape closes, and all other keys plus releases are consumed so they cannot
  * reach the editor. When closed, only the open accelerators are consumed.
- * layout is unused today but kept so callers match the pointer path and so a
- * future layout-aware focus clamp can use the same signature.
  */
 [[nodiscard]] MenuBarKeyboardResult HandleMenuBarKeyboard(MenuBarModel &model,
-	const MenuBarLayout &layout, const KeyboardInput &input) noexcept;
+	const KeyboardInput &input) noexcept;
 
 /**
  * Owns the menu font. Construct once beside the shell and reuse across frames.
