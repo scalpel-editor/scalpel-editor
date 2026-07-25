@@ -1,10 +1,11 @@
 // Fixed logical layout, hit-testing, open-menu pointer and keyboard navigation,
-// and opaque painting for the File / Edit menu bar. main owns MenuBarModel,
-// refreshes edit enablement via UpdateMenuBarActionState before open and paint,
-// converts input into model transitions via HandleMenuBarPointer and
-// HandleMenuBarKeyboard, dispatches returned actions, and paints the permanent
-// bar plus the overlay slot for open dropdowns. Layout, hit-testing, and input
-// transitions stay Wayland-free.
+// and opaque painting for the File / Edit menu bar above the tab strip.
+// main owns MenuBarModel, refreshes edit enablement via UpdateMenuBarActionState
+// before open and paint, converts input into model transitions via
+// HandleMenuBarPointer and HandleMenuBarKeyboard, dispatches returned actions
+// through ApplicationAction, and paints the permanent bar plus the overlay slot
+// for open dropdowns (unsaved card wins that slot). Layout, hit-testing, and
+// input transitions stay Wayland-free.
 
 #ifndef MENUBAR_H
 #define MENUBAR_H

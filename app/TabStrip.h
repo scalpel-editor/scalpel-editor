@@ -1,6 +1,7 @@
-// Fixed logical layout, hit-testing, and opaque painting for the permanent tab strip.
-// main feeds DocumentWorkspace tab snapshots into TabStripModel and paints via
-// ApplicationEditor permanent chrome; layout and hit-testing stay Wayland-free.
+// Fixed logical layout, hit-testing, and opaque painting for the permanent tab strip
+// below the menu bar. main feeds DocumentWorkspace tab snapshots into TabStripModel
+// and paints both chrome bands via ApplicationEditor permanent chrome; layout
+// accepts a top offset (MenuBarHeight) and stays Wayland-free.
 
 #ifndef TABSTRIP_H
 #define TABSTRIP_H

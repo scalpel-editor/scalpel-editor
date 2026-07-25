@@ -1,5 +1,8 @@
 // Fixed File / Edit application actions: metadata, shortcut match, enablement,
 // and one dispatcher shared by keyboard shortcuts and the menu bar.
+// main routes matched shortcuts and menu activations through DispatchApplicationAction
+// into DocumentWorkspace and ApplicationEditor; the list is compile-time-known and
+// does not support registration or runtime menu construction.
 
 #ifndef APPLICATIONACTION_H
 #define APPLICATIONACTION_H

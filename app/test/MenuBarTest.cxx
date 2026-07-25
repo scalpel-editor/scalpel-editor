@@ -3,6 +3,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <string>
+#include <unistd.h>
 #include <vector>
 
 #include "ApplicationAction.h"
@@ -13,6 +16,7 @@
 #include "MenuBar.h"
 #include "TabStrip.h"
 #include "UnsavedChangesCard.h"
+#include "UnsavedChangesPrompt.h"
 
 using Scalpel::ApplicationAction;
 using Scalpel::ApplicationActionCount;
@@ -1502,4 +1506,160 @@ TEST_CASE("menu bar editor integration narrow resize and framebuffer scale") {
 	CHECK(Differs(barMid, client));
 	CHECK(Differs(stripMid, client));
 	CHECK(barMid.a == 0xff);
+}
+
+// Combined menu-bar product path: keyboard open, pointer selection, edit-state
+// refresh, portal Open, dirty Quit cancel, then editor input again. Mirrors the
+// shell sequence main drives rather than isolated unit cases.
+
+namespace {
+
+bool HasShellRequest(const std::vector<DocumentShellRequest> &requests,
+	DocumentShellRequest want) {
+	for (const DocumentShellRequest request : requests) {
+		if (request == want) {
+			return true;
+		}
+	}
+	return false;
+}
+
+}
+
+TEST_CASE("menu bar workflow keyboard open pointer edit portal quit cancel") {
+	using Scalpel::UnsavedChoice;
+	using Scalpel::UnsavedPending;
+
+	ApplicationEditor editor(400, 260);
+	editor.LoadInitialBuffer("workflow\n");
+	DocumentWorkspace workspace(editor);
+	MenuBarModel model;
+	(void)UpdateMenuBarActionState(model, editor);
+	const int width = editor.FrameWidth();
+	const int height = editor.FrameHeight();
+
+	// Keyboard open: F10 opens File and focuses the first actionable item.
+	const MenuBarKeyboardResult openFile =
+		HandleMenuBarKeyboard(model, MakeKey(Keys::Menu));
+	CHECK(openFile.consumed);
+	REQUIRE(model.openMenu.has_value());
+	CHECK(*model.openMenu == ApplicationMenu::File);
+	REQUIRE(model.focusedItem.has_value());
+	CHECK(*model.focusedItem == ApplicationAction::NewTab);
+
+	// Switch to Edit with Right; enablement still reflects an empty history.
+	const MenuBarKeyboardResult toEdit =
+		HandleMenuBarKeyboard(model, MakeKey(Keys::Right));
+	CHECK(toEdit.consumed);
+	REQUIRE(model.openMenu.has_value());
+	CHECK(*model.openMenu == ApplicationMenu::Edit);
+	CHECK_FALSE(model.IsEnabled(ApplicationAction::Undo));
+	// Escape closes so typing reaches the editor.
+	const MenuBarKeyboardResult closeEdit =
+		HandleMenuBarKeyboard(model, MakeKey(Keys::Escape));
+	CHECK(closeEdit.consumed);
+	CHECK_FALSE(model.openMenu.has_value());
+
+	// Edit-state changes: typing dirties the buffer and enables Undo.
+	// LoadInitialBuffer leaves the caret at 0, so the character inserts first.
+	editor.HandleKeyboardInput(
+		{static_cast<Keys>(0), KeyMod::Norm, "!", 1, true});
+	REQUIRE(editor.Modified());
+	REQUIRE(editor.Text() == "!workflow\n");
+	(void)UpdateMenuBarActionState(model, editor);
+	CHECK(model.IsEnabled(ApplicationAction::Undo));
+	CHECK(model.IsEnabled(ApplicationAction::SelectAll));
+
+	// Pointer selection on File → Open: press/release activates and closes.
+	const Point fileHeading = Center(LayoutMenuBar(width, height, model)
+		.headings[0]
+		.bounds);
+	const MenuBarPointerResult openHeading = HandleMenuBarPointer(model,
+		LayoutMenuBar(width, height, model),
+		MakePointer(PointerAction::Press, fileHeading.x, fileHeading.y, 0),
+		false);
+	CHECK(openHeading.consumed);
+	REQUIRE(model.openMenu.has_value());
+	CHECK(*model.openMenu == ApplicationMenu::File);
+	MenuBarLayout fileLayout = LayoutMenuBar(width, height, model);
+	const auto *openItem = FindItem(fileLayout, ApplicationAction::Open);
+	REQUIRE(openItem);
+	const Point openPt = Center(openItem->row);
+	(void)HandleMenuBarPointer(model, fileLayout,
+		MakePointer(PointerAction::Press, openPt.x, openPt.y, 0), false);
+	const MenuBarPointerResult openRelease = HandleMenuBarPointer(model,
+		fileLayout,
+		MakePointer(PointerAction::Release, openPt.x, openPt.y, 0), false);
+	REQUIRE(openRelease.activated.has_value());
+	CHECK(*openRelease.activated == ApplicationAction::Open);
+	CHECK_FALSE(model.openMenu.has_value());
+
+	// Portal action: Open closes the menu first, then the workspace requests
+	// the dialog; accepting a path creates a sibling tab.
+	DispatchApplicationAction(*openRelease.activated, workspace, editor);
+	CHECK(HasShellRequest(workspace.TakeRequests(),
+		DocumentShellRequest::ShowOpen));
+	char openPattern[] = "/tmp/scalpel-menu-wf-XXXXXX";
+	const int openFd = mkstemp(openPattern);
+	REQUIRE(openFd >= 0);
+	const std::string openPath = openPattern;
+	const char openBody[] = "from portal\n";
+	REQUIRE(write(openFd, openBody, sizeof(openBody) - 1) ==
+		static_cast<ssize_t>(sizeof(openBody) - 1));
+	REQUIRE(close(openFd) == 0);
+	workspace.RegisterOpenRequest(501);
+	workspace.HandlePortalResult(501, true, {openPath});
+	CHECK(workspace.TabCount() == 2);
+	CHECK(workspace.Path() == openPath);
+	CHECK(editor.Text() == "from portal\n");
+	CHECK_FALSE(editor.Modified());
+	(void)workspace.TakeRequests();
+	(void)std::remove(openPath.c_str());
+
+	// Return to the dirty first tab; dirty Quit from the menu opens the card.
+	const auto startup = workspace.Tabs().front().id;
+	workspace.ActivateTab(startup);
+	REQUIRE(editor.Modified());
+	REQUIRE(editor.Text() == "!workflow\n");
+	(void)workspace.TakeRequests();
+	(void)UpdateMenuBarActionState(model, editor);
+	const MenuBarKeyboardResult reopen =
+		HandleMenuBarKeyboard(model, MakeLetter('F', KeyMod::Alt));
+	CHECK(reopen.consumed);
+	REQUIRE(model.openMenu.has_value());
+	model.focusedItem = ApplicationAction::Quit;
+	const MenuBarKeyboardResult quit =
+		HandleMenuBarKeyboard(model, MakeKey(Keys::Return));
+	REQUIRE(quit.activated.has_value());
+	CHECK(*quit.activated == ApplicationAction::Quit);
+	CHECK_FALSE(model.openMenu.has_value());
+	DispatchApplicationAction(*quit.activated, workspace, editor);
+	CHECK(workspace.PromptActive());
+	CHECK(workspace.Pending() == UnsavedPending::CloseWindow);
+	CHECK(HasShellRequest(workspace.TakeRequests(),
+		DocumentShellRequest::PromptBegan));
+	// Shell keeps the card on the overlay; menu stays closed.
+	CHECK_FALSE(model.openMenu.has_value());
+
+	// Dirty Quit cancellation leaves tabs and the dirty buffer intact.
+	workspace.Choose(UnsavedChoice::Cancel);
+	CHECK_FALSE(workspace.PromptActive());
+	CHECK(workspace.TabCount() == 2);
+	CHECK(editor.Text() == "!workflow\n");
+	CHECK(editor.Modified());
+	CHECK_FALSE(HasShellRequest(workspace.TakeRequests(),
+		DocumentShellRequest::AcceptClose));
+
+	// Return to editor input: with the menu and prompt closed, typing works.
+	// Reactivation restores the caret after the inserted character.
+	editor.HandleKeyboardInput(
+		{static_cast<Keys>(0), KeyMod::Norm, "?", 2, true});
+	CHECK(editor.Text() == "!?workflow\n");
+	CHECK(editor.Modified());
+	// A closed menu does not consume pointer presses in the editor body.
+	const MenuBarLayout closed = LayoutMenuBar(width, height, model);
+	const MenuBarPointerResult body = HandleMenuBarPointer(model, closed,
+		MakePointer(PointerAction::Press, 200, 200, 0), false);
+	CHECK_FALSE(body.consumed);
+	CHECK_FALSE(model.openMenu.has_value());
 }
