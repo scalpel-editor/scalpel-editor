@@ -403,6 +403,71 @@ TEST_CASE("tab strip paint active dirty overflowed hovered and scaled layouts") 
 	}
 }
 
+TEST_CASE("tab strip offset layout places the strip below a non-zero top") {
+	const int stripTop = 24;
+	const TabStripModel model = ModelWith({
+		MakeTab(1, "first", true),
+		MakeTab(2, "second", false),
+	});
+	const TabStripLayout layout = LayoutTabStrip(400, model, stripTop);
+	CHECK(layout.strip ==
+		PRectangle::FromInts(0, stripTop, 400, stripTop + TabStripHeight()));
+	CHECK(layout.tabsViewport.top == stripTop);
+	CHECK(layout.tabsViewport.bottom == stripTop + TabStripHeight());
+	CHECK(layout.addButton.top == stripTop);
+	CHECK(layout.addButton.bottom == stripTop + TabStripHeight());
+	REQUIRE(layout.tabs.size() == 2);
+	CHECK(layout.tabs[0].bounds.top == stripTop);
+	CHECK(layout.tabs[0].bounds.bottom == stripTop + TabStripHeight());
+	CHECK(layout.tabs[0].closeButton.top >= stripTop);
+	CHECK(layout.tabs[0].closeButton.bottom <= stripTop + TabStripHeight());
+	// X packing is unchanged by stripTop.
+	CHECK(layout.tabs[0].bounds.left == 0);
+	CHECK(layout.tabs[1].bounds.left == TabStripPreferredTabWidth());
+}
+
+TEST_CASE("tab strip offset hit-test uses absolute frame coordinates") {
+	const int stripTop = 24;
+	const TabStripModel model = ModelWith({
+		MakeTab(10, "one", true),
+		MakeTab(20, "two", false),
+	});
+	const TabStripLayout layout = LayoutTabStrip(400, model, stripTop);
+
+	// Above the strip (menu bar band) is a miss.
+	CHECK(HitTestTabStrip(layout, Point(10, stripTop - 1)).kind ==
+		TabStripHit::None);
+	// Inside the offset strip hits the active tab.
+	const TabStripHitResult onTab = HitTestTabStrip(layout,
+		Point(layout.tabs[0].label.left + 2,
+			stripTop + TabStripHeight() / 2.0));
+	CHECK(onTab.kind == TabStripHit::Tab);
+	CHECK(onTab.tabId == 10);
+	// Bottom edge is half-open.
+	CHECK(HitTestTabStrip(layout,
+		Point(10, stripTop + TabStripHeight())).kind == TabStripHit::None);
+	const TabStripHitResult onAdd = HitTestTabStrip(layout,
+		Center(layout.addButton));
+	CHECK(onAdd.kind == TabStripHit::Add);
+}
+
+TEST_CASE("tab strip offset paint draws chrome at the shifted top") {
+	ApplicationEditor editor(200, 100);
+	editor.LoadInitialBuffer("body\n");
+	const int stripTop = 24;
+	TabStripPainter painter;
+	const TabStripModel model = ModelWith({MakeTab(1, "tab", true)});
+	const TabStripLayout layout = LayoutTabStrip(200, model, stripTop);
+	const auto pixels = PaintStrip(editor, painter, layout, model);
+	REQUIRE(pixels.size() == 200U * 100U * 4U);
+	const Rgba above = Sample(pixels, 200, 40, stripTop - 4);
+	const Rgba stripMid = Sample(pixels, 200, 40, stripTop + TabStripHeight() / 2);
+	const Rgba below = Sample(pixels, 200, 40, stripTop + TabStripHeight() + 8);
+	CHECK(Differs(stripMid, above));
+	CHECK(Differs(stripMid, below));
+	CHECK(stripMid.a == 0xff);
+}
+
 TEST_CASE("tab strip editor integration paints permanent chrome above the inset client") {
 	ApplicationEditor editor(320, 120);
 	editor.LoadInitialBuffer("editor body\nsecond line\n");

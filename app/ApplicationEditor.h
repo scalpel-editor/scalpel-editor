@@ -149,9 +149,10 @@ public:
 	void SetFrameBufferSize(int width, int height);
 	/**
 	 * Reserve a fixed logical-height band at the top of the frame for permanent
-	 * chrome (tab strip). Scintilla's client rectangle starts below the inset;
-	 * pointer and caret coordinates stay in full-frame space (no shell-side y
-	 * translation for content below the band). Zero clears the reservation.
+	 * chrome (menu bar plus tab strip). Scintilla's client rectangle starts
+	 * below the inset; pointer and caret coordinates stay in full-frame space
+	 * (no shell-side y translation for content below the band). Zero clears
+	 * the reservation.
 	 */
 	void SetTopChromeInset(int logicalPixels);
 	[[nodiscard]] int TopChromeInset() const noexcept { return topChromeInset; }
@@ -222,10 +223,10 @@ public:
 		int width, int height)>;
 	void SetOverlayPainter(OverlayPainter painter);
 	/**
-	 * Opaque permanent chrome (tab strip) painted after Scintilla and before any
-	 * modal overlay. Only runs when the chrome band intersects frame damage, or
-	 * when an overlay forces a full-frame paint. Does not expand damage or force
-	 * a full buffer swap on ordinary editor frames.
+	 * Opaque permanent chrome (menu bar and tab strip) painted after Scintilla
+	 * and before any modal overlay. Only runs when the chrome band intersects
+	 * frame damage, or when an overlay forces a full-frame paint. Does not
+	 * expand damage or force a full buffer swap on ordinary editor frames.
 	 */
 	using PermanentChromePainter = std::function<void(
 		Scintilla::Internal::Surface &surface, int width, int height)>;

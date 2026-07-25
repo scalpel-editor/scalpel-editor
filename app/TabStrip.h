@@ -92,11 +92,13 @@ struct TabStripHitResult {
 };
 
 /**
- * Lay out the strip for stripWidth logical pixels. Height is TabStripHeight().
- * Zero or negative width yields an empty layout.
+ * Lay out the strip for stripWidth logical pixels at stripTop.
+ * Height is TabStripHeight(). Zero or negative width yields an empty layout.
+ * stripTop is the permanent-chrome y origin (0 when the strip is alone;
+ * MenuBarHeight() when stacked under the menu bar).
  */
 [[nodiscard]] TabStripLayout LayoutTabStrip(int stripWidth,
-	const TabStripModel &model) noexcept;
+	const TabStripModel &model, int stripTop = 0) noexcept;
 
 /**
  * Content width of tabCount preferred-width tabs, saturated at INT_MAX.

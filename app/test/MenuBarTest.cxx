@@ -1,5 +1,6 @@
 #include "catch.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <vector>
@@ -7,6 +8,7 @@
 #include "ApplicationAction.h"
 #include "ApplicationEditor.h"
 #include "MenuBar.h"
+#include "TabStrip.h"
 
 using Scalpel::ApplicationAction;
 using Scalpel::ApplicationActionCount;
@@ -430,4 +432,230 @@ TEST_CASE("menu bar model enablement matches edit flags") {
 	CHECK_FALSE(model.IsEnabled(ApplicationAction::Copy));
 	CHECK(model.IsEnabled(ApplicationAction::Paste));
 	CHECK(model.IsEnabled(ApplicationAction::Quit));
+}
+
+TEST_CASE("menu bar editor integration stacks chrome above the inset client") {
+	using Scalpel::LayoutTabStrip;
+	using Scalpel::TabStripHeight;
+	using Scalpel::TabStripModel;
+	using Scalpel::TabStripPainter;
+	using Scalpel::TabStripTab;
+
+	const int menuH = MenuBarHeight();
+	const int stripH = TabStripHeight();
+	const int inset = menuH + stripH;
+	ApplicationEditor editor(320, 160);
+	editor.LoadInitialBuffer("editor body\nsecond line\n");
+	editor.SetTopChromeInset(inset);
+	(void)editor.TakeFrameDamage();
+
+	MenuBarPainter menuPainter;
+	TabStripPainter stripPainter;
+	const MenuBarModel menuModel = ClosedBar();
+	TabStripModel stripModel;
+	TabStripTab active;
+	active.id = 1;
+	active.label = "active";
+	active.active = true;
+	stripModel.tabs.push_back(active);
+
+	int chromePaints = 0;
+	editor.SetPermanentChromePainter(
+		[&](Scintilla::Internal::Surface &surface, int width, int height) {
+			++chromePaints;
+			CHECK(width == 320);
+			CHECK(height == 160);
+			const MenuBarLayout menuLayout =
+				LayoutMenuBar(width, height, menuModel);
+			menuPainter.PaintBar(surface, menuLayout, menuModel);
+			const auto stripLayout =
+				LayoutTabStrip(width, stripModel, menuH);
+			stripPainter.Paint(surface, stripLayout, stripModel);
+		});
+
+	// Full frame: both chrome bands and the editor paint.
+	editor.RenderFrame({PRectangle::FromInts(0, 0, 320, 160)});
+	CHECK(chromePaints == 1);
+	CHECK(editor.LastPaintRectangle() ==
+		PRectangle::FromInts(0, inset, 320, 160));
+	CHECK(editor.TopChromeRectangle() ==
+		PRectangle::FromInts(0, 0, 320, inset));
+
+	const auto pixels = editor.FramePixels();
+	REQUIRE(pixels.size() == 320U * 160U * 4U);
+	const Rgba barPx = Sample(pixels, 320, 24, menuH / 2);
+	const Rgba stripPx = Sample(pixels, 320, 40, menuH + stripH / 2);
+	const Rgba bodyPx = Sample(pixels, 320, 160, inset + 12);
+	CHECK(barPx.a == 0xff);
+	CHECK(stripPx.a == 0xff);
+	CHECK(Differs(barPx, bodyPx));
+	CHECK(Differs(stripPx, bodyPx));
+
+	// Editor-only damage keeps permanent chrome out of the paint path.
+	editor.RenderFrame({PRectangle::FromInts(20, inset + 4, 80, inset + 30)});
+	CHECK(chromePaints == 1);
+
+	// Bar-only damage (menu band) repaints chrome without expanding editor paint.
+	editor.RenderFrame({PRectangle::FromInts(0, 0, 320, menuH)});
+	CHECK(chromePaints == 2);
+	CHECK(editor.LastPaintRectangle().Height() == 0);
+
+	// Strip-only damage (tab band) also repaints chrome alone.
+	editor.RenderFrame({PRectangle::FromInts(0, menuH, 320, inset)});
+	CHECK(chromePaints == 3);
+	CHECK(editor.LastPaintRectangle().Height() == 0);
+
+	// InvalidateTopChrome damages the whole stacked band.
+	(void)editor.TakeFrameDamage();
+	editor.InvalidateTopChrome();
+	const auto damage = editor.TakeFrameDamage();
+	REQUIRE_FALSE(damage.empty());
+	CHECK(std::find(damage.begin(), damage.end(),
+		PRectangle::FromInts(0, 0, 320, inset)) != damage.end());
+}
+
+TEST_CASE("menu bar editor integration overlay draws above stacked chrome") {
+	using Scalpel::LayoutTabStrip;
+	using Scalpel::TabStripHeight;
+	using Scalpel::TabStripModel;
+	using Scalpel::TabStripPainter;
+	using Scalpel::TabStripTab;
+
+	const int menuH = MenuBarHeight();
+	const int stripH = TabStripHeight();
+	const int inset = menuH + stripH;
+	ApplicationEditor editor(280, 120);
+	editor.LoadInitialBuffer("body\n");
+	editor.SetTopChromeInset(inset);
+	(void)editor.TakeFrameDamage();
+
+	MenuBarPainter menuPainter;
+	TabStripPainter stripPainter;
+	const MenuBarModel menuModel = ClosedBar();
+	TabStripModel stripModel;
+	TabStripTab tab;
+	tab.id = 1;
+	tab.label = "tab";
+	tab.active = true;
+	stripModel.tabs.push_back(tab);
+
+	editor.SetPermanentChromePainter(
+		[&](Scintilla::Internal::Surface &surface, int width, int height) {
+			const MenuBarLayout menuLayout =
+				LayoutMenuBar(width, height, menuModel);
+			menuPainter.PaintBar(surface, menuLayout, menuModel);
+			const auto stripLayout =
+				LayoutTabStrip(width, stripModel, menuH);
+			stripPainter.Paint(surface, stripLayout, stripModel);
+		});
+
+	bool overlayCalled = false;
+	editor.SetOverlayPainter(
+		[&](Scintilla::Internal::Surface &surface, int width, int height) {
+			overlayCalled = true;
+			// Opaque mark spanning both chrome bands.
+			surface.FillRectangle(
+				PRectangle::FromInts(width / 2 - 10, 2, width / 2 + 10,
+					inset - 2),
+				Scintilla::Internal::Fill(
+					Scintilla::Internal::ColourRGBA(0xff, 0x00, 0xff, 0xff)));
+			(void)height;
+		});
+
+	editor.RenderFrame({PRectangle::FromInts(0, 0, 280, 120)});
+	CHECK(overlayCalled);
+	CHECK(editor.LastPaintRectangle() ==
+		PRectangle::FromInts(0, inset, 280, 120));
+
+	const auto pixels = editor.FramePixels();
+	const Rgba overBar = Sample(pixels, 280, 140, menuH / 2);
+	const Rgba overStrip = Sample(pixels, 280, 140, menuH + stripH / 2);
+	CHECK(overBar.r == 0xff);
+	CHECK(overBar.b == 0xff);
+	CHECK(overStrip.r == 0xff);
+	CHECK(overStrip.b == 0xff);
+	// Away from the overlay mark, chrome still shows.
+	const Rgba barEdge = Sample(pixels, 280, 20, menuH / 2);
+	CHECK(Differs(overBar, barEdge));
+}
+
+TEST_CASE("menu bar editor integration narrow resize and framebuffer scale") {
+	using Scalpel::LayoutTabStrip;
+	using Scalpel::TabStripHeight;
+	using Scalpel::TabStripModel;
+	using Scalpel::TabStripPainter;
+	using Scalpel::TabStripTab;
+
+	const int menuH = MenuBarHeight();
+	const int stripH = TabStripHeight();
+	const int inset = menuH + stripH;
+	ApplicationEditor editor(360, 140);
+	editor.LoadInitialBuffer("scale\n");
+	editor.SetTopChromeInset(inset);
+	(void)editor.TakeFrameDamage();
+
+	MenuBarPainter menuPainter;
+	TabStripPainter stripPainter;
+	MenuBarModel menuModel = ClosedBar();
+	TabStripModel stripModel;
+	TabStripTab tab;
+	tab.id = 1;
+	tab.label = "n";
+	tab.active = true;
+	stripModel.tabs.push_back(tab);
+
+	editor.SetPermanentChromePainter(
+		[&](Scintilla::Internal::Surface &surface, int width, int height) {
+			const MenuBarLayout menuLayout =
+				LayoutMenuBar(width, height, menuModel);
+			CHECK(menuLayout.bar.right == width);
+			CHECK(menuLayout.bar.bottom == menuH);
+			menuPainter.PaintBar(surface, menuLayout, menuModel);
+			const auto stripLayout =
+				LayoutTabStrip(width, stripModel, menuH);
+			CHECK(stripLayout.strip.top == menuH);
+			CHECK(stripLayout.strip.right == width);
+			stripPainter.Paint(surface, stripLayout, stripModel);
+		});
+
+	// Narrow resize clamps heading and strip layout into the frame.
+	editor.Resize(80, 100);
+	CHECK(editor.TopChromeInset() == inset);
+	CHECK(editor.TopChromeRectangle() ==
+		PRectangle::FromInts(0, 0, 80, inset));
+	(void)editor.TakeFrameDamage();
+	editor.RenderFrame({PRectangle::FromInts(0, 0, 80, 100)});
+	{
+		const MenuBarLayout narrow =
+			LayoutMenuBar(80, 100, menuModel);
+		CHECK(narrow.bar.right == 80);
+		REQUIRE(narrow.headings.size() == 2);
+		CHECK(narrow.headings[0].bounds.left == 0);
+		CHECK(narrow.headings[0].bounds.right <= 80);
+		const auto stripLayout = LayoutTabStrip(80, stripModel, menuH);
+		CHECK(stripLayout.strip.right == 80);
+		CHECK(stripLayout.addButton.right == 80);
+	}
+	const auto narrowPixels = editor.FramePixels();
+	REQUIRE(narrowPixels.size() == 80U * 100U * 4U);
+	const Rgba narrowBar = Sample(narrowPixels, 80, 4, menuH / 2);
+	const Rgba narrowStrip = Sample(narrowPixels, 80, 4, menuH + stripH / 2);
+	CHECK(narrowBar.a == 0xff);
+	CHECK(narrowStrip.a == 0xff);
+
+	// Framebuffer scale keeps logical chrome coordinates.
+	editor.Resize(200, 120);
+	editor.SetFrameBufferSize(400, 240);
+	(void)editor.TakeFrameDamage();
+	editor.RenderFrame({PRectangle::FromInts(0, 0, 200, 120)});
+	CHECK(editor.BufferWidth() == 400);
+	CHECK(editor.BufferHeight() == 240);
+	const auto scaled = editor.FramePixels();
+	REQUIRE(scaled.size() == 200U * 120U * 4U);
+	const Rgba barMid = Sample(scaled, 200, 20, menuH / 2);
+	const Rgba stripMid = Sample(scaled, 200, 20, menuH + stripH / 2);
+	const Rgba client = Sample(scaled, 200, 20, inset + 10);
+	CHECK(Differs(barMid, client));
+	CHECK(Differs(stripMid, client));
+	CHECK(barMid.a == 0xff);
 }

@@ -237,19 +237,21 @@ int AdjustTabStripScroll(int stripWidth, std::size_t tabCount, int scroll,
 	return ClampTabStripScroll(stripWidth, tabCount, bounded);
 }
 
-TabStripLayout LayoutTabStrip(int stripWidth, const TabStripModel &model) noexcept {
+TabStripLayout LayoutTabStrip(int stripWidth, const TabStripModel &model,
+	int stripTop) noexcept {
 	const PRectangle empty = PRectangle::FromInts(0, 0, 0, 0);
 	TabStripLayout layout{empty, empty, empty, {}, 0, 0, 0};
 	if (stripWidth <= 0) {
 		return layout;
 	}
 
-	const int height = kStripHeight;
-	layout.strip = PRectangle::FromInts(0, 0, stripWidth, height);
+	const int top = stripTop;
+	const int bottom = top + kStripHeight;
+	layout.strip = PRectangle::FromInts(0, top, stripWidth, bottom);
 
 	const int addLeft = std::max(0, stripWidth - kAddButtonWidth);
-	layout.addButton = PRectangle::FromInts(addLeft, 0, stripWidth, height);
-	layout.tabsViewport = PRectangle::FromInts(0, 0, addLeft, height);
+	layout.addButton = PRectangle::FromInts(addLeft, top, stripWidth, bottom);
+	layout.tabsViewport = PRectangle::FromInts(0, top, addLeft, bottom);
 
 	layout.contentWidth = TabStripContentWidth(model.tabs.size());
 	const int viewport = TabStripViewportWidth(stripWidth);
@@ -264,7 +266,7 @@ TabStripLayout LayoutTabStrip(int stripWidth, const TabStripModel &model) noexce
 		const int unshiftedLeft = SaturatingTabPosition(i);
 		const int left = unshiftedLeft - layout.scrollOffset;
 		const int right = SaturatingAdd(left, kPreferredTabWidth);
-		const PRectangle bounds = PRectangle::FromInts(left, 0, right, height);
+		const PRectangle bounds = PRectangle::FromInts(left, top, right, bottom);
 		const PRectangle closeButton = CloseButtonRect(bounds);
 		const PRectangle label = LabelRect(bounds, closeButton);
 		const bool showClose =
