@@ -892,11 +892,15 @@ TEST_CASE("production editor menu overlay clear removes dropdown without stale p
 	const uint8_t menuG = withMenu[offset + 1];
 	const uint8_t menuB = withMenu[offset + 2];
 
-	// Close the menu and clear the overlay; full-frame damage replaces the panel.
+	// Close the menu and clear the overlay; queued full-frame damage replaces
+	// both the part over the tab band and the part over the editor client.
 	menuModel.openMenu.reset();
 	editor.SetOverlayPainter(nullptr);
-	editor.InvalidateClient();
-	editor.RenderFrame({PRectangle::FromInts(0, 0, 280, 160)});
+	editor.InvalidateFrame();
+	const auto clearDamage = editor.TakeFrameDamage();
+	REQUIRE(clearDamage.size() == 1);
+	CHECK(clearDamage.front() == PRectangle::FromInts(0, 0, 280, 160));
+	editor.RenderFrame(clearDamage);
 	const auto cleared = editor.FramePixels();
 	REQUIRE(offset + 3 < cleared.size());
 	// The sample is no longer the open-dropdown fill.

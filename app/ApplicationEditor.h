@@ -218,6 +218,7 @@ public:
 	 * While set, PresentFrame and RenderFrame expand paint to the full frame
 	 * (editor client plus top chrome) and PresentFrame uses a full buffer swap
 	 * so alpha overlays do not darken preserved pixels outside partial damage.
+	 * Call InvalidateFrame when overlay pixels above the client can change.
 	 * main binds either the open menu dropdown or the unsaved-changes card
 	 * here, never both; the card has priority.
 	 */
@@ -235,8 +236,10 @@ public:
 	void SetPermanentChromePainter(PermanentChromePainter painter);
 	/** Damage only the top chrome band. */
 	void InvalidateTopChrome();
-	/** Full-frame invalidate so modal chrome appears or disappears cleanly. */
+	/** Damage only the editor client below the top chrome. */
 	void InvalidateClient();
+	/** Damage the complete logical frame, including top chrome. */
+	void InvalidateFrame();
 	[[nodiscard]] std::vector<Scintilla::Internal::PRectangle> TakeFrameDamage();
 	void RunPendingWork();
 	[[nodiscard]] std::optional<std::chrono::milliseconds> TimeUntilNextWork() const;

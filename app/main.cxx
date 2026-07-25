@@ -378,7 +378,7 @@ void DismissOpenMenu(Scalpel::MenuBarModel &menuModel,
 		return;
 	}
 	Scalpel::CloseMenuBar(menuModel);
-	editor.InvalidateClient();
+	editor.InvalidateFrame();
 }
 
 void PerformShellRequests(Scalpel::DocumentWorkspace &workspace,
@@ -636,7 +636,7 @@ bool HandleTopChromePointer(const Scalpel::PointerInput &input,
 	if (menuResult.frameDirty) {
 		// Open/close and dropdown hover need a full frame so the overlay path
 		// cannot leave a stale panel.
-		editor.InvalidateClient();
+		editor.InvalidateFrame();
 	}
 	if (menuResult.activated) {
 		// Dropdown is already closed; run the shared action path.
@@ -765,7 +765,7 @@ bool HandleMenuBarKeyboardInput(const Scalpel::KeyboardInput &input,
 		editor.InvalidateTopChrome();
 	}
 	if (menuResult.frameDirty) {
-		editor.InvalidateClient();
+		editor.InvalidateFrame();
 	}
 	if (menuResult.activated) {
 		Scalpel::DispatchApplicationAction(
@@ -882,7 +882,7 @@ int main() {
 			// enablement and force a full-frame paint so the row updates.
 			if (menuModel.openMenu.has_value() &&
 				Scalpel::UpdateMenuBarActionState(menuModel, editor)) {
-				editor.InvalidateClient();
+				editor.InvalidateFrame();
 			}
 
 			if (window.ForceCloseRequested()) {
@@ -915,7 +915,7 @@ int main() {
 				editor.InvalidateTopChrome();
 				if (workspace.PromptActive() || menuModel.openMenu.has_value()) {
 					// Full frame so the card or dropdown cannot leave stale pixels.
-					editor.InvalidateClient();
+					editor.InvalidateFrame();
 				}
 			}
 
@@ -996,8 +996,8 @@ int main() {
 					editor.SetOverlayPainter(paintUnsavedCard);
 					cardOverlayBound = true;
 				}
-				// Full client damage so Wayland/EGL damage matches the scrim.
-				editor.InvalidateClient();
+				// Full-frame damage so Wayland surface damage matches the scrim.
+				editor.InvalidateFrame();
 			} else if (menuModel.openMenu.has_value()) {
 				window.SetCursor(pointerOverChrome ?
 					Scintilla::Internal::Window::Cursor::arrow :
@@ -1009,7 +1009,7 @@ int main() {
 				if (!menuOverlayBound) {
 					editor.SetOverlayPainter(paintMenuDropdown);
 					menuOverlayBound = true;
-					editor.InvalidateClient();
+					editor.InvalidateFrame();
 				}
 			} else {
 				window.SetCursor(pointerOverChrome ?
@@ -1021,7 +1021,7 @@ int main() {
 					editor.SetOverlayPainter(nullptr);
 					cardOverlayBound = false;
 					menuOverlayBound = false;
-					editor.InvalidateClient();
+					editor.InvalidateFrame();
 				}
 			}
 			QueueFrameDamage(editor, window);

@@ -1015,6 +1015,11 @@ void ApplicationEditor::InvalidateClient() {
 	wMain.InvalidateAll();
 }
 
+void ApplicationEditor::InvalidateFrame() {
+	window.invalidatedRectangles.push_back(
+		PRectangle::FromInts(0, 0, FrameWidth(), FrameHeight()));
+}
+
 std::vector<PRectangle> ApplicationEditor::TakeFrameDamage() {
 	return std::exchange(window.invalidatedRectangles, {});
 }
