@@ -42,6 +42,14 @@ bool NonEmptyContains(const PRectangle &rc, Point point) noexcept {
 		point.y >= rc.top && point.y < rc.bottom;
 }
 
+int SaturatingAdd(int value, int delta) noexcept {
+	const int64_t result = static_cast<int64_t>(value) + delta;
+	return static_cast<int>(std::clamp(
+		result,
+		static_cast<int64_t>(std::numeric_limits<int>::min()),
+		static_cast<int64_t>(std::numeric_limits<int>::max())));
+}
+
 PRectangle CloseButtonRect(const PRectangle &tabBounds) noexcept {
 	if (!NonEmpty(tabBounds)) {
 		return PRectangle::FromInts(0, 0, 0, 0);
@@ -51,10 +59,15 @@ PRectangle CloseButtonRect(const PRectangle &tabBounds) noexcept {
 	const int tabBottom = static_cast<int>(tabBounds.bottom);
 	const int closeRight = tabRight - kClosePadRight;
 	const int closeLeft = closeRight - kCloseSize;
-	const int midY = (tabTop + tabBottom) / 2;
-	const int closeTop = midY - kCloseSize / 2;
+	const int midY = static_cast<int>(
+		static_cast<int64_t>(tabTop) +
+		(static_cast<int64_t>(tabBottom) - tabTop) / 2);
+	const int closeTop = std::max(tabTop,
+		SaturatingAdd(midY, -kCloseSize / 2));
+	const int closeBottom = std::min(tabBottom,
+		SaturatingAdd(closeTop, kCloseSize));
 	return PRectangle::FromInts(closeLeft, closeTop, closeRight,
-		closeTop + kCloseSize);
+		closeBottom);
 }
 
 PRectangle LabelRect(const PRectangle &tabBounds,
@@ -163,14 +176,6 @@ int SaturatingTabPosition(std::size_t tabIndex) noexcept {
 	return static_cast<int>(tabIndex) * kPreferredTabWidth;
 }
 
-int SaturatingAdd(int value, int delta) noexcept {
-	const int64_t result = static_cast<int64_t>(value) + delta;
-	return static_cast<int>(std::clamp(
-		result,
-		static_cast<int64_t>(std::numeric_limits<int>::min()),
-		static_cast<int64_t>(std::numeric_limits<int>::max())));
-}
-
 }
 
 int TabStripHeight() noexcept {
@@ -246,7 +251,7 @@ TabStripLayout LayoutTabStrip(int stripWidth, const TabStripModel &model,
 	}
 
 	const int top = stripTop;
-	const int bottom = top + kStripHeight;
+	const int bottom = SaturatingAdd(top, kStripHeight);
 	layout.strip = PRectangle::FromInts(0, top, stripWidth, bottom);
 
 	const int addLeft = std::max(0, stripWidth - kAddButtonWidth);

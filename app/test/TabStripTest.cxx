@@ -426,6 +426,35 @@ TEST_CASE("tab strip offset layout places the strip below a non-zero top") {
 	CHECK(layout.tabs[1].bounds.left == TabStripPreferredTabWidth());
 }
 
+TEST_CASE("tab strip offset layout saturates extreme frame coordinates") {
+	const TabStripModel model = ModelWith({
+		MakeTab(1, "first", true),
+	});
+
+	const int lowest = std::numeric_limits<int>::min();
+	const TabStripLayout low = LayoutTabStrip(200, model, lowest);
+	CHECK(low.strip.top == lowest);
+	CHECK(low.strip.bottom == lowest + TabStripHeight());
+	REQUIRE(low.tabs.size() == 1);
+	CHECK(low.tabs[0].closeButton.top >= low.tabs[0].bounds.top);
+	CHECK(low.tabs[0].closeButton.bottom <= low.tabs[0].bounds.bottom);
+
+	const int highest = std::numeric_limits<int>::max();
+	const TabStripLayout nearHigh =
+		LayoutTabStrip(200, model, highest - TabStripHeight() / 2);
+	CHECK(nearHigh.strip.bottom == highest);
+	REQUIRE(nearHigh.tabs.size() == 1);
+	CHECK(nearHigh.tabs[0].closeButton.top >= nearHigh.tabs[0].bounds.top);
+	CHECK(nearHigh.tabs[0].closeButton.bottom <= nearHigh.tabs[0].bounds.bottom);
+
+	const TabStripLayout high = LayoutTabStrip(200, model, highest);
+	CHECK(high.strip.top == highest);
+	CHECK(high.strip.bottom == highest);
+	REQUIRE(high.tabs.size() == 1);
+	CHECK(high.tabs[0].bounds.top == highest);
+	CHECK(high.tabs[0].bounds.bottom == highest);
+}
+
 TEST_CASE("tab strip offset hit-test uses absolute frame coordinates") {
 	const int stripTop = 24;
 	const TabStripModel model = ModelWith({

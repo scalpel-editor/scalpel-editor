@@ -46,7 +46,7 @@ struct TabStripModel {
 	int scrollOffset = 0;
 };
 
-/** Per-tab rectangles in strip coordinates after scroll is applied. */
+/** Per-tab rectangles in full-frame coordinates after scroll is applied. */
 struct TabStripTabLayout {
 	DocumentId id = 0;
 	Scintilla::Internal::PRectangle bounds;
@@ -95,7 +95,8 @@ struct TabStripHitResult {
  * Lay out the strip for stripWidth logical pixels at stripTop.
  * Height is TabStripHeight(). Zero or negative width yields an empty layout.
  * stripTop is the permanent-chrome y origin (0 when the strip is alone;
- * MenuBarHeight() when stacked under the menu bar).
+ * MenuBarHeight() when stacked under the menu bar). The bottom coordinate
+ * saturates when stripTop is too close to INT_MAX for the full height.
  */
 [[nodiscard]] TabStripLayout LayoutTabStrip(int stripWidth,
 	const TabStripModel &model, int stripTop = 0) noexcept;
