@@ -8,8 +8,11 @@
 #include "ApplicationAction.h"
 #include "ApplicationEditor.h"
 #include "ApplicationInput.h"
+#include "ApplicationTextInput.h"
+#include "DocumentWorkspace.h"
 #include "MenuBar.h"
 #include "TabStrip.h"
+#include "UnsavedChangesCard.h"
 
 using Scalpel::ApplicationAction;
 using Scalpel::ApplicationActionCount;
@@ -17,12 +20,18 @@ using Scalpel::ApplicationActionInfo;
 using Scalpel::ApplicationActionTable;
 using Scalpel::ApplicationEditor;
 using Scalpel::ApplicationMenu;
+using Scalpel::ApplicationTextInputBatch;
+using Scalpel::ApplicationTextInputPreedit;
 using Scalpel::CloseMenuBar;
+using Scalpel::DispatchApplicationAction;
+using Scalpel::DocumentShellRequest;
+using Scalpel::DocumentWorkspace;
 using Scalpel::HandleMenuBarKeyboard;
 using Scalpel::HandleMenuBarPointer;
 using Scalpel::HitTestMenuBar;
 using Scalpel::KeyboardInput;
 using Scalpel::LayoutMenuBar;
+using Scalpel::LayoutUnsavedChangesCard;
 using Scalpel::MenuBarHeight;
 using Scalpel::MenuBarHit;
 using Scalpel::MenuBarHitResult;
@@ -35,6 +44,8 @@ using Scalpel::MenuBarPointerResult;
 using Scalpel::MenuBarPressKind;
 using Scalpel::PointerAction;
 using Scalpel::PointerInput;
+using Scalpel::UnsavedChangesCardPainter;
+using Scalpel::UpdateMenuBarActionState;
 using Scintilla::Internal::PRectangle;
 using Scintilla::Internal::Point;
 using Scintilla::KeyMod;
@@ -1122,6 +1133,294 @@ TEST_CASE("menu bar editor integration overlay draws above stacked chrome") {
 	// Away from the overlay mark, chrome still shows.
 	const Rgba barEdge = Sample(pixels, 280, 20, menuH / 2);
 	CHECK(Differs(overBar, barEdge));
+}
+
+TEST_CASE("menu bar shell integration cancels IME when a menu opens") {
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("base");
+
+	ApplicationTextInputBatch preedit;
+	preedit.preedit = ApplicationTextInputPreedit{"\xC3\xA9", 2, 2};
+	editor.HandleTextInputBatch(preedit);
+	CHECK(editor.Text() == "\xC3\xA9" "base");
+	CHECK(editor.ImeIndicatorAt(0) != 0);
+
+	MenuBarModel model;
+	(void)UpdateMenuBarActionState(model, editor);
+	const MenuBarKeyboardResult open =
+		HandleMenuBarKeyboard(model, MakeKey(Keys::Menu));
+	REQUIRE(model.openMenu.has_value());
+	CHECK(*model.openMenu == ApplicationMenu::File);
+	CHECK(open.frameDirty);
+	// Shell cancels tentative IME on the open transition.
+	editor.CancelActiveTextInput();
+	CHECK(editor.Text() == "base");
+	CHECK(editor.ImeIndicatorAt(0) == 0);
+
+	// While open, further IME batches must not reach the editor (main drops
+	// them). Simulate the drop by not calling HandleTextInputBatch.
+	ApplicationTextInputBatch ignored;
+	ignored.preedit = ApplicationTextInputPreedit{"x", 1, 1};
+	// After cancel, a deliberate batch would re-enter preedit; chrome owns
+	// input until close, so the shell leaves the buffer alone.
+	CHECK(editor.Text() == "base");
+	(void)ignored;
+}
+
+TEST_CASE("menu bar shell integration closes before portal prompt and tab work") {
+	ApplicationEditor editor(360, 200);
+	editor.LoadInitialBuffer("shell\n");
+	DocumentWorkspace workspace(editor);
+	MenuBarModel model;
+	(void)UpdateMenuBarActionState(model, editor);
+
+	SECTION("Open from the menu closes the dropdown before the portal request") {
+		model.openMenu = ApplicationMenu::File;
+		model.focusedItem = ApplicationAction::Open;
+		const MenuBarKeyboardResult result =
+			HandleMenuBarKeyboard(model, MakeKey(Keys::Return));
+		REQUIRE(result.activated.has_value());
+		CHECK(*result.activated == ApplicationAction::Open);
+		CHECK_FALSE(model.openMenu.has_value());
+		DispatchApplicationAction(*result.activated, workspace, editor);
+		const auto requests = workspace.TakeRequests();
+		bool showOpen = false;
+		for (const DocumentShellRequest request : requests) {
+			if (request == DocumentShellRequest::ShowOpen) {
+				showOpen = true;
+			}
+		}
+		CHECK(showOpen);
+	}
+
+	SECTION("dirty Quit closes the menu before the unsaved prompt begins") {
+		editor.HandleKeyboardInput(
+			{static_cast<Keys>(0), KeyMod::Norm, "!", 1, true});
+		REQUIRE(editor.Modified());
+		model.openMenu = ApplicationMenu::File;
+		model.focusedItem = ApplicationAction::Quit;
+		const MenuBarKeyboardResult result =
+			HandleMenuBarKeyboard(model, MakeKey(Keys::Return));
+		REQUIRE(result.activated.has_value());
+		CHECK(*result.activated == ApplicationAction::Quit);
+		CHECK_FALSE(model.openMenu.has_value());
+		DispatchApplicationAction(*result.activated, workspace, editor);
+		CHECK(workspace.PromptActive());
+		const auto requests = workspace.TakeRequests();
+		bool promptBegan = false;
+		for (const DocumentShellRequest request : requests) {
+			if (request == DocumentShellRequest::PromptBegan) {
+				promptBegan = true;
+			}
+		}
+		CHECK(promptBegan);
+	}
+
+	SECTION("shell dismisses a leftover open menu when a prompt begins") {
+		// Compositor close can raise a prompt while a menu is still open.
+		editor.HandleKeyboardInput(
+			{static_cast<Keys>(0), KeyMod::Norm, "?", 2, true});
+		REQUIRE(editor.Modified());
+		model.openMenu = ApplicationMenu::Edit;
+		model.focusedItem = ApplicationAction::Undo;
+		workspace.RequestClose();
+		CHECK(workspace.PromptActive());
+		// main closes the menu on PromptBegan so the card owns the overlay.
+		CloseMenuBar(model);
+		CHECK_FALSE(model.openMenu.has_value());
+		CHECK_FALSE(model.focusedItem.has_value());
+	}
+
+	SECTION("tab activation dismisses an open menu before switching") {
+		const auto first = workspace.ActiveTab();
+		workspace.NewTab();
+		(void)workspace.TakeRequests();
+		const auto second = workspace.ActiveTab();
+		REQUIRE(second != first);
+		model.openMenu = ApplicationMenu::File;
+		model.focusedItem = ApplicationAction::NewTab;
+		// Shell closes the menu before ActivateTab so chrome state stays clean.
+		CloseMenuBar(model);
+		workspace.ActivateTab(first);
+		CHECK_FALSE(model.openMenu.has_value());
+		CHECK(workspace.ActiveTab() == first);
+	}
+}
+
+TEST_CASE("menu bar shell integration focus loss and force-close clear the menu") {
+	MenuBarModel model = OpenMenu(ApplicationMenu::File);
+	model.focusedItem = ApplicationAction::Save;
+	model.hoveredItem = ApplicationAction::Open;
+	model.pressOrigin = {MenuBarPressKind::Item, ApplicationMenu::File,
+		ApplicationAction::Open};
+
+	// Focus loss and force-close both dismiss without running an action.
+	CloseMenuBar(model);
+	CHECK_FALSE(model.openMenu.has_value());
+	CHECK_FALSE(model.focusedItem.has_value());
+	CHECK_FALSE(model.hoveredItem.has_value());
+	CHECK_FALSE(model.pressOrigin.has_value());
+	// Heading hover may remain for bar paint after a soft close; force-close
+	// also leaves the process, so no further paint is required.
+}
+
+TEST_CASE("menu bar shell integration keeps open menu across resize and scale") {
+	ApplicationEditor editor(400, 280);
+	editor.LoadInitialBuffer("resize\n");
+	const int inset = MenuBarHeight() + Scalpel::TabStripHeight();
+	editor.SetTopChromeInset(inset);
+
+	MenuBarModel model = OpenMenu(ApplicationMenu::File);
+	model.focusedItem = ApplicationAction::SaveAs;
+	(void)UpdateMenuBarActionState(model, editor);
+
+	const MenuBarLayout wide = LayoutMenuBar(400, 280, model);
+	REQUIRE(NonEmpty(wide.dropdown));
+	REQUIRE(model.openMenu.has_value());
+
+	// Resize keeps the selected menu when it still fits; layout reclamps.
+	editor.Resize(120, 160);
+	const MenuBarLayout narrow =
+		LayoutMenuBar(editor.FrameWidth(), editor.FrameHeight(), model);
+	CHECK(model.openMenu.has_value());
+	CHECK(*model.openMenu == ApplicationMenu::File);
+	CHECK(model.focusedItem == ApplicationAction::SaveAs);
+	REQUIRE(NonEmpty(narrow.dropdown));
+	CHECK(narrow.dropdown.left >= 0);
+	CHECK(narrow.dropdown.right <= editor.FrameWidth());
+	CHECK(narrow.dropdown.bottom <= editor.FrameHeight());
+
+	// Framebuffer scale keeps logical layout; open state is unchanged.
+	editor.SetFrameBufferSize(240, 320);
+	const MenuBarLayout scaled =
+		LayoutMenuBar(editor.FrameWidth(), editor.FrameHeight(), model);
+	CHECK(model.openMenu.has_value());
+	CHECK(scaled.bar.right == editor.FrameWidth());
+	REQUIRE(NonEmpty(scaled.dropdown));
+}
+
+TEST_CASE("menu bar shell integration card overlay wins and clear leaves no dropdown") {
+	using Scalpel::TabStripHeight;
+	using Scalpel::TabStripModel;
+	using Scalpel::TabStripPainter;
+	using Scalpel::TabStripTab;
+
+	const int menuH = MenuBarHeight();
+	const int stripH = TabStripHeight();
+	const int inset = menuH + stripH;
+	ApplicationEditor editor(320, 200);
+	editor.LoadInitialBuffer("overlay\n");
+	editor.SetTopChromeInset(inset);
+	(void)editor.TakeFrameDamage();
+
+	MenuBarPainter menuPainter;
+	UnsavedChangesCardPainter cardPainter;
+	TabStripPainter stripPainter;
+	MenuBarModel menuModel = OpenMenu(ApplicationMenu::File);
+	menuModel.focusedItem = ApplicationAction::NewTab;
+	TabStripModel stripModel;
+	TabStripTab tab;
+	tab.id = 1;
+	tab.label = "t";
+	tab.active = true;
+	stripModel.tabs.push_back(tab);
+
+	editor.SetPermanentChromePainter(
+		[&](Scintilla::Internal::Surface &surface, int width, int height) {
+			const MenuBarLayout menuLayout =
+				LayoutMenuBar(width, height, menuModel);
+			menuPainter.PaintBar(surface, menuLayout, menuModel);
+			const auto stripLayout =
+				Scalpel::LayoutTabStrip(width, stripModel, menuH);
+			stripPainter.Paint(surface, stripLayout, stripModel);
+			(void)height;
+		});
+
+	const MenuBarLayout openLayout =
+		LayoutMenuBar(320, 200, menuModel);
+	REQUIRE(NonEmpty(openLayout.dropdown));
+	const Point dropCenter = Center(openLayout.dropdown);
+
+	// Menu dropdown bound as overlay.
+	editor.SetOverlayPainter(
+		[&](Scintilla::Internal::Surface &surface, int width, int height) {
+			const MenuBarLayout layout =
+				LayoutMenuBar(width, height, menuModel);
+			menuPainter.PaintDropdown(surface, layout, menuModel);
+		});
+	editor.RenderFrame({PRectangle::FromInts(0, 0, 320, 200)});
+	const auto withMenu = editor.FramePixels();
+	const Rgba menuPx = Sample(withMenu, 320,
+		static_cast<int>(dropCenter.x), static_cast<int>(dropCenter.y));
+	CHECK(menuPx.a == 0xff);
+
+	// Unsaved card wins the overlay slot; menu model is dismissed.
+	CloseMenuBar(menuModel);
+	const auto cardLayout = LayoutUnsavedChangesCard(320, 200);
+	editor.SetOverlayPainter(
+		[&](Scintilla::Internal::Surface &surface, int width, int height) {
+			cardPainter.Paint(surface, cardLayout, "Save changes?", "overlay",
+				0);
+			(void)width;
+			(void)height;
+		});
+	editor.RenderFrame({PRectangle::FromInts(0, 0, 320, 200)});
+	const auto withCard = editor.FramePixels();
+	const Rgba cardAtDrop = Sample(withCard, 320,
+		static_cast<int>(dropCenter.x), static_cast<int>(dropCenter.y));
+	// Dropdown panel is gone; card scrim or chrome fills that sample.
+	CHECK(Differs(menuPx, cardAtDrop));
+
+	// Clearing the overlay and painting leaves no stale dropdown pixels.
+	editor.SetOverlayPainter(nullptr);
+	editor.InvalidateClient();
+	editor.RenderFrame({PRectangle::FromInts(0, 0, 320, 200)});
+	const auto cleared = editor.FramePixels();
+	const Rgba clearPx = Sample(cleared, 320,
+		static_cast<int>(dropCenter.x), static_cast<int>(dropCenter.y));
+	CHECK(Differs(menuPx, clearPx));
+	// Sample is in the editor client (below chrome), not opaque menu chrome.
+	CHECK(dropCenter.y >= inset);
+}
+
+TEST_CASE("menu bar shell integration input priority while open blocks the strip") {
+	using Scalpel::HitTestTabStrip;
+	using Scalpel::LayoutTabStrip;
+	using Scalpel::TabStripHit;
+	using Scalpel::TabStripModel;
+	using Scalpel::TabStripTab;
+
+	const int menuH = MenuBarHeight();
+	MenuBarModel menuModel = OpenMenu(ApplicationMenu::File);
+	TabStripModel stripModel;
+	TabStripTab tab;
+	tab.id = 1;
+	tab.label = "blocked";
+	tab.active = true;
+	stripModel.tabs.push_back(tab);
+
+	const MenuBarLayout menuLayout = LayoutMenuBar(400, 300, menuModel);
+	const auto stripLayout = LayoutTabStrip(400, stripModel, menuH);
+	REQUIRE_FALSE(stripLayout.tabs.empty());
+	// Press on the strip band to the right of the File dropdown so geometry
+	// still hits the strip, but not a menu item row.
+	REQUIRE(NonEmpty(menuLayout.dropdown));
+	const double pressX = menuLayout.dropdown.right + 40.0;
+	REQUIRE(pressX < 400.0);
+	const double pressY = menuH + (stripLayout.strip.Height() / 2.0);
+	const Point press(pressX, pressY);
+	const auto stripHit = HitTestTabStrip(stripLayout, press);
+	// May be Tab, Add, or strip chrome; any non-None shows the strip owns the
+	// geometry that main must not deliver while the menu is open.
+	CHECK(stripHit.kind != TabStripHit::None);
+
+	const MenuBarPointerResult menuResult = HandleMenuBarPointer(menuModel,
+		menuLayout, MakePointer(PointerAction::Press, press.x, press.y, 0),
+		false);
+	CHECK(menuResult.consumed);
+	CHECK_FALSE(menuModel.openMenu.has_value());
+	// Outside press dismissed the menu and was consumed (no click-through to tabs).
+	CHECK(menuResult.activated == std::nullopt);
 }
 
 TEST_CASE("menu bar editor integration narrow resize and framebuffer scale") {

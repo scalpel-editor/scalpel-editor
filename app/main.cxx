@@ -4,13 +4,15 @@
 // surface (one renderer, one EGL context). DocumentWorkspace owns tab order,
 // paths, untitled numbering, portal request intents, and dirty-close prompts;
 // it returns shell requests and owns no Wayland or drawing. MenuBar and
-// TabStrip are permanent top chrome (menu bar above the tab strip);
-// UnsavedChangesCard is the modal overlay above chrome and editor content.
-// This file is the event and rendering adapter: it delivers input and portal
-// results into the workspace, performs shell requests (dialogs, quit, strip
-// refresh), and paints chrome. Open/save policy and prompt transitions live
-// in DocumentWorkspace, not here. Required-global loss force-closes without
-// prompting the workspace.
+// TabStrip are permanent top chrome (menu bar above the tab strip). The open
+// menu dropdown and UnsavedChangesCard share the post-paint overlay slot; the
+// card has higher input and paint priority. Input priority is unsaved card,
+// open menu, tab strip, then editor. This file is the event and rendering
+// adapter: it delivers input and portal results into the workspace, performs
+// shell requests (dialogs, quit, strip refresh), dismisses menus around
+// portals, prompts, tab activation, force close, and focus loss, and paints
+// chrome. Open/save policy and prompt transitions live in DocumentWorkspace,
+// not here. Required-global loss force-closes without prompting the workspace.
 
 #include <cmath>
 #include <exception>
@@ -188,10 +190,10 @@ Scalpel::WaylandTextInputClientState WaylandState(
 }
 
 void DeliverTextInputBatches(Scalpel::WaylandWindow &window,
-	Scalpel::ApplicationEditor &editor, bool promptActive) {
+	Scalpel::ApplicationEditor &editor, bool chromeOwnsInput) {
 	for (Scalpel::WaylandTextInputBatch &batch : window.TakeTextInputBatches()) {
-		if (promptActive) {
-			// Modal chrome owns input; drop IME commits while the card is up.
+		if (chromeOwnsInput) {
+			// Unsaved card or open menu owns input; drop IME until it closes.
 			continue;
 		}
 		editor.HandleTextInputBatch(ApplicationBatch(std::move(batch)));
@@ -369,9 +371,20 @@ void RevealActiveTab(Scalpel::TabStripModel &model, int stripWidth) {
 	return Scalpel::DocumentBaseName(workspace.Path());
 }
 
+/** Close an open menu and force a full-frame repaint so the dropdown cannot linger. */
+void DismissOpenMenu(Scalpel::MenuBarModel &menuModel,
+	Scalpel::ApplicationEditor &editor) {
+	if (!menuModel.openMenu.has_value()) {
+		return;
+	}
+	Scalpel::CloseMenuBar(menuModel);
+	editor.InvalidateClient();
+}
+
 void PerformShellRequests(Scalpel::DocumentWorkspace &workspace,
 	Scalpel::WaylandWindow &window,
 	Scalpel::ApplicationEditor &editor,
+	Scalpel::MenuBarModel &menuModel,
 	Scalpel::TabStripModel &stripModel,
 	bool &quitAccepted,
 	int &cardFocus,
@@ -380,12 +393,15 @@ void PerformShellRequests(Scalpel::DocumentWorkspace &workspace,
 		workspace.TakeRequests()) {
 		switch (request) {
 		case Scalpel::DocumentShellRequest::ShowOpen:
+			// Portals take over interaction; the in-window menu must not stay open.
+			DismissOpenMenu(menuModel, editor);
 			if (const std::optional<uint64_t> requestId =
 					StartOpenDialog(window, workspace.Path())) {
 				workspace.RegisterOpenRequest(*requestId);
 			}
 			break;
 		case Scalpel::DocumentShellRequest::ShowSaveAs:
+			DismissOpenMenu(menuModel, editor);
 			if (const std::optional<uint64_t> requestId =
 					RequestSaveAsDialog(window, workspace.Path())) {
 				workspace.RegisterSaveAsRequest(*requestId);
@@ -397,6 +413,8 @@ void PerformShellRequests(Scalpel::DocumentWorkspace &workspace,
 			quitAccepted = true;
 			break;
 		case Scalpel::DocumentShellRequest::PromptBegan:
+			// Card input and paint priority is higher than the menu.
+			DismissOpenMenu(menuModel, editor);
 			cardFocus = 0;
 			pressHit.reset();
 			break;
@@ -599,6 +617,7 @@ bool HandleTopChromePointer(const Scalpel::PointerInput &input,
 	Scalpel::ApplicationEditor &editor,
 	bool &pointerOverChrome) {
 	const bool captured = editor.WindowState().mouseCaptured;
+	const bool menuWasOpen = menuModel.openMenu.has_value();
 	// Keep enablement current before open/toggle/hover so disabled items and
 	// keyboard-equivalent pointer activation match the active document.
 	(void)Scalpel::UpdateMenuBarActionState(menuModel, editor);
@@ -607,6 +626,10 @@ bool HandleTopChromePointer(const Scalpel::PointerInput &input,
 	const Scalpel::MenuBarPointerResult menuResult =
 		Scalpel::HandleMenuBarPointer(menuModel, menuLayout, input, captured);
 
+	if (!menuWasOpen && menuModel.openMenu.has_value()) {
+		// Opening a menu cancels tentative IME; batches stay dropped while open.
+		editor.CancelActiveTextInput();
+	}
 	if (menuResult.barDirty) {
 		editor.InvalidateTopChrome();
 	}
@@ -704,6 +727,9 @@ bool HandleTopChromePointer(const Scalpel::PointerInput &input,
 	}
 
 	if (input.action == Scalpel::PointerAction::Press && input.button == 0) {
+		// Tab work must not leave a menu open (for example after a race with
+		// a dismissal release that already cleared openMenu).
+		DismissOpenMenu(menuModel, editor);
 		if (stripHit.kind == Scalpel::TabStripHit::Tab) {
 			workspace.ActivateTab(stripHit.tabId);
 		} else if (stripHit.kind == Scalpel::TabStripHit::Close) {
@@ -727,10 +753,14 @@ bool HandleMenuBarKeyboardInput(const Scalpel::KeyboardInput &input,
 	Scalpel::MenuBarModel &menuModel,
 	Scalpel::DocumentWorkspace &workspace,
 	Scalpel::ApplicationEditor &editor) {
+	const bool menuWasOpen = menuModel.openMenu.has_value();
 	// Refresh before open accelerators so FirstEnabledItem uses live state.
 	(void)Scalpel::UpdateMenuBarActionState(menuModel, editor);
 	const Scalpel::MenuBarKeyboardResult menuResult =
 		Scalpel::HandleMenuBarKeyboard(menuModel, input);
+	if (!menuWasOpen && menuModel.openMenu.has_value()) {
+		editor.CancelActiveTextInput();
+	}
 	if (menuResult.barDirty) {
 		editor.InvalidateTopChrome();
 	}
@@ -841,9 +871,11 @@ int main() {
 			(void)window.TakePresentationResults();
 			DeliverClipboardResults(window, editor);
 			DeliverPrimarySelectionResults(window, editor);
-			DeliverTextInputBatches(window, editor, workspace.PromptActive());
+			// Input priority for IME: unsaved card and open menu both own input.
+			DeliverTextInputBatches(window, editor,
+				workspace.PromptActive() || menuModel.openMenu.has_value());
 			ApplyFileDialogResults(window, workspace);
-			PerformShellRequests(workspace, window, editor, stripModel,
+			PerformShellRequests(workspace, window, editor, menuModel, stripModel,
 				quitAccepted, cardFocus, promptPressHit);
 			SynchronizeTextInput(editor, window);
 			// Clipboard offer can arrive while a dropdown is open; flip paste
@@ -854,12 +886,15 @@ int main() {
 			}
 
 			if (window.ForceCloseRequested()) {
+				// Force-close exits without a prompt; drop menu state so the
+				// final frames cannot paint a stale dropdown.
+				DismissOpenMenu(menuModel, editor);
 				break;
 			}
 			if (window.UserCloseRequested()) {
 				workspace.RequestClose();
-				PerformShellRequests(workspace, window, editor, stripModel,
-					quitAccepted, cardFocus, promptPressHit);
+				PerformShellRequests(workspace, window, editor, menuModel,
+					stripModel, quitAccepted, cardFocus, promptPressHit);
 				window.ClearCloseRequest();
 				if (quitAccepted) {
 					break;
@@ -873,11 +908,13 @@ int main() {
 					editor.Resize(scale->logicalWidth, scale->logicalHeight);
 				}
 				editor.SetFrameBufferSize(scale->bufferWidth, scale->bufferHeight);
-				// Width may change scroll clamping and tab layout.
+				// Width may change scroll clamping and tab layout. Keep an open
+				// menu; LayoutMenuBar recomputes headings and clamps the panel.
 				(void)SyncTabStripTabs(workspace, stripModel, editor.FrameWidth());
 				RevealActiveTab(stripModel, editor.FrameWidth());
 				editor.InvalidateTopChrome();
-				if (workspace.PromptActive()) {
+				if (workspace.PromptActive() || menuModel.openMenu.has_value()) {
+					// Full frame so the card or dropdown cannot leave stale pixels.
 					editor.InvalidateClient();
 				}
 			}
@@ -890,8 +927,13 @@ int main() {
 				if (const auto *focus =
 					std::get_if<Scalpel::KeyboardFocusInput>(&input)) {
 					editor.SetKeyboardFocus(focus->focused);
+					if (!focus->focused) {
+						// Focus loss closes the menu; IME cancel is in SetKeyboardFocus.
+						DismissOpenMenu(menuModel, editor);
+					}
 					continue;
 				}
+				// Input priority: unsaved card, open menu, tab strip, then editor.
 				if (workspace.PromptActive()) {
 					if (const auto *keyboard =
 						std::get_if<Scalpel::KeyboardInput>(&input)) {
@@ -904,8 +946,8 @@ int main() {
 						HandlePromptPointer(*pointer, promptLayout,
 							promptPressHit, workspace, editor, cardFocus);
 					}
-					PerformShellRequests(workspace, window, editor, stripModel,
-						quitAccepted, cardFocus, promptPressHit);
+					PerformShellRequests(workspace, window, editor, menuModel,
+						stripModel, quitAccepted, cardFocus, promptPressHit);
 					continue;
 				}
 				if (const auto *keyboard =
@@ -924,11 +966,12 @@ int main() {
 						editor.HandlePointerInput(pointer);
 					}
 				}
-				PerformShellRequests(workspace, window, editor, stripModel,
-					quitAccepted, cardFocus, promptPressHit);
+				PerformShellRequests(workspace, window, editor, menuModel,
+					stripModel, quitAccepted, cardFocus, promptPressHit);
 			}
 
 			if (quitAccepted || window.ForceCloseRequested()) {
+				DismissOpenMenu(menuModel, editor);
 				break;
 			}
 
@@ -942,7 +985,10 @@ int main() {
 			SynchronizeTextInput(editor, window);
 			if (workspace.PromptActive()) {
 				window.SetCursor(Scintilla::Internal::Window::Cursor::arrow);
-				// Unsaved card wins the overlay slot over an open menu.
+				// Unsaved card wins the overlay slot; never bind both.
+				if (menuModel.openMenu.has_value()) {
+					Scalpel::CloseMenuBar(menuModel);
+				}
 				if (menuOverlayBound) {
 					menuOverlayBound = false;
 				}
@@ -970,9 +1016,12 @@ int main() {
 					Scintilla::Internal::Window::Cursor::arrow :
 					editor.WindowState().cursor);
 				if (cardOverlayBound || menuOverlayBound) {
+					// Clear the painter and damage the full frame so preserved
+					// buffer contents cannot leave a stale dropdown or card.
 					editor.SetOverlayPainter(nullptr);
 					cardOverlayBound = false;
 					menuOverlayBound = false;
+					editor.InvalidateClient();
 				}
 			}
 			QueueFrameDamage(editor, window);

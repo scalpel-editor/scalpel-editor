@@ -1,5 +1,7 @@
 #include "ApplicationTest.h"
 
+#include "MenuBar.h"
+
 TEST_CASE("production editor host constructs and renders its initial buffer") {
 	Scalpel::ApplicationEditor editor(320, 180);
 	editor.LoadInitialBuffer("scalpel-editor\nvisible text\n");
@@ -755,4 +757,150 @@ TEST_CASE("production editor top chrome InvalidateTopChrome damages only the ban
 	CHECK(std::find(damage.begin(), damage.end(),
 		Scintilla::Internal::PRectangle::FromInts(0, 0, 160, 90)) ==
 		damage.end());
+}
+
+TEST_CASE("production editor menu overlay expands damage and paints dropdown above chrome") {
+	using Scintilla::Internal::PRectangle;
+	using Scintilla::Internal::Surface;
+	using Scalpel::LayoutMenuBar;
+	using Scalpel::MenuBarHeight;
+	using Scalpel::MenuBarLayout;
+	using Scalpel::MenuBarModel;
+	using Scalpel::MenuBarPainter;
+	using Scalpel::ApplicationMenu;
+
+	const int menuH = MenuBarHeight();
+	const int stripH = 28;
+	const int inset = menuH + stripH;
+	Scalpel::ApplicationEditor editor(300, 180);
+	editor.LoadInitialBuffer("menu overlay\n");
+	editor.SetTopChromeInset(inset);
+	(void)editor.TakeFrameDamage();
+
+	MenuBarPainter menuPainter;
+	MenuBarModel menuModel;
+	menuModel.openMenu = ApplicationMenu::File;
+
+	int chromePaints = 0;
+	int overlayPaints = 0;
+	editor.SetPermanentChromePainter(
+		[&](Surface &surface, int width, int height) {
+			++chromePaints;
+			const MenuBarLayout layout =
+				LayoutMenuBar(width, height, menuModel);
+			menuPainter.PaintBar(surface, layout, menuModel);
+			// Opaque tab-band stand-in so the dropdown must cover it.
+			surface.FillRectangle(
+				PRectangle::FromInts(0, menuH, width, inset),
+				Scintilla::Internal::Fill(
+					Scintilla::Internal::ColourRGBA(0x00, 0xaa, 0x00, 0xff)));
+			(void)height;
+		});
+	editor.SetOverlayPainter(
+		[&](Surface &surface, int width, int height) {
+			++overlayPaints;
+			const MenuBarLayout layout =
+				LayoutMenuBar(width, height, menuModel);
+			menuPainter.PaintDropdown(surface, layout, menuModel);
+			CHECK(width == 300);
+			CHECK(height == 180);
+		});
+
+	// Partial editor damage expands to the full client while the menu overlay is set.
+	editor.RenderFrame({PRectangle::FromInts(12, inset + 8, 24, inset + 20)});
+	CHECK(chromePaints == 1);
+	CHECK(overlayPaints == 1);
+	CHECK(editor.LastPaintRectangle() ==
+		PRectangle::FromInts(0, inset, 300, 180));
+
+	const MenuBarLayout layout = LayoutMenuBar(300, 180, menuModel);
+	REQUIRE(layout.dropdown.Width() > 0);
+	REQUIRE(layout.dropdown.Height() > 0);
+	const int sampleX =
+		static_cast<int>((layout.dropdown.left + layout.dropdown.right) / 2);
+	const int sampleY =
+		static_cast<int>((layout.dropdown.top + layout.dropdown.bottom) / 2);
+	// Dropdown starts below the menu bar and covers the tab-band stand-in.
+	REQUIRE(sampleY >= menuH);
+
+	const auto pixels = editor.FramePixels();
+	REQUIRE(pixels.size() == 300U * 180U * 4U);
+	const size_t offset =
+		(static_cast<size_t>(sampleY) * 300U + static_cast<size_t>(sampleX)) *
+		4U;
+	// Dropdown is not the green tab stand-in.
+	const bool isGreenStandIn = pixels[offset + 0] == 0x00 &&
+		pixels[offset + 1] == 0xaa && pixels[offset + 2] == 0x00;
+	CHECK_FALSE(isGreenStandIn);
+	CHECK(pixels[offset + 3] == 0xff);
+}
+
+TEST_CASE("production editor menu overlay clear removes dropdown without stale pixels") {
+	using Scintilla::Internal::PRectangle;
+	using Scintilla::Internal::Surface;
+	using Scalpel::LayoutMenuBar;
+	using Scalpel::MenuBarHeight;
+	using Scalpel::MenuBarLayout;
+	using Scalpel::MenuBarModel;
+	using Scalpel::MenuBarPainter;
+	using Scalpel::ApplicationMenu;
+
+	const int menuH = MenuBarHeight();
+	const int inset = menuH + 24;
+	Scalpel::ApplicationEditor editor(280, 160);
+	editor.LoadInitialBuffer("clear menu\n");
+	editor.SetTopChromeInset(inset);
+	(void)editor.TakeFrameDamage();
+
+	MenuBarPainter menuPainter;
+	MenuBarModel menuModel;
+	menuModel.openMenu = ApplicationMenu::Edit;
+
+	editor.SetPermanentChromePainter(
+		[&](Surface &surface, int width, int height) {
+			const MenuBarLayout layout =
+				LayoutMenuBar(width, height, menuModel);
+			menuPainter.PaintBar(surface, layout, menuModel);
+			surface.FillRectangle(
+				PRectangle::FromInts(0, menuH, width, inset),
+				Scintilla::Internal::Fill(
+					Scintilla::Internal::ColourRGBA(0x20, 0x20, 0x20, 0xff)));
+			(void)height;
+		});
+
+	const MenuBarLayout openLayout = LayoutMenuBar(280, 160, menuModel);
+	REQUIRE(openLayout.dropdown.Width() > 0);
+	const int sampleX = static_cast<int>(
+		(openLayout.dropdown.left + openLayout.dropdown.right) / 2);
+	const int sampleY = static_cast<int>(
+		(openLayout.dropdown.top + openLayout.dropdown.bottom) / 2);
+
+	editor.SetOverlayPainter(
+		[&](Surface &surface, int width, int height) {
+			const MenuBarLayout layout =
+				LayoutMenuBar(width, height, menuModel);
+			menuPainter.PaintDropdown(surface, layout, menuModel);
+			(void)height;
+		});
+	editor.RenderFrame({PRectangle::FromInts(0, 0, 280, 160)});
+	const auto withMenu = editor.FramePixels();
+	const size_t offset =
+		(static_cast<size_t>(sampleY) * 280U + static_cast<size_t>(sampleX)) *
+		4U;
+	REQUIRE(offset + 3 < withMenu.size());
+	const uint8_t menuR = withMenu[offset];
+	const uint8_t menuG = withMenu[offset + 1];
+	const uint8_t menuB = withMenu[offset + 2];
+
+	// Close the menu and clear the overlay; full-frame damage replaces the panel.
+	menuModel.openMenu.reset();
+	editor.SetOverlayPainter(nullptr);
+	editor.InvalidateClient();
+	editor.RenderFrame({PRectangle::FromInts(0, 0, 280, 160)});
+	const auto cleared = editor.FramePixels();
+	REQUIRE(offset + 3 < cleared.size());
+	// The sample is no longer the open-dropdown fill.
+	const bool changed = cleared[offset] != menuR ||
+		cleared[offset + 1] != menuG || cleared[offset + 2] != menuB;
+	CHECK(changed);
 }

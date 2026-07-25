@@ -83,8 +83,9 @@ using DocumentId = uint64_t;
  * constructing another host: one document is active for input and paint; the
  * rest keep their text, undo, save point, and a snapshot of selection and
  * scroll until activated again. DocumentWorkspace maps tabs and file paths onto
- * these IDs; main paints the tab strip as permanent top chrome and the unsaved
- * card as the only full-client modal overlay.
+ * these IDs; main paints the menu bar and tab strip as permanent top chrome and
+ * binds either the open menu dropdown or the unsaved-changes card into the
+ * post-paint overlay slot (the card wins when both would apply).
  */
 class ApplicationEditor final : private ApplicationResources, public Scintilla::Internal::ScintillaBase {
 public:
@@ -212,12 +213,13 @@ public:
 		const std::vector<Scintilla::Internal::PRectangle> &damage,
 		const std::vector<int> &eglDamage, bool fullSwap);
 	/**
-	 * Optional post-paint chrome. Called after a successful Scintilla Paint on
+	 * Optional post-paint overlay. Called after a successful Scintilla Paint on
 	 * the same surface, with logical frame width and height, before swap.
 	 * While set, PresentFrame and RenderFrame expand paint to the full frame
 	 * (editor client plus top chrome) and PresentFrame uses a full buffer swap
 	 * so alpha overlays do not darken preserved pixels outside partial damage.
-	 * The modal unsaved card is the only user of this path.
+	 * main binds either the open menu dropdown or the unsaved-changes card
+	 * here, never both; the card has priority.
 	 */
 	using OverlayPainter = std::function<void(Scintilla::Internal::Surface &surface,
 		int width, int height)>;
