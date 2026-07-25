@@ -713,28 +713,45 @@ void ApplicationEditor::SetPointerCapture(bool captured) {
 	ChangeMouseCapture(captured);
 }
 
+void ApplicationEditor::ExecuteApplicationEdit(
+	Scintilla::Internal::EditorCommand command) {
+	const Scintilla::Position caretBefore = sel.MainCaret();
+	const Scintilla::Position anchorBefore = sel.MainAnchor();
+	const int xOffsetBefore = xOffset;
+	const Scintilla::Line topLineBefore = topLine;
+	if (pdoc->TentativeActive()) {
+		CancelTextInput();
+	}
+	ExecuteCommand(command);
+	if (sel.MainCaret() != caretBefore || sel.MainAnchor() != anchorBefore ||
+		xOffset != xOffsetBefore || topLine != topLineBefore) {
+		textInputStateDirty = true;
+		textInputChangeCause = ApplicationTextChangeCause::Other;
+	}
+}
+
 void ApplicationEditor::RequestUndo() {
-	ExecuteCommand(Scintilla::Internal::EditorCommand::Undo);
+	ExecuteApplicationEdit(Scintilla::Internal::EditorCommand::Undo);
 }
 
 void ApplicationEditor::RequestRedo() {
-	ExecuteCommand(Scintilla::Internal::EditorCommand::Redo);
+	ExecuteApplicationEdit(Scintilla::Internal::EditorCommand::Redo);
 }
 
 void ApplicationEditor::RequestCut() {
-	ExecuteCommand(Scintilla::Internal::EditorCommand::Cut);
+	ExecuteApplicationEdit(Scintilla::Internal::EditorCommand::Cut);
 }
 
 void ApplicationEditor::RequestSelectAll() {
-	ExecuteCommand(Scintilla::Internal::EditorCommand::SelectAll);
+	ExecuteApplicationEdit(Scintilla::Internal::EditorCommand::SelectAll);
 }
 
 void ApplicationEditor::RequestClipboardCopy() {
-	ExecuteCommand(Scintilla::Internal::EditorCommand::Copy);
+	ExecuteApplicationEdit(Scintilla::Internal::EditorCommand::Copy);
 }
 
 void ApplicationEditor::RequestClipboardPaste() {
-	ExecuteCommand(Scintilla::Internal::EditorCommand::Paste);
+	ExecuteApplicationEdit(Scintilla::Internal::EditorCommand::Paste);
 }
 
 void ApplicationEditor::SetClipboardPasteAvailable(bool available) noexcept {

@@ -1,6 +1,7 @@
 #include "catch.hpp"
 
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <unistd.h>
 
@@ -254,6 +255,41 @@ TEST_CASE("application actions dispatch edit operations") {
 	const auto cutRequests = editor.TakeClipboardRequests();
 	REQUIRE(cutRequests.size() == 1);
 	CHECK(cutRequests.front().text == "new");
+}
+
+TEST_CASE("application actions cancel tentative input before editing") {
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("base");
+	DocumentWorkspace workspace(editor);
+
+	Scalpel::ApplicationTextInputBatch preedit;
+	preedit.preedit = Scalpel::ApplicationTextInputPreedit{"x", 1, 1};
+	editor.HandleTextInputBatch(preedit);
+	(void)editor.TakeTextInputState();
+	REQUIRE(editor.Text() == "xbase");
+
+	DispatchApplicationAction(ApplicationAction::Undo, workspace, editor);
+	CHECK(editor.Text() == "base");
+	const auto state = editor.TakeTextInputState();
+	REQUIRE(state.has_value());
+	REQUIRE(state->surroundingText.has_value());
+	CHECK(*state->surroundingText == "base");
+	CHECK(state->cursor == 0);
+	CHECK(state->anchor == 0);
+}
+
+TEST_CASE("application actions report selection changes to text input") {
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("select");
+	DocumentWorkspace workspace(editor);
+	(void)editor.TakeTextInputState();
+
+	DispatchApplicationAction(ApplicationAction::SelectAll, workspace, editor);
+	const auto state = editor.TakeTextInputState();
+	REQUIRE(state.has_value());
+	REQUIRE(state->surroundingText.has_value());
+	CHECK(*state->surroundingText == "select");
+	CHECK(std::abs(state->cursor - state->anchor) == 6);
 }
 
 TEST_CASE("application actions reject disabled edit dispatch") {

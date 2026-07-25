@@ -323,6 +323,8 @@ private:
 	[[nodiscard]] bool DeleteTextInputSurrounding(
 		const ApplicationTextInputDelete &deletion);
 	void CancelTextInput();
+	void ExecuteApplicationEdit(
+		Scintilla::Internal::EditorCommand command);
 
 	std::unordered_map<DocumentId, RetainedDocument> retainedDocuments;
 	DocumentId activeDocumentId = 0;
