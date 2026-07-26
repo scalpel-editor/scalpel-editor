@@ -722,10 +722,16 @@ bool HandleFileErrorPointer(const Scalpel::PointerInput &input,
 
 void CancelScrollBarShellInteraction(Scalpel::ScrollBarInteraction &interaction,
 	Scalpel::ApplicationEditor &editor) {
-	if (interaction.dragging ||
+	const bool paintChanged = interaction.dragging ||
 		interaction.pressed != Scalpel::ScrollBarHit::None ||
-		interaction.hover != Scalpel::ScrollBarHit::None) {
-		Scalpel::CancelScrollBarInteraction(interaction);
+		interaction.hover != Scalpel::ScrollBarHit::None;
+	const bool wheelPending = interaction.verticalWheelRemainder != 0.0 ||
+		interaction.horizontalWheelRemainder != 0.0;
+	if (!paintChanged && !wheelPending) {
+		return;
+	}
+	Scalpel::CancelScrollBarInteraction(interaction);
+	if (paintChanged) {
 		editor.InvalidateScrollBars();
 	}
 }
@@ -1054,6 +1060,16 @@ int main() {
 		std::optional<Scalpel::UnsavedCardHit> promptPressHit;
 		std::deque<Scalpel::DocumentFileError> fileErrors;
 		Scalpel::DocumentId lastActiveDocument = editor.ActiveDocument();
+		const auto synchronizeScrollBarInteraction = [&] {
+			const Scalpel::DocumentId activeDocument = editor.ActiveDocument();
+			const bool documentChanged =
+				activeDocument != lastActiveDocument;
+			if (documentChanged || !fileErrors.empty() ||
+				workspace.PromptActive() || menuModel.openMenu.has_value()) {
+				CancelScrollBarShellInteraction(scrollBarInteraction, editor);
+			}
+			lastActiveDocument = activeDocument;
+		};
 
 		(void)SyncTabStripTabs(workspace, stripModel, editor.FrameWidth());
 		editor.InvalidateTopChrome();
@@ -1124,6 +1140,9 @@ int main() {
 				quitAccepted, cardFocus, promptPressHit);
 			CollectWorkspaceOutcomes(workspace, recent, recentStatePath,
 				menuModel, fileErrors, editor);
+			// Portal results can activate a document or surface a modal without
+			// an input event. Neither may inherit an old scrollbar interaction.
+			synchronizeScrollBarInteraction();
 			SynchronizeTextInput(editor, window);
 			// Clipboard offer can arrive while a dropdown is open; flip paste
 			// enablement and force a full-frame paint so the row updates.
@@ -1142,6 +1161,7 @@ int main() {
 				workspace.RequestClose();
 				PerformShellRequests(workspace, window, editor, menuModel,
 					stripModel, quitAccepted, cardFocus, promptPressHit);
+				synchronizeScrollBarInteraction();
 				window.ClearCloseRequest();
 				if (quitAccepted) {
 					break;
@@ -1246,11 +1266,8 @@ int main() {
 					stripModel, quitAccepted, cardFocus, promptPressHit);
 				CollectWorkspaceOutcomes(workspace, recent, recentStatePath,
 					menuModel, fileErrors, editor);
-				if (editor.ActiveDocument() != lastActiveDocument) {
-					CancelScrollBarShellInteraction(
-						scrollBarInteraction, editor);
-					lastActiveDocument = editor.ActiveDocument();
-				}
+				// Includes menus opened from the keyboard as well as tab changes.
+				synchronizeScrollBarInteraction();
 			}
 
 			if (quitAccepted || window.ForceCloseRequested()) {
