@@ -314,6 +314,141 @@ TEST_CASE("scroll bar pointer wheel scrolls the bar axis") {
 	CHECK(horizontalWheel.request.position > 0);
 }
 
+TEST_CASE("scroll bar shell integration paints bars with top chrome") {
+	using Scintilla::Internal::ColourRGBA;
+	using Scintilla::Internal::Fill;
+	using Scintilla::Internal::PRectangle;
+	using Scintilla::Internal::Surface;
+
+	Scalpel::ApplicationEditor editor(240, 140);
+	editor.LoadInitialBuffer("shell integration body\n");
+	editor.SetWrapMode(Scintilla::Wrap::None);
+	const int top = 36;
+	editor.SetTopChromeInset(top);
+	(void)editor.TakeFrameDamage();
+
+	int chromePaints = 0;
+	editor.SetPermanentChromePainter(
+		[&](Surface &surface, int width, int height) {
+			++chromePaints;
+			surface.FillRectangle(PRectangle::FromInts(0, 0, width, top),
+				Fill(ColourRGBA(0x30, 0x30, 0x30, 0xff)));
+			const Scalpel::ScrollBarLayout layout = Scalpel::LayoutScrollBars(
+				width, height, top, editor.Scrollbars().vertical,
+				editor.Scrollbars().horizontal);
+			Scalpel::PaintScrollBars(surface, layout, {});
+		});
+
+	editor.RenderFrame({PRectangle::FromInts(0, 0, 240, 140)});
+	CHECK(chromePaints == 1);
+	CHECK(editor.EditorClientRectangle().top == top);
+	CHECK(editor.EditorClientRectangle().right < 240);
+	CHECK(editor.EditorClientRectangle().bottom < 140);
+
+	const auto pixels = editor.FramePixels();
+	REQUIRE(pixels.size() == 240U * 140U * 4U);
+	const auto sample = [&](int x, int y) {
+		const size_t offset =
+			(static_cast<size_t>(y) * 240U + static_cast<size_t>(x)) * 4U;
+		return std::array<uint8_t, 3>{
+			pixels[offset], pixels[offset + 1], pixels[offset + 2]};
+	};
+	const int bar = Scalpel::ScrollBarThickness();
+	const auto topPx = sample(20, top / 2);
+	const auto vBarPx = sample(240 - bar / 2, top + 20);
+	CHECK(topPx[0] == 0x30);
+	// Scrollbar track is not the top chrome fill.
+	CHECK((vBarPx[0] != topPx[0] || vBarPx[1] != topPx[1] ||
+		vBarPx[2] != topPx[2]));
+}
+
+TEST_CASE("scroll bar workflow spans wheel thumb wrap and modal suppression") {
+	Scalpel::ApplicationEditor editor(240, 120);
+	std::string text;
+	for (int line = 0; line < 50; line++) {
+		text += "workflow line with horizontal extent for scrolling\n";
+	}
+	editor.LoadInitialBuffer(text);
+	editor.SetWrapMode(Scintilla::Wrap::None);
+	editor.RenderFrame();
+
+	Scalpel::ScrollBarInteraction interaction;
+	auto layout = Scalpel::LayoutScrollBars(editor.FrameWidth(),
+		editor.FrameHeight(), editor.TopChromeInset(),
+		editor.Scrollbars().vertical, editor.Scrollbars().horizontal);
+
+	// Editor-content wheel scrolls vertically.
+	editor.HandlePointerInput({Scalpel::PointerAction::Scroll,
+		Scintilla::KeyMod::Norm, 20, 20, 0, 12, 1, -1});
+	CHECK(editor.Scrollbars().vertical.position > 0);
+
+	// Thumb drag on the vertical bar.
+	layout = Scalpel::LayoutScrollBars(editor.FrameWidth(), editor.FrameHeight(),
+		editor.TopChromeInset(), editor.Scrollbars().vertical,
+		editor.Scrollbars().horizontal);
+	const int trackX = static_cast<int>(
+		(layout.vertical.track.left + layout.vertical.track.right) / 2);
+	const int thumbY = static_cast<int>(
+		(layout.vertical.thumb.top + layout.vertical.thumb.bottom) / 2);
+	auto result = Scalpel::HandleScrollBarPointer(interaction, layout,
+		{Scalpel::PointerAction::Press, Scintilla::KeyMod::Norm,
+			static_cast<double>(trackX), static_cast<double>(thumbY),
+			0, 0, 2, 0});
+	CHECK(result.consumed);
+	result = Scalpel::HandleScrollBarPointer(interaction, layout,
+		{Scalpel::PointerAction::Move, Scintilla::KeyMod::Norm,
+			static_cast<double>(trackX),
+			static_cast<double>(layout.vertical.track.bottom + 10),
+			0, 0, 3, -1});
+	if (result.request.kind == Scalpel::ScrollBarRequestKind::SetVertical) {
+		editor.ScrollVerticalTo(result.request.position);
+	}
+	CHECK(editor.Scrollbars().vertical.position ==
+		editor.Scrollbars().vertical.upperBound);
+	result = Scalpel::HandleScrollBarPointer(interaction, layout,
+		{Scalpel::PointerAction::Release, Scintilla::KeyMod::Norm,
+			static_cast<double>(trackX),
+			static_cast<double>(layout.vertical.track.bottom + 10),
+			0, 0, 4, 0});
+	CHECK_FALSE(interaction.dragging);
+
+	// Second tab keeps independent scroll; wrap hides the horizontal bar.
+	const Scalpel::DocumentId first = editor.ActiveDocument();
+	const Scintilla::Line firstTop = editor.Scrollbars().vertical.position;
+	const Scalpel::DocumentId second = editor.CreateDocument();
+	editor.ActivateDocument(second);
+	editor.LoadInitialBuffer("second tab short\n");
+	editor.RenderFrame();
+	CHECK(editor.Scrollbars().vertical.position == 0);
+	editor.ActivateDocument(first);
+	CHECK(editor.Scrollbars().vertical.position == firstTop);
+
+	editor.SetWrapMode(Scintilla::Wrap::Word);
+	editor.RenderFrame();
+	CHECK_FALSE(editor.Scrollbars().horizontal.visible);
+	CHECK(editor.HorizontalScrollBarRectangle().Empty());
+
+	// Modal overlay still paints; scrollbar drag is cancelled by policy.
+	Scalpel::CancelScrollBarInteraction(interaction);
+	bool overlayPainted = false;
+	editor.SetOverlayPainter(
+		[&](Scintilla::Internal::Surface &, int, int) {
+			overlayPainted = true;
+		});
+	editor.RenderFrame({editor.EditorClientRectangle()});
+	CHECK(overlayPainted);
+
+	// After clearing the overlay, editor pointer input works again.
+	editor.SetOverlayPainter(nullptr);
+	editor.SetWrapMode(Scintilla::Wrap::None);
+	editor.RenderFrame();
+	editor.SetSel(0, 0);
+	editor.HandlePointerInput({Scalpel::PointerAction::Press,
+		Scintilla::KeyMod::Norm, 20,
+		editor.EditorClientRectangle().top + 8, 0, 0, 5, 0});
+	CHECK(editor.WindowState().mouseCaptured);
+}
+
 TEST_CASE("scroll bar paint fills track thumb and junction") {
 	const auto vertical = VerticalMetrics(5, 20, 8);
 	const auto horizontal = HorizontalMetrics(50, 200, 100);
