@@ -1148,8 +1148,8 @@ TEST_CASE("menu bar editor integration stacks chrome above the inset client") {
 	// Full frame: both chrome bands and the editor paint.
 	editor.RenderFrame({PRectangle::FromInts(0, 0, 320, 160)});
 	CHECK(chromePaints == 1);
-	CHECK(editor.LastPaintRectangle() ==
-		PRectangle::FromInts(0, inset, 320, 160));
+	CHECK(editor.LastPaintRectangle() == editor.EditorClientRectangle());
+	CHECK(editor.EditorClientRectangle().top == inset);
 	CHECK(editor.TopChromeRectangle() ==
 		PRectangle::FromInts(0, 0, 320, inset));
 
@@ -1236,8 +1236,8 @@ TEST_CASE("menu bar editor integration overlay draws above stacked chrome") {
 
 	editor.RenderFrame({PRectangle::FromInts(0, 0, 280, 120)});
 	CHECK(overlayCalled);
-	CHECK(editor.LastPaintRectangle() ==
-		PRectangle::FromInts(0, inset, 280, 120));
+	CHECK(editor.LastPaintRectangle() == editor.EditorClientRectangle());
+	CHECK(editor.EditorClientRectangle().top == inset);
 
 	const auto pixels = editor.FramePixels();
 	const Rgba overBar = Sample(pixels, 280, 140, menuH / 2);

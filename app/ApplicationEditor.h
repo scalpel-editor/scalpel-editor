@@ -147,9 +147,9 @@ public:
 	/**
 	 * Reserve a fixed logical-height band at the top of the frame for permanent
 	 * chrome (menu bar plus tab strip). Scintilla's client rectangle starts
-	 * below the inset; pointer and caret coordinates stay in full-frame space
-	 * (no shell-side y translation for content below the band). Zero clears
-	 * the reservation.
+	 * below the inset and ends left of the vertical bar and above the horizontal
+	 * bar when those options are enabled. Pointer and caret coordinates stay in
+	 * full-frame space. Zero clears the top reservation.
 	 */
 	void SetTopChromeInset(int logicalPixels);
 	[[nodiscard]] int TopChromeInset() const noexcept { return topChromeInset; }
@@ -157,6 +157,16 @@ public:
 	[[nodiscard]] Scintilla::Internal::PRectangle FrameRectangle() const noexcept;
 	/** Top chrome band: (0, 0, width, topChromeInset). Empty when inset is 0. */
 	[[nodiscard]] Scintilla::Internal::PRectangle TopChromeRectangle() const noexcept;
+	/** Vertical scrollbar track (right edge below top chrome). Empty when hidden. */
+	[[nodiscard]] Scintilla::Internal::PRectangle VerticalScrollBarRectangle() const noexcept;
+	/** Horizontal scrollbar track (bottom edge left of vertical bar). Empty when hidden. */
+	[[nodiscard]] Scintilla::Internal::PRectangle HorizontalScrollBarRectangle() const noexcept;
+	/** Corner square when both bars are present. Empty otherwise. */
+	[[nodiscard]] Scintilla::Internal::PRectangle JunctionRectangle() const noexcept;
+	/** Editor text area excluding permanent chrome (top, side, and bottom bars). */
+	[[nodiscard]] Scintilla::Internal::PRectangle EditorClientRectangle() const {
+		return GetClientRectangle();
+	}
 	void SetKeyboardFocus(bool focused);
 	void HandleKeyboardInput(const KeyboardInput &input);
 	void HandlePointerInput(const PointerInput &input);
@@ -222,19 +232,26 @@ public:
 		int width, int height)>;
 	void SetOverlayPainter(OverlayPainter painter);
 	/**
-	 * Opaque permanent chrome (menu bar and tab strip) painted after Scintilla
-	 * and before any modal overlay. Only runs when the chrome band intersects
-	 * frame damage, or when an overlay forces a full-frame paint. Does not
-	 * expand damage or force a full buffer swap on ordinary editor frames.
+	 * Opaque permanent chrome (menu bar, tab strip, scrollbars, junction)
+	 * painted after Scintilla and before any modal overlay. Only runs when any
+	 * permanent chrome rectangle intersects frame damage, or when an overlay
+	 * forces a full-frame paint. Does not expand damage or force a full buffer
+	 * swap on ordinary editor frames.
 	 */
 	using PermanentChromePainter = std::function<void(
 		Scintilla::Internal::Surface &surface, int width, int height)>;
 	void SetPermanentChromePainter(PermanentChromePainter painter);
 	/** Damage only the top chrome band. */
 	void InvalidateTopChrome();
-	/** Damage only the editor client below the top chrome. */
+	/** Damage vertical bar, horizontal bar, and junction (when present). */
+	void InvalidateScrollBars();
+	/** Damage only the vertical scrollbar track. */
+	void InvalidateVerticalScrollBar();
+	/** Damage only the horizontal scrollbar track. */
+	void InvalidateHorizontalScrollBar();
+	/** Damage only the editor client (excludes permanent chrome). */
 	void InvalidateClient();
-	/** Damage the complete logical frame, including top chrome. */
+	/** Damage the complete logical frame, including permanent chrome. */
 	void InvalidateFrame();
 	[[nodiscard]] std::vector<Scintilla::Internal::PRectangle> TakeFrameDamage();
 	void RunPendingWork();
@@ -279,7 +296,11 @@ public:
 	[[nodiscard]] int ImeIndicatorAt(Scintilla::Position position) const;
 
 protected:
-	/** Editor text area only; top is TopChromeInset() when permanent chrome is reserved. */
+	/**
+	 * Editor text area only: below top chrome, left of the vertical bar, and
+	 * above the horizontal bar. At least one logical client pixel is retained
+	 * on each axis when the frame permits it.
+	 */
 	[[nodiscard]] Scintilla::Internal::PRectangle GetClientRectangle() const override;
 
 	void SetHorizontalScrollPos() override;
@@ -339,6 +360,11 @@ private:
 		Scintilla::Internal::EditorCommand command);
 	void RefreshScrollMetrics();
 	[[nodiscard]] Scintilla::Line HorizontalUpperBound() const;
+	[[nodiscard]] bool PermanentChromePresent() const noexcept;
+	[[nodiscard]] bool DamageIntersectsPermanentChrome(
+		const std::vector<Scintilla::Internal::PRectangle> &damage) const noexcept;
+	void ApplyScrollBarInsetsIfChanged(bool verticalWasVisible,
+		bool horizontalWasVisible);
 
 	std::unordered_map<DocumentId, RetainedDocument> retainedDocuments;
 	DocumentId activeDocumentId = 0;

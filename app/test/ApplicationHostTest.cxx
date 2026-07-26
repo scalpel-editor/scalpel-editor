@@ -145,8 +145,7 @@ TEST_CASE("production editor overlay expands partial damage to full client") {
 	// Partial damage must still paint the full client while an overlay is set.
 	editor.RenderFrame({PRectangle::FromInts(10, 10, 20, 20)});
 	CHECK(painterCalled);
-	CHECK(editor.LastPaintRectangle() ==
-		PRectangle::FromInts(0, 0, 80, 60));
+	CHECK(editor.LastPaintRectangle() == editor.EditorClientRectangle());
 }
 
 TEST_CASE("production editor without overlay painter is unchanged") {
@@ -174,8 +173,7 @@ TEST_CASE("production editor InvalidateClient marks the full client") {
 	const auto damage = editor.TakeFrameDamage();
 	REQUIRE_FALSE(damage.empty());
 	CHECK(std::find(damage.begin(), damage.end(),
-		Scintilla::Internal::PRectangle::FromInts(0, 0, 100, 50)) !=
-		damage.end());
+		editor.EditorClientRectangle()) != damage.end());
 }
 
 TEST_CASE("production editor host rejects presentation without a window surface") {
@@ -243,6 +241,117 @@ TEST_CASE("production editor host exposes shell state") {
 	editor.RenderFrame();
 	// Resize rebuilds vertical range through ModifyScrollBars.
 	CHECK(editor.Scrollbars().vertical.pageSize > 0);
+}
+
+TEST_CASE("production editor scrollbar chrome reserves side and bottom client space") {
+	using Scintilla::Internal::PRectangle;
+
+	Scalpel::ApplicationEditor editor(200, 120);
+	editor.LoadInitialBuffer("line\n");
+	editor.SetWrapMode(Scintilla::Wrap::None);
+	editor.RenderFrame();
+
+	const int bar = Scalpel::ScrollBarThickness();
+	CHECK(editor.Scrollbars().vertical.visible);
+	CHECK(editor.Scrollbars().horizontal.visible);
+	CHECK(editor.EditorClientRectangle() ==
+		PRectangle::FromInts(0, 0, 200 - bar, 120 - bar));
+	CHECK(editor.VerticalScrollBarRectangle() ==
+		PRectangle::FromInts(200 - bar, 0, 200, 120 - bar));
+	CHECK(editor.HorizontalScrollBarRectangle() ==
+		PRectangle::FromInts(0, 120 - bar, 200 - bar, 120));
+	CHECK(editor.JunctionRectangle() ==
+		PRectangle::FromInts(200 - bar, 120 - bar, 200, 120));
+
+	const int inset = 24;
+	editor.SetTopChromeInset(inset);
+	CHECK(editor.EditorClientRectangle() ==
+		PRectangle::FromInts(0, inset, 200 - bar, 120 - bar));
+	CHECK(editor.VerticalScrollBarRectangle().top == inset);
+	CHECK(editor.TopChromeRectangle() ==
+		PRectangle::FromInts(0, 0, 200, inset));
+
+	// Wrapping removes the horizontal bar and grows the client bottom.
+	editor.SetWrapMode(Scintilla::Wrap::Word);
+	editor.RenderFrame();
+	CHECK_FALSE(editor.Scrollbars().horizontal.visible);
+	CHECK(editor.EditorClientRectangle() ==
+		PRectangle::FromInts(0, inset, 200 - bar, 120));
+	CHECK(editor.HorizontalScrollBarRectangle().Empty());
+	CHECK(editor.JunctionRectangle().Empty());
+
+	editor.SetWrapMode(Scintilla::Wrap::None);
+	editor.RenderFrame();
+	CHECK(editor.Scrollbars().horizontal.visible);
+	CHECK(editor.EditorClientRectangle().bottom == 120 - bar);
+
+	// Tiny frames keep a one-pixel client when possible.
+	editor.SetTopChromeInset(0);
+	editor.Resize(3, 3);
+	CHECK(editor.EditorClientRectangle().Width() >= 1);
+	CHECK(editor.EditorClientRectangle().Height() >= 1);
+}
+
+TEST_CASE("production editor permanent chrome damage includes scrollbars") {
+	using Scintilla::Internal::ColourRGBA;
+	using Scintilla::Internal::Fill;
+	using Scintilla::Internal::PRectangle;
+	using Scintilla::Internal::Surface;
+
+	Scalpel::ApplicationEditor editor(160, 100);
+	editor.LoadInitialBuffer("body\n");
+	editor.SetWrapMode(Scintilla::Wrap::None);
+	const int inset = 20;
+	editor.SetTopChromeInset(inset);
+	(void)editor.TakeFrameDamage();
+	REQUIRE(editor.Scrollbars().horizontal.visible);
+	REQUIRE(editor.Scrollbars().vertical.visible);
+
+	int chromePaints = 0;
+	editor.SetPermanentChromePainter(
+		[&](Surface &surface, int width, int height) {
+			++chromePaints;
+			const Scalpel::ScrollBarLayout layout = Scalpel::LayoutScrollBars(
+				width, height, inset, editor.Scrollbars().vertical,
+				editor.Scrollbars().horizontal);
+			surface.FillRectangle(PRectangle::FromInts(0, 0, width, inset),
+				Fill(ColourRGBA(0x10, 0x20, 0x30, 0xff)));
+			Scalpel::PaintScrollBars(surface, layout, {});
+		});
+
+	// Editor-only damage: chrome painter must not run.
+	const PRectangle client = editor.EditorClientRectangle();
+	editor.RenderFrame({PRectangle::FromInts(
+		static_cast<int>(client.left + 2), static_cast<int>(client.top + 2),
+		static_cast<int>(client.left + 20), static_cast<int>(client.top + 20))});
+	CHECK(chromePaints == 0);
+
+	// Vertical bar damage paints chrome without expanding editor paint.
+	editor.RenderFrame({editor.VerticalScrollBarRectangle()});
+	CHECK(chromePaints == 1);
+	CHECK(editor.LastPaintRectangle().Width() == 0);
+
+	// Horizontal bar damage also paints chrome alone.
+	editor.RenderFrame({editor.HorizontalScrollBarRectangle()});
+	CHECK(chromePaints == 2);
+	CHECK(editor.LastPaintRectangle().Height() == 0);
+
+	// Narrow invalidation helpers damage only their rectangles.
+	(void)editor.TakeFrameDamage();
+	editor.InvalidateVerticalScrollBar();
+	auto damage = editor.TakeFrameDamage();
+	REQUIRE(damage.size() == 1);
+	CHECK(damage.front() == editor.VerticalScrollBarRectangle());
+
+	editor.InvalidateHorizontalScrollBar();
+	damage = editor.TakeFrameDamage();
+	REQUIRE(damage.size() == 1);
+	CHECK(damage.front() == editor.HorizontalScrollBarRectangle());
+
+	editor.InvalidateTopChrome();
+	damage = editor.TakeFrameDamage();
+	REQUIRE(damage.size() == 1);
+	CHECK(damage.front() == editor.TopChromeRectangle());
 }
 
 TEST_CASE("production editor scrollbar metrics expose both axes") {
@@ -707,8 +816,8 @@ TEST_CASE("production editor top chrome permanent painter is damage-aware") {
 	CHECK(pixels[chromeSample + 1] == 0x40);
 	CHECK(pixels[chromeSample + 2] == 0x80);
 
-	// Full invalidation still paints both bands.
-	editor.InvalidateClient();
+	// Full-frame invalidation still paints chrome and editor.
+	editor.InvalidateFrame();
 	editor.RenderFrame();
 	CHECK(chromePaints == 2);
 }
@@ -747,8 +856,11 @@ TEST_CASE("production editor top chrome overlay paints above tabs and forces ful
 	editor.RenderFrame({PRectangle::FromInts(10, inset + 5, 20, inset + 15)});
 	CHECK(chromePaints == 1);
 	CHECK(overlayPaints == 1);
-	CHECK(editor.LastPaintRectangle() ==
-		PRectangle::FromInts(0, inset, 100, 60));
+	CHECK(editor.LastPaintRectangle() == editor.EditorClientRectangle());
+	CHECK(editor.EditorClientRectangle().top == inset);
+	// Default wrap hides the horizontal bar; the vertical bar still insets width.
+	CHECK(editor.EditorClientRectangle().right < 100);
+	CHECK(editor.EditorClientRectangle().bottom == 60);
 
 	const auto pixels = editor.FramePixels();
 	REQUIRE(pixels.size() == 100U * 60U * 4U);
@@ -866,8 +978,8 @@ TEST_CASE("production editor menu overlay expands damage and paints dropdown abo
 	editor.RenderFrame({PRectangle::FromInts(12, inset + 8, 24, inset + 20)});
 	CHECK(chromePaints == 1);
 	CHECK(overlayPaints == 1);
-	CHECK(editor.LastPaintRectangle() ==
-		PRectangle::FromInts(0, inset, 300, 180));
+	CHECK(editor.LastPaintRectangle() == editor.EditorClientRectangle());
+	CHECK(editor.EditorClientRectangle().top == inset);
 
 	const MenuBarLayout layout = LayoutMenuBar(300, 180, menuModel);
 	REQUIRE(layout.dropdown.Width() > 0);

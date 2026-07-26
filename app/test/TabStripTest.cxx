@@ -521,8 +521,8 @@ TEST_CASE("tab strip editor integration paints permanent chrome above the inset 
 	// Full frame: strip and editor both paint.
 	editor.RenderFrame({PRectangle::FromInts(0, 0, 320, 120)});
 	CHECK(chromePaints == 1);
-	CHECK(editor.LastPaintRectangle() ==
-		PRectangle::FromInts(0, TabStripHeight(), 320, 120));
+	CHECK(editor.LastPaintRectangle() == editor.EditorClientRectangle());
+	CHECK(editor.EditorClientRectangle().top == TabStripHeight());
 
 	const auto pixels = editor.FramePixels();
 	REQUIRE(pixels.size() == 320U * 120U * 4U);

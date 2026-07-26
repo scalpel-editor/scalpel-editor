@@ -14,6 +14,7 @@
 #include "DrawSurface.h"
 #include "GlContext.h"
 #include "Renderer.h"
+#include "ScrollBar.h"
 #include "UniConversion.h"
 
 namespace Scalpel {
@@ -480,15 +481,51 @@ PRectangle ApplicationEditor::TopChromeRectangle() const noexcept {
 	return PRectangle::FromInts(0, 0, FrameWidth(), inset);
 }
 
+PRectangle ApplicationEditor::VerticalScrollBarRectangle() const noexcept {
+	const ScrollBarLayout layout = LayoutScrollBars(FrameWidth(), FrameHeight(),
+		topChromeInset, scrollbars.vertical, scrollbars.horizontal);
+	return layout.vertical.track;
+}
+
+PRectangle ApplicationEditor::HorizontalScrollBarRectangle() const noexcept {
+	const ScrollBarLayout layout = LayoutScrollBars(FrameWidth(), FrameHeight(),
+		topChromeInset, scrollbars.vertical, scrollbars.horizontal);
+	return layout.horizontal.track;
+}
+
+PRectangle ApplicationEditor::JunctionRectangle() const noexcept {
+	const ScrollBarLayout layout = LayoutScrollBars(FrameWidth(), FrameHeight(),
+		topChromeInset, scrollbars.vertical, scrollbars.horizontal);
+	return layout.junction;
+}
+
 PRectangle ApplicationEditor::GetClientRectangle() const {
 	const int width = FrameWidth();
 	const int height = FrameHeight();
-	if (topChromeInset <= 0) {
-		return PRectangle::FromInts(0, 0, width, height);
+	// Keep at least one logical pixel of editor size when the frame permits it.
+	const int top = topChromeInset > 0 ?
+		std::min(topChromeInset, std::max(0, height - 1)) : 0;
+	int rightInset = 0;
+	int bottomInset = 0;
+	if (scrollbars.vertical.visible && width > 1) {
+		rightInset = std::min(ScrollBarThickness(), width - 1);
 	}
-	// Keep at least one logical pixel of editor height when possible.
-	const int inset = std::min(topChromeInset, std::max(0, height - 1));
-	return PRectangle::FromInts(0, inset, width, height);
+	if (scrollbars.horizontal.visible) {
+		const int available = std::max(0, height - top);
+		if (available > 1) {
+			bottomInset = std::min(ScrollBarThickness(), available - 1);
+		}
+	}
+	// When both bars claim space, still leave a 1x1 client if possible.
+	if (rightInset > 0 && bottomInset > 0) {
+		if (width - rightInset < 1) {
+			rightInset = std::max(0, width - 1);
+		}
+		if (height - top - bottomInset < 1) {
+			bottomInset = std::max(0, height - top - 1);
+		}
+	}
+	return PRectangle::FromInts(0, top, width - rightInset, height - bottomInset);
 }
 
 void ApplicationEditor::SetFrameBufferSize(int width, int height) {
@@ -905,12 +942,11 @@ void ApplicationEditor::RenderFrame(const std::vector<PRectangle> &damage) {
 	frame = Scintilla::Internal::CreateDrawSurface(*renderer, width, height);
 	paintState = PaintState::painting;
 	const PRectangle client = GetClientRectangle();
-	const PRectangle chrome = TopChromeRectangle();
 	const bool paintOverlay = static_cast<bool>(overlayPainter);
-	// Modal overlay spans the full frame (tabs + editor).
+	// Modal overlay spans the full frame (tabs + editor + scrollbars).
 	const bool paintEditor = paintOverlay || DamageIntersects(damage, client);
-	const bool paintChrome = permanentChromePainter && topChromeInset > 0 &&
-		(paintOverlay || DamageIntersects(damage, chrome));
+	const bool paintChrome = permanentChromePainter && PermanentChromePresent() &&
+		(paintOverlay || DamageIntersectsPermanentChrome(damage));
 	if (paintOverlay) {
 		rcPaint = client;
 	} else if (paintEditor) {
@@ -961,11 +997,10 @@ void ApplicationEditor::PresentFrame(
 		*renderer, 0, bufferWidth, bufferHeight, width, height);
 	paintState = PaintState::painting;
 	const PRectangle client = GetClientRectangle();
-	const PRectangle chrome = TopChromeRectangle();
 	const bool paintOverlay = static_cast<bool>(overlayPainter);
 	const bool paintEditor = paintOverlay || DamageIntersects(damage, client);
-	const bool paintChrome = permanentChromePainter && topChromeInset > 0 &&
-		(paintOverlay || DamageIntersects(damage, chrome));
+	const bool paintChrome = permanentChromePainter && PermanentChromePresent() &&
+		(paintOverlay || DamageIntersectsPermanentChrome(damage));
 	// Overlay alpha (scrim) must not re-blend outside the reported EGL damage.
 	if (paintOverlay) {
 		rcPaint = client;
@@ -1017,8 +1052,37 @@ void ApplicationEditor::InvalidateTopChrome() {
 	window.invalidatedRectangles.push_back(chrome);
 }
 
+void ApplicationEditor::InvalidateScrollBars() {
+	InvalidateVerticalScrollBar();
+	InvalidateHorizontalScrollBar();
+	const PRectangle junction = JunctionRectangle();
+	if (!junction.Empty()) {
+		window.invalidatedRectangles.push_back(junction);
+	}
+}
+
+void ApplicationEditor::InvalidateVerticalScrollBar() {
+	const PRectangle bar = VerticalScrollBarRectangle();
+	if (bar.Empty()) {
+		return;
+	}
+	window.invalidatedRectangles.push_back(bar);
+}
+
+void ApplicationEditor::InvalidateHorizontalScrollBar() {
+	const PRectangle bar = HorizontalScrollBarRectangle();
+	if (bar.Empty()) {
+		return;
+	}
+	window.invalidatedRectangles.push_back(bar);
+}
+
 void ApplicationEditor::InvalidateClient() {
-	wMain.InvalidateAll();
+	const PRectangle client = GetClientRectangle();
+	if (client.Empty()) {
+		return;
+	}
+	window.invalidatedRectangles.push_back(client);
 }
 
 void ApplicationEditor::InvalidateFrame() {
@@ -1132,7 +1196,49 @@ bool ApplicationEditor::ModifyScrollBars(Scintilla::Line /*maximum*/, Scintilla:
 }
 
 void ApplicationEditor::ReconfigureScrollBars() {
+	const bool verticalWasVisible = scrollbars.vertical.visible;
+	const bool horizontalWasVisible = scrollbars.horizontal.visible;
 	RefreshScrollMetrics();
+	ApplyScrollBarInsetsIfChanged(verticalWasVisible, horizontalWasVisible);
+}
+
+bool ApplicationEditor::PermanentChromePresent() const noexcept {
+	return topChromeInset > 0 || scrollbars.vertical.visible ||
+		scrollbars.horizontal.visible;
+}
+
+bool ApplicationEditor::DamageIntersectsPermanentChrome(
+	const std::vector<PRectangle> &damage) const noexcept {
+	if (damage.empty()) {
+		return true;
+	}
+	if (DamageIntersects(damage, TopChromeRectangle())) {
+		return true;
+	}
+	if (DamageIntersects(damage, VerticalScrollBarRectangle())) {
+		return true;
+	}
+	if (DamageIntersects(damage, HorizontalScrollBarRectangle())) {
+		return true;
+	}
+	if (DamageIntersects(damage, JunctionRectangle())) {
+		return true;
+	}
+	return false;
+}
+
+void ApplicationEditor::ApplyScrollBarInsetsIfChanged(bool verticalWasVisible,
+	bool horizontalWasVisible) {
+	if (verticalWasVisible == scrollbars.vertical.visible &&
+		horizontalWasVisible == scrollbars.horizontal.visible) {
+		return;
+	}
+	// Client geometry changed; rebuild surfaces and wrap width for the new size.
+	DropGraphics();
+	frame.reset();
+	ChangeSize();
+	wMain.InvalidateAll();
+	textInputStateDirty = true;
 }
 
 Scintilla::Line ApplicationEditor::HorizontalUpperBound() const {
