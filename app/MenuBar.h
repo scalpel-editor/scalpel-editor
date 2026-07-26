@@ -1,5 +1,5 @@
-// Fixed logical layout, hit-testing, open-menu pointer and keyboard navigation,
-// and opaque painting for the File / Edit menu bar above the tab strip.
+// Logical layout, hit-testing, open-menu pointer and keyboard navigation, and
+// opaque painting for fixed actions and dynamic Recent rows above the tab strip.
 // main owns MenuBarModel, refreshes edit enablement via UpdateMenuBarActionState
 // before open and paint, converts input into model transitions via
 // HandleMenuBarPointer and HandleMenuBarKeyboard, dispatches returned actions
@@ -89,13 +89,13 @@ struct MenuBarPressOrigin {
 };
 
 /**
- * Transient menu bar state: open dropdown, hover, keyboard focus, press origin,
- * and item enablement.
+ * Menu bar state: open dropdown, hover, keyboard focus, press origin, item
+ * enablement, and the current recent-path snapshot.
  */
 struct MenuBarModel {
 	/** Open dropdown; nullopt means closed. */
 	std::optional<ApplicationMenu> openMenu;
-	/** Heading under the pointer (File or Edit). */
+	/** Heading under the pointer. */
 	std::optional<ApplicationMenu> hoveredHeading;
 	/** Item under the pointer while a dropdown is open. */
 	std::optional<MenuBarItemId> hoveredItem;
@@ -242,11 +242,12 @@ void CloseMenuBar(MenuBarModel &model) noexcept;
 
 /**
  * Apply one keyboard event to the menu model.
- * F10 / Keys::Menu open File with the first enabled item focused. Alt+F and
- * Alt+E open the named menu. While open: Left/Right switch menus, Up/Down move
- * among enabled items with wrapping, Enter activates the focused enabled item,
- * Escape closes, and all other keys plus releases are consumed so they cannot
- * reach the editor. When closed, only the open accelerators are consumed.
+ * F10 / Keys::Menu open File with the first enabled item focused. Alt+F,
+ * Alt+E, and Alt+R open the named menu. While open: Left/Right switch menus,
+ * Up/Down move among enabled items with wrapping, Enter activates the focused
+ * enabled item, Escape closes, and all other keys plus releases are consumed
+ * so they cannot reach the editor. When closed, only the open accelerators are
+ * consumed.
  */
 [[nodiscard]] MenuBarKeyboardResult HandleMenuBarKeyboard(MenuBarModel &model,
 	const KeyboardInput &input) noexcept;

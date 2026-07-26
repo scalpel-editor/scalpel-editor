@@ -55,8 +55,8 @@ struct DocumentTabInfo {
 /**
  * Owns ordered tabs, the active tab, paths, untitled numbering, portal request
  * intents, and unsaved-changes prompt transitions. Uses ApplicationEditor for
- * document bytes and dirty state. Returns shell requests; owns no Wayland or
- * drawing.
+ * document bytes and dirty state. Returns shell requests plus successful path
+ * and file-error outcomes; owns no Wayland, persistence, or drawing.
  *
  * A running workspace always has at least one tab. Opening a path creates a
  * tab (or activates the existing lexically normalized path) instead of
