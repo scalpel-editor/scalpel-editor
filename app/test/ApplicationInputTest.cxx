@@ -54,12 +54,29 @@ TEST_CASE("production editor pointer wheel scrolls both axes") {
 	editor.LoadInitialBuffer(text);
 	editor.SetWrapMode(Scintilla::Wrap::None);
 	editor.RenderFrame();
-	const Scintilla::Line verticalBefore = editor.Scrollbars().verticalPosition;
+	const Scintilla::Line verticalBefore = editor.Scrollbars().vertical.position;
 
 	editor.HandlePointerInput({Scalpel::PointerAction::Scroll, Scintilla::KeyMod::Norm,
 		0, 0, 0, 10, 20, -1});
-	CHECK(editor.Scrollbars().verticalPosition > verticalBefore);
+	CHECK(editor.Scrollbars().vertical.position > verticalBefore);
 	editor.HandlePointerInput({Scalpel::PointerAction::Scroll, Scintilla::KeyMod::Norm,
 		0, 0, 10, 0, 21, -1});
-	CHECK(editor.Scrollbars().horizontalPosition > 0);
+	CHECK(editor.Scrollbars().horizontal.position > 0);
+}
+
+TEST_CASE("production editor pointer wheel clamps horizontal to upper bound") {
+	Scalpel::ApplicationEditor editor(240, 80);
+	editor.LoadInitialBuffer("a long line that can scroll horizontally\n");
+	editor.SetWrapMode(Scintilla::Wrap::None);
+	editor.RenderFrame();
+	const Scintilla::Line upper = editor.Scrollbars().horizontal.upperBound;
+	REQUIRE(upper > 0);
+
+	// Large horizontal deltas must stop at the advertised assumed width.
+	for (int step = 0; step < 40; step++) {
+		editor.HandlePointerInput({Scalpel::PointerAction::Scroll, Scintilla::KeyMod::Norm,
+			0, 0, 100, 0, static_cast<uint32_t>(100 + step), -1});
+	}
+	CHECK(editor.Scrollbars().horizontal.position == upper);
+	CHECK(editor.GetXOffset() == static_cast<int>(upper));
 }

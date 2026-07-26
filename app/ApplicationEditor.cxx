@@ -146,7 +146,11 @@ ApplicationEditor::ApplicationEditor(int width, int height, NowFunction now_) :
 	}
 	wMain = static_cast<Scintilla::Internal::WindowID>(&window);
 	ConfigureLineNumberMargins();
+	// Grow the assumed horizontal width from measured visible lines rather than
+	// scanning the whole document. Matches Scintilla's trackLineWidth path.
+	SetScrollWidthTracking(true);
 	RetainInitialDocument();
+	RefreshScrollMetrics();
 }
 
 ApplicationEditor::ApplicationEditor(std::unique_ptr<Scintilla::Internal::GlContext> context,
@@ -158,7 +162,9 @@ ApplicationEditor::ApplicationEditor(std::unique_ptr<Scintilla::Internal::GlCont
 	}
 	wMain = static_cast<Scintilla::Internal::WindowID>(&window);
 	ConfigureLineNumberMargins();
+	SetScrollWidthTracking(true);
 	RetainInitialDocument();
+	RefreshScrollMetrics();
 }
 
 ApplicationEditor::~ApplicationEditor() {
@@ -689,14 +695,14 @@ void ApplicationEditor::HandlePointerInput(const PointerInput &input) {
 			const int pixels = static_cast<int>(horizontalWheelRemainder);
 			horizontalWheelRemainder -= pixels;
 			if (pixels != 0) {
-				HorizontalScrollTo(xOffset + pixels);
+				ScrollHorizontalTo(static_cast<int>(xOffset) + pixels);
 			}
 		} else {
 			verticalWheelRemainder += input.deltaY * 0.3;
 			const Scintilla::Line lines = static_cast<Scintilla::Line>(verticalWheelRemainder);
 			verticalWheelRemainder -= lines;
 			if (lines != 0) {
-				ScrollTo(topLine + lines);
+				ScrollVerticalTo(topLine + lines);
 			}
 		}
 		break;
@@ -1101,26 +1107,88 @@ int ApplicationEditor::FrameHeight() const noexcept {
 }
 
 void ApplicationEditor::SetHorizontalScrollPos() {
-	scrollbars.horizontalPosition = xOffset;
-	scrollbars.horizontalUpdates++;
+	RefreshScrollMetrics();
 }
 
 void ApplicationEditor::SetVerticalScrollPos() {
 	Editor::SetVerticalScrollPos();
-	scrollbars.verticalPosition = topLine;
-	scrollbars.verticalUpdates++;
+	RefreshScrollMetrics();
 }
 
-bool ApplicationEditor::ModifyScrollBars(Scintilla::Line maximum, Scintilla::Line page) {
-	const bool changed = scrollbars.maximum != maximum || scrollbars.page != page;
-	scrollbars.maximum = maximum;
-	scrollbars.page = page;
-	scrollbars.changes++;
-	return changed;
+bool ApplicationEditor::ModifyScrollBars(Scintilla::Line /*maximum*/, Scintilla::Line /*page*/) {
+	const ScrollAxisMetrics verticalBefore = scrollbars.vertical;
+	const ScrollAxisMetrics horizontalBefore = scrollbars.horizontal;
+	RefreshScrollMetrics();
+	return scrollbars.vertical.position != verticalBefore.position ||
+		scrollbars.vertical.upperBound != verticalBefore.upperBound ||
+		scrollbars.vertical.pageSize != verticalBefore.pageSize ||
+		scrollbars.vertical.pageIncrement != verticalBefore.pageIncrement ||
+		scrollbars.vertical.visible != verticalBefore.visible ||
+		scrollbars.horizontal.position != horizontalBefore.position ||
+		scrollbars.horizontal.upperBound != horizontalBefore.upperBound ||
+		scrollbars.horizontal.pageSize != horizontalBefore.pageSize ||
+		scrollbars.horizontal.pageIncrement != horizontalBefore.pageIncrement ||
+		scrollbars.horizontal.visible != horizontalBefore.visible;
 }
 
 void ApplicationEditor::ReconfigureScrollBars() {
-	scrollbars.reconfigurations++;
+	RefreshScrollMetrics();
+}
+
+Scintilla::Line ApplicationEditor::HorizontalUpperBound() const {
+	if (Wrapping()) {
+		return 0;
+	}
+	const PRectangle text = GetTextRectangle();
+	const int textWidth = std::max(0, static_cast<int>(text.Width()));
+	const int assumed = GetScrollWidth();
+	return std::max(Scintilla::Line{0},
+		static_cast<Scintilla::Line>(assumed) - textWidth);
+}
+
+void ApplicationEditor::RefreshScrollMetrics() {
+	ScrollAxisMetrics vertical;
+	vertical.position = topLine;
+	vertical.upperBound = MaxScrollPos();
+	vertical.pageSize = std::max(Scintilla::Line{0}, LinesOnScreen());
+	vertical.pageIncrement = LinesToScroll();
+	vertical.visible = GetVScrollBar();
+
+	ScrollAxisMetrics horizontal;
+	const PRectangle text = GetTextRectangle();
+	const int textWidth = std::max(0, static_cast<int>(text.Width()));
+	horizontal.position = xOffset;
+	horizontal.upperBound = HorizontalUpperBound();
+	horizontal.pageSize = textWidth;
+	// One third of the visible text width, at least one pixel when a page exists.
+	if (textWidth > 0) {
+		horizontal.pageIncrement = std::max(1, textWidth / 3);
+	} else {
+		horizontal.pageIncrement = 1;
+	}
+	horizontal.visible = GetHScrollBar() && !Wrapping();
+
+	scrollbars.vertical = vertical;
+	scrollbars.horizontal = horizontal;
+}
+
+void ApplicationEditor::ScrollVerticalTo(Scintilla::Line line) {
+	ScrollTo(line);
+	RefreshScrollMetrics();
+}
+
+void ApplicationEditor::ScrollHorizontalTo(int xPos) {
+	if (Wrapping()) {
+		RefreshScrollMetrics();
+		return;
+	}
+	const int upper = static_cast<int>(HorizontalUpperBound());
+	const int clamped = std::clamp(xPos, 0, upper);
+	if (clamped != xOffset) {
+		// HorizontalScrollTo only clamps the lower bound; keep the upper here.
+		HorizontalScrollTo(clamped);
+	}
+	RefreshScrollMetrics();
 }
 
 void ApplicationEditor::Copy() {

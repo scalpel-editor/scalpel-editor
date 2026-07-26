@@ -45,15 +45,26 @@ struct FineTickerState {
 	bool running = false;
 };
 
-struct ScrollState {
-	int horizontalPosition = 0;
-	Scintilla::Line verticalPosition = 0;
-	Scintilla::Line maximum = 0;
-	Scintilla::Line page = 0;
-	int horizontalUpdates = 0;
-	int verticalUpdates = 0;
-	int changes = 0;
-	int reconfigurations = 0;
+/**
+ * One axis of scroll range for application chrome and tests.
+ * Units are display lines for vertical and logical pixels for horizontal.
+ * position is clamped to [0, upperBound]. pageSize is the viewport length;
+ * pageIncrement is the track-click step (vertical page minus one line, or one
+ * third of the horizontal page). visible follows Scintilla's scrollbar option
+ * and, for horizontal, is false while wrapping.
+ */
+struct ScrollAxisMetrics {
+	Scintilla::Line position = 0;
+	Scintilla::Line upperBound = 0;
+	Scintilla::Line pageSize = 0;
+	Scintilla::Line pageIncrement = 0;
+	bool visible = false;
+};
+
+/** Vertical and horizontal ranges owned by ApplicationEditor host callbacks. */
+struct ScrollMetrics {
+	ScrollAxisMetrics vertical;
+	ScrollAxisMetrics horizontal;
 };
 
 class ApplicationResources {
@@ -257,7 +268,17 @@ public:
 		return rcPaint;
 	}
 	[[nodiscard]] const ApplicationWindow &WindowState() const noexcept { return window; }
-	[[nodiscard]] const ScrollState &Scrollbars() const noexcept { return scrollbars; }
+	[[nodiscard]] const ScrollMetrics &Scrollbars() const noexcept { return scrollbars; }
+	/**
+	 * Scroll the view so the given display line is first visible. Clamps to the
+	 * current vertical upper bound.
+	 */
+	void ScrollVerticalTo(Scintilla::Line line);
+	/**
+	 * Scroll horizontally to the given pixel offset. Clamps to the current
+	 * horizontal upper bound (zero while wrapping).
+	 */
+	void ScrollHorizontalTo(int xPos);
 	[[nodiscard]] const std::vector<Scintilla::Notification> &Notifications() const noexcept { return notifications; }
 	[[nodiscard]] const std::vector<TickerRequest> &TickerRequests() const noexcept { return tickerRequests; }
 	[[nodiscard]] const std::vector<std::string> &UnsupportedRequests() const noexcept { return unsupportedRequests; }
@@ -331,11 +352,13 @@ private:
 	void CancelTextInput();
 	void ExecuteApplicationEdit(
 		Scintilla::Internal::EditorCommand command);
+	void RefreshScrollMetrics();
+	[[nodiscard]] Scintilla::Line HorizontalUpperBound() const;
 
 	std::unordered_map<DocumentId, RetainedDocument> retainedDocuments;
 	DocumentId activeDocumentId = 0;
 	DocumentId nextDocumentId = 1;
-	ScrollState scrollbars;
+	ScrollMetrics scrollbars;
 	static constexpr std::size_t tickerReasonCount = static_cast<std::size_t>(TickReason::platform) + 1;
 	std::array<FineTickerState, tickerReasonCount> tickers{};
 	std::vector<TickerRequest> tickerRequests;

@@ -241,7 +241,63 @@ TEST_CASE("production editor host exposes shell state") {
 	CHECK(resizedClient.right == 300);
 	CHECK(resizedClient.bottom == 120);
 	editor.RenderFrame();
-	CHECK(editor.Scrollbars().changes > 0);
+	// Resize rebuilds vertical range through ModifyScrollBars.
+	CHECK(editor.Scrollbars().vertical.pageSize > 0);
+}
+
+TEST_CASE("production editor scrollbar metrics expose both axes") {
+	Scalpel::ApplicationEditor editor(240, 80);
+	std::string text;
+	for (int line = 0; line < 40; line++) {
+		text += "line with enough characters to grow the horizontal range\n";
+	}
+	editor.LoadInitialBuffer(text);
+	editor.SetWrapMode(Scintilla::Wrap::None);
+	editor.RenderFrame();
+
+	const Scalpel::ScrollMetrics metrics = editor.Scrollbars();
+	CHECK(metrics.vertical.visible);
+	CHECK(metrics.vertical.pageSize > 0);
+	CHECK(metrics.vertical.upperBound > 0);
+	CHECK(metrics.vertical.pageIncrement ==
+		std::max(Scintilla::Line{1}, metrics.vertical.pageSize - 1));
+	CHECK(metrics.vertical.position == 0);
+
+	CHECK(metrics.horizontal.visible);
+	CHECK(metrics.horizontal.pageSize > 0);
+	CHECK(metrics.horizontal.upperBound >= 0);
+	CHECK(metrics.horizontal.pageIncrement ==
+		std::max(1, static_cast<int>(metrics.horizontal.pageSize) / 3));
+	// Default assumed width is large enough that a narrow client can scroll.
+	CHECK(metrics.horizontal.upperBound > 0);
+
+	editor.ScrollVerticalTo(metrics.vertical.upperBound + 50);
+	CHECK(editor.Scrollbars().vertical.position ==
+		editor.Scrollbars().vertical.upperBound);
+
+	editor.ScrollHorizontalTo(
+		static_cast<int>(editor.Scrollbars().horizontal.upperBound) + 500);
+	CHECK(editor.Scrollbars().horizontal.position ==
+		editor.Scrollbars().horizontal.upperBound);
+	CHECK(editor.GetXOffset() ==
+		static_cast<int>(editor.Scrollbars().horizontal.upperBound));
+
+	editor.ScrollVerticalTo(0);
+	editor.ScrollHorizontalTo(0);
+	CHECK(editor.Scrollbars().vertical.position == 0);
+	CHECK(editor.Scrollbars().horizontal.position == 0);
+
+	// Wrapping clears horizontal range and hides that bar.
+	editor.SetWrapMode(Scintilla::Wrap::Word);
+	editor.RenderFrame();
+	CHECK_FALSE(editor.Scrollbars().horizontal.visible);
+	CHECK(editor.Scrollbars().horizontal.upperBound == 0);
+	CHECK(editor.Scrollbars().vertical.visible);
+
+	editor.SetWrapMode(Scintilla::Wrap::None);
+	editor.RenderFrame();
+	CHECK(editor.Scrollbars().horizontal.visible);
+	CHECK(editor.Scrollbars().horizontal.upperBound > 0);
 }
 
 TEST_CASE("production editor document switching keeps independent text and save points") {
