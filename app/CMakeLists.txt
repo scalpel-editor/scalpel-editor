@@ -175,6 +175,7 @@ add_library(scalpel_application OBJECT
   ApplicationPlatform.cxx
   DocumentFile.cxx
   DocumentWorkspace.cxx
+  FileErrorCard.cxx
   MenuBar.cxx
   RecentFiles.cxx
   TabStrip.cxx

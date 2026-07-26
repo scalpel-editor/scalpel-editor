@@ -50,6 +50,19 @@ target_compile_options(documentWorkspaceTest PRIVATE -Wall -Wextra)
 
 add_test(NAME document-workspace COMMAND documentWorkspaceTest)
 
+add_executable(fileErrorCardTest
+  FileErrorCardTest.cxx
+  ApplicationTestMain.cxx
+)
+target_include_directories(fileErrorCardTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(fileErrorCardTest PRIVATE scalpel_application)
+target_compile_options(fileErrorCardTest PRIVATE -Wall -Wextra)
+
+add_test(NAME file-error-card COMMAND fileErrorCardTest)
+
 add_executable(recentFilesTest
   RecentFilesTest.cxx
   ApplicationTestMain.cxx
