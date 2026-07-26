@@ -1236,11 +1236,16 @@ bool ApplicationEditor::ModifyScrollBars(Scintilla::Line /*maximum*/, Scintilla:
 }
 
 void ApplicationEditor::ReconfigureScrollBars() {
-	const bool verticalWasVisible = scrollbars.vertical.visible;
-	const bool horizontalWasVisible = scrollbars.horizontal.visible;
 	// SetWrapMode already clears xOffset before calling here.
 	RefreshScrollMetrics();
-	ApplyScrollBarInsetsIfChanged(verticalWasVisible, horizontalWasVisible);
+	// Scintilla also calls this after SetScrollBars has already refreshed the
+	// new visibility, so the previous inset cannot be recovered from metrics.
+	// The hook itself means the configuration changed: rebuild client geometry.
+	DropGraphics();
+	frame.reset();
+	ChangeSize();
+	wMain.InvalidateAll();
+	textInputStateDirty = true;
 }
 
 bool ApplicationEditor::PermanentChromePresent() const noexcept {
@@ -1266,20 +1271,6 @@ bool ApplicationEditor::DamageIntersectsPermanentChrome(
 		return true;
 	}
 	return false;
-}
-
-void ApplicationEditor::ApplyScrollBarInsetsIfChanged(bool verticalWasVisible,
-	bool horizontalWasVisible) {
-	if (verticalWasVisible == scrollbars.vertical.visible &&
-		horizontalWasVisible == scrollbars.horizontal.visible) {
-		return;
-	}
-	// Client geometry changed; rebuild surfaces and wrap width for the new size.
-	DropGraphics();
-	frame.reset();
-	ChangeSize();
-	wMain.InvalidateAll();
-	textInputStateDirty = true;
 }
 
 Scintilla::Line ApplicationEditor::HorizontalUpperBound() const {

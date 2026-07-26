@@ -363,8 +363,6 @@ private:
 	[[nodiscard]] bool PermanentChromePresent() const noexcept;
 	[[nodiscard]] bool DamageIntersectsPermanentChrome(
 		const std::vector<Scintilla::Internal::PRectangle> &damage) const noexcept;
-	void ApplyScrollBarInsetsIfChanged(bool verticalWasVisible,
-		bool horizontalWasVisible);
 
 	std::unordered_map<DocumentId, RetainedDocument> retainedDocuments;
 	DocumentId activeDocumentId = 0;
