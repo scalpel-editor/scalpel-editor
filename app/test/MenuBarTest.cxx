@@ -14,6 +14,7 @@
 #include "ApplicationTextInput.h"
 #include "DocumentWorkspace.h"
 #include "MenuBar.h"
+#include "RecentFiles.h"
 #include "TabStrip.h"
 #include "UnsavedChangesCard.h"
 #include "UnsavedChangesPrompt.h"
@@ -1773,4 +1774,80 @@ TEST_CASE("menu bar workflow keyboard open pointer edit portal quit cancel") {
 		MakePointer(PointerAction::Press, 200, 200, 0), false);
 	CHECK_FALSE(body.consumed);
 	CHECK_FALSE(model.openMenu.has_value());
+}
+
+TEST_CASE("menu bar recent files workflow opens promotes reports and clears") {
+	char firstPattern[] = "/tmp/scalpel-recent-first-XXXXXX";
+	const int firstFd = mkstemp(firstPattern);
+	REQUIRE(firstFd >= 0);
+	const std::string firstPath = firstPattern;
+	const char firstBody[] = "first recent\n";
+	REQUIRE(write(firstFd, firstBody, sizeof(firstBody) - 1) ==
+		static_cast<ssize_t>(sizeof(firstBody) - 1));
+	REQUIRE(close(firstFd) == 0);
+
+	char secondPattern[] = "/tmp/scalpel-recent-second-XXXXXX";
+	const int secondFd = mkstemp(secondPattern);
+	REQUIRE(secondFd >= 0);
+	const std::string secondPath = secondPattern;
+	const char secondBody[] = "second recent\n";
+	REQUIRE(write(secondFd, secondBody, sizeof(secondBody) - 1) ==
+		static_cast<ssize_t>(sizeof(secondBody) - 1));
+	REQUIRE(close(secondFd) == 0);
+
+	char statePattern[] = "/tmp/scalpel-recent-state-XXXXXX";
+	const int stateFd = mkstemp(statePattern);
+	REQUIRE(stateFd >= 0);
+	REQUIRE(close(stateFd) == 0);
+	const std::string statePath = statePattern;
+
+	Scalpel::RecentFiles recent;
+	(void)recent.Record(firstPath);
+	(void)recent.Record(secondPath);
+	REQUIRE(Scalpel::SaveRecentFiles(statePath, recent));
+	MenuBarModel model;
+	model.recentFiles = recent.Paths();
+
+	ApplicationEditor editor(400, 260);
+	editor.LoadInitialBuffer("startup\n");
+	DocumentWorkspace workspace(editor);
+
+	// Alt+R opens Recent. Down chooses the older entry and Enter returns its
+	// stable index without routing it through ApplicationAction.
+	(void)HandleMenuBarKeyboard(model, MakeLetter('R', KeyMod::Alt));
+	REQUIRE(model.focusedItem == MenuBarItemId::RecentFile(0));
+	(void)HandleMenuBarKeyboard(model, MakeKey(Keys::Down));
+	REQUIRE(model.focusedItem == MenuBarItemId::RecentFile(1));
+	const MenuBarKeyboardResult activate =
+		HandleMenuBarKeyboard(model, MakeKey(Keys::Return));
+	REQUIRE(activate.activated.has_value());
+	REQUIRE(activate.activated->kind == MenuBarItemKind::RecentFile);
+	REQUIRE(activate.activated->recentIndex == 1);
+	REQUIRE(workspace.OpenPath(
+		model.recentFiles[activate.activated->recentIndex]));
+	CHECK(editor.Text() == "first recent\n");
+
+	const std::vector<std::string> used = workspace.TakeRecentPaths();
+	REQUIRE(used.size() == 1);
+	CHECK(recent.Record(used.front()));
+	CHECK(recent.Paths().front() == firstPath);
+	REQUIRE(Scalpel::SaveRecentFiles(statePath, recent));
+	CHECK(Scalpel::LoadRecentFiles(statePath).Paths() == recent.Paths());
+
+	// A stale path yields a user-presentable error and is not promoted.
+	REQUIRE(std::remove(secondPath.c_str()) == 0);
+	CHECK_FALSE(workspace.OpenPath(secondPath));
+	const std::vector<Scalpel::DocumentFileError> errors =
+		workspace.TakeFileErrors();
+	REQUIRE(errors.size() == 1);
+	CHECK(errors.front().operation == Scalpel::DocumentFileOperation::Open);
+	CHECK(errors.front().path == secondPath);
+	CHECK(workspace.TakeRecentPaths().empty());
+
+	CHECK(recent.Clear());
+	REQUIRE(Scalpel::SaveRecentFiles(statePath, recent));
+	CHECK(Scalpel::LoadRecentFiles(statePath).Paths().empty());
+
+	(void)std::remove(firstPath.c_str());
+	(void)std::remove(statePath.c_str());
 }
