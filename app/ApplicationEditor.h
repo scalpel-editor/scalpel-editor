@@ -80,8 +80,8 @@ using DocumentId = uint64_t;
  * rest keep their text, undo, save point, and a snapshot of selection and
  * scroll until activated again. DocumentWorkspace maps tabs and file paths onto
  * these IDs; main paints the menu bar and tab strip as permanent top chrome and
- * binds either the open menu dropdown or the unsaved-changes card into the
- * post-paint overlay slot (the card wins when both would apply).
+ * binds the file-error card, unsaved-changes card, or open menu dropdown into
+ * the post-paint overlay slot (file error first, then unsaved card, then menu).
  */
 class ApplicationEditor final : private ApplicationResources, public Scintilla::Internal::ScintillaBase {
 public:

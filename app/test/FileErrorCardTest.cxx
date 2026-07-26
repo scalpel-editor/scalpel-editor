@@ -48,6 +48,12 @@ TEST_CASE("file error card narrow short and zero clients stay bounded") {
 	const FileErrorCardLayout narrow = LayoutFileErrorCard(180, 100);
 	CHECK(narrow.card.left >= 0);
 	CHECK(narrow.card.right <= 180);
+	CHECK(narrow.card.top >= 0);
+	CHECK(narrow.card.bottom <= 100);
+	CHECK(narrow.dismissButton.left >= 0);
+	CHECK(narrow.dismissButton.right <= 180);
+	CHECK(narrow.dismissButton.top >= 0);
+	CHECK(narrow.dismissButton.bottom <= 100);
 	CHECK(NonEmpty(narrow.dismissButton));
 	CHECK(HitTestFileErrorCard(narrow, Center(narrow.dismissButton)));
 

@@ -155,7 +155,8 @@ public:
 	void HandleOpenResult(bool accepted, const std::vector<std::string> &paths);
 	/**
 	 * Open one path without a portal. Returns true when it selected an existing
-	 * tab or loaded a new one. Used by the Recent menu.
+	 * tab or loaded a new one. No-op while a dirty-close prompt is active.
+	 * Used by the Recent menu.
 	 */
 	[[nodiscard]] bool OpenPath(std::string_view path);
 	/**

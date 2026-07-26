@@ -277,6 +277,33 @@ TEST_CASE("document workspace file errors report failed opens and saves") {
 	CHECK(workspace.TakeFileErrors().empty());
 }
 
+TEST_CASE("document workspace open path is no-op while dirty prompt is active") {
+	TempFile file("other\n");
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("dirty\n");
+	DirtyBuffer(editor);
+	DocumentWorkspace workspace(editor);
+	const DocumentId dirtyId = workspace.ActiveTab();
+
+	workspace.RequestClose();
+	REQUIRE(workspace.PromptActive());
+	(void)workspace.TakeRequests();
+
+	CHECK_FALSE(workspace.OpenPath(file.path));
+	CHECK(workspace.PromptActive());
+	CHECK(workspace.ActiveTab() == dirtyId);
+	CHECK(workspace.TabCount() == 1);
+	CHECK(workspace.TakeRecentPaths().empty());
+	CHECK(workspace.TakeFileErrors().empty());
+
+	// Portal open results share ApplyOpenPaths and must also refuse.
+	workspace.HandleOpenResult(true, file.path);
+	CHECK(workspace.PromptActive());
+	CHECK(workspace.ActiveTab() == dirtyId);
+	CHECK(workspace.TabCount() == 1);
+	CHECK(workspace.TakeRecentPaths().empty());
+}
+
 TEST_CASE("document workspace single-document open result keeps dirty sibling") {
 	TempFile file("other\n");
 	ApplicationEditor editor(320, 180);

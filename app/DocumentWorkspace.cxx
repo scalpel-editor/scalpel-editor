@@ -363,7 +363,7 @@ void DocumentWorkspace::HandleOpenResult(bool accepted,
 }
 
 bool DocumentWorkspace::OpenPath(std::string_view path) {
-	if (path.empty()) {
+	if (path.empty() || prompt.Active()) {
 		return false;
 	}
 	return ApplyOpenPaths({std::string(path)});
@@ -385,6 +385,10 @@ void DocumentWorkspace::HandleSaveResult(DocumentId tabId, bool accepted,
 }
 
 bool DocumentWorkspace::ApplyOpenPaths(const std::vector<std::string> &paths) {
+	// Tab open must not move activeId away from a dirty-close prompt.
+	if (prompt.Active()) {
+		return false;
+	}
 	std::optional<DocumentId> lastActivated;
 	for (const std::string &path : paths) {
 		if (path.empty()) {

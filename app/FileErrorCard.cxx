@@ -45,7 +45,8 @@ FileErrorCardLayout LayoutFileErrorCard(int width, int height) noexcept {
 		usedWidth = kCardMinWidth;
 	}
 	usedWidth = std::min(usedWidth, width);
-	const int usedHeight = CardContentHeight();
+	// Keep the card inside the client so the dismiss control can stay hittable.
+	const int usedHeight = std::min(CardContentHeight(), height);
 	const int cardLeft = std::max(0, (width - usedWidth) / 2);
 	const int cardTop = std::max(0, (height - usedHeight) / 2);
 	layout.card = Scintilla::Internal::PRectangle::FromInts(
@@ -53,18 +54,38 @@ FileErrorCardLayout LayoutFileErrorCard(int width, int height) noexcept {
 
 	const int innerLeft = cardLeft + kCardPad;
 	const int innerRight = cardLeft + usedWidth - kCardPad;
-	int y = cardTop + kCardPad;
-	layout.title = Scintilla::Internal::PRectangle::FromInts(
-		innerLeft, y, innerRight, y + kTitleHeight);
-	y += kTitleHeight + kTitlePathGap;
-	layout.path = Scintilla::Internal::PRectangle::FromInts(
-		innerLeft, y, innerRight, y + kPathHeight);
-	y += kPathHeight + kButtonTopGap;
 	const int available = std::max(0, innerRight - innerLeft);
 	const int buttonWidth = std::min(kButtonWidth, available);
 	const int buttonLeft = innerLeft + std::max(0, (available - buttonWidth) / 2);
+
+	// Prefer the natural top-down stack; when the client is shorter than the
+	// content height, pin OK to the bottom of the card and place text above it.
+	const int naturalButtonTop = cardTop + kCardPad + kTitleHeight +
+		kTitlePathGap + kPathHeight + kButtonTopGap;
+	const int cardBottom = cardTop + usedHeight;
+	const int maxButtonBottom = cardBottom;
+	int buttonTop = naturalButtonTop;
+	int buttonHeight = kButtonHeight;
+	if (buttonTop + buttonHeight > maxButtonBottom) {
+		buttonHeight = std::min(kButtonHeight, usedHeight);
+		buttonTop = std::max(cardTop, cardBottom - buttonHeight);
+	}
 	layout.dismissButton = Scintilla::Internal::PRectangle::FromInts(
-		buttonLeft, y, buttonLeft + buttonWidth, y + kButtonHeight);
+		buttonLeft, buttonTop, buttonLeft + buttonWidth,
+		buttonTop + buttonHeight);
+
+	int titleTop = cardTop + kCardPad;
+	int pathTop = titleTop + kTitleHeight + kTitlePathGap;
+	if (pathTop + kPathHeight > buttonTop) {
+		// Short card: stack title and path into the space above the button.
+		const int textBottom = std::max(cardTop, buttonTop - kButtonTopGap);
+		pathTop = std::max(cardTop, textBottom - kPathHeight);
+		titleTop = std::max(cardTop, pathTop - kTitlePathGap - kTitleHeight);
+	}
+	layout.title = Scintilla::Internal::PRectangle::FromInts(
+		innerLeft, titleTop, innerRight, titleTop + kTitleHeight);
+	layout.path = Scintilla::Internal::PRectangle::FromInts(
+		innerLeft, pathTop, innerRight, pathTop + kPathHeight);
 	return layout;
 }
 

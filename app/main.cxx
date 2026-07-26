@@ -413,8 +413,12 @@ void SyncRecentMenu(const Scalpel::RecentFiles &recent,
 	}
 	menuModel.recentFiles = recent.Paths();
 	editor.InvalidateTopChrome();
+	// Recent rows are identified by index. If the MRU list rewrites while
+	// Recent is open (for example a late portal Open/Save As), focus, hover,
+	// and press would still point at the old index and could activate the
+	// wrong path. Dismiss so the next open rebuilds from the new list.
 	if (menuModel.openMenu == Scalpel::ApplicationMenu::Recent) {
-		editor.InvalidateFrame();
+		DismissOpenMenu(menuModel, editor);
 	}
 }
 
