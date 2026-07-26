@@ -76,6 +76,8 @@ The in-window menu bar foundation is in place (2026-07-25). Permanent top chrome
 
 The Recent menu and file-operation error card are in place (2026-07-25). Recent keeps up to ten lexically normalized successful Open and Save As paths in XDG state, promotes an existing tab when reopened, supports Alt+R and the menu bar's pointer and keyboard paths, and can clear the persisted list without affecting open documents. Failed document reads and writes now produce a dismissible in-window card instead of relying on stderr; a file error temporarily takes priority over an active dirty prompt, which remains available after dismissal. [tools/phase8-recent-files.md](tools/phase8-recent-files.md) records the product and ownership boundary.
 
+The scrollbar slice is planned next. It adds fixed in-window vertical and horizontal bars around the Scintilla client, exposes the core's existing two-axis ranges through exact host metrics, generalizes permanent chrome beyond the top band, and preserves modal, menu, tab, selection-drag, partial-damage, and scaling behavior. [tools/phase8-scrollbars.md](tools/phase8-scrollbars.md) defines the product boundary and seven-commit sequence. Remaining Phase 8 work also includes external-file change detection and conflict handling, find bar chrome, invalid-UTF-8 and line-ending file policy, oversized-file handling, and the other daily-usable file-lifecycle checks above.
+
 Deliverable: daily-usable plain text editing that satisfies the file-lifecycle checks above, with application workflow tests and no generic UI framework.
 
 ## After this roadmap
