@@ -318,6 +318,8 @@ void CancelScrollBarInteraction(ScrollBarInteraction &interaction) noexcept {
 	interaction.pressed = ScrollBarHit::None;
 	interaction.dragging = false;
 	interaction.grabOffset = 0;
+	interaction.verticalWheelRemainder = 0.0;
+	interaction.horizontalWheelRemainder = 0.0;
 }
 
 namespace {
@@ -420,8 +422,10 @@ ScrollBarPointerResult HandleScrollBarPointer(ScrollBarInteraction &interaction,
 		}
 		// Wheel over a bar always scrolls that axis (no Shift remap).
 		if (hit.axis == ScrollBarAxis::Vertical) {
-			const Scintilla::Line lines =
-				static_cast<Scintilla::Line>(input.deltaY * 0.3);
+			interaction.verticalWheelRemainder += input.deltaY * 0.3;
+			const Scintilla::Line lines = static_cast<Scintilla::Line>(
+				interaction.verticalWheelRemainder);
+			interaction.verticalWheelRemainder -= lines;
 			if (lines != 0) {
 				ApplyScrollRequest(result, ScrollBarAxis::Vertical,
 					ClampPosition(axisLayout.metrics.position + lines,
@@ -430,7 +434,10 @@ ScrollBarPointerResult HandleScrollBarPointer(ScrollBarInteraction &interaction,
 		} else {
 			const double amount = std::abs(input.deltaX) > std::abs(input.deltaY) ?
 				input.deltaX : input.deltaY;
-			const int pixels = static_cast<int>(amount * 4.0);
+			interaction.horizontalWheelRemainder += amount * 4.0;
+			const int pixels =
+				static_cast<int>(interaction.horizontalWheelRemainder);
+			interaction.horizontalWheelRemainder -= pixels;
 			if (pixels != 0) {
 				ApplyScrollRequest(result, ScrollBarAxis::Horizontal,
 					ClampPosition(axisLayout.metrics.position + pixels,

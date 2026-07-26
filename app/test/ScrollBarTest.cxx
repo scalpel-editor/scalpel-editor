@@ -314,6 +314,57 @@ TEST_CASE("scroll bar pointer wheel scrolls the bar axis") {
 	CHECK(horizontalWheel.request.position > 0);
 }
 
+TEST_CASE("scroll bar pointer wheel retains smooth fractional motion") {
+	const auto vertical = VerticalMetrics(0, 30, 10);
+	const auto horizontal = HorizontalMetrics(0, 300, 100);
+	const Scalpel::ScrollBarLayout layout = Scalpel::LayoutScrollBars(
+		220, 180, 0, vertical, horizontal);
+	Scalpel::ScrollBarInteraction interaction;
+
+	const int vX = static_cast<int>(
+		(layout.vertical.track.left + layout.vertical.track.right) / 2);
+	const int vY = static_cast<int>(
+		(layout.vertical.track.top + layout.vertical.track.bottom) / 2);
+	for (int event = 0; event < 3; ++event) {
+		const Scalpel::ScrollBarPointerResult partial =
+			Scalpel::HandleScrollBarPointer(interaction, layout,
+				{Scalpel::PointerAction::Scroll, Scintilla::KeyMod::Norm,
+					static_cast<double>(vX), static_cast<double>(vY),
+					0, 1, static_cast<uint32_t>(event), -1});
+		CHECK(partial.consumed);
+		CHECK(partial.request.kind == Scalpel::ScrollBarRequestKind::None);
+	}
+	const Scalpel::ScrollBarPointerResult verticalStep =
+		Scalpel::HandleScrollBarPointer(interaction, layout,
+			{Scalpel::PointerAction::Scroll, Scintilla::KeyMod::Norm,
+				static_cast<double>(vX), static_cast<double>(vY),
+				0, 1, 4, -1});
+	CHECK(verticalStep.request.kind == Scalpel::ScrollBarRequestKind::SetVertical);
+	CHECK(verticalStep.request.position == 1);
+
+	Scalpel::CancelScrollBarInteraction(interaction);
+	const int hX = static_cast<int>(
+		(layout.horizontal.track.left + layout.horizontal.track.right) / 2);
+	const int hY = static_cast<int>(
+		(layout.horizontal.track.top + layout.horizontal.track.bottom) / 2);
+	for (int event = 0; event < 2; ++event) {
+		const Scalpel::ScrollBarPointerResult partial =
+			Scalpel::HandleScrollBarPointer(interaction, layout,
+				{Scalpel::PointerAction::Scroll, Scintilla::KeyMod::Norm,
+					static_cast<double>(hX), static_cast<double>(hY),
+					0, 0.1, static_cast<uint32_t>(event + 5), -1});
+		CHECK(partial.request.kind == Scalpel::ScrollBarRequestKind::None);
+	}
+	const Scalpel::ScrollBarPointerResult horizontalStep =
+		Scalpel::HandleScrollBarPointer(interaction, layout,
+			{Scalpel::PointerAction::Scroll, Scintilla::KeyMod::Norm,
+				static_cast<double>(hX), static_cast<double>(hY),
+				0, 0.1, 7, -1});
+	CHECK(horizontalStep.request.kind ==
+		Scalpel::ScrollBarRequestKind::SetHorizontal);
+	CHECK(horizontalStep.request.position == 1);
+}
+
 TEST_CASE("scroll bar shell integration paints bars with top chrome") {
 	using Scintilla::Internal::ColourRGBA;
 	using Scintilla::Internal::Fill;

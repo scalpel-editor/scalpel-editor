@@ -92,6 +92,10 @@ struct ScrollBarInteraction {
 	ScrollBarAxis dragAxis = ScrollBarAxis::Vertical;
 	/** Pointer coordinate along the track minus thumb origin at press. */
 	int grabOffset = 0;
+	/** Fractional smooth-scroll motion retained until it reaches one line. */
+	double verticalWheelRemainder = 0.0;
+	/** Fractional smooth-scroll motion retained until it reaches one pixel. */
+	double horizontalWheelRemainder = 0.0;
 };
 
 /** Exact scroll request produced by pointer handling. */
