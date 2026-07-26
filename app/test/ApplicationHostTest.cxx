@@ -409,6 +409,85 @@ TEST_CASE("production editor scrollbar metrics expose both axes") {
 	CHECK(editor.Scrollbars().horizontal.upperBound > 0);
 }
 
+TEST_CASE("production editor scrollbar updates invalidate only the changed bar") {
+	Scalpel::ApplicationEditor editor(240, 100);
+	std::string text;
+	for (int line = 0; line < 50; line++) {
+		text += "scrollable line with horizontal extent for updates\n";
+	}
+	editor.LoadInitialBuffer(text);
+	editor.SetWrapMode(Scintilla::Wrap::None);
+	editor.RenderFrame();
+	(void)editor.TakeFrameDamage();
+
+	editor.ScrollVerticalTo(5);
+	auto damage = editor.TakeFrameDamage();
+	REQUIRE_FALSE(damage.empty());
+	CHECK(std::find(damage.begin(), damage.end(),
+		editor.VerticalScrollBarRectangle()) != damage.end());
+	// Vertical thumb motion must not damage the horizontal track.
+	CHECK(std::find(damage.begin(), damage.end(),
+		editor.HorizontalScrollBarRectangle()) == damage.end());
+
+	(void)editor.TakeFrameDamage();
+	editor.ScrollHorizontalTo(40);
+	damage = editor.TakeFrameDamage();
+	REQUIRE_FALSE(damage.empty());
+	CHECK(std::find(damage.begin(), damage.end(),
+		editor.HorizontalScrollBarRectangle()) != damage.end());
+	CHECK(std::find(damage.begin(), damage.end(),
+		editor.VerticalScrollBarRectangle()) == damage.end());
+
+	// Growing the page by resizing clamps vertical position if needed.
+	editor.ScrollVerticalTo(editor.Scrollbars().vertical.upperBound);
+	const Scintilla::Line topAtBottom = editor.Scrollbars().vertical.position;
+	editor.Resize(240, 220);
+	editor.RenderFrame();
+	CHECK(editor.Scrollbars().vertical.position <=
+		editor.Scrollbars().vertical.upperBound);
+	CHECK(editor.Scrollbars().vertical.position <= topAtBottom);
+	CHECK(editor.Scrollbars().vertical.pageSize >
+		0);
+}
+
+TEST_CASE("production editor document scrollbar state is independent per tab") {
+	Scalpel::ApplicationEditor editor(240, 100);
+	editor.SetWrapMode(Scintilla::Wrap::None);
+	const Scalpel::DocumentId first = editor.ActiveDocument();
+	std::string manyLines;
+	for (int line = 0; line < 40; ++line) {
+		manyLines += "line " + std::to_string(line) +
+			" horizontal overflow text for scrollbar state\n";
+	}
+	editor.LoadInitialBuffer(manyLines);
+	editor.RenderFrame();
+	editor.ScrollVerticalTo(10);
+	editor.ScrollHorizontalTo(30);
+	CHECK(editor.Scrollbars().vertical.position == 10);
+	CHECK(editor.Scrollbars().horizontal.position == 30);
+	// Shared assumed-width policy remains the document-width source.
+	CHECK(editor.Scrollbars().horizontal.upperBound > 0);
+
+	const Scalpel::DocumentId second = editor.CreateDocument();
+	editor.ActivateDocument(second);
+	editor.LoadInitialBuffer("short\n");
+	editor.RenderFrame();
+	CHECK(editor.Scrollbars().vertical.position == 0);
+	CHECK(editor.Scrollbars().horizontal.position == 0);
+
+	editor.ScrollVerticalTo(0);
+	editor.ScrollHorizontalTo(12);
+	CHECK(editor.Scrollbars().horizontal.position == 12);
+
+	editor.ActivateDocument(first);
+	CHECK(editor.Scrollbars().vertical.position == 10);
+	CHECK(editor.Scrollbars().horizontal.position == 30);
+
+	editor.ActivateDocument(second);
+	CHECK(editor.Scrollbars().vertical.position == 0);
+	CHECK(editor.Scrollbars().horizontal.position == 12);
+}
+
 TEST_CASE("production editor document switching keeps independent text and save points") {
 	Scalpel::ApplicationEditor editor(320, 180);
 	const Scalpel::DocumentId first = editor.ActiveDocument();

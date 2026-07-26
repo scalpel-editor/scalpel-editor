@@ -1171,33 +1171,72 @@ int ApplicationEditor::FrameHeight() const noexcept {
 }
 
 void ApplicationEditor::SetHorizontalScrollPos() {
+	const ScrollAxisMetrics before = scrollbars.horizontal;
 	RefreshScrollMetrics();
+	if (scrollbars.horizontal.visible &&
+		(scrollbars.horizontal.position != before.position ||
+			scrollbars.horizontal.upperBound != before.upperBound ||
+			scrollbars.horizontal.pageSize != before.pageSize)) {
+		// Geometry is stable; repaint only this bar's track and thumb.
+		InvalidateHorizontalScrollBar();
+	}
 }
 
 void ApplicationEditor::SetVerticalScrollPos() {
 	Editor::SetVerticalScrollPos();
+	const ScrollAxisMetrics before = scrollbars.vertical;
 	RefreshScrollMetrics();
+	if (scrollbars.vertical.visible &&
+		(scrollbars.vertical.position != before.position ||
+			scrollbars.vertical.upperBound != before.upperBound ||
+			scrollbars.vertical.pageSize != before.pageSize)) {
+		InvalidateVerticalScrollBar();
+	}
 }
 
 bool ApplicationEditor::ModifyScrollBars(Scintilla::Line /*maximum*/, Scintilla::Line /*page*/) {
 	const ScrollAxisMetrics verticalBefore = scrollbars.vertical;
 	const ScrollAxisMetrics horizontalBefore = scrollbars.horizontal;
 	RefreshScrollMetrics();
-	return scrollbars.vertical.position != verticalBefore.position ||
+
+	// Clamp a stale horizontal origin after the assumed width or page shrinks.
+	if (!Wrapping()) {
+		const int upper = static_cast<int>(scrollbars.horizontal.upperBound);
+		if (xOffset > upper) {
+			HorizontalScrollTo(upper);
+		}
+	}
+
+	const bool verticalChanged =
+		scrollbars.vertical.position != verticalBefore.position ||
 		scrollbars.vertical.upperBound != verticalBefore.upperBound ||
 		scrollbars.vertical.pageSize != verticalBefore.pageSize ||
 		scrollbars.vertical.pageIncrement != verticalBefore.pageIncrement ||
-		scrollbars.vertical.visible != verticalBefore.visible ||
+		scrollbars.vertical.visible != verticalBefore.visible;
+	const bool horizontalChanged =
 		scrollbars.horizontal.position != horizontalBefore.position ||
 		scrollbars.horizontal.upperBound != horizontalBefore.upperBound ||
 		scrollbars.horizontal.pageSize != horizontalBefore.pageSize ||
 		scrollbars.horizontal.pageIncrement != horizontalBefore.pageIncrement ||
 		scrollbars.horizontal.visible != horizontalBefore.visible;
+
+	// Inset changes already full-frame invalidate via ReconfigureScrollBars.
+	if (scrollbars.vertical.visible == verticalBefore.visible &&
+		scrollbars.horizontal.visible == horizontalBefore.visible) {
+		if (verticalChanged && scrollbars.vertical.visible) {
+			InvalidateVerticalScrollBar();
+		}
+		if (horizontalChanged && scrollbars.horizontal.visible) {
+			InvalidateHorizontalScrollBar();
+		}
+	}
+	return verticalChanged || horizontalChanged;
 }
 
 void ApplicationEditor::ReconfigureScrollBars() {
 	const bool verticalWasVisible = scrollbars.vertical.visible;
 	const bool horizontalWasVisible = scrollbars.horizontal.visible;
+	// SetWrapMode already clears xOffset before calling here.
 	RefreshScrollMetrics();
 	ApplyScrollBarInsetsIfChanged(verticalWasVisible, horizontalWasVisible);
 }
