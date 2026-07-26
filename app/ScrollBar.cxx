@@ -299,4 +299,258 @@ void PaintScrollBars(Surface &surface, const ScrollBarLayout &layout,
 	}
 }
 
+ScrollBarPaintState ScrollBarPaintFromInteraction(
+	const ScrollBarInteraction &interaction) noexcept {
+	ScrollBarPaintState paint;
+	paint.hover = interaction.hover;
+	paint.hoverAxis = interaction.hoverAxis;
+	paint.pressed = interaction.pressed;
+	paint.pressedAxis = interaction.pressedAxis;
+	if (interaction.dragging) {
+		paint.pressed = ScrollBarHit::Thumb;
+		paint.pressedAxis = interaction.dragAxis;
+	}
+	return paint;
+}
+
+void CancelScrollBarInteraction(ScrollBarInteraction &interaction) noexcept {
+	interaction.hover = ScrollBarHit::None;
+	interaction.pressed = ScrollBarHit::None;
+	interaction.dragging = false;
+	interaction.grabOffset = 0;
+}
+
+namespace {
+
+int PointerAlongTrack(const ScrollBarAxisLayout &axisLayout, ScrollBarAxis axis,
+	Point point) noexcept {
+	if (axis == ScrollBarAxis::Vertical) {
+		return static_cast<int>(point.y - axisLayout.track.top);
+	}
+	return static_cast<int>(point.x - axisLayout.track.left);
+}
+
+int ThumbOriginAlongTrack(const ScrollBarAxisLayout &axisLayout,
+	ScrollBarAxis axis) noexcept {
+	if (axis == ScrollBarAxis::Vertical) {
+		return static_cast<int>(axisLayout.thumb.top - axisLayout.track.top);
+	}
+	return static_cast<int>(axisLayout.thumb.left - axisLayout.track.left);
+}
+
+int AxisTrackLength(const ScrollBarAxisLayout &axisLayout,
+	ScrollBarAxis axis) noexcept {
+	if (!NonEmpty(axisLayout.track)) {
+		return 0;
+	}
+	if (axis == ScrollBarAxis::Vertical) {
+		return ClampToInt(static_cast<int64_t>(
+			axisLayout.track.bottom - axisLayout.track.top));
+	}
+	return ClampToInt(static_cast<int64_t>(
+		axisLayout.track.right - axisLayout.track.left));
+}
+
+const ScrollBarAxisLayout &AxisLayout(const ScrollBarLayout &layout,
+	ScrollBarAxis axis) noexcept {
+	return axis == ScrollBarAxis::Vertical ? layout.vertical : layout.horizontal;
+}
+
+Scintilla::Line ClampPosition(Scintilla::Line position,
+	Scintilla::Line upperBound) noexcept {
+	if (position < 0) {
+		return 0;
+	}
+	if (position > upperBound) {
+		return upperBound;
+	}
+	return position;
+}
+
+Scintilla::Line PageStepPosition(const ScrollAxisMetrics &metrics,
+	bool towardEnd) noexcept {
+	const Scintilla::Line step = std::max(Scintilla::Line{1}, metrics.pageIncrement);
+	return ClampPosition(
+		towardEnd ? metrics.position + step : metrics.position - step,
+		metrics.upperBound);
+}
+
+void ApplyScrollRequest(ScrollBarPointerResult &result, ScrollBarAxis axis,
+	Scintilla::Line position) noexcept {
+	result.request.kind = axis == ScrollBarAxis::Vertical ?
+		ScrollBarRequestKind::SetVertical : ScrollBarRequestKind::SetHorizontal;
+	result.request.position = position;
+}
+
+}
+
+ScrollBarPointerResult HandleScrollBarPointer(ScrollBarInteraction &interaction,
+	const ScrollBarLayout &layout, const PointerInput &input) noexcept {
+	ScrollBarPointerResult result;
+	const Point point = Point::FromInts(static_cast<int>(input.x),
+		static_cast<int>(input.y));
+
+	if (input.action == PointerAction::Leave) {
+		if (interaction.dragging) {
+			// Surface leave during an implicit grab keeps the drag until release.
+			result.consumed = true;
+			return result;
+		}
+		if (interaction.hover != ScrollBarHit::None ||
+			interaction.pressed != ScrollBarHit::None) {
+			result.barDirty = true;
+		}
+		CancelScrollBarInteraction(interaction);
+		return result;
+	}
+
+	if (input.action == PointerAction::Scroll) {
+		const ScrollBarHitResult hit = HitTestScrollBars(layout, point);
+		if (hit.hit == ScrollBarHit::None) {
+			return result;
+		}
+		result.consumed = true;
+		result.pointerOverScrollBar = true;
+		if (hit.hit == ScrollBarHit::Junction) {
+			return result;
+		}
+		const ScrollBarAxisLayout &axisLayout = AxisLayout(layout, hit.axis);
+		if (!axisLayout.enabled) {
+			return result;
+		}
+		// Wheel over a bar always scrolls that axis (no Shift remap).
+		if (hit.axis == ScrollBarAxis::Vertical) {
+			const Scintilla::Line lines =
+				static_cast<Scintilla::Line>(input.deltaY * 0.3);
+			if (lines != 0) {
+				ApplyScrollRequest(result, ScrollBarAxis::Vertical,
+					ClampPosition(axisLayout.metrics.position + lines,
+						axisLayout.metrics.upperBound));
+			}
+		} else {
+			const double amount = std::abs(input.deltaX) > std::abs(input.deltaY) ?
+				input.deltaX : input.deltaY;
+			const int pixels = static_cast<int>(amount * 4.0);
+			if (pixels != 0) {
+				ApplyScrollRequest(result, ScrollBarAxis::Horizontal,
+					ClampPosition(axisLayout.metrics.position + pixels,
+						axisLayout.metrics.upperBound));
+			}
+		}
+		return result;
+	}
+
+	if (interaction.dragging) {
+		result.consumed = true;
+		result.pointerOverScrollBar = true;
+		const ScrollBarAxisLayout &axisLayout =
+			AxisLayout(layout, interaction.dragAxis);
+		if (input.action == PointerAction::Release && input.button == 0) {
+			interaction.dragging = false;
+			interaction.pressed = ScrollBarHit::None;
+			result.barDirty = true;
+			const ScrollBarHitResult hit = HitTestScrollBars(layout, point);
+			interaction.hover = hit.hit;
+			interaction.hoverAxis = hit.axis;
+			return result;
+		}
+		if (input.action == PointerAction::Move ||
+			input.action == PointerAction::Press) {
+			if (!axisLayout.enabled) {
+				return result;
+			}
+			const int trackLength = AxisTrackLength(
+				axisLayout, interaction.dragAxis);
+			const int thumbLength = ScrollBarThumbLength(
+				axisLayout.metrics.upperBound, axisLayout.metrics.pageSize,
+				trackLength);
+			const int along = PointerAlongTrack(
+				axisLayout, interaction.dragAxis, point);
+			ApplyScrollRequest(result, interaction.dragAxis,
+				ScrollBarPositionFromPointer(along, interaction.grabOffset,
+					trackLength, thumbLength, axisLayout.metrics.upperBound));
+			result.barDirty = true;
+		}
+		return result;
+	}
+
+	const ScrollBarHitResult hit = HitTestScrollBars(layout, point);
+	result.pointerOverScrollBar = hit.hit != ScrollBarHit::None;
+
+	if (input.action == PointerAction::Move) {
+		if (interaction.hover != hit.hit ||
+			(hit.hit != ScrollBarHit::None &&
+				interaction.hoverAxis != hit.axis)) {
+			result.barDirty = true;
+		}
+		interaction.hover = hit.hit;
+		interaction.hoverAxis = hit.axis;
+		if (hit.hit != ScrollBarHit::None) {
+			result.consumed = true;
+		}
+		return result;
+	}
+
+	if (input.action == PointerAction::Press) {
+		if (hit.hit == ScrollBarHit::None) {
+			return result;
+		}
+		result.consumed = true;
+		// Non-left buttons over chrome are consumed without scrolling or selecting.
+		if (input.button != 0) {
+			return result;
+		}
+		if (hit.hit == ScrollBarHit::Junction) {
+			interaction.pressed = ScrollBarHit::Junction;
+			result.barDirty = true;
+			return result;
+		}
+		const ScrollBarAxisLayout &axisLayout = AxisLayout(layout, hit.axis);
+		if (!axisLayout.enabled) {
+			// Disabled full-track thumb: ignore thumb and track presses.
+			interaction.pressed = hit.hit;
+			interaction.pressedAxis = hit.axis;
+			result.barDirty = true;
+			return result;
+		}
+		if (hit.hit == ScrollBarHit::Thumb) {
+			interaction.dragging = true;
+			interaction.dragAxis = hit.axis;
+			interaction.pressed = ScrollBarHit::Thumb;
+			interaction.pressedAxis = hit.axis;
+			interaction.grabOffset = PointerAlongTrack(axisLayout, hit.axis, point) -
+				ThumbOriginAlongTrack(axisLayout, hit.axis);
+			result.barDirty = true;
+			return result;
+		}
+		if (hit.hit == ScrollBarHit::TrackBefore ||
+			hit.hit == ScrollBarHit::TrackAfter) {
+			interaction.pressed = hit.hit;
+			interaction.pressedAxis = hit.axis;
+			result.barDirty = true;
+			ApplyScrollRequest(result, hit.axis,
+				PageStepPosition(axisLayout.metrics,
+					hit.hit == ScrollBarHit::TrackAfter));
+			return result;
+		}
+		return result;
+	}
+
+	if (input.action == PointerAction::Release) {
+		if (interaction.pressed != ScrollBarHit::None || hit.hit != ScrollBarHit::None) {
+			result.consumed = true;
+			result.pointerOverScrollBar = hit.hit != ScrollBarHit::None;
+		}
+		if (interaction.pressed != ScrollBarHit::None) {
+			interaction.pressed = ScrollBarHit::None;
+			result.barDirty = true;
+		}
+		interaction.hover = hit.hit;
+		interaction.hoverAxis = hit.axis;
+		return result;
+	}
+
+	return result;
+}
+
 }

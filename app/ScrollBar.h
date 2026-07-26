@@ -1,12 +1,14 @@
-// Axis-neutral layout, hit testing, and painting for fixed in-window scrollbars.
-// ApplicationEditor owns ranges and positions; main owns interaction model state.
-// This unit stays free of Wayland and Scintilla editor internals.
+// Axis-neutral layout, hit testing, paint, and pointer transitions for fixed
+// in-window scrollbars. ApplicationEditor owns ranges and positions; main owns
+// one ScrollBarInteraction and applies returned position requests. This unit
+// stays free of Wayland and Scintilla editor internals.
 
 #ifndef SCROLLBAR_H
 #define SCROLLBAR_H
 
 #include <cstdint>
 
+#include "ApplicationInput.h"
 #include "Geometry.h"
 #include "Platform.h"
 #include "Position.h"
@@ -78,6 +80,46 @@ struct ScrollBarPaintState {
 };
 
 /**
+ * Pointer interaction state owned by main (or a test harness).
+ * Does not store editor positions; drag motion produces set-position requests.
+ */
+struct ScrollBarInteraction {
+	ScrollBarHit hover = ScrollBarHit::None;
+	ScrollBarAxis hoverAxis = ScrollBarAxis::Vertical;
+	ScrollBarHit pressed = ScrollBarHit::None;
+	ScrollBarAxis pressedAxis = ScrollBarAxis::Vertical;
+	bool dragging = false;
+	ScrollBarAxis dragAxis = ScrollBarAxis::Vertical;
+	/** Pointer coordinate along the track minus thumb origin at press. */
+	int grabOffset = 0;
+};
+
+/** Exact scroll request produced by pointer handling. */
+enum class ScrollBarRequestKind {
+	None,
+	SetVertical,
+	SetHorizontal,
+};
+
+struct ScrollBarRequest {
+	ScrollBarRequestKind kind = ScrollBarRequestKind::None;
+	Scintilla::Line position = 0;
+};
+
+/**
+ * Result of applying one pointer event to the scrollbar interaction model.
+ * consumed means the event must not reach the editor. barDirty means a bar
+ * needs repaint (hover or thumb motion).
+ */
+struct ScrollBarPointerResult {
+	bool consumed = false;
+	bool barDirty = false;
+	ScrollBarRequest request;
+	/** Pointer is over a track, thumb, or junction (arrow cursor). */
+	bool pointerOverScrollBar = false;
+};
+
+/**
  * Map position to thumb origin along a track of trackLength with thumbLength.
  * Returns 0 when travel is zero. Overflow-safe for large line counts.
  */
@@ -115,6 +157,21 @@ struct ScrollBarPaintState {
 
 void PaintScrollBars(Scintilla::Internal::Surface &surface,
 	const ScrollBarLayout &layout, const ScrollBarPaintState &paint) noexcept;
+
+[[nodiscard]] ScrollBarPaintState ScrollBarPaintFromInteraction(
+	const ScrollBarInteraction &interaction) noexcept;
+
+/** Clear drag / press / hover (focus loss, resize, modal open, device loss). */
+void CancelScrollBarInteraction(ScrollBarInteraction &interaction) noexcept;
+
+/**
+ * Apply one pointer event. layout metrics must match the editor positions that
+ * main will update after applying request. A thumb drag keeps ownership after
+ * the pointer leaves the track until release or CancelScrollBarInteraction.
+ */
+[[nodiscard]] ScrollBarPointerResult HandleScrollBarPointer(
+	ScrollBarInteraction &interaction, const ScrollBarLayout &layout,
+	const PointerInput &input) noexcept;
 
 }
 
