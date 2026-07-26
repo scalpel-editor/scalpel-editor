@@ -488,6 +488,38 @@ TEST_CASE("production editor document scrollbar state is independent per tab") {
 	CHECK(editor.Scrollbars().horizontal.position == 12);
 }
 
+TEST_CASE("production editor document horizontal restore respects current range") {
+	Scalpel::ApplicationEditor editor(240, 100);
+	editor.SetWrapMode(Scintilla::Wrap::None);
+	const Scalpel::DocumentId first = editor.ActiveDocument();
+	editor.LoadInitialBuffer("first horizontal scroll state\n");
+	editor.RenderFrame();
+	editor.ScrollHorizontalTo(30);
+	REQUIRE(editor.GetXOffset() == 30);
+
+	const Scalpel::DocumentId second = editor.CreateDocument();
+	editor.ActivateDocument(second);
+	editor.LoadInitialBuffer("second\n");
+
+	// A retained offset must not escape the range after the viewport grows.
+	editor.Resize(3000, 100);
+	REQUIRE(editor.Scrollbars().horizontal.upperBound == 0);
+	editor.ActivateDocument(first);
+	CHECK(editor.GetXOffset() == 0);
+	CHECK(editor.Scrollbars().horizontal.position == 0);
+
+	// Wrapping also requires a zero origin when a scrolled tab is restored.
+	editor.Resize(240, 100);
+	editor.SetWrapMode(Scintilla::Wrap::None);
+	editor.ScrollHorizontalTo(30);
+	editor.ActivateDocument(second);
+	editor.SetWrapMode(Scintilla::Wrap::Word);
+	editor.ActivateDocument(first);
+	CHECK(editor.GetXOffset() == 0);
+	CHECK(editor.Scrollbars().horizontal.position == 0);
+	CHECK(editor.Scrollbars().horizontal.upperBound == 0);
+}
+
 TEST_CASE("production editor document switching keeps independent text and save points") {
 	Scalpel::ApplicationEditor editor(320, 180);
 	const Scalpel::DocumentId first = editor.ActiveDocument();

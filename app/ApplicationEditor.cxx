@@ -246,7 +246,9 @@ void ApplicationEditor::RestoreActiveView() {
 		scrollToAfterWrap = LineDocSub{
 			entry->firstVisibleDocumentLine, entry->firstVisibleSubLine};
 	}
-	SetXOffset(entry->xOffset);
+	// The retained offset may no longer fit after a resize, or wrapping may now
+	// require a zero horizontal origin.
+	ScrollHorizontalTo(entry->xOffset);
 }
 
 DocumentId ApplicationEditor::CreateDocument() {
@@ -1324,6 +1326,9 @@ void ApplicationEditor::ScrollVerticalTo(Scintilla::Line line) {
 
 void ApplicationEditor::ScrollHorizontalTo(int xPos) {
 	if (Wrapping()) {
+		if (xOffset != 0) {
+			SetXOffset(0);
+		}
 		RefreshScrollMetrics();
 		return;
 	}
