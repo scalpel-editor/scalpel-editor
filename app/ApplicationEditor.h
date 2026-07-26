@@ -21,6 +21,7 @@
 #include "ApplicationTextInput.h"
 #include "ApplicationInput.h"
 #include "EditorNotifications.h"
+#include "ScrollBar.h"
 #include "ScintillaBase.h"
 
 namespace Scintilla::Internal {
@@ -43,22 +44,6 @@ struct FineTickerState {
 	std::chrono::steady_clock::time_point nextFire{};
 	std::chrono::milliseconds period{};
 	bool running = false;
-};
-
-/**
- * One axis of scroll range for application chrome and tests.
- * Units are display lines for vertical and logical pixels for horizontal.
- * position is clamped to [0, upperBound]. pageSize is the viewport length;
- * pageIncrement is the track-click step (vertical page minus one line, or one
- * third of the horizontal page). visible follows Scintilla's scrollbar option
- * and, for horizontal, is false while wrapping.
- */
-struct ScrollAxisMetrics {
-	Scintilla::Line position = 0;
-	Scintilla::Line upperBound = 0;
-	Scintilla::Line pageSize = 0;
-	Scintilla::Line pageIncrement = 0;
-	bool visible = false;
 };
 
 /** Vertical and horizontal ranges owned by ApplicationEditor host callbacks. */

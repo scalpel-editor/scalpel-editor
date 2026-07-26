@@ -178,6 +178,7 @@ add_library(scalpel_application OBJECT
   FileErrorCard.cxx
   MenuBar.cxx
   RecentFiles.cxx
+  ScrollBar.cxx
   TabStrip.cxx
   UnsavedChangesCard.cxx
   UnsavedChangesPrompt.cxx
