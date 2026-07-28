@@ -16,13 +16,13 @@ using Scintilla::Internal::Surface;
 constexpr int kThickness = 14;
 constexpr int kMinThumb = 24;
 
-// Quiet track, higher-contrast thumb, with hover and pressed steps.
-const ColourRGBA kTrackFill(0xd8, 0xd8, 0xd8, 0xff);
-const ColourRGBA kThumbFill(0xa0, 0xa0, 0xa0, 0xff);
-const ColourRGBA kThumbHover(0x88, 0x88, 0x88, 0xff);
-const ColourRGBA kThumbPressed(0x70, 0x70, 0x70, 0xff);
-const ColourRGBA kThumbDisabled(0xc0, 0xc0, 0xc0, 0xff);
-const ColourRGBA kJunctionFill(0xd0, 0xd0, 0xd0, 0xff);
+// White track and junction; grey thumb only when the axis can scroll.
+const ColourRGBA kTrackFill(0xff, 0xff, 0xff, 0xff);
+const ColourRGBA kThumbFill(0xc8, 0xc8, 0xc8, 0xff);
+const ColourRGBA kThumbHover(0xb0, 0xb0, 0xb0, 0xff);
+const ColourRGBA kThumbPressed(0x98, 0x98, 0x98, 0xff);
+const ColourRGBA kThumbDisabled(0xff, 0xff, 0xff, 0xff);
+const ColourRGBA kJunctionFill(0xff, 0xff, 0xff, 0xff);
 
 bool NonEmpty(const PRectangle &rc) noexcept {
 	return rc.right > rc.left && rc.bottom > rc.top;
