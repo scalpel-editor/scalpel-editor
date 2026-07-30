@@ -2,6 +2,8 @@
 
 scalpel-editor is a direct application, not a reusable GUI framework. Code is judged by whether it makes the editor correct, understandable, testable, and inexpensive to change under the constraints imposed by Wayland and Scintilla.
 
+Transferable observations from this implementation are collected separately in [custom-wayland-ui.md](custom-wayland-ui.md).
+
 ## Prefer explicit protocol lifecycles
 
 Wayland correctness depends on event ordering, proxy ownership, and capabilities that may appear or disappear. The shell keeps those transitions visible:

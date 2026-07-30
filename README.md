@@ -25,5 +25,6 @@ cmake --build build --target scalpel-editor
 - [Rendering](docs/rendering.md)
 - [Wayland shell](docs/wayland.md)
 - [Design principles](docs/design-principles.md)
+- [Lessons for custom Wayland UI applications](docs/custom-wayland-ui.md)
 
 The Scintilla-derived core remains under the [Scintilla license](scintilla/License.txt).
