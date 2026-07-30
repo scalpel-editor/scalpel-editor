@@ -1,10 +1,10 @@
-// scalpel-editor production popup stubs (phase 6 step 7).
+// scalpel-editor production popup stubs.
 //
 // ListBox and Menu stay compiled so autocomplete, call tips, and context menus
 // link, but this Wayland shell does not create real popup windows yet. Requests
 // are logged to stderr and never report a successful visible popup. editorTest
 // links its own inspectable TestListBox instead of this translation unit.
-// Real popup windows are follow-on work after this roadmap.
+// Real popup windows remain outside the current application scope.
 
 #include <cstdio>
 #include <memory>

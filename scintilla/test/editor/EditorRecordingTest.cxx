@@ -146,7 +146,8 @@ TEST_CASE("Recording host keeps multi-byte and invalid UTF-8 text after the orig
 	TestEditor editor(host);
 	const RecordingCallback callback = editor.MakeRecordingCallback();
 
-	// U+00E9 in UTF-8, then a lone continuation byte (invalid under phase 3 policy).
+	// U+00E9 in UTF-8, then a lone continuation byte kept by the
+	// byte-preserving policy.
 	const std::string multiByte = "\xC3\xA9";
 	const std::string invalidUtf8 = "a\x80z";
 

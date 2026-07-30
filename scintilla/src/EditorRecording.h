@@ -37,8 +37,8 @@
  ** # Text ownership
  **
  ** Every text-bearing alternative stores a std::string copy of the UTF-8
- ** bytes as they stand in the document path, including invalid sequences
- ** (phase 3 policy: store bytes as given). The recording callback receives a
+ ** bytes as they stand in the document path, including invalid sequences.
+ ** The recording callback receives a
  ** const RecordedAction &; the editor does not borrow host memory and does
  ** not keep a pointer into the action after the callback returns. The host
  ** must copy any text it needs beyond the callback (the test host appends a

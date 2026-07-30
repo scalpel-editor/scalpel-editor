@@ -72,7 +72,7 @@ struct TestEditorObservations {
 	std::vector<TestTickerRequest> tickerRequests;
 	std::vector<PRectangle> callTipWindows;
 	std::vector<std::string> popupItems;
-	// Typed recording sink (phase 4 step 14+). Copies survive the callback.
+	// Typed recording sink. Copies survive the callback.
 	std::vector<RecordedAction> recordedActions;
 	// When set, NotifyParent replaces InsertCheck text via ChangeInsertion.
 	std::optional<std::string> changeInsertionOnInsertCheck;

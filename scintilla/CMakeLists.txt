@@ -10,10 +10,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 		"  cmake --preset dev   (or ./check.sh for the full matrix)")
 endif()
 
-# The Scintilla core as one static library. The concrete platform arrived
-# concern by concern in phase 6 (fonts, shaping, the GL renderer, then the
-# application host under ../app). Unit tests link only the subset of objects
-# they need, which the static library provides on demand.
+# The Scintilla core is one static library. Fonts, shaping, and the GL renderer
+# are separate supporting targets, while the application host lives under
+# ../app. Unit tests link only the subset of objects they need, which the
+# static library provides on demand.
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(FREETYPE REQUIRED IMPORTED_TARGET freetype2)

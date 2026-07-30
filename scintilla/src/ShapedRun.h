@@ -20,10 +20,10 @@ class ShapedRunCache;
 /**
  * Writing direction stored on a shaped run.
  *
- * Phase 6 shapes English left-to-right only. Other scripts and mixed-direction
- * line ordering are out of scope; the field stays so later work can use the
- * same run model without collapsing clusters or direction into per-character
- * data.
+ * The current shaper supports English left-to-right only. Other scripts and
+ * mixed-direction line ordering are out of scope; the field stays so later
+ * work can use the same run model without collapsing clusters or direction
+ * into per-character data.
  */
 enum class TextDirection {
 	LeftToRight = 0,

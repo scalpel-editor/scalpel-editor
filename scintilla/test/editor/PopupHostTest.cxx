@@ -2,8 +2,8 @@
 /** @file PopupHostTest.cxx
  ** Smoke tests for the deterministic autocomplete list box and call-tip host.
  **
- ** These pin host observability for phase 4 step 6. Full coverage of every
- ** autocomplete and call-tip interface entry belongs with the step 7 pilot.
+ ** These pin host observability. Focused autocomplete and call-tip tests cover
+ ** the individual operations.
  **/
 
 #include <array>

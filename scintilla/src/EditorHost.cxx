@@ -49,7 +49,7 @@ void Editor::NotifyErrorOccurred(Document *, void *, Status status) {
 }
 
 /// Query the active surface rather than predicting renderer capabilities in
-/// the editor. The Phase 6 renderer supplies the fixed answers for Wayland.
+/// the editor. The concrete renderer supplies the answers for this host.
 int Editor::SupportsFeature(Supports feature) {
 	AutoSurface surface(this);
 	return surface->SupportsFeature(feature);

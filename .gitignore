@@ -7,3 +7,6 @@
 /build-ubsan-nixos/
 /.review/
 /.scalps/
+/.plans/*
+!/.plans/README.md
+!/.plans/TEMPLATE.md

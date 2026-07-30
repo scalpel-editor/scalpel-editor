@@ -2,14 +2,14 @@
 
 ## What this project is
 
-scalpel-editor is a Wayland-only text editor built from a refactored Scintilla core that transformed the message system and 9000 line switch statement into methods grouped in files by concern.
+scalpel-editor is a Wayland-only plain-text editor built from a substantially refactored Scintilla 5.6.4 core. Application features use named typed operations, and the platform layer is implemented directly with Wayland, EGL, OpenGL, FreeType, HarfBuzz, and Fontconfig.
 
 ## Repository layout
 
-- `scintilla/` — the Scintilla 5.6.4 core, imported verbatim. `scintilla/UPSTREAM.md` records the release identity and the byte-for-byte verification of the import. This code is now this project's to change; the verbatim import commit is the baseline, and git history from that commit is the record of divergence. Do not update `UPSTREAM.md` as the code diverges — it describes the import, not the current state.
+- `scintilla/` — the project-owned Scintilla-based editor core, renderer, platform definitions, and core tests.
 - `app/` — the production editor host, application platform definitions, standalone `scalpel-editor` executable, and focused application test targets.
-- `seed/` — the retained OnlyWayUi file-URI conversion reference for Phase 8 (see `ORIGINS.md`). Mine it for portal result handling, but do not build on it.
-- `ROADMAP.md` — the phase plan. Update it when a phase completes or the plan changes.
+- `docs/` — current product, architecture, and design documentation.
+- `.plans/` — ignored cross-session development plans plus a tracked README and template.
 
 ## Build and test
 
@@ -85,6 +85,8 @@ Production headers under `app/`, `scintilla/src/`, and `scintilla/include/` must
 
 Do not leave documentation describing a state the code no longer has. When a change removes or alters something the docs describe, update or delete that description in the same commit.
 
+Documentation describes the current system, its constraints, and its design choices. Do not retain phase logs, completed implementation plans, source-history narratives, or verification snapshots as public documentation. Promote lasting information from a working plan into current documentation, then delete the completed plan.
+
 In Markdown files, do not hard-wrap prose. Write each paragraph and each list item as a single line and let the editor soft-wrap it.
 
 ### C++ code discovery
@@ -93,9 +95,9 @@ See /.agents/skills/scalps-code-search/SKILL.md
 
 ## Creating plans
 
-A roadmap phase should be broken down into sessions a coding agent will handle.
+At the beginning of a substantial session, create an ignored `.plans/<topic>.md` working plan as a sequence of commits. Make those commits at the appropriate points during implementation and update the plan when discoveries change the approach.
 
-At the beginning of a session, a plan should be created as a sequence of commits. Those commits should be made at the appropriate points during implementation.
+Plans are local working state, not authoritative design documentation. At completion, promote lasting facts into the current documentation, tests, comments, or this file, then delete the completed plan. See `.plans/README.md`.
 
 ## Commits
 

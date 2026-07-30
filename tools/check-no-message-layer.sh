@@ -1,6 +1,6 @@
 #!/bin/sh
-# Phase 5 completion check: fail while forbidden message-layer forms remain.
-# See tools/phase5-boundary.md for the freeze classification and allowlist.
+# Guard the typed editor boundary against the removed message interface.
+# See docs/scintilla-core.md for the current boundary.
 #
 # Usage: tools/check-no-message-layer.sh
 # Exit 0 only when no unexpected hits remain.
@@ -36,15 +36,13 @@ check_absent() {
 	fi
 }
 
-# Paths that are history, allowlist files, or out of build scope for residual counts.
+# Allowlist files and paths outside the source and documentation scope.
 path_excluded() {
 	path=$1
 	case $path in
-	./seed/*|seed/*|./build/*|build/*|./build-asan/*|build-asan/*|./build-ubsan/*|build-ubsan/*|./build-nixos/*|build-nixos/*|./build-asan-nixos/*|build-asan-nixos/*|./build-ubsan-nixos/*|build-ubsan-nixos/*|./.git/*|.git/*)
+	./build/*|build/*|./build-asan/*|build-asan/*|./build-ubsan/*|build-ubsan/*|./build-nixos/*|build-nixos/*|./build-asan-nixos/*|build-asan-nixos/*|./build-ubsan-nixos/*|build-ubsan-nixos/*|./.git/*|.git/*)
 		return 0 ;;
-	./tools/phase5-boundary.md|tools/phase5-boundary.md|./tools/check-no-message-layer.sh|tools/check-no-message-layer.sh)
-		return 0 ;;
-	./MESSAGE_REMOVAL.md|MESSAGE_REMOVAL.md|./ROADMAP.md|ROADMAP.md|./AGENTS.md|AGENTS.md)
+	./tools/check-no-message-layer.sh|tools/check-no-message-layer.sh)
 		return 0 ;;
 	esac
 	for pat in $extra_skip; do
@@ -63,9 +61,8 @@ check() {
 	shift 2
 	extra_skip=$*
 
-	tmp=${TMPDIR:-/tmp}/phase5-msg-check.$$
+	tmp=${TMPDIR:-/tmp}/message-layer-check.$$
 	rg -n -e "$pattern" \
-		--glob '!seed/**' \
 		--glob '!build*/**' \
 		--glob '!.git/**' \
 		. >"$tmp" 2>/dev/null || true
@@ -108,6 +105,7 @@ message_constant_allowed() {
 	scintilla/include/Sci_Position.h:SCI_METHOD|\
 	scintilla/include/ILexer.h:SCI_METHOD|\
 	scintilla/include/ILoader.h:SCI_METHOD|\
+	docs/scintilla-core.md:SCI_METHOD|\
 	scintilla/src/Document.cxx:SCI_METHOD|\
 	scintilla/src/Document.h:SCI_METHOD|\
 	scintilla/test/editor/EditorLexingTest.cxx:SCI_METHOD|\
@@ -119,9 +117,8 @@ message_constant_allowed() {
 }
 
 check_message_constants() {
-	tmp=${TMPDIR:-/tmp}/phase5-msg-constants.$$
+	tmp=${TMPDIR:-/tmp}/message-layer-constants.$$
 	rg -n -o -e '\bSCI_[A-Z0-9_]+\b|\bSCN_[A-Z0-9_]+\b' \
-		--glob '!seed/**' \
 		--glob '!build*/**' \
 		--glob '!.git/**' \
 		. >"$tmp" 2>/dev/null || true
@@ -194,12 +191,9 @@ check 'WndProc coercion helpers' 'PtrFromSPtr|ConstCharPtrFromSPtr|CharPtrFromSP
 check 'client parameter packing types' '\b(CharacterRange(Full)?|TextRange(Full)?|TextToFind(Full)?|RangeToFormat(Full)?|NotifyHeader|uptr_t|sptr_t)\b'
 
 # Affirmative "call through SCI_/WndProc" instructions in live docs.
-tmp=${TMPDIR:-/tmp}/phase5-msg-docs.$$
+tmp=${TMPDIR:-/tmp}/message-layer-docs.$$
 rg -n -e 'send the SCI_|SendMessage|call WndProc|through the message (number|layer|interface)' \
 	--glob '*.md' \
-	--glob '!MESSAGE_REMOVAL.md' \
-	--glob '!ROADMAP.md' \
-	--glob '!tools/phase5-boundary.md' \
 	. >"$tmp" 2>/dev/null || true
 count=0
 shown=0
@@ -223,8 +217,8 @@ else
 fi
 
 if [ "$fail" -ne 0 ]; then
-	printf '\ncheck-no-message-layer: residual message-layer forms remain (expected until phase 5 completes).\n' >&2
-	printf 'See tools/phase5-boundary.md.\n' >&2
+	printf '\ncheck-no-message-layer: forbidden message-interface forms remain.\n' >&2
+	printf 'See docs/scintilla-core.md.\n' >&2
 	exit 1
 fi
 
