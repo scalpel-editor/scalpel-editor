@@ -8,7 +8,7 @@ Thin Wayland callbacks copy protocol events into state objects grouped by concer
 
 `ApplicationEditor` owns Scintilla state, drawing, invalidation, editor deadlines, clipboard values, surrounding text, cursor rectangles, and tentative IME edits. `DocumentWorkspace` owns tabs, file paths, open and save policy, stable file-dialog intents, and dirty-close transitions.
 
-`main.cxx` is the platform adapter and current event pump. `ApplicationUi` owns chrome models, painters, overlay selection and composition, supplies one `ApplicationLayout` snapshot per event or paint pass, and applies pointer and keyboard priority plus focus-loss transitions; `main` delivers platform events and unconsumed pointer input, applies the returned cursor choice, drops IME batches while `ChromeOwnsInput` is true, calls `SynchronizeComposition` before paint, moves values among the window, editor, workspace, and UI state, submits frames, and waits for the next external event or application deadline. Wayland transport does not decide document-close or presentation policy.
+`main.cxx` is the platform adapter and current event pump. `ApplicationUi` owns chrome models, painters, overlay selection and composition, supplies one `ApplicationLayout` snapshot per event or paint pass, and applies pointer and keyboard priority plus focus-loss transitions; `main` delivers platform events and unconsumed pointer input, applies `CurrentPointerCursor`, drops IME batches while `ChromeOwnsInput` is true, calls `SynchronizeComposition` before paint, moves values among the window, editor, workspace, and UI state, submits frames, and waits for the next external event or application deadline. Wayland transport does not decide document-close or presentation policy.
 
 ## Global and service behavior
 

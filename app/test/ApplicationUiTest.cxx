@@ -945,6 +945,68 @@ TEST_CASE("application UI overlay priority file error outranks prompt and menu")
 	REQUIRE_FALSE(ui.FileErrors().empty());
 }
 
+TEST_CASE("application UI painter callbacks end with UI lifetime") {
+	ApplicationEditor editor(320, 200);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+
+	{
+		ApplicationUi ui(editor, workspace, recent, "");
+		SeedStrip(ui, editor);
+		ui.MenuModel().openMenu = Scalpel::ApplicationMenu::File;
+		ui.BindPainters();
+		REQUIRE(ui.Overlay() == BoundOverlay::Menu);
+	}
+
+	// ApplicationEditor outlives ApplicationUi, so both callbacks must already
+	// be unbound. Rendering without a retained UI frame layout must be safe.
+	(void)editor.TakeFrameDamage();
+	editor.InvalidateFrame();
+	CHECK_NOTHROW(editor.RenderFrame());
+}
+
+TEST_CASE("application UI current pointer cursor covers asynchronous modals") {
+	ApplicationEditor editor(320, 200);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+
+	CHECK(ui.CurrentPointerCursor() == ApplicationPointerCursor::Editor);
+	const ApplicationPointerResult chrome = ui.HandlePointer(
+		MakePointer(PointerAction::Move, 8.0, 8.0));
+	REQUIRE(chrome.cursor == ApplicationPointerCursor::Arrow);
+	CHECK(ui.CurrentPointerCursor() == ApplicationPointerCursor::Arrow);
+	const ApplicationPointerResult client = ui.HandlePointer(
+		MakePointer(PointerAction::Move, 20.0, 100.0));
+	REQUIRE(client.cursor == ApplicationPointerCursor::Editor);
+	CHECK(ui.CurrentPointerCursor() == ApplicationPointerCursor::Editor);
+
+	// A shell outcome can open a card without another pointer event.
+	ui.AppendFileErrors({DocumentFileError{
+		DocumentFileOperation::Open, "/missing.txt"}});
+	CHECK(ui.CurrentPointerCursor() == ApplicationPointerCursor::Arrow);
+	const ApplicationPointerResult modalChrome = ui.HandlePointer(
+		MakePointer(PointerAction::Move, 8.0, 8.0));
+	REQUIRE(modalChrome.cursor == ApplicationPointerCursor::Arrow);
+	(void)ui.HandleKeyboard(MakeKey(Keys::Escape));
+	// Dismissing the modal restores the cursor for its underlying location.
+	CHECK(ui.CurrentPointerCursor() == ApplicationPointerCursor::Arrow);
+	(void)ui.HandlePointer(MakePointer(PointerAction::Move, 20.0, 100.0));
+	CHECK(ui.CurrentPointerCursor() == ApplicationPointerCursor::Editor);
+
+	DirtyBuffer(editor);
+	workspace.RequestClose();
+	ui.NotifyPromptBegan();
+	REQUIRE(workspace.PromptActive());
+	CHECK(ui.CurrentPointerCursor() == ApplicationPointerCursor::Arrow);
+	(void)ui.HandleKeyboard(MakeKey(Keys::Escape));
+	CHECK_FALSE(workspace.PromptActive());
+	CHECK(ui.CurrentPointerCursor() == ApplicationPointerCursor::Editor);
+}
+
 TEST_CASE("application UI overlay priority invalidates full frame on change") {
 	ApplicationEditor editor(320, 200);
 	PrepareChromeEditor(editor);

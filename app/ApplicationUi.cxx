@@ -239,6 +239,18 @@ ApplicationPointerCursor CursorFromChrome(bool pointerOverChrome) noexcept {
 		ApplicationPointerCursor::Editor;
 }
 
+ApplicationPointerCursor CursorBelowModal(const PointerInput &input,
+	const ApplicationLayout &layout) noexcept {
+	if (input.action == PointerAction::Leave) {
+		return ApplicationPointerCursor::Editor;
+	}
+	const bool overChrome = PointerInTopChrome(input, layout) ||
+		HitTestScrollBars(layout.scrollBars,
+			Scintilla::Internal::Point(input.x, input.y)).hit !=
+			ScrollBarHit::None;
+	return CursorFromChrome(overChrome);
+}
+
 /**
  * Apply menu, tab-strip, and scrollbar pointer transitions after modals.
  * Priority: active scrollbar drag, open menu, top chrome, scrollbar hit,
@@ -463,6 +475,14 @@ ApplicationUi::ApplicationUi(ApplicationEditor &editor_,
 	menuModel.recentFiles = recent_.Paths();
 }
 
+ApplicationUi::~ApplicationUi() {
+	if (!ownsEditorPainters) {
+		return;
+	}
+	editor->SetOverlayPainter(nullptr);
+	editor->SetPermanentChromePainter(nullptr);
+}
+
 ApplicationLayout ApplicationUi::Layout() const {
 	return BuildApplicationLayout(editor->FrameWidth(), editor->FrameHeight(),
 		editor->TopChromeInset(), menuModel, stripModel, editor->Scrollbars(),
@@ -503,6 +523,7 @@ void ApplicationUi::BindPainters() {
 		[this](Scintilla::Internal::Surface &surface, int, int) {
 			PaintPermanentChrome(surface);
 		});
+	ownsEditorPainters = true;
 	// Seed the overlay path from current models without a host ladder.
 	(void)SynchronizeComposition();
 }
@@ -526,6 +547,7 @@ BoundOverlay ApplicationUi::SynchronizeComposition() {
 			[this](Scintilla::Internal::Surface &surface, int, int) {
 				PaintActiveOverlay(surface);
 			});
+		ownsEditorPainters = true;
 	}
 	overlay = desired;
 	// Transparent overlays and dropdowns must not leave preserved pixels.
@@ -577,32 +599,44 @@ ApplicationPointerResult ApplicationUi::HandlePointer(
 	if (!fileErrors.empty()) {
 		ApplicationPointerResult result;
 		result.owner = ApplicationPointerOwner::FileError;
-		result.cursor = ApplicationPointerCursor::Arrow;
 		result.consumed = true;
 		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
 		HandleFileErrorPointer(input, layout.fileErrorCard, fileErrors, *editor,
 			fileErrorPressHit);
+		pointerCursor = CursorBelowModal(input, layout);
+		result.cursor = CurrentPointerCursor();
 		return result;
 	}
 
 	if (workspace->PromptActive()) {
 		ApplicationPointerResult result;
 		result.owner = ApplicationPointerOwner::UnsavedPrompt;
-		result.cursor = ApplicationPointerCursor::Arrow;
 		result.consumed = true;
 		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
 		(void)UpdateTabStripPointerState(input, layout, stripModel, *editor,
 			pointerOverChrome);
 		HandlePromptPointer(input, layout.unsavedCard, promptPressHit,
 			*workspace, *editor, cardFocus);
-		// Modal cards force the arrow even when strip hover updated chrome.
-		result.cursor = ApplicationPointerCursor::Arrow;
+		pointerCursor = CursorBelowModal(input, layout);
+		// An active modal forces the arrow; dismissal restores the cursor for
+		// the underlying chrome or editor location.
+		result.cursor = CurrentPointerCursor();
 		return result;
 	}
 
-	return HandleChromePointer(input, layout, menuModel, stripModel,
+	ApplicationPointerResult result = HandleChromePointer(
+		input, layout, menuModel, stripModel,
 		scrollBarInteraction, *recent, recentStatePath, *workspace, *editor,
 		pointerOverChrome);
+	pointerCursor = result.cursor;
+	return result;
+}
+
+ApplicationPointerCursor ApplicationUi::CurrentPointerCursor() const noexcept {
+	if (!fileErrors.empty() || workspace->PromptActive()) {
+		return ApplicationPointerCursor::Arrow;
+	}
+	return pointerCursor;
 }
 
 namespace {

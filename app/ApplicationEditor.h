@@ -223,7 +223,7 @@ public:
 	 */
 	using OverlayPainter = std::function<void(Scintilla::Internal::Surface &surface,
 		int width, int height)>;
-	void SetOverlayPainter(OverlayPainter painter);
+	void SetOverlayPainter(OverlayPainter painter) noexcept;
 	/**
 	 * Opaque permanent chrome (menu bar, tab strip, scrollbars, junction)
 	 * painted after Scintilla and before any modal overlay. Only runs when any
@@ -233,7 +233,7 @@ public:
 	 */
 	using PermanentChromePainter = std::function<void(
 		Scintilla::Internal::Surface &surface, int width, int height)>;
-	void SetPermanentChromePainter(PermanentChromePainter painter);
+	void SetPermanentChromePainter(PermanentChromePainter painter) noexcept;
 	/** Damage only the top chrome band. */
 	void InvalidateTopChrome();
 	/** Damage vertical bar, horizontal bar, and junction (when present). */

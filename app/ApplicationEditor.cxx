@@ -1038,11 +1038,12 @@ void ApplicationEditor::PresentFrame(
 	}
 }
 
-void ApplicationEditor::SetOverlayPainter(OverlayPainter painter) {
+void ApplicationEditor::SetOverlayPainter(OverlayPainter painter) noexcept {
 	overlayPainter = std::move(painter);
 }
 
-void ApplicationEditor::SetPermanentChromePainter(PermanentChromePainter painter) {
+void ApplicationEditor::SetPermanentChromePainter(
+	PermanentChromePainter painter) noexcept {
 	permanentChromePainter = std::move(painter);
 }
 

@@ -504,10 +504,9 @@ int main() {
 		Scalpel::RecentFiles recent =
 			Scalpel::LoadRecentFiles(recentStatePath);
 		Scalpel::ApplicationUi ui(editor, workspace, recent, recentStatePath);
-		Scalpel::ApplicationPointerCursor pointerCursor =
-			Scalpel::ApplicationPointerCursor::Editor;
 		const auto applyPointerCursor = [&] {
-			if (pointerCursor == Scalpel::ApplicationPointerCursor::Arrow) {
+			if (ui.CurrentPointerCursor() ==
+				Scalpel::ApplicationPointerCursor::Arrow) {
 				window.SetCursor(Scintilla::Internal::Window::Cursor::arrow);
 			} else {
 				window.SetCursor(editor.WindowState().cursor);
@@ -604,7 +603,6 @@ int main() {
 					// are decided inside ApplicationUi; deliver leftovers only.
 					const Scalpel::ApplicationPointerResult pointerResult =
 						ui.HandlePointer(*pointer);
-					pointerCursor = pointerResult.cursor;
 					if (!pointerResult.consumed) {
 						editor.HandlePointerInput(*pointer);
 					}
@@ -644,12 +642,7 @@ int main() {
 			// Overlay priority, painter bind/unbind, and full-frame invalidation
 			// when overlays appear, change, or disappear live in ApplicationUi.
 			(void)ui.SynchronizeComposition();
-			if (ui.Overlay() == Scalpel::BoundOverlay::FileError ||
-				ui.Overlay() == Scalpel::BoundOverlay::UnsavedChanges) {
-				window.SetCursor(Scintilla::Internal::Window::Cursor::arrow);
-			} else {
-				applyPointerCursor();
-			}
+			applyPointerCursor();
 			QueueFrameDamage(editor, window);
 			if (window.CanSubmitFrame()) {
 				const std::optional<Scalpel::FramePlan> plan = window.BeginFrame(

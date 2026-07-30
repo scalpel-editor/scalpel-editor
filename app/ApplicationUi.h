@@ -145,6 +145,7 @@ public:
 		DocumentWorkspace &workspace,
 		RecentFiles &recent,
 		std::string recentStatePath);
+	~ApplicationUi();
 
 	ApplicationUi(const ApplicationUi &) = delete;
 	ApplicationUi &operator=(const ApplicationUi &) = delete;
@@ -218,6 +219,14 @@ public:
 	 */
 	[[nodiscard]] ApplicationPointerResult HandlePointer(
 		const PointerInput &input);
+
+	/**
+	 * Current platform cursor choice. Retains the last pointer-routing result,
+	 * but modal cards force the arrow even when they appear without a pointer
+	 * event.
+	 */
+	[[nodiscard]] ApplicationPointerCursor CurrentPointerCursor()
+		const noexcept;
 
 	/**
 	 * Route one keyboard event through modal cards, menu navigation, open
@@ -326,12 +335,14 @@ private:
 	FileErrorCardPainter fileErrorPainter;
 	int cardFocus = 0;
 	BoundOverlay overlay = BoundOverlay::None;
+	ApplicationPointerCursor pointerCursor = ApplicationPointerCursor::Editor;
 	bool pointerOverChrome = false;
 	bool fileErrorPressHit = false;
 	std::optional<UnsavedCardHit> promptPressHit;
 	std::deque<DocumentFileError> fileErrors;
 	std::optional<ApplicationLayout> frameLayout;
 	DocumentId lastActiveDocument = 0;
+	bool ownsEditorPainters = false;
 };
 
 }
