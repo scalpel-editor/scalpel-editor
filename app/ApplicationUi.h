@@ -1,9 +1,10 @@
 // Application chrome and overlay selection state for the production editor.
 // Owns menu, tab-strip, scrollbar interaction, modal-card, error-queue, hover,
 // press, and which overlay is bound. Holds references to ApplicationEditor,
-// DocumentWorkspace, and RecentFiles; free routing functions still apply
-// transitions for now. ApplicationLayout is the one frame-size snapshot used for
-// hit testing and painting within an event or paint pass.
+// DocumentWorkspace, and RecentFiles. Pointer routing goes through
+// HandlePointer with an explicit owner; keyboard and shell-effect routing still
+// live in the host for now. ApplicationLayout is the one frame-size snapshot
+// used for hit testing and painting within an event or paint pass.
 
 #ifndef APPLICATIONUI_H
 #define APPLICATIONUI_H
@@ -12,6 +13,7 @@
 #include <optional>
 #include <string>
 
+#include "ApplicationInput.h"
 #include "DocumentId.h"
 #include "DocumentWorkspace.h"
 #include "FileErrorCard.h"
@@ -69,6 +71,49 @@ struct ApplicationLayout {
 	Scintilla::Internal::PRectangle client) noexcept;
 
 /**
+ * Who owns the pointer for one event after priority resolution.
+ * Order when deciding: file error, unsaved prompt, active scrollbar drag,
+ * editor selection capture, open menu, permanent chrome (including scrollbar
+ * hits), then editor.
+ */
+enum class ApplicationPointerOwner {
+	FileError,
+	UnsavedPrompt,
+	Menu,
+	ScrollBarDrag,
+	EditorCapture,
+	PermanentChrome,
+	Editor,
+};
+
+/** Cursor policy after a pointer event; Editor defers to WindowState().cursor. */
+enum class ApplicationPointerCursor {
+	Arrow,
+	Editor,
+};
+
+/** Which surfaces need repaint after HandlePointer applied transitions. */
+struct ApplicationPointerDamage {
+	bool topChrome = false;
+	bool scrollBars = false;
+	bool client = false;
+	bool frame = false;
+};
+
+/**
+ * Exact result of ApplicationUi::HandlePointer.
+ * consumed stops delivery to ApplicationEditor. activated is set when a menu
+ * item fires; tab and modal outcomes mutate workspace and owned state directly.
+ */
+struct ApplicationPointerResult {
+	bool consumed = false;
+	ApplicationPointerOwner owner = ApplicationPointerOwner::Editor;
+	ApplicationPointerCursor cursor = ApplicationPointerCursor::Editor;
+	std::optional<MenuBarItemId> activated;
+	ApplicationPointerDamage damage;
+};
+
+/**
  * Owns permanent-chrome models, scrollbar interaction, modal-card focus,
  * file-error queue, pointer hover and press state, and overlay selection.
  * Editor host, workspace, and recent files remain external injectees.
@@ -113,6 +158,17 @@ public:
 	void EndFrameLayout() noexcept;
 	/** The retained frame snapshot; throws when no frame layout is active. */
 	[[nodiscard]] const ApplicationLayout &FrameLayout() const;
+
+	/**
+	 * Route one pointer event through modal cards, menu, permanent chrome,
+	 * and scrollbar interaction. Builds one layout snapshot for all hit tests.
+	 * Applies model transitions, editor invalidation, scroll requests, menu
+	 * item activation, and tab operations. When consumed is false the host
+	 * must deliver the same event to ApplicationEditor (selection capture and
+	 * surface leave still need editor delivery).
+	 */
+	[[nodiscard]] ApplicationPointerResult HandlePointer(
+		const PointerInput &input);
 
 	[[nodiscard]] MenuBarModel &MenuModel() noexcept { return menuModel; }
 	[[nodiscard]] const MenuBarModel &MenuModel() const noexcept {
