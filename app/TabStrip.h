@@ -17,6 +17,7 @@
 #include "DocumentId.h"
 #include "Geometry.h"
 #include "Platform.h"
+#include "UiStyle.h"
 
 namespace Scalpel {
 
@@ -147,7 +148,7 @@ struct TabStripHitResult {
  */
 class TabStripPainter final {
 public:
-	TabStripPainter();
+	explicit TabStripPainter(const UiStyle &style = DefaultUiStyle());
 	~TabStripPainter() = default;
 
 	TabStripPainter(const TabStripPainter &) = delete;
@@ -161,7 +162,10 @@ public:
 		return labelFont.get();
 	}
 
+	[[nodiscard]] const UiStyle &Style() const noexcept { return style; }
+
 private:
+	const UiStyle &style;
 	std::shared_ptr<Scintilla::Internal::Font> labelFont;
 };
 

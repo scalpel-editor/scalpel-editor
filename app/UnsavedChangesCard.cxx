@@ -6,26 +6,45 @@ namespace Scalpel {
 
 namespace {
 
-constexpr int kCardMaxWidth = 360;
-constexpr int kCardMinWidth = 200;
-constexpr int kMargin = 16;
-constexpr int kCardPad = 16;
-constexpr int kTitleHeight = 24;
-constexpr int kSubtitleHeight = 20;
-constexpr int kTitleSubtitleGap = 6;
-constexpr int kButtonsTopGap = 16;
-constexpr int kButtonHeight = 32;
-constexpr int kButtonGap = 8;
-constexpr int kButtonCount = 3;
+int CardContentHeight(const UiStyle &style) noexcept {
+	return style.cardPad + style.cardTitleHeight + style.unsavedTitleSubtitleGap +
+		style.unsavedSubtitleHeight + style.cardButtonTopGap +
+		style.cardButtonHeight + style.cardPad;
+}
 
-constexpr int CardContentHeight() noexcept {
-	return kCardPad + kTitleHeight + kTitleSubtitleGap + kSubtitleHeight +
-		kButtonsTopGap + kButtonHeight + kCardPad;
+bool NonEmptyContains(const Scintilla::Internal::PRectangle &rc,
+	Scintilla::Internal::Point point) noexcept {
+	return rc.right > rc.left && rc.bottom > rc.top && rc.Contains(point);
+}
+
+using Scintilla::Internal::ColourRGBA;
+using Scintilla::Internal::Fill;
+using Scintilla::Internal::FillStroke;
+using Scintilla::Internal::Font;
+using Scintilla::Internal::FontParameters;
+using Scintilla::Internal::PRectangle;
+using Scintilla::Internal::Surface;
+using Scintilla::Internal::XYPOSITION;
+
+void DrawButton(Surface &surface, const PRectangle &rc, const Font *font,
+	std::string_view label, bool focused, const UiStyle &style) {
+	if (rc.Empty()) {
+		return;
+	}
+	const ColourRGBA fill = focused ? style.focusFill : style.cardButtonFill;
+	const ColourRGBA border =
+		focused ? style.focusBorder : style.cardButtonBorder;
+	const XYPOSITION borderWidth = focused ? 2.0 : 1.0;
+	surface.FillRectangle(rc, Fill(fill));
+	// Label first, then frame so border edges stay continuous over the text band.
+	DrawCenteredLabel(surface, rc, font, label, style.text);
+	DrawInsideFrame(surface, rc, border, borderWidth);
 }
 
 }
 
 UnsavedChangesCardLayout LayoutUnsavedChangesCard(int width, int height) noexcept {
+	const UiStyle &style = DefaultUiStyle();
 	UnsavedChangesCardLayout layout{
 		Scintilla::Internal::PRectangle{},
 		Scintilla::Internal::PRectangle{},
@@ -41,16 +60,16 @@ UnsavedChangesCardLayout LayoutUnsavedChangesCard(int width, int height) noexcep
 
 	layout.scrim = Scintilla::Internal::PRectangle::FromInts(0, 0, width, height);
 
-	const int usedHeight = CardContentHeight();
+	const int usedHeight = CardContentHeight(style);
 	// Prefer the design width; shrink only when the client cannot hold it.
-	const int maxByClient = std::max(0, width - 2 * kMargin);
-	int usedWidth = kCardMaxWidth;
+	const int maxByClient = std::max(0, width - 2 * style.cardMargin);
+	int usedWidth = style.unsavedCardMaxWidth;
 	if (maxByClient > 0) {
-		usedWidth = std::min(kCardMaxWidth, maxByClient);
+		usedWidth = std::min(style.unsavedCardMaxWidth, maxByClient);
 	}
 	// Keep a usable row even on very narrow clients.
-	if (usedWidth < kCardMinWidth && width >= kCardMinWidth) {
-		usedWidth = std::min(kCardMinWidth, width);
+	if (usedWidth < style.unsavedCardMinWidth && width >= style.unsavedCardMinWidth) {
+		usedWidth = std::min(style.unsavedCardMinWidth, width);
 	}
 	if (usedWidth > width) {
 		usedWidth = width;
@@ -74,23 +93,24 @@ UnsavedChangesCardLayout LayoutUnsavedChangesCard(int width, int height) noexcep
 	layout.card = Scintilla::Internal::PRectangle::FromInts(
 		cardLeft, cardTop, cardLeft + usedWidth, cardTop + usedHeight);
 
-	const int innerLeft = cardLeft + kCardPad;
-	const int innerRight = cardLeft + usedWidth - kCardPad;
+	const int innerLeft = cardLeft + style.cardPad;
+	const int innerRight = cardLeft + usedWidth - style.cardPad;
 	const int innerWidth = std::max(0, innerRight - innerLeft);
 
-	int y = cardTop + kCardPad;
+	int y = cardTop + style.cardPad;
 	layout.title = Scintilla::Internal::PRectangle::FromInts(
-		innerLeft, y, innerRight, y + kTitleHeight);
-	y += kTitleHeight + kTitleSubtitleGap;
+		innerLeft, y, innerRight, y + style.cardTitleHeight);
+	y += style.cardTitleHeight + style.unsavedTitleSubtitleGap;
 	layout.subtitle = Scintilla::Internal::PRectangle::FromInts(
-		innerLeft, y, innerRight, y + kSubtitleHeight);
-	y += kSubtitleHeight + kButtonsTopGap;
+		innerLeft, y, innerRight, y + style.unsavedSubtitleHeight);
+	y += style.unsavedSubtitleHeight + style.cardButtonTopGap;
 
-	const int totalGaps = kButtonGap * (kButtonCount - 1);
+	const int buttonCount = style.unsavedButtonCount;
+	const int totalGaps = style.unsavedButtonGap * (buttonCount - 1);
 	const int buttonWidth = innerWidth > totalGaps
-		? (innerWidth - totalGaps) / kButtonCount
-		: std::max(1, innerWidth / kButtonCount);
-	const int usedButtonsWidth = buttonWidth * kButtonCount +
+		? (innerWidth - totalGaps) / buttonCount
+		: std::max(1, innerWidth / buttonCount);
+	const int usedButtonsWidth = buttonWidth * buttonCount +
 		(innerWidth > totalGaps ? totalGaps : 0);
 	const int leftover = std::max(0, innerWidth - usedButtonsWidth);
 
@@ -98,8 +118,9 @@ UnsavedChangesCardLayout LayoutUnsavedChangesCard(int width, int height) noexcep
 	const auto makeButton = [&](int extraWidth) {
 		const int w = std::max(1, buttonWidth + extraWidth);
 		Scintilla::Internal::PRectangle rect =
-			Scintilla::Internal::PRectangle::FromInts(x, y, x + w, y + kButtonHeight);
-		x += w + (innerWidth > totalGaps ? kButtonGap : 0);
+			Scintilla::Internal::PRectangle::FromInts(
+				x, y, x + w, y + style.cardButtonHeight);
+		x += w + (innerWidth > totalGaps ? style.unsavedButtonGap : 0);
 		return rect;
 	};
 	layout.saveButton = makeButton(0);
@@ -107,15 +128,6 @@ UnsavedChangesCardLayout LayoutUnsavedChangesCard(int width, int height) noexcep
 	layout.cancelButton = makeButton(leftover);
 
 	return layout;
-}
-
-namespace {
-
-bool NonEmptyContains(const Scintilla::Internal::PRectangle &rc,
-	Scintilla::Internal::Point point) noexcept {
-	return rc.right > rc.left && rc.bottom > rc.top && rc.Contains(point);
-}
-
 }
 
 UnsavedCardHit HitTestUnsavedChangesCard(const UnsavedChangesCardLayout &layout,
@@ -133,7 +145,7 @@ UnsavedCardHit HitTestUnsavedChangesCard(const UnsavedChangesCardLayout &layout,
 }
 
 int CycleUnsavedCardFocus(int focusedIndex, int delta) noexcept {
-	constexpr int count = 3;
+	const int count = DefaultUiStyle().unsavedButtonCount;
 	int index = focusedIndex % count;
 	if (index < 0) {
 		index += count;
@@ -145,92 +157,14 @@ int CycleUnsavedCardFocus(int focusedIndex, int delta) noexcept {
 	return index;
 }
 
-namespace {
-
-using Scintilla::Internal::ColourRGBA;
-using Scintilla::Internal::Fill;
-using Scintilla::Internal::FillStroke;
-using Scintilla::Internal::Font;
-using Scintilla::Internal::FontParameters;
-using Scintilla::Internal::PRectangle;
-using Scintilla::Internal::Surface;
-using Scintilla::Internal::XYPOSITION;
-
-// Near Platform::Chrome for the card body; dark text like the gutter.
-const ColourRGBA kScrimFill(0x00, 0x00, 0x00, 0x59); // ~0.35 alpha
-const ColourRGBA kCardFill(0xf0, 0xf0, 0xf0, 0xff);
-const ColourRGBA kCardBorder(0x90, 0x90, 0x90, 0xff);
-const ColourRGBA kText(0x20, 0x20, 0x20, 0xff);
-const ColourRGBA kMutedText(0x60, 0x60, 0x60, 0xff);
-const ColourRGBA kButtonFill(0xe0, 0xe0, 0xe0, 0xff);
-const ColourRGBA kButtonBorder(0xa0, 0xa0, 0xa0, 0xff);
-const ColourRGBA kFocusedFill(0xd0, 0xe4, 0xf8, 0xff);
-const ColourRGBA kFocusedBorder(0x30, 0x70, 0xb0, 0xff);
-
-// FontParameters.size is device pixels (see FontPlatform FC_PIXEL_SIZE). Match
-// ViewStyle at 96 DPI: points * 96/72, same as DeviceHeightFont / 100.
-constexpr float PixelSizeFromPoints(float points) noexcept {
-	return points * 96.0f / 72.0f;
-}
-
-/**
- * Centre label ink with DrawTextTransparent. DrawTextNoClip fills an opaque
- * background rectangle that erases button borders drawn underneath.
- * Pen is pixel-aligned so GL_NEAREST glyph samples stay stable.
- */
-void DrawCenteredLabel(Surface &surface, const PRectangle &rc, const Font *font,
-	std::string_view text, ColourRGBA fore) {
-	if (!font || text.empty() || rc.Empty()) {
-		return;
-	}
-	const XYPOSITION textWidth = surface.WidthText(font, text);
-	const XYPOSITION ascent = surface.Ascent(font);
-	const XYPOSITION height = surface.Height(font);
-	// Integer pen so GL_NEAREST glyph samples stay stable.
-	const XYPOSITION x = static_cast<XYPOSITION>(static_cast<int>(
-		rc.left + (rc.Width() - textWidth) / 2.0));
-	const XYPOSITION ybase = static_cast<XYPOSITION>(static_cast<int>(
-		rc.top + (rc.Height() - height) / 2.0 + ascent));
-	const PRectangle textRc(x, rc.top, x + textWidth, rc.bottom);
-	surface.DrawTextTransparent(textRc, font, ybase, text, fore);
-}
-
-/** Axis-aligned border that sits inside rc (integer-friendly, no poly-line miters). */
-void DrawInsideFrame(Surface &surface, const PRectangle &rc, ColourRGBA colour,
-	XYPOSITION thickness) {
-	if (rc.Empty() || thickness <= 0.0) {
-		return;
-	}
-	const XYPOSITION t = std::min(thickness, std::min(rc.Width(), rc.Height()) / 2.0);
-	const Fill fill(colour);
-	// Top and bottom span the full width; left and right sit between them.
-	surface.FillRectangle(PRectangle(rc.left, rc.top, rc.right, rc.top + t), fill);
-	surface.FillRectangle(PRectangle(rc.left, rc.bottom - t, rc.right, rc.bottom), fill);
-	surface.FillRectangle(PRectangle(rc.left, rc.top + t, rc.left + t, rc.bottom - t), fill);
-	surface.FillRectangle(PRectangle(rc.right - t, rc.top + t, rc.right, rc.bottom - t), fill);
-}
-
-void DrawButton(Surface &surface, const PRectangle &rc, const Font *font,
-	std::string_view label, bool focused) {
-	if (rc.Empty()) {
-		return;
-	}
-	const ColourRGBA fill = focused ? kFocusedFill : kButtonFill;
-	const ColourRGBA border = focused ? kFocusedBorder : kButtonBorder;
-	const XYPOSITION borderWidth = focused ? 2.0 : 1.0;
-	surface.FillRectangle(rc, Fill(fill));
-	// Label first, then frame so border edges stay continuous over the text band.
-	DrawCenteredLabel(surface, rc, font, label, kText);
-	DrawInsideFrame(surface, rc, border, borderWidth);
-}
-
-}
-
-UnsavedChangesCardPainter::UnsavedChangesCardPainter() {
+UnsavedChangesCardPainter::UnsavedChangesCardPainter(const UiStyle &styleIn)
+	: style(styleIn) {
 	// Match Platform::DefaultFontSize (16pt) and a slightly smaller body, using
 	// the same 96-DPI pixel conversion as ViewStyle::FontRealised.
-	titleFont = Font::Allocate(FontParameters{"system-ui", PixelSizeFromPoints(16.0f)});
-	bodyFont = Font::Allocate(FontParameters{"system-ui", PixelSizeFromPoints(14.0f)});
+	titleFont = Font::Allocate(FontParameters{
+		style.fontName, UiPixelSizeFromPoints(style.cardTitlePoints)});
+	bodyFont = Font::Allocate(FontParameters{
+		style.fontName, UiPixelSizeFromPoints(style.cardBodyPoints)});
 }
 
 void UnsavedChangesCardPainter::Paint(Surface &surface,
@@ -240,21 +174,23 @@ void UnsavedChangesCardPainter::Paint(Surface &surface,
 	int focusedButtonIndex) const {
 	// Dim the whole client; corner radius 0 for a flat scrim.
 	surface.AlphaRectangle(layout.scrim, 0.0,
-		FillStroke(kScrimFill, ColourRGBA(0, 0, 0, 0), 0.0));
+		FillStroke(style.cardScrim, ColourRGBA(0, 0, 0, 0), 0.0));
 
 	if (!layout.card.Empty()) {
-		surface.FillRectangle(layout.card, Fill(kCardFill));
-		DrawInsideFrame(surface, layout.card, kCardBorder, 1.0);
+		surface.FillRectangle(layout.card, Fill(style.cardFill));
+		DrawInsideFrame(surface, layout.card, style.cardBorder, 1.0);
 	}
 
-	DrawCenteredLabel(surface, layout.title, titleFont.get(), title, kText);
-	DrawCenteredLabel(surface, layout.subtitle, bodyFont.get(), subtitle, kMutedText);
+	DrawCenteredLabel(surface, layout.title, titleFont.get(), title, style.text);
+	DrawCenteredLabel(surface, layout.subtitle, bodyFont.get(), subtitle,
+		style.mutedText);
 
 	DrawButton(surface, layout.saveButton, bodyFont.get(), "Save",
-		focusedButtonIndex == 0);
+		focusedButtonIndex == 0, style);
 	DrawButton(surface, layout.discardButton, bodyFont.get(), "Discard",
-		focusedButtonIndex == 1);
+		focusedButtonIndex == 1, style);
 	DrawButton(surface, layout.cancelButton, bodyFont.get(), "Cancel",
-		focusedButtonIndex == 2);
+		focusedButtonIndex == 2, style);
 }
+
 }

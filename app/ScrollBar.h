@@ -14,6 +14,7 @@
 #include "Platform.h"
 #include "Position.h"
 #include "ScrollMetrics.h"
+#include "UiStyle.h"
 
 namespace Scalpel {
 
@@ -150,7 +151,8 @@ struct ScrollBarPointerResult {
 	Scintilla::Internal::Point point) noexcept;
 
 void PaintScrollBars(Scintilla::Internal::Surface &surface,
-	const ScrollBarLayout &layout, const ScrollBarPaintState &paint) noexcept;
+	const ScrollBarLayout &layout, const ScrollBarPaintState &paint,
+	const UiStyle &style = DefaultUiStyle()) noexcept;
 
 [[nodiscard]] ScrollBarPaintState ScrollBarPaintFromInteraction(
 	const ScrollBarInteraction &interaction) noexcept;

@@ -8,6 +8,7 @@
 
 #include "Geometry.h"
 #include "Platform.h"
+#include "UiStyle.h"
 
 namespace Scalpel {
 
@@ -28,7 +29,7 @@ struct FileErrorCardLayout {
 
 class FileErrorCardPainter final {
 public:
-	FileErrorCardPainter();
+	explicit FileErrorCardPainter(const UiStyle &style = DefaultUiStyle());
 	~FileErrorCardPainter() = default;
 
 	FileErrorCardPainter(const FileErrorCardPainter &) = delete;
@@ -39,7 +40,10 @@ public:
 		std::string_view title,
 		std::string_view path) const;
 
+	[[nodiscard]] const UiStyle &Style() const noexcept { return style; }
+
 private:
+	const UiStyle &style;
 	std::shared_ptr<Scintilla::Internal::Font> titleFont;
 	std::shared_ptr<Scintilla::Internal::Font> bodyFont;
 };

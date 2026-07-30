@@ -1,5 +1,7 @@
 #include "ScrollBar.h"
 
+#include "UiStyle.h"
+
 #include <algorithm>
 #include <limits>
 
@@ -13,16 +15,6 @@ using Scintilla::Internal::PRectangle;
 using Scintilla::Internal::Point;
 using Scintilla::Internal::Surface;
 
-constexpr int kThickness = 14;
-constexpr int kMinThumb = 24;
-
-// White track and junction; grey thumb only when the axis can scroll.
-const ColourRGBA kTrackFill(0xff, 0xff, 0xff, 0xff);
-const ColourRGBA kThumbFill(0xc8, 0xc8, 0xc8, 0xff);
-const ColourRGBA kThumbHover(0xb0, 0xb0, 0xb0, 0xff);
-const ColourRGBA kThumbPressed(0x98, 0x98, 0x98, 0xff);
-const ColourRGBA kThumbDisabled(0xff, 0xff, 0xff, 0xff);
-const ColourRGBA kJunctionFill(0xff, 0xff, 0xff, 0xff);
 
 bool NonEmpty(const PRectangle &rc) noexcept {
 	return rc.right > rc.left && rc.bottom > rc.top;
@@ -51,19 +43,19 @@ int TrackLengthAlongAxis(const PRectangle &track, ScrollBarAxis axis) noexcept {
 }
 
 ColourRGBA ThumbColour(const ScrollBarPaintState &paint, ScrollBarAxis axis,
-	bool enabled, ScrollBarHit part) noexcept {
+	bool enabled, ScrollBarHit part, const UiStyle &style) noexcept {
 	if (!enabled) {
-		return kThumbDisabled;
+		return style.scrollTrackFill;
 	}
 	if (paint.pressed != ScrollBarHit::None && paint.pressedAxis == axis &&
 		paint.pressed == part) {
-		return kThumbPressed;
+		return style.scrollThumbPressed;
 	}
 	if (paint.hover != ScrollBarHit::None && paint.hoverAxis == axis &&
 		paint.hover == part) {
-		return kThumbHover;
+		return style.scrollThumbHover;
 	}
-	return kThumbFill;
+	return style.scrollThumbFill;
 }
 
 PRectangle MakeThumbRect(const PRectangle &track, ScrollBarAxis axis,
@@ -104,11 +96,11 @@ void FillAxisLayout(ScrollBarAxisLayout &axisLayout, ScrollBarAxis axis) noexcep
 }
 
 int ScrollBarThickness() noexcept {
-	return kThickness;
+	return DefaultUiStyle().scrollBarThickness;
 }
 
 int ScrollBarMinThumbLength() noexcept {
-	return kMinThumb;
+	return DefaultUiStyle().scrollBarMinThumb;
 }
 
 int ScrollBarThumbLength(Scintilla::Line upperBound, Scintilla::Line pageSize,
@@ -127,8 +119,8 @@ int ScrollBarThumbLength(Scintilla::Line upperBound, Scintilla::Line pageSize,
 	if (length < 1) {
 		length = 1;
 	}
-	if (trackLength >= kMinThumb) {
-		length = std::max(length, static_cast<int64_t>(kMinThumb));
+	if (trackLength >= DefaultUiStyle().scrollBarMinThumb) {
+		length = std::max(length, static_cast<int64_t>(DefaultUiStyle().scrollBarMinThumb));
 	}
 	if (length > trackLength) {
 		length = trackLength;
@@ -277,25 +269,25 @@ ScrollBarHitResult HitTestScrollBars(const ScrollBarLayout &layout,
 }
 
 void PaintScrollBars(Surface &surface, const ScrollBarLayout &layout,
-	const ScrollBarPaintState &paint) noexcept {
+	const ScrollBarPaintState &paint, const UiStyle &style) noexcept {
 	if (NonEmpty(layout.vertical.track)) {
-		surface.FillRectangle(layout.vertical.track, Fill(kTrackFill));
+		surface.FillRectangle(layout.vertical.track, Fill(style.scrollTrackFill));
 		if (NonEmpty(layout.vertical.thumb)) {
 			const ColourRGBA colour = ThumbColour(paint, ScrollBarAxis::Vertical,
-				layout.vertical.enabled, ScrollBarHit::Thumb);
+				layout.vertical.enabled, ScrollBarHit::Thumb, style);
 			surface.FillRectangle(layout.vertical.thumb, Fill(colour));
 		}
 	}
 	if (NonEmpty(layout.horizontal.track)) {
-		surface.FillRectangle(layout.horizontal.track, Fill(kTrackFill));
+		surface.FillRectangle(layout.horizontal.track, Fill(style.scrollTrackFill));
 		if (NonEmpty(layout.horizontal.thumb)) {
 			const ColourRGBA colour = ThumbColour(paint, ScrollBarAxis::Horizontal,
-				layout.horizontal.enabled, ScrollBarHit::Thumb);
+				layout.horizontal.enabled, ScrollBarHit::Thumb, style);
 			surface.FillRectangle(layout.horizontal.thumb, Fill(colour));
 		}
 	}
 	if (NonEmpty(layout.junction)) {
-		surface.FillRectangle(layout.junction, Fill(kJunctionFill));
+		surface.FillRectangle(layout.junction, Fill(style.scrollTrackFill));
 	}
 }
 

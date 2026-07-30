@@ -1,5 +1,7 @@
 #include "MenuBar.h"
 
+#include "UiStyle.h"
+
 #include <algorithm>
 
 #include "DocumentFile.h"
@@ -56,21 +58,6 @@ using Scintilla::Internal::Point;
 using Scintilla::Internal::Surface;
 using Scintilla::Internal::XYPOSITION;
 
-constexpr int kBarHeight = 24;
-constexpr int kHeadingPadX = 12;
-constexpr int kFileHeadingWidth = 48;
-constexpr int kEditHeadingWidth = 48;
-constexpr int kRecentHeadingWidth = 68;
-constexpr int kItemHeight = 24;
-constexpr int kSeparatorHeight = 9;
-constexpr int kDropdownPadY = 4;
-constexpr int kLabelPadLeft = 12;
-constexpr int kShortcutPadRight = 12;
-constexpr int kLabelShortcutGap = 24;
-constexpr int kShortcutColumnWidth = 100;
-// Fits "Save As…" + gap + "Ctrl+Shift+S" at the menu font with padding.
-constexpr int kDropdownPreferredWidth = 220;
-constexpr int kRecentDropdownPreferredWidth = 440;
 
 std::vector<MenuBarItemId> OrderedItems(const MenuBarModel &model,
 	ApplicationMenu menu) {
@@ -110,11 +97,6 @@ std::optional<MenuBarItemId> FirstEnabledItem(const MenuBarModel &model,
 	return std::nullopt;
 }
 
-// FontParameters.size is device pixels (see FontPlatform FC_PIXEL_SIZE).
-constexpr float PixelSizeFromPoints(float points) noexcept {
-	return points * 96.0f / 72.0f;
-}
-
 bool NonEmpty(const PRectangle &rc) noexcept {
 	return rc.right > rc.left && rc.bottom > rc.top;
 }
@@ -139,32 +121,33 @@ std::string_view HeadingLabel(ApplicationMenu menu) noexcept {
 	return "File";
 }
 
-int HeadingWidth(ApplicationMenu menu) noexcept {
+int HeadingWidth(ApplicationMenu menu, const UiStyle &style) noexcept {
 	switch (menu) {
 	case ApplicationMenu::File:
-		return kFileHeadingWidth;
+		return style.menuFileHeadingWidth;
 	case ApplicationMenu::Edit:
-		return kEditHeadingWidth;
+		return style.menuEditHeadingWidth;
 	case ApplicationMenu::Recent:
-		return kRecentHeadingWidth;
+		return style.menuRecentHeadingWidth;
 	}
-	return kFileHeadingWidth;
+	return style.menuFileHeadingWidth;
 }
 
-int DropdownPreferredWidth(ApplicationMenu menu) noexcept {
+int DropdownPreferredWidth(ApplicationMenu menu, const UiStyle &style) noexcept {
 	return menu == ApplicationMenu::Recent ?
-		kRecentDropdownPreferredWidth : kDropdownPreferredWidth;
+		style.menuRecentDropdownPreferredWidth : style.menuDropdownPreferredWidth;
 }
 
-int DropdownContentHeight(const MenuBarModel &model, ApplicationMenu menu) {
-	int height = kDropdownPadY * 2;
+int DropdownContentHeight(const MenuBarModel &model, ApplicationMenu menu,
+	const UiStyle &style) {
+	int height = style.menuDropdownPadY * 2;
 	for (const MenuBarItemId item : OrderedItems(model, menu)) {
 		if (item.kind == MenuBarItemKind::ClearRecentFiles ||
 			(item.kind == MenuBarItemKind::ApplicationAction &&
 				InfoFor(item.action).separatorBefore)) {
-			height += kSeparatorHeight;
+			height += style.menuSeparatorHeight;
 		}
-		height += kItemHeight;
+		height += style.menuItemHeight;
 	}
 	return height;
 }
@@ -207,80 +190,6 @@ std::string ItemShortcut(MenuBarItemId item) {
 		return std::string(InfoFor(item.action).shortcutLabel);
 	}
 	return {};
-}
-
-// Near Platform chrome and TabStrip fills.
-const ColourRGBA kBarFill(0xe8, 0xe8, 0xe8, 0xff);
-const ColourRGBA kBarBorder(0xb8, 0xb8, 0xb8, 0xff);
-const ColourRGBA kHeadingHover(0xee, 0xee, 0xee, 0xff);
-const ColourRGBA kHeadingOpen(0xd0, 0xe4, 0xf8, 0xff);
-const ColourRGBA kDropdownFill(0xfc, 0xfc, 0xfc, 0xff);
-const ColourRGBA kDropdownBorder(0xa0, 0xa0, 0xa0, 0xff);
-const ColourRGBA kDropdownShadow(0x00, 0x00, 0x00, 0x28);
-const ColourRGBA kItemHover(0xe8, 0xf0, 0xf8, 0xff);
-const ColourRGBA kItemFocus(0xd0, 0xe4, 0xf8, 0xff);
-const ColourRGBA kSeparator(0xd0, 0xd0, 0xd0, 0xff);
-const ColourRGBA kText(0x20, 0x20, 0x20, 0xff);
-const ColourRGBA kMutedText(0x60, 0x60, 0x60, 0xff);
-const ColourRGBA kDisabledText(0xa0, 0xa0, 0xa0, 0xff);
-
-void DrawInsideFrame(Surface &surface, const PRectangle &rc, ColourRGBA colour,
-	XYPOSITION thickness) {
-	if (rc.Empty() || thickness <= 0.0) {
-		return;
-	}
-	const XYPOSITION t = std::min(thickness, std::min(rc.Width(), rc.Height()) / 2.0);
-	const Fill fill(colour);
-	surface.FillRectangle(PRectangle(rc.left, rc.top, rc.right, rc.top + t), fill);
-	surface.FillRectangle(PRectangle(rc.left, rc.bottom - t, rc.right, rc.bottom), fill);
-	surface.FillRectangle(PRectangle(rc.left, rc.top + t, rc.left + t, rc.bottom - t), fill);
-	surface.FillRectangle(PRectangle(rc.right - t, rc.top + t, rc.right, rc.bottom - t), fill);
-}
-
-void DrawLeftAlignedLabel(Surface &surface, const PRectangle &rc, const Font *font,
-	std::string_view text, ColourRGBA fore) {
-	if (!font || text.empty() || rc.Empty()) {
-		return;
-	}
-	const XYPOSITION ascent = surface.Ascent(font);
-	const XYPOSITION height = surface.Height(font);
-	const XYPOSITION x = static_cast<XYPOSITION>(static_cast<int>(rc.left));
-	const XYPOSITION ybase = static_cast<XYPOSITION>(static_cast<int>(
-		rc.top + (rc.Height() - height) / 2.0 + ascent));
-	const PRectangle textRc(x, rc.top, rc.right, rc.bottom);
-	surface.DrawTextTransparent(textRc, font, ybase, text, fore);
-}
-
-void DrawRightAlignedLabel(Surface &surface, const PRectangle &rc, const Font *font,
-	std::string_view text, ColourRGBA fore) {
-	if (!font || text.empty() || rc.Empty()) {
-		return;
-	}
-	const XYPOSITION textWidth = surface.WidthText(font, text);
-	const XYPOSITION ascent = surface.Ascent(font);
-	const XYPOSITION height = surface.Height(font);
-	const XYPOSITION x = static_cast<XYPOSITION>(static_cast<int>(
-		std::max(rc.left, rc.right - textWidth)));
-	const XYPOSITION ybase = static_cast<XYPOSITION>(static_cast<int>(
-		rc.top + (rc.Height() - height) / 2.0 + ascent));
-	const PRectangle textRc(x, rc.top, rc.right, rc.bottom);
-	surface.DrawTextTransparent(textRc, font, ybase, text, fore);
-}
-
-void DrawCenteredLabel(Surface &surface, const PRectangle &rc, const Font *font,
-	std::string_view text, ColourRGBA fore) {
-	if (!font || text.empty() || rc.Empty()) {
-		return;
-	}
-	const XYPOSITION textWidth = surface.WidthText(font, text);
-	const XYPOSITION ascent = surface.Ascent(font);
-	const XYPOSITION height = surface.Height(font);
-	const XYPOSITION x = static_cast<XYPOSITION>(static_cast<int>(
-		rc.left + (rc.Width() - textWidth) / 2.0));
-	const XYPOSITION ybase = static_cast<XYPOSITION>(static_cast<int>(
-		rc.top + (rc.Height() - height) / 2.0 + ascent));
-	const PRectangle textRc(x, rc.top, x + textWidth, rc.bottom);
-	surface.DrawTextTransparent(textRc, font, ybase, text, fore);
 }
 
 }
@@ -352,18 +261,19 @@ bool UpdateMenuBarActionState(MenuBarModel &model, ApplicationEditor &editor) {
 }
 
 int MenuBarHeight() noexcept {
-	return kBarHeight;
+	return DefaultUiStyle().menuBarHeight;
 }
 
 MenuBarLayout LayoutMenuBar(int frameWidth, int frameHeight,
 	const MenuBarModel &model) noexcept {
+	const UiStyle &style = DefaultUiStyle();
 	const PRectangle empty = PRectangle::FromInts(0, 0, 0, 0);
 	MenuBarLayout layout{empty, {}, empty, std::nullopt, {}};
 	if (frameWidth <= 0) {
 		return layout;
 	}
 
-	const int height = kBarHeight;
+	const int height = style.menuBarHeight;
 	layout.bar = PRectangle::FromInts(0, 0, frameWidth, height);
 
 	// Headings pack left-to-right; clamp each to the remaining bar width.
@@ -374,7 +284,7 @@ MenuBarLayout LayoutMenuBar(int frameWidth, int frameHeight,
 		ApplicationMenu::Recent,
 	};
 	for (ApplicationMenu menu : menus) {
-		const int preferred = HeadingWidth(menu);
+		const int preferred = HeadingWidth(menu, style);
 		const int available = std::max(0, frameWidth - x);
 		const int used = std::min(preferred, available);
 		if (used <= 0) {
@@ -408,7 +318,7 @@ MenuBarLayout LayoutMenuBar(int frameWidth, int frameHeight,
 		return layout;
 	}
 
-	int dropdownWidth = DropdownPreferredWidth(open);
+	int dropdownWidth = DropdownPreferredWidth(open, style);
 	if (dropdownWidth > frameWidth) {
 		dropdownWidth = frameWidth;
 	}
@@ -417,7 +327,7 @@ MenuBarLayout LayoutMenuBar(int frameWidth, int frameHeight,
 		dropdownLeft = std::max(0, frameWidth - dropdownWidth);
 	}
 
-	const int contentHeight = DropdownContentHeight(model, open);
+	const int contentHeight = DropdownContentHeight(model, open, style);
 	int dropdownTop = height;
 	int dropdownBottom = dropdownTop + contentHeight;
 	// Keep the panel on-screen when the frame is shorter than the menu.
@@ -434,41 +344,42 @@ MenuBarLayout LayoutMenuBar(int frameWidth, int frameHeight,
 
 	const int innerLeft = dropdownLeft;
 	const int innerRight = dropdownLeft + dropdownWidth;
-	const int shortcutWidth = std::min(kShortcutColumnWidth,
-		std::max(0, dropdownWidth - kLabelPadLeft - kShortcutPadRight -
-			kLabelShortcutGap / 2));
+	const int shortcutWidth = std::min(style.menuShortcutColumnWidth,
+		std::max(0, dropdownWidth - style.menuLabelPadLeft - style.menuShortcutPadRight -
+			style.menuLabelShortcutGap / 2));
 
-	int y = dropdownTop + kDropdownPadY;
+	int y = dropdownTop + style.menuDropdownPadY;
 	for (const MenuBarItemId item : OrderedItems(model, open)) {
 		const bool separatorBefore = SeparatorBefore(item);
 		PRectangle separator = empty;
 		if (separatorBefore) {
-			const int sepBottom = y + kSeparatorHeight;
+			const int sepBottom = y + style.menuSeparatorHeight;
 			if (sepBottom > dropdownBottom) {
 				break;
 			}
 			// Horizontal rule centered in the separator band.
-			const int ruleY = y + kSeparatorHeight / 2;
+			const int ruleY = y + style.menuSeparatorHeight / 2;
 			separator = PRectangle::FromInts(
-				innerLeft + kLabelPadLeft, ruleY,
-				innerRight - kShortcutPadRight, ruleY + 1);
+				innerLeft + style.menuLabelPadLeft, ruleY,
+				innerRight - style.menuShortcutPadRight, ruleY + 1);
 			y = sepBottom;
 		}
 
-		const int rowBottom = y + kItemHeight;
+		const int rowBottom = y + style.menuItemHeight;
 		if (rowBottom > dropdownBottom) {
 			break;
 		}
 		const PRectangle row = PRectangle::FromInts(
 			innerLeft, y, innerRight, rowBottom);
 		const int labelRight = std::max(
-			innerLeft + kLabelPadLeft,
-			innerRight - kShortcutPadRight - shortcutWidth - kLabelShortcutGap);
+			innerLeft + style.menuLabelPadLeft,
+			innerRight - style.menuShortcutPadRight - shortcutWidth -
+				style.menuLabelShortcutGap);
 		const PRectangle label = PRectangle::FromInts(
-			innerLeft + kLabelPadLeft, y, labelRight, rowBottom);
+			innerLeft + style.menuLabelPadLeft, y, labelRight, rowBottom);
 		const PRectangle shortcut = PRectangle::FromInts(
-			innerRight - kShortcutPadRight - shortcutWidth, y,
-			innerRight - kShortcutPadRight, rowBottom);
+			innerRight - style.menuShortcutPadRight - shortcutWidth, y,
+			innerRight - style.menuShortcutPadRight, rowBottom);
 
 		layout.items.push_back(MenuBarItemLayout{
 			item,
@@ -918,8 +829,10 @@ MenuBarKeyboardResult HandleMenuBarKeyboard(MenuBarModel &model,
 	return result;
 }
 
-MenuBarPainter::MenuBarPainter() {
-	labelFont = Font::Allocate(FontParameters{"system-ui", PixelSizeFromPoints(12.0f)});
+MenuBarPainter::MenuBarPainter(const UiStyle &styleIn)
+	: style(styleIn) {
+	labelFont = Font::Allocate(FontParameters{
+		style.fontName, UiPixelSizeFromPoints(style.chromeLabelPoints)});
 }
 
 void MenuBarPainter::PaintBar(Surface &surface, const MenuBarLayout &layout,
@@ -928,12 +841,12 @@ void MenuBarPainter::PaintBar(Surface &surface, const MenuBarLayout &layout,
 		return;
 	}
 
-	surface.FillRectangle(layout.bar, Fill(kBarFill));
+	surface.FillRectangle(layout.bar, Fill(style.menuBarFill));
 	// Bottom edge separates the menu bar from chrome below.
 	surface.FillRectangle(
 		PRectangle(layout.bar.left, layout.bar.bottom - 1.0,
 			layout.bar.right, layout.bar.bottom),
-		Fill(kBarBorder));
+		Fill(style.chromeBorder));
 
 	const Font *font = labelFont.get();
 	for (const MenuBarHeadingLayout &heading : layout.headings) {
@@ -945,18 +858,18 @@ void MenuBarPainter::PaintBar(Surface &surface, const MenuBarLayout &layout,
 		const bool hovered = model.hoveredHeading.has_value() &&
 			*model.hoveredHeading == heading.menu;
 		if (open) {
-			surface.FillRectangle(heading.bounds, Fill(kHeadingOpen));
+			surface.FillRectangle(heading.bounds, Fill(style.focusFill));
 		} else if (hovered) {
-			surface.FillRectangle(heading.bounds, Fill(kHeadingHover));
+			surface.FillRectangle(heading.bounds, Fill(style.hoverFill));
 		}
 		if (font) {
 			// Inset so centered labels do not sit on the heading edge.
 			const PRectangle textRc(
-				heading.bounds.left + kHeadingPadX / 4.0,
+				heading.bounds.left + style.menuHeadingPadX / 4.0,
 				heading.bounds.top,
-				heading.bounds.right - kHeadingPadX / 4.0,
+				heading.bounds.right - style.menuHeadingPadX / 4.0,
 				heading.bounds.bottom);
-			DrawCenteredLabel(surface, textRc, font, heading.label, kText);
+			DrawCenteredLabel(surface, textRc, font, heading.label, style.text);
 		}
 	}
 }
@@ -972,14 +885,14 @@ void MenuBarPainter::PaintDropdown(Surface &surface, const MenuBarLayout &layout
 	const PRectangle shadow(
 		layout.dropdown.left + 2.0, layout.dropdown.top + 2.0,
 		layout.dropdown.right + 2.0, layout.dropdown.bottom + 2.0);
-	surface.FillRectangle(shadow, Fill(kDropdownShadow));
+	surface.FillRectangle(shadow, Fill(style.menuDropdownShadow));
 
-	surface.FillRectangle(layout.dropdown, Fill(kDropdownFill));
+	surface.FillRectangle(layout.dropdown, Fill(style.panelFill));
 
 	const Font *font = labelFont.get();
 	for (const MenuBarItemLayout &item : layout.items) {
 		if (item.separatorBefore && NonEmpty(item.separator)) {
-			surface.FillRectangle(item.separator, Fill(kSeparator));
+			surface.FillRectangle(item.separator, Fill(style.menuSeparator));
 		}
 		if (!NonEmpty(item.row)) {
 			continue;
@@ -991,21 +904,22 @@ void MenuBarPainter::PaintDropdown(Surface &surface, const MenuBarLayout &layout
 			*model.focusedItem == item.item;
 		if (item.enabled && (hovered || focused)) {
 			surface.FillRectangle(item.row,
-				Fill(focused ? kItemFocus : kItemHover));
+				Fill(focused ? style.focusFill : style.menuItemHover));
 		}
 
 		if (!font) {
 			continue;
 		}
-		const ColourRGBA ink = item.enabled ? kText : kDisabledText;
-		const ColourRGBA shortcutInk = item.enabled ? kMutedText : kDisabledText;
+		const ColourRGBA ink = item.enabled ? style.text : style.disabledText;
+		const ColourRGBA shortcutInk =
+			item.enabled ? style.mutedText : style.disabledText;
 		DrawLeftAlignedLabel(surface, item.label, font, item.labelText, ink);
 		DrawRightAlignedLabel(surface, item.shortcut, font, item.shortcutText,
 			shortcutInk);
 	}
 
 	// Draw last so row hover and focus fills cannot cover the panel edge.
-	DrawInsideFrame(surface, layout.dropdown, kDropdownBorder, 1.0);
+	DrawInsideFrame(surface, layout.dropdown, style.cardButtonBorder, 1.0);
 }
 
 void MenuBarPainter::Paint(Surface &surface, const MenuBarLayout &layout,

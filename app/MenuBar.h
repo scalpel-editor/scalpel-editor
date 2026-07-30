@@ -21,6 +21,7 @@
 #include "ApplicationInput.h"
 #include "Geometry.h"
 #include "Platform.h"
+#include "UiStyle.h"
 
 namespace Scalpel {
 
@@ -259,7 +260,7 @@ void CloseMenuBar(MenuBarModel &model) noexcept;
  */
 class MenuBarPainter final {
 public:
-	MenuBarPainter();
+	explicit MenuBarPainter(const UiStyle &style = DefaultUiStyle());
 	~MenuBarPainter() = default;
 
 	MenuBarPainter(const MenuBarPainter &) = delete;
@@ -284,7 +285,10 @@ public:
 		return labelFont.get();
 	}
 
+	[[nodiscard]] const UiStyle &Style() const noexcept { return style; }
+
 private:
+	const UiStyle &style;
 	std::shared_ptr<Scintilla::Internal::Font> labelFont;
 };
 

@@ -8,6 +8,7 @@
 
 #include "Geometry.h"
 #include "Platform.h"
+#include "UiStyle.h"
 
 namespace Scalpel {
 
@@ -45,7 +46,7 @@ enum class UnsavedCardHit {
  */
 class UnsavedChangesCardPainter final {
 public:
-	UnsavedChangesCardPainter();
+	explicit UnsavedChangesCardPainter(const UiStyle &style = DefaultUiStyle());
 	~UnsavedChangesCardPainter() = default;
 
 	UnsavedChangesCardPainter(const UnsavedChangesCardPainter &) = delete;
@@ -57,7 +58,10 @@ public:
 		std::string_view subtitle,
 		int focusedButtonIndex) const;
 
+	[[nodiscard]] const UiStyle &Style() const noexcept { return style; }
+
 private:
+	const UiStyle &style;
 	std::shared_ptr<Scintilla::Internal::Font> titleFont;
 	std::shared_ptr<Scintilla::Internal::Font> bodyFont;
 };

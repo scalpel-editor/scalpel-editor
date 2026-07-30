@@ -181,6 +181,7 @@ add_library(scalpel_application OBJECT
   RecentFiles.cxx
   ScrollBar.cxx
   TabStrip.cxx
+  UiStyle.cxx
   UnsavedChangesCard.cxx
   UnsavedChangesPrompt.cxx
 )

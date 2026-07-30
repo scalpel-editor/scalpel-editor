@@ -1,5 +1,7 @@
 #include "TabStrip.h"
 
+#include "UiStyle.h"
+
 #include <algorithm>
 #include <limits>
 
@@ -15,20 +17,6 @@ using Scintilla::Internal::PRectangle;
 using Scintilla::Internal::Point;
 using Scintilla::Internal::Surface;
 using Scintilla::Internal::XYPOSITION;
-
-constexpr int kStripHeight = 28;
-constexpr int kPreferredTabWidth = 140;
-constexpr int kAddButtonWidth = 28;
-constexpr int kCloseSize = 14;
-constexpr int kClosePadRight = 6;
-constexpr int kLabelPadLeft = 10;
-constexpr int kLabelPadRight = 4;
-constexpr int kDefaultScrollStep = 40;
-
-// FontParameters.size is device pixels (see FontPlatform FC_PIXEL_SIZE).
-constexpr float PixelSizeFromPoints(float points) noexcept {
-	return points * 96.0f / 72.0f;
-}
 
 bool NonEmpty(const PRectangle &rc) noexcept {
 	return rc.right > rc.left && rc.bottom > rc.top;
@@ -50,35 +38,36 @@ int SaturatingAdd(int value, int delta) noexcept {
 		static_cast<int64_t>(std::numeric_limits<int>::max())));
 }
 
-PRectangle CloseButtonRect(const PRectangle &tabBounds) noexcept {
+PRectangle CloseButtonRect(const PRectangle &tabBounds,
+	const UiStyle &style) noexcept {
 	if (!NonEmpty(tabBounds)) {
 		return PRectangle::FromInts(0, 0, 0, 0);
 	}
 	const int tabRight = static_cast<int>(tabBounds.right);
 	const int tabTop = static_cast<int>(tabBounds.top);
 	const int tabBottom = static_cast<int>(tabBounds.bottom);
-	const int closeRight = tabRight - kClosePadRight;
-	const int closeLeft = closeRight - kCloseSize;
+	const int closeRight = tabRight - style.tabClosePadRight;
+	const int closeLeft = closeRight - style.tabCloseSize;
 	const int midY = static_cast<int>(
 		static_cast<int64_t>(tabTop) +
 		(static_cast<int64_t>(tabBottom) - tabTop) / 2);
 	const int closeTop = std::max(tabTop,
-		SaturatingAdd(midY, -kCloseSize / 2));
+		SaturatingAdd(midY, -style.tabCloseSize / 2));
 	const int closeBottom = std::min(tabBottom,
-		SaturatingAdd(closeTop, kCloseSize));
+		SaturatingAdd(closeTop, style.tabCloseSize));
 	return PRectangle::FromInts(closeLeft, closeTop, closeRight,
 		closeBottom);
 }
 
 PRectangle LabelRect(const PRectangle &tabBounds,
-	const PRectangle &closeButton) noexcept {
+	const PRectangle &closeButton, const UiStyle &style) noexcept {
 	if (!NonEmpty(tabBounds)) {
 		return PRectangle::FromInts(0, 0, 0, 0);
 	}
-	const int left = static_cast<int>(tabBounds.left) + kLabelPadLeft;
+	const int left = static_cast<int>(tabBounds.left) + style.tabLabelPadLeft;
 	const int right = NonEmpty(closeButton)
-		? static_cast<int>(closeButton.left) - kLabelPadRight
-		: static_cast<int>(tabBounds.right) - kLabelPadRight;
+		? static_cast<int>(closeButton.left) - style.tabLabelPadRight
+		: static_cast<int>(tabBounds.right) - style.tabLabelPadRight;
 	if (right <= left) {
 		return PRectangle::FromInts(0, 0, 0, 0);
 	}
@@ -96,48 +85,6 @@ std::size_t Utf8Floor(std::string_view text, std::size_t index) noexcept {
 		--index;
 	}
 	return index;
-}
-
-// Near Platform chrome: strip is slightly darker than the active tab face.
-const ColourRGBA kStripFill(0xe4, 0xe4, 0xe4, 0xff);
-const ColourRGBA kStripBorder(0xb8, 0xb8, 0xb8, 0xff);
-const ColourRGBA kActiveFill(0xfc, 0xfc, 0xfc, 0xff);
-const ColourRGBA kInactiveFill(0xe4, 0xe4, 0xe4, 0xff);
-const ColourRGBA kHoverFill(0xee, 0xee, 0xee, 0xff);
-const ColourRGBA kActiveAccent(0x30, 0x70, 0xb0, 0xff);
-const ColourRGBA kDirtyAccent(0xc0, 0x60, 0x20, 0xff);
-const ColourRGBA kText(0x20, 0x20, 0x20, 0xff);
-const ColourRGBA kMutedText(0x60, 0x60, 0x60, 0xff);
-const ColourRGBA kCloseFill(0xd0, 0xd0, 0xd0, 0xff);
-const ColourRGBA kCloseHoverFill(0xc0, 0x70, 0x70, 0xff);
-const ColourRGBA kCloseInk(0x40, 0x40, 0x40, 0xff);
-const ColourRGBA kAddInk(0x40, 0x40, 0x40, 0xff);
-
-void DrawInsideFrame(Surface &surface, const PRectangle &rc, ColourRGBA colour,
-	XYPOSITION thickness) {
-	if (rc.Empty() || thickness <= 0.0) {
-		return;
-	}
-	const XYPOSITION t = std::min(thickness, std::min(rc.Width(), rc.Height()) / 2.0);
-	const Fill fill(colour);
-	surface.FillRectangle(PRectangle(rc.left, rc.top, rc.right, rc.top + t), fill);
-	surface.FillRectangle(PRectangle(rc.left, rc.bottom - t, rc.right, rc.bottom), fill);
-	surface.FillRectangle(PRectangle(rc.left, rc.top + t, rc.left + t, rc.bottom - t), fill);
-	surface.FillRectangle(PRectangle(rc.right - t, rc.top + t, rc.right, rc.bottom - t), fill);
-}
-
-void DrawLeftAlignedLabel(Surface &surface, const PRectangle &rc, const Font *font,
-	std::string_view text, ColourRGBA fore) {
-	if (!font || text.empty() || rc.Empty()) {
-		return;
-	}
-	const XYPOSITION ascent = surface.Ascent(font);
-	const XYPOSITION height = surface.Height(font);
-	const XYPOSITION x = static_cast<XYPOSITION>(static_cast<int>(rc.left));
-	const XYPOSITION ybase = static_cast<XYPOSITION>(static_cast<int>(
-		rc.top + (rc.Height() - height) / 2.0 + ascent));
-	const PRectangle textRc(x, rc.top, rc.right, rc.bottom);
-	surface.DrawTextTransparent(textRc, font, ybase, text, fore);
 }
 
 void DrawCloseGlyph(Surface &surface, const PRectangle &rc, ColourRGBA ink) {
@@ -166,35 +113,39 @@ void DrawPlusGlyph(Surface &surface, const PRectangle &rc, ColourRGBA ink) {
 		Scintilla::Internal::Stroke(ink, 1.5));
 }
 
-int SaturatingTabPosition(std::size_t tabIndex) noexcept {
-	constexpr std::size_t maxIndex =
+int SaturatingTabPosition(std::size_t tabIndex, int preferredWidth) noexcept {
+	if (preferredWidth <= 0) {
+		return 0;
+	}
+	const std::size_t maxIndex =
 		static_cast<std::size_t>(std::numeric_limits<int>::max()) /
-		static_cast<std::size_t>(kPreferredTabWidth);
+		static_cast<std::size_t>(preferredWidth);
 	if (tabIndex > maxIndex) {
 		return std::numeric_limits<int>::max();
 	}
-	return static_cast<int>(tabIndex) * kPreferredTabWidth;
+	return static_cast<int>(tabIndex) * preferredWidth;
 }
 
 }
 
 int TabStripHeight() noexcept {
-	return kStripHeight;
+	return DefaultUiStyle().tabStripHeight;
 }
 
 int TabStripPreferredTabWidth() noexcept {
-	return kPreferredTabWidth;
+	return DefaultUiStyle().tabPreferredWidth;
 }
 
 int TabStripContentWidth(std::size_t tabCount) noexcept {
-	return SaturatingTabPosition(tabCount);
+	const UiStyle &style = DefaultUiStyle();
+	return SaturatingTabPosition(tabCount, style.tabPreferredWidth);
 }
 
 int TabStripViewportWidth(int stripWidth) noexcept {
 	if (stripWidth <= 0) {
 		return 0;
 	}
-	return std::max(0, stripWidth - kAddButtonWidth);
+	return std::max(0, stripWidth - DefaultUiStyle().tabAddButtonWidth);
 }
 
 int ClampTabStripScroll(int stripWidth, std::size_t tabCount, int scroll) noexcept {
@@ -212,12 +163,13 @@ int ClampTabStripScroll(int stripWidth, std::size_t tabCount, int scroll) noexce
 
 int ScrollTabStripToIndex(int stripWidth, std::size_t tabCount,
 	std::size_t tabIndex, int scroll) noexcept {
+	const UiStyle &style = DefaultUiStyle();
 	if (tabCount == 0 || tabIndex >= tabCount) {
 		return ClampTabStripScroll(stripWidth, tabCount, scroll);
 	}
 	const int viewport = TabStripViewportWidth(stripWidth);
-	const int tabLeft = SaturatingTabPosition(tabIndex);
-	const int tabRight = SaturatingAdd(tabLeft, kPreferredTabWidth);
+	const int tabLeft = SaturatingTabPosition(tabIndex, style.tabPreferredWidth);
+	const int tabRight = SaturatingAdd(tabLeft, style.tabPreferredWidth);
 	int next = scroll;
 	if (tabLeft < next) {
 		next = tabLeft;
@@ -230,7 +182,7 @@ int ScrollTabStripToIndex(int stripWidth, std::size_t tabCount,
 
 int AdjustTabStripScroll(int stripWidth, std::size_t tabCount, int scroll,
 	int delta, int step) noexcept {
-	const int usedStep = step > 0 ? step : kDefaultScrollStep;
+	const int usedStep = step > 0 ? step : DefaultUiStyle().tabDefaultScrollStep;
 	// Positive delta (typical wheel "down"/"right") reveals content to the right.
 	const int64_t adjustment =
 		static_cast<int64_t>(delta) * static_cast<int64_t>(usedStep);
@@ -244,6 +196,7 @@ int AdjustTabStripScroll(int stripWidth, std::size_t tabCount, int scroll,
 
 TabStripLayout LayoutTabStrip(int stripWidth, const TabStripModel &model,
 	int stripTop) noexcept {
+	const UiStyle &style = DefaultUiStyle();
 	const PRectangle empty = PRectangle::FromInts(0, 0, 0, 0);
 	TabStripLayout layout{empty, empty, empty, {}, 0, 0, 0};
 	if (stripWidth <= 0) {
@@ -251,10 +204,10 @@ TabStripLayout LayoutTabStrip(int stripWidth, const TabStripModel &model,
 	}
 
 	const int top = stripTop;
-	const int bottom = SaturatingAdd(top, kStripHeight);
+	const int bottom = SaturatingAdd(top, style.tabStripHeight);
 	layout.strip = PRectangle::FromInts(0, top, stripWidth, bottom);
 
-	const int addLeft = std::max(0, stripWidth - kAddButtonWidth);
+	const int addLeft = std::max(0, stripWidth - style.tabAddButtonWidth);
 	layout.addButton = PRectangle::FromInts(addLeft, top, stripWidth, bottom);
 	layout.tabsViewport = PRectangle::FromInts(0, top, addLeft, bottom);
 
@@ -268,12 +221,13 @@ TabStripLayout LayoutTabStrip(int stripWidth, const TabStripModel &model,
 	layout.tabs.reserve(model.tabs.size());
 	for (std::size_t i = 0; i < model.tabs.size(); ++i) {
 		const TabStripTab &src = model.tabs[i];
-		const int unshiftedLeft = SaturatingTabPosition(i);
+		const int unshiftedLeft =
+			SaturatingTabPosition(i, style.tabPreferredWidth);
 		const int left = unshiftedLeft - layout.scrollOffset;
-		const int right = SaturatingAdd(left, kPreferredTabWidth);
+		const int right = SaturatingAdd(left, style.tabPreferredWidth);
 		const PRectangle bounds = PRectangle::FromInts(left, top, right, bottom);
-		const PRectangle closeButton = CloseButtonRect(bounds);
-		const PRectangle label = LabelRect(bounds, closeButton);
+		const PRectangle closeButton = CloseButtonRect(bounds, style);
+		const PRectangle label = LabelRect(bounds, closeButton, style);
 		const bool showClose =
 			src.active || (src.id != 0 && src.id == model.hoveredId);
 		layout.tabs.push_back(TabStripTabLayout{
@@ -373,8 +327,10 @@ std::string TruncateTabLabel(Surface &surface, const Font *font,
 	return out;
 }
 
-TabStripPainter::TabStripPainter() {
-	labelFont = Font::Allocate(FontParameters{"system-ui", PixelSizeFromPoints(12.0f)});
+TabStripPainter::TabStripPainter(const UiStyle &styleIn)
+	: style(styleIn) {
+	labelFont = Font::Allocate(FontParameters{
+		style.fontName, UiPixelSizeFromPoints(style.chromeLabelPoints)});
 }
 
 void TabStripPainter::Paint(Surface &surface, const TabStripLayout &layout,
@@ -383,12 +339,12 @@ void TabStripPainter::Paint(Surface &surface, const TabStripLayout &layout,
 		return;
 	}
 
-	surface.FillRectangle(layout.strip, Fill(kStripFill));
+	surface.FillRectangle(layout.strip, Fill(style.tabStripFill));
 	// Bottom edge separates strip from the editor client.
 	surface.FillRectangle(
 		PRectangle(layout.strip.left, layout.strip.bottom - 1.0,
 			layout.strip.right, layout.strip.bottom),
-		Fill(kStripBorder));
+		Fill(style.chromeBorder));
 
 	const Font *font = labelFont.get();
 
@@ -400,11 +356,11 @@ void TabStripPainter::Paint(Surface &surface, const TabStripLayout &layout,
 				continue;
 			}
 			const bool hovered = tab.id != 0 && tab.id == model.hoveredId;
-			ColourRGBA fill = kInactiveFill;
+			ColourRGBA fill = style.tabStripFill;
 			if (tab.active) {
-				fill = kActiveFill;
+				fill = style.panelFill;
 			} else if (hovered) {
-				fill = kHoverFill;
+				fill = style.hoverFill;
 			}
 			surface.FillRectangle(tab.bounds, Fill(fill));
 
@@ -412,41 +368,41 @@ void TabStripPainter::Paint(Surface &surface, const TabStripLayout &layout,
 				const PRectangle accent(
 					tab.bounds.left, tab.bounds.bottom - 2.0,
 					tab.bounds.right, tab.bounds.bottom);
-				surface.FillRectangle(accent, Fill(kActiveAccent));
+				surface.FillRectangle(accent, Fill(style.focusBorder));
 			} else if (tab.dirty) {
 				const PRectangle accent(
 					tab.bounds.left, tab.bounds.bottom - 2.0,
 					tab.bounds.right, tab.bounds.bottom);
-				surface.FillRectangle(accent, Fill(kDirtyAccent));
+				surface.FillRectangle(accent, Fill(style.tabDirtyAccent));
 			}
 
 			// Right separator between tabs.
 			surface.FillRectangle(
 				PRectangle(tab.bounds.right - 1.0, tab.bounds.top + 4.0,
 					tab.bounds.right, tab.bounds.bottom - 4.0),
-				Fill(kStripBorder));
+				Fill(style.chromeBorder));
 
 			if (NonEmpty(tab.label) && font) {
 				const std::string drawn = TruncateTabLabel(surface, font,
 					tab.labelText, tab.label.Width());
-				const ColourRGBA ink = tab.active ? kText : kMutedText;
+				const ColourRGBA ink = tab.active ? style.text : style.mutedText;
 				DrawLeftAlignedLabel(surface, tab.label, font, drawn, ink);
 			}
 
 			if (tab.showClose && NonEmpty(tab.closeButton)) {
 				const bool closeHot = hovered && model.closeHovered;
 				surface.FillRectangle(tab.closeButton,
-					Fill(closeHot ? kCloseHoverFill : kCloseFill));
-				DrawCloseGlyph(surface, tab.closeButton, kCloseInk);
+					Fill(closeHot ? style.tabCloseHoverFill : style.tabCloseFill));
+				DrawCloseGlyph(surface, tab.closeButton, style.tabGlyphInk);
 			}
 		}
 		surface.PopClip();
 	}
 
 	if (NonEmpty(layout.addButton)) {
-		surface.FillRectangle(layout.addButton, Fill(kStripFill));
-		DrawInsideFrame(surface, layout.addButton, kStripBorder, 1.0);
-		DrawPlusGlyph(surface, layout.addButton, kAddInk);
+		surface.FillRectangle(layout.addButton, Fill(style.tabStripFill));
+		DrawInsideFrame(surface, layout.addButton, style.chromeBorder, 1.0);
+		DrawPlusGlyph(surface, layout.addButton, style.tabGlyphInk);
 	}
 }
 
