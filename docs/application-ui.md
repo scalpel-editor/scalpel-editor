@@ -7,7 +7,7 @@ The application UI is a fixed composition of the Scintilla editor, a menu bar, a
 | Owner | Responsibility |
 | --- | --- |
 | `WaylandWindow` | Display connection, Wayland and EGL objects, external services, input transport, scaling, frame submission, and waiting. |
-| `ApplicationEditor` | Scintilla documents, editor input, rendering, damage, editor work deadlines, editor client geometry, scrollbar visibility and ranges, clipboard values, and text-input state. |
+| `ApplicationEditor` | Scintilla documents, editor input, rendering, damage, editor work deadlines, editor client geometry, scrollbar visibility and ranges, clipboard values, text-input state, and the process-wide generic editor text face. |
 | `DocumentWorkspace` | Tabs, paths, file operations, application dialog intents, recent-path outcomes, and dirty-close policy. |
 | `ApplicationUi` | Chrome models and painters, modal-card and error state, hover and press state, scrollbar interaction, input priority, cursor choice, overlay selection, application layout snapshots, recent-file updates, and conversion of workspace work into host effects. |
 | `main.cxx` | Construction and the platform pump. It moves copied events and external-service results across the boundary, performs host effects, submits frames, and waits. |
@@ -50,7 +50,24 @@ Keyboard priority is file-error card, unsaved-changes prompt, menu navigation or
 
 `ApplicationEditor` remains the authority for the Scintilla client rectangle and scrollbar visibility, ranges, and positions. Individual concrete components calculate their own rectangles from their models. `ApplicationUi` combines those values with the logical frame size into `ApplicationLayout`, which contains menu, tab, scrollbar, client, and modal-card layouts.
 
-Every pointer event builds one immutable layout value after refreshing model values used by hit testing. All owners considered for that event read that value. Painting uses a separate frame snapshot: `BeginFrameLayout` refreshes menu enablement, clamps tab scrolling, and retains one `ApplicationLayout`; both permanent-chrome and overlay painters read it until `EndFrameLayout`. Hit testing and painting therefore never run separate component layout calculations within the same event or frame.
+Every pointer event builds one immutable layout value after refreshing model values used by hit testing. All owners considered for that event read that value. Painting uses a separate frame snapshot: `BeginFrameLayout` refreshes menu enablement and the selected Font radio, clamps tab scrolling, and retains one `ApplicationLayout`; both permanent-chrome and overlay painters read it until `EndFrameLayout`. Hit testing and painting therefore never run separate component layout calculations within the same event or frame.
+
+## Editor font menu
+
+The permanent menu bar headings are File, Edit, Font, and Recent in that order. Font opens with Alt+T so it does not conflict with Alt+F for File. Left and Right cycle all four headings.
+
+Font offers exactly four process-lifetime choices. The menu stores and displays a typed generic selection, never a concrete installed family or file path:
+
+| Menu label | Canonical family value |
+| --- | --- |
+| Monospace | `monospace` |
+| Serif | `serif` |
+| Sans | `sans-serif` |
+| System | `system-ui` |
+
+Startup default is System, matching `Platform::DefaultFont()`. `ApplicationEditor` owns the choice as view state: changing it updates `STYLE_DEFAULT`, copies it through plain-text styles, and restores the monospace line-number gutter. It does not alter document bytes, save-point state, undo history, selection, or per-document switching state. Styles belong to the one editor view, so the face applies across every retained document for the process.
+
+Fontconfig resolves the canonical family through the host configuration when the renderer loads a face. Preference persistence, font size controls, arbitrary family entry, installed-font discovery, and per-document fonts are out of scope.
 
 `ApplicationUi` binds the permanent-chrome and overlay painter callbacks and unbinds callbacks that capture it when it is destroyed. Permanent chrome can use bounded damage. A transparent menu or modal overlay expands damage to the full frame and selects a full swap so old blended pixels cannot remain.
 

@@ -59,6 +59,26 @@ TEST_CASE("Production font allocation uses the Fontconfig face") {
 	CHECK(face->Metrics().height > 0.0);
 }
 
+TEST_CASE("Production generic font families resolve usable faces") {
+	// Canonical generic families requested by the Font menu. Assert only that
+	// each literal family string resolves to a loadable face and path; never
+	// assert a concrete host family such as Cantarell or DejaVu Sans.
+	FontCache cache;
+	const char *families[] = {
+		"monospace",
+		"serif",
+		"sans-serif",
+		"system-ui",
+	};
+	for (const char *family : families) {
+		const auto face = cache.Match(FontParameters(family, 14.0));
+		REQUIRE(face);
+		CHECK_FALSE(face->Path().empty());
+		CHECK(face->Metrics().height > 0.0);
+		CHECK(face->RequestedSize() == 14.0);
+	}
+}
+
 TEST_CASE("Production fallback covers the requested character") {
 	FontCache cache;
 	const auto fallback = cache.MatchFallback(FontParameters("sans-serif", 14.0), U'\u2603');

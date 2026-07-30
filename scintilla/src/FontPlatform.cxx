@@ -57,6 +57,10 @@ int FontconfigWidth(FontStretch stretch) noexcept {
 }
 
 void AddRequest(FcPattern *pattern, const FontParameters &parameters) {
+	// faceName is a literal family value for FC_FAMILY, not Fontconfig pattern
+	// text. Do not run it through FcNameParse. A leading '!' is stripped for
+	// compatibility with historical Scintilla face strings; the remaining bytes
+	// (including hyphens in system-ui) go to FcPatternAddString unchanged.
 	if (parameters.faceName && parameters.faceName[0]) {
 		const char *family = parameters.faceName[0] == '!' ? parameters.faceName + 1 : parameters.faceName;
 		FcPatternAddString(pattern, FC_FAMILY, reinterpret_cast<const FcChar8 *>(family));

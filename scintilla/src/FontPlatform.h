@@ -80,11 +80,20 @@ public:
 /**
  * Owns Fontconfig, FreeType, and all faces selected through it.
  *
- * Production requests use Fontconfig. Tests load explicit paths so installed
- * fonts and the user's Fontconfig rules cannot change their results. Cached
- * faces stay alive until this cache is destroyed; each face also retains the
- * shared FreeType owner needed by its FT_Face. HarfBuzz fonts belong to
- * FontFace and are destroyed before the FT_Face.
+ * Production requests use Fontconfig. FontParameters::faceName is a literal
+ * Fontconfig family string (for example monospace, serif, sans-serif, or
+ * system-ui). It is added with FcPatternAddString as FC_FAMILY; it is not
+ * parsed with FcNameParse. That matters for system-ui: the hyphen is part of
+ * the family name. The shell command fc-match treats an unescaped hyphen as a
+ * family/size separator, so fc-match system-ui and fc-match 'system\-ui' are
+ * different diagnostics; the application always passes the C string
+ * "system-ui" and never a backslash-escaped form.
+ *
+ * Tests load explicit paths so installed fonts and the user's Fontconfig rules
+ * cannot change their results. Cached faces stay alive until this cache is
+ * destroyed; each face also retains the shared FreeType owner needed by its
+ * FT_Face. HarfBuzz fonts belong to FontFace and are destroyed before the
+ * FT_Face.
  */
 class FontCache {
 	class Impl;
@@ -99,6 +108,7 @@ public:
 	FontCache &operator=(const FontCache &) = delete;
 	FontCache &operator=(FontCache &&) = delete;
 
+	/** Resolve parameters.faceName as a literal FC_FAMILY through Fontconfig. */
 	std::shared_ptr<FontFace> Match(const FontParameters &parameters);
 	std::shared_ptr<FontFace> MatchFallback(const FontParameters &parameters, char32_t character);
 	std::shared_ptr<FontFace> LoadPath(const std::filesystem::path &path, const FontParameters &parameters);

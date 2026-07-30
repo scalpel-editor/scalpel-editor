@@ -1479,6 +1479,101 @@ TEST_CASE("application UI workflow menu portal edit dirty close cancel editor") 
 	CHECK(editor.Text().find('z') != std::string::npos);
 }
 
+TEST_CASE("application UI font menu keyboard pointer selection and resume input") {
+	using Scalpel::ApplicationAction;
+	using Scalpel::ApplicationMenu;
+	using Scalpel::EditorFont;
+	using Scalpel::MenuBarItemLayout;
+
+	ApplicationEditor editor(400, 280);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	REQUIRE(editor.CurrentEditorFont() == EditorFont::System);
+	REQUIRE(editor.StyleFontName(
+		static_cast<int>(Scintilla::StylesCommon::Default)) == "system-ui");
+
+	// Alt+T opens Font; the radio snapshot starts on System.
+	const ApplicationKeyboardResult openFont = ui.HandleKeyboard(
+		MakeLetter('T', KeyMod::Alt));
+	CHECK(openFont.owner == ApplicationKeyboardOwner::Menu);
+	REQUIRE(ui.MenuModel().openMenu == ApplicationMenu::Font);
+	CHECK(ui.MenuModel().selectedFontAction == ApplicationAction::FontSystem);
+
+	// Keyboard: move to Serif and activate.
+	(void)ui.HandleKeyboard(MakeKey(Keys::Down));
+	REQUIRE(ui.MenuModel().focusedItem.has_value());
+	CHECK(*ui.MenuModel().focusedItem == ApplicationAction::FontSerif);
+	const ApplicationKeyboardResult chooseSerif =
+		ui.HandleKeyboard(MakeKey(Keys::Return));
+	CHECK(chooseSerif.owner == ApplicationKeyboardOwner::Menu);
+	CHECK_FALSE(ui.MenuModel().openMenu.has_value());
+	CHECK(editor.CurrentEditorFont() == EditorFont::Serif);
+	CHECK(editor.StyleFontName(
+		static_cast<int>(Scintilla::StylesCommon::Default)) == "serif");
+	CHECK(editor.StyleFontName(
+		static_cast<int>(Scintilla::StylesCommon::LineNumber)) == "monospace");
+
+	// Re-open Font; the checked row follows the editor face.
+	(void)ui.HandleKeyboard(MakeLetter('T', KeyMod::Alt));
+	REQUIRE(ui.MenuModel().openMenu == ApplicationMenu::Font);
+	CHECK(ui.MenuModel().selectedFontAction == ApplicationAction::FontSerif);
+	{
+		const ApplicationLayout layout = ui.Layout();
+		const MenuBarItemLayout *serifRow = nullptr;
+		const MenuBarItemLayout *systemRow = nullptr;
+		for (const MenuBarItemLayout &item : layout.menu.items) {
+			if (item.action == ApplicationAction::FontSerif) {
+				serifRow = &item;
+			}
+			if (item.action == ApplicationAction::FontSystem) {
+				systemRow = &item;
+			}
+		}
+		REQUIRE(serifRow != nullptr);
+		REQUIRE(systemRow != nullptr);
+		CHECK(serifRow->selected);
+		CHECK_FALSE(systemRow->selected);
+	}
+
+	// Pointer: choose Monospace from the open dropdown.
+	ApplicationLayout layout = ui.Layout();
+	const MenuBarItemLayout *monoRow = nullptr;
+	for (const MenuBarItemLayout &item : layout.menu.items) {
+		if (item.action == ApplicationAction::FontMonospace) {
+			monoRow = &item;
+			break;
+		}
+	}
+	REQUIRE(monoRow != nullptr);
+	const Point onMono = Point::FromInts(
+		static_cast<int>(monoRow->row.left + 4),
+		static_cast<int>(monoRow->row.top + 4));
+	(void)ui.HandlePointer(
+		MakePointer(PointerAction::Press, onMono.x, onMono.y, 0));
+	const ApplicationPointerResult activate = ui.HandlePointer(
+		MakePointer(PointerAction::Release, onMono.x, onMono.y, 0));
+	CHECK(activate.consumed);
+	CHECK_FALSE(ui.MenuModel().openMenu.has_value());
+	CHECK(editor.CurrentEditorFont() == EditorFont::Monospace);
+	CHECK(editor.StyleFontName(
+		static_cast<int>(Scintilla::StylesCommon::Default)) == "monospace");
+	CHECK(editor.StyleFontName(
+		static_cast<int>(Scintilla::StylesCommon::LineNumber)) == "monospace");
+
+	// After close, typing reaches the editor again.
+	const std::string before = editor.Text();
+	editor.HandleKeyboardInput(
+		{Keys::End, KeyMod::Ctrl, {}, 3, true});
+	const ApplicationKeyboardResult typeChar = ui.HandleKeyboard(
+		{static_cast<Keys>(0), KeyMod::Norm, "z", 4, true});
+	CHECK(typeChar.owner == ApplicationKeyboardOwner::Editor);
+	CHECK(editor.Text() == before + "z");
+	CHECK_FALSE(ui.MenuModel().openMenu.has_value());
+}
+
 TEST_CASE("application UI workflow frame size and exit cleanup") {
 	ApplicationEditor editor(320, 200);
 	PrepareChromeEditor(editor);

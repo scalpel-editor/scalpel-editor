@@ -10,6 +10,14 @@ The editor uses one concrete rendering implementation for both the live Wayland 
 
 Pixmap surfaces and offscreen targets own texture-backed colour buffers. OpenGL objects are destroyed while their context is current.
 
+## Font selection
+
+`FontCache::Match` builds an `FcPattern` and adds `FontParameters::faceName` as a literal `FC_FAMILY` string with `FcPatternAddString`. It does not parse the name with `FcNameParse`. Generic menu and default faces therefore use the canonical family strings `monospace`, `serif`, `sans-serif`, and `system-ui` exactly as stored; the active Fontconfig configuration chooses the concrete file.
+
+`system-ui` is a single family name whose hyphen is not a Fontconfig size separator. The diagnostic commands `fc-match system-ui` and `fc-match 'system\-ui'` can disagree for that reason; production code always passes the C string `"system-ui"` and never a backslash-escaped form.
+
+Application chrome (`UiStyle::fontName`) stays on `system-ui` independently of the editor body face. The line-number gutter stays on `monospace` when the body face changes.
+
 ## Text shaping
 
 A `ShapedRun` stores the input UTF-8 bytes, HarfBuzz glyphs, per-byte end positions, valid caret stops, direction, and the font face used by each glyph. Measurement, wrapping, hit testing, selection, caret placement, and drawing consume the same cached run.
