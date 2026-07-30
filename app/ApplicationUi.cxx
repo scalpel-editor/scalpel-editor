@@ -13,35 +13,12 @@ namespace Scalpel {
 
 namespace {
 
-void MarkTopChrome(ApplicationPointerDamage &damage,
-	ApplicationEditor &editor) {
-	damage.topChrome = true;
-	editor.InvalidateTopChrome();
-}
-
-void MarkScrollBars(ApplicationPointerDamage &damage,
-	ApplicationEditor &editor) {
-	damage.scrollBars = true;
-	editor.InvalidateScrollBars();
-}
-
-void MarkClient(ApplicationPointerDamage &damage, ApplicationEditor &editor) {
-	damage.client = true;
-	editor.InvalidateClient();
-}
-
-void MarkFrame(ApplicationPointerDamage &damage, ApplicationEditor &editor) {
-	damage.frame = true;
-	editor.InvalidateFrame();
-}
-
-void DismissOpenMenu(MenuBarModel &menuModel, ApplicationEditor &editor,
-	ApplicationPointerDamage &damage) {
+void DismissOpenMenu(MenuBarModel &menuModel, ApplicationEditor &editor) {
 	if (!menuModel.openMenu.has_value()) {
 		return;
 	}
 	CloseMenuBar(menuModel);
-	MarkFrame(damage, editor);
+	editor.InvalidateFrame();
 }
 
 void PersistRecentFiles(const std::string &statePath,
@@ -55,24 +32,23 @@ void PersistRecentFiles(const std::string &statePath,
 }
 
 void SyncRecentMenu(const RecentFiles &recent, MenuBarModel &menuModel,
-	ApplicationEditor &editor, ApplicationPointerDamage &damage) {
+	ApplicationEditor &editor) {
 	if (menuModel.recentFiles == recent.Paths()) {
 		return;
 	}
 	menuModel.recentFiles = recent.Paths();
-	MarkTopChrome(damage, editor);
+	editor.InvalidateTopChrome();
 	// Recent rows are identified by index. If the MRU list rewrites while
 	// Recent is open, focus, hover, and press would still point at the old
 	// index. Dismiss so the next open rebuilds from the new list.
 	if (menuModel.openMenu == ApplicationMenu::Recent) {
-		DismissOpenMenu(menuModel, editor, damage);
+		DismissOpenMenu(menuModel, editor);
 	}
 }
 
 void ActivateMenuBarItem(MenuBarItemId item, MenuBarModel &menuModel,
 	RecentFiles &recent, const std::string &recentStatePath,
-	DocumentWorkspace &workspace, ApplicationEditor &editor,
-	ApplicationPointerDamage &damage) {
+	DocumentWorkspace &workspace, ApplicationEditor &editor) {
 	switch (item.kind) {
 	case MenuBarItemKind::ApplicationAction:
 		DispatchApplicationAction(item.action, workspace, editor);
@@ -86,7 +62,7 @@ void ActivateMenuBarItem(MenuBarItemId item, MenuBarModel &menuModel,
 	case MenuBarItemKind::ClearRecentFiles:
 		if (recent.Clear()) {
 			PersistRecentFiles(recentStatePath, recent);
-			SyncRecentMenu(recent, menuModel, editor, damage);
+			SyncRecentMenu(recent, menuModel, editor);
 		}
 		break;
 	case MenuBarItemKind::EmptyRecentFiles:
@@ -95,7 +71,7 @@ void ActivateMenuBarItem(MenuBarItemId item, MenuBarModel &menuModel,
 }
 
 void CancelScrollBarShellInteraction(ScrollBarInteraction &interaction,
-	ApplicationEditor &editor, ApplicationPointerDamage &damage) {
+	ApplicationEditor &editor) {
 	const bool paintChanged = interaction.dragging ||
 		interaction.pressed != ScrollBarHit::None ||
 		interaction.hover != ScrollBarHit::None;
@@ -106,7 +82,7 @@ void CancelScrollBarShellInteraction(ScrollBarInteraction &interaction,
 	}
 	CancelScrollBarInteraction(interaction);
 	if (paintChanged) {
-		MarkScrollBars(damage, editor);
+		editor.InvalidateScrollBars();
 	}
 }
 
@@ -134,24 +110,20 @@ void ApplyScrollBarShellRequest(ApplicationEditor &editor,
 
 bool HandleScrollBarShellPointer(const PointerInput &input,
 	const ScrollBarLayout &scrollBars, ScrollBarInteraction &interaction,
-	ApplicationEditor &editor, bool &pointerOverChrome,
-	ApplicationPointerDamage &damage) {
+	ApplicationEditor &editor, bool &pointerOverChrome) {
 	const ScrollBarPointerResult result =
 		HandleScrollBarPointer(interaction, scrollBars, input);
 	if (result.barDirty) {
-		MarkScrollBars(damage, editor);
+		editor.InvalidateScrollBars();
 	}
 	ApplyScrollBarShellRequest(editor, result.request);
-	if (result.pointerOverScrollBar) {
-		pointerOverChrome = true;
-	}
+	pointerOverChrome = result.pointerOverScrollBar;
 	return result.consumed;
 }
 
 TabStripHitResult UpdateTabStripPointerState(const PointerInput &input,
 	const ApplicationLayout &layout, TabStripModel &model,
-	ApplicationEditor &editor, bool &pointerOverChrome,
-	ApplicationPointerDamage &damage) {
+	ApplicationEditor &editor, bool &pointerOverChrome) {
 	TabStripHitResult hit;
 	if (input.action != PointerAction::Leave) {
 		hit = HitTestTabStrip(
@@ -170,15 +142,14 @@ TabStripHitResult UpdateTabStripPointerState(const PointerInput &input,
 	if (hoveredId != model.hoveredId || closeHovered != model.closeHovered) {
 		model.hoveredId = hoveredId;
 		model.closeHovered = closeHovered;
-		MarkTopChrome(damage, editor);
+		editor.InvalidateTopChrome();
 	}
 	return hit;
 }
 
 void HandleFileErrorPointer(const PointerInput &input,
 	const FileErrorCardLayout &layout, std::deque<DocumentFileError> &errors,
-	ApplicationEditor &editor, bool &pressHit,
-	ApplicationPointerDamage &damage) {
+	ApplicationEditor &editor, bool &pressHit) {
 	const Scintilla::Internal::Point point(input.x, input.y);
 	if (input.action == PointerAction::Press && input.button == 0) {
 		pressHit = HitTestFileErrorCard(layout, point);
@@ -191,7 +162,7 @@ void HandleFileErrorPointer(const PointerInput &input,
 				errors.pop_front();
 			}
 			pressHit = false;
-			MarkFrame(damage, editor);
+			editor.InvalidateFrame();
 		} else {
 			pressHit = false;
 		}
@@ -201,20 +172,19 @@ void HandleFileErrorPointer(const PointerInput &input,
 void HandlePromptPointer(const PointerInput &input,
 	const UnsavedChangesCardLayout &layout,
 	std::optional<UnsavedCardHit> &pressHit, DocumentWorkspace &workspace,
-	ApplicationEditor &editor, int &cardFocus,
-	ApplicationPointerDamage &damage) {
+	ApplicationEditor &editor, int &cardFocus) {
 	const Scintilla::Internal::Point point(input.x, input.y);
 	if (input.action == PointerAction::Press && input.button == 0) {
 		pressHit = HitTestUnsavedChangesCard(layout, point);
 		if (*pressHit == UnsavedCardHit::Save) {
 			cardFocus = 0;
-			MarkClient(damage, editor);
+			editor.InvalidateClient();
 		} else if (*pressHit == UnsavedCardHit::Discard) {
 			cardFocus = 1;
-			MarkClient(damage, editor);
+			editor.InvalidateClient();
 		} else if (*pressHit == UnsavedCardHit::Cancel) {
 			cardFocus = 2;
-			MarkClient(damage, editor);
+			editor.InvalidateClient();
 		}
 		return;
 	}
@@ -258,7 +228,7 @@ ApplicationPointerResult HandleChromePointer(const PointerInput &input,
 	if (!captured && scrollBarInteraction.dragging) {
 		result.owner = ApplicationPointerOwner::ScrollBarDrag;
 		result.consumed = HandleScrollBarShellPointer(input, layout.scrollBars,
-			scrollBarInteraction, editor, pointerOverChrome, result.damage);
+			scrollBarInteraction, editor, pointerOverChrome);
 		result.cursor = CursorFromChrome(pointerOverChrome);
 		return result;
 	}
@@ -272,22 +242,20 @@ ApplicationPointerResult HandleChromePointer(const PointerInput &input,
 	if (!menuWasOpen && menuModel.openMenu.has_value()) {
 		// Opening a menu cancels tentative IME; batches stay dropped while open.
 		editor.CancelActiveTextInput();
-		CancelScrollBarShellInteraction(
-			scrollBarInteraction, editor, result.damage);
+		CancelScrollBarShellInteraction(scrollBarInteraction, editor);
 	}
 	if (menuResult.barDirty) {
-		MarkTopChrome(result.damage, editor);
+		editor.InvalidateTopChrome();
 	}
 	if (menuResult.frameDirty) {
 		// Open/close and dropdown hover need a full frame so the overlay path
 		// cannot leave a stale panel.
-		MarkFrame(result.damage, editor);
+		editor.InvalidateFrame();
 	}
 	if (menuResult.activated) {
 		// Dropdown is already closed before document or persistent state changes.
 		ActivateMenuBarItem(*menuResult.activated, menuModel, recent,
-			recentStatePath, workspace, editor, result.damage);
-		result.activated = menuResult.activated;
+			recentStatePath, workspace, editor);
 	}
 
 	// A selection drag that began in the editor still owns motion and release
@@ -296,7 +264,7 @@ ApplicationPointerResult HandleChromePointer(const PointerInput &input,
 	if (captured) {
 		result.owner = ApplicationPointerOwner::EditorCapture;
 		(void)UpdateTabStripPointerState(input, layout, stripModel, editor,
-			pointerOverChrome, result.damage);
+			pointerOverChrome);
 		if (menuResult.pointerOverMenu) {
 			pointerOverChrome = true;
 		}
@@ -315,7 +283,7 @@ ApplicationPointerResult HandleChromePointer(const PointerInput &input,
 		if (stripModel.hoveredId != 0 || stripModel.closeHovered) {
 			stripModel.hoveredId = 0;
 			stripModel.closeHovered = false;
-			MarkTopChrome(result.damage, editor);
+			editor.InvalidateTopChrome();
 		}
 		pointerOverChrome = menuResult.pointerOverMenu ||
 			PointerInTopChrome(input, layout);
@@ -336,7 +304,7 @@ ApplicationPointerResult HandleChromePointer(const PointerInput &input,
 		// is set.
 		result.owner = ApplicationPointerOwner::PermanentChrome;
 		(void)UpdateTabStripPointerState(input, layout, stripModel, editor,
-			pointerOverChrome, result.damage);
+			pointerOverChrome);
 		if (menuResult.pointerOverMenu) {
 			pointerOverChrome = true;
 		}
@@ -346,7 +314,7 @@ ApplicationPointerResult HandleChromePointer(const PointerInput &input,
 	}
 
 	const TabStripHitResult stripHit = UpdateTabStripPointerState(input, layout,
-		stripModel, editor, pointerOverChrome, result.damage);
+		stripModel, editor, pointerOverChrome);
 	if (menuResult.pointerOverMenu) {
 		pointerOverChrome = true;
 	}
@@ -385,7 +353,7 @@ ApplicationPointerResult HandleChromePointer(const PointerInput &input,
 					TabStripPreferredTabWidth() / 2);
 				if (next != stripModel.scrollOffset) {
 					stripModel.scrollOffset = next;
-					MarkTopChrome(result.damage, editor);
+					editor.InvalidateTopChrome();
 				}
 			}
 			result.consumed = true;
@@ -396,9 +364,8 @@ ApplicationPointerResult HandleChromePointer(const PointerInput &input,
 		if (input.action == PointerAction::Press && input.button == 0) {
 			// Tab work must not leave a menu open (for example after a race with
 			// a dismissal release that already cleared openMenu).
-			DismissOpenMenu(menuModel, editor, result.damage);
-			CancelScrollBarShellInteraction(
-				scrollBarInteraction, editor, result.damage);
+			DismissOpenMenu(menuModel, editor);
+			CancelScrollBarShellInteraction(scrollBarInteraction, editor);
 			if (stripHit.kind == TabStripHit::Tab) {
 				workspace.ActivateTab(stripHit.tabId);
 			} else if (stripHit.kind == TabStripHit::Close) {
@@ -419,7 +386,7 @@ ApplicationPointerResult HandleChromePointer(const PointerInput &input,
 
 	// Below top chrome: scrollbar hit testing before the editor.
 	if (HandleScrollBarShellPointer(input, layout.scrollBars,
-		scrollBarInteraction, editor, pointerOverChrome, result.damage)) {
+		scrollBarInteraction, editor, pointerOverChrome)) {
 		result.owner = ApplicationPointerOwner::PermanentChrome;
 		result.consumed = true;
 		result.cursor = CursorFromChrome(pointerOverChrome);
@@ -499,10 +466,9 @@ ApplicationPointerResult ApplicationUi::HandlePointer(
 		result.owner = ApplicationPointerOwner::FileError;
 		result.cursor = ApplicationPointerCursor::Arrow;
 		result.consumed = true;
-		CancelScrollBarShellInteraction(
-			scrollBarInteraction, *editor, result.damage);
+		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
 		HandleFileErrorPointer(input, layout.fileErrorCard, fileErrors, *editor,
-			fileErrorPressHit, result.damage);
+			fileErrorPressHit);
 		return result;
 	}
 
@@ -511,12 +477,11 @@ ApplicationPointerResult ApplicationUi::HandlePointer(
 		result.owner = ApplicationPointerOwner::UnsavedPrompt;
 		result.cursor = ApplicationPointerCursor::Arrow;
 		result.consumed = true;
-		CancelScrollBarShellInteraction(
-			scrollBarInteraction, *editor, result.damage);
+		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
 		(void)UpdateTabStripPointerState(input, layout, stripModel, *editor,
-			pointerOverChrome, result.damage);
+			pointerOverChrome);
 		HandlePromptPointer(input, layout.unsavedCard, promptPressHit,
-			*workspace, *editor, cardFocus, result.damage);
+			*workspace, *editor, cardFocus);
 		// Modal cards force the arrow even when strip hover updated chrome.
 		result.cursor = ApplicationPointerCursor::Arrow;
 		return result;

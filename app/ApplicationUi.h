@@ -92,25 +92,16 @@ enum class ApplicationPointerCursor {
 	Editor,
 };
 
-/** Which surfaces need repaint after HandlePointer applied transitions. */
-struct ApplicationPointerDamage {
-	bool topChrome = false;
-	bool scrollBars = false;
-	bool client = false;
-	bool frame = false;
-};
-
 /**
- * Exact result of ApplicationUi::HandlePointer.
- * consumed stops delivery to ApplicationEditor. activated is set when a menu
- * item fires; tab and modal outcomes mutate workspace and owned state directly.
+ * Pointer ownership and host delivery result from ApplicationUi::HandlePointer.
+ * consumed stops delivery to ApplicationEditor. cursor is the only
+ * pointer-specific choice returned to the platform host; application actions,
+ * model transitions, and editor invalidation are applied inside ApplicationUi.
  */
 struct ApplicationPointerResult {
 	bool consumed = false;
 	ApplicationPointerOwner owner = ApplicationPointerOwner::Editor;
 	ApplicationPointerCursor cursor = ApplicationPointerCursor::Editor;
-	std::optional<MenuBarItemId> activated;
-	ApplicationPointerDamage damage;
 };
 
 /**
@@ -193,9 +184,6 @@ public:
 	[[nodiscard]] BoundOverlay Overlay() const noexcept { return overlay; }
 	void SetOverlay(BoundOverlay value) noexcept { overlay = value; }
 
-	[[nodiscard]] bool &PointerOverChrome() noexcept {
-		return pointerOverChrome;
-	}
 	[[nodiscard]] bool PointerOverChrome() const noexcept {
 		return pointerOverChrome;
 	}

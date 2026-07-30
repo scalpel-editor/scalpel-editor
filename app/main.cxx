@@ -740,6 +740,15 @@ int main() {
 		Scalpel::RecentFiles recent =
 			Scalpel::LoadRecentFiles(recentStatePath);
 		Scalpel::ApplicationUi ui(editor, workspace, recent, recentStatePath);
+		Scalpel::ApplicationPointerCursor pointerCursor =
+			Scalpel::ApplicationPointerCursor::Editor;
+		const auto applyPointerCursor = [&] {
+			if (pointerCursor == Scalpel::ApplicationPointerCursor::Arrow) {
+				window.SetCursor(Scintilla::Internal::Window::Cursor::arrow);
+			} else {
+				window.SetCursor(editor.WindowState().cursor);
+			}
+		};
 		Scalpel::MenuBarPainter menuPainter;
 		Scalpel::TabStripPainter stripPainter;
 		Scalpel::UnsavedChangesCardPainter cardPainter;
@@ -879,6 +888,7 @@ int main() {
 					// are decided inside ApplicationUi; deliver leftovers only.
 					const Scalpel::ApplicationPointerResult pointerResult =
 						ui.HandlePointer(*pointer);
+					pointerCursor = pointerResult.cursor;
 					if (!pointerResult.consumed) {
 						editor.HandlePointerInput(*pointer);
 					}
@@ -969,9 +979,7 @@ int main() {
 					editor.InvalidateFrame();
 				}
 			} else if (ui.MenuModel().openMenu.has_value()) {
-				window.SetCursor(ui.PointerOverChrome() ?
-					Scintilla::Internal::Window::Cursor::arrow :
-					editor.WindowState().cursor);
+				applyPointerCursor();
 				// Dropdown uses the overlay path only while a menu is open.
 				if (ui.Overlay() != Scalpel::BoundOverlay::Menu) {
 					editor.SetOverlayPainter(paintMenuDropdown);
@@ -979,9 +987,7 @@ int main() {
 					editor.InvalidateFrame();
 				}
 			} else {
-				window.SetCursor(ui.PointerOverChrome() ?
-					Scintilla::Internal::Window::Cursor::arrow :
-					editor.WindowState().cursor);
+				applyPointerCursor();
 				if (ui.Overlay() != Scalpel::BoundOverlay::None) {
 					// Clear the painter and damage the full frame so preserved
 					// buffer contents cannot leave a stale dropdown or card.

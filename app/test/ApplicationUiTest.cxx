@@ -1,6 +1,8 @@
 #include "catch.hpp"
 
+#include <algorithm>
 #include <string>
+#include <vector>
 
 #include "ApplicationEditor.h"
 #include "ApplicationUi.h"
@@ -64,6 +66,11 @@ void DirtyBuffer(ApplicationEditor &editor) {
 	REQUIRE(editor.Modified());
 }
 
+bool HasDamage(const std::vector<PRectangle> &damage,
+	const PRectangle expected) {
+	return std::find(damage.begin(), damage.end(), expected) != damage.end();
+}
+
 }
 
 TEST_CASE("application UI state owns chrome and overlay defaults") {
@@ -117,7 +124,6 @@ TEST_CASE("application UI state mutates owned fields in place") {
 	ui.CardFocus() = 2;
 	CHECK(ui.CardFocus() == 2);
 
-	ui.PointerOverChrome() = true;
 	ui.FileErrorPressHit() = true;
 	ui.PromptPressHit() = UnsavedCardHit::Save;
 	ui.SetOverlay(BoundOverlay::FileError);
@@ -128,7 +134,6 @@ TEST_CASE("application UI state mutates owned fields in place") {
 	ui.StripModel().hoveredId = 7;
 	ui.ScrollBars().dragging = true;
 
-	CHECK(ui.PointerOverChrome());
 	CHECK(ui.FileErrorPressHit());
 	REQUIRE(ui.PromptPressHit().has_value());
 	CHECK(*ui.PromptPressHit() == UnsavedCardHit::Save);
@@ -314,6 +319,7 @@ TEST_CASE("application UI pointer priority file error owns over prompt and chrom
 	DirtyBuffer(editor);
 	workspace.RequestClose();
 	REQUIRE(workspace.PromptActive());
+	(void)editor.TakeFrameDamage();
 
 	const ApplicationLayout layout = ui.Layout();
 	const Point onDismiss = Point::FromInts(
@@ -324,15 +330,15 @@ TEST_CASE("application UI pointer priority file error owns over prompt and chrom
 	CHECK(press.consumed);
 	CHECK(press.owner == ApplicationPointerOwner::FileError);
 	CHECK(press.cursor == ApplicationPointerCursor::Arrow);
-	CHECK_FALSE(press.activated.has_value());
 	CHECK(ui.FileErrorPressHit());
 
 	const ApplicationPointerResult release = ui.HandlePointer(
 		MakePointer(PointerAction::Release, onDismiss.x, onDismiss.y, 0));
 	CHECK(release.consumed);
 	CHECK(release.owner == ApplicationPointerOwner::FileError);
-	CHECK(release.damage.frame);
 	CHECK(ui.FileErrors().empty());
+	CHECK(HasDamage(editor.TakeFrameDamage(), PRectangle::FromInts(
+		0, 0, editor.FrameWidth(), editor.FrameHeight())));
 	// Prompt remains until the host drains it; pointer still never reaches chrome.
 	CHECK(workspace.PromptActive());
 	CHECK_FALSE(ui.MenuModel().openMenu.has_value());
@@ -389,6 +395,7 @@ TEST_CASE("application UI pointer priority open menu owns strip and dismisses ou
 	RecentFiles recent;
 	ApplicationUi ui(editor, workspace, recent, "");
 	SeedStrip(ui, editor);
+	(void)editor.TakeFrameDamage();
 
 	ApplicationLayout layout = ui.Layout();
 	const Point onFile = Point::FromInts(
@@ -399,8 +406,9 @@ TEST_CASE("application UI pointer priority open menu owns strip and dismisses ou
 	CHECK(open.consumed);
 	CHECK(open.owner == ApplicationPointerOwner::Menu);
 	REQUIRE(ui.MenuModel().openMenu == Scalpel::ApplicationMenu::File);
-	CHECK(open.damage.frame);
 	CHECK(open.cursor == ApplicationPointerCursor::Arrow);
+	CHECK(HasDamage(editor.TakeFrameDamage(), PRectangle::FromInts(
+		0, 0, editor.FrameWidth(), editor.FrameHeight())));
 
 	ui.StripModel().hoveredId = editor.ActiveDocument();
 	ui.StripModel().closeHovered = true;
@@ -425,7 +433,7 @@ TEST_CASE("application UI pointer priority open menu owns strip and dismisses ou
 	CHECK_FALSE(ui.StripModel().closeHovered);
 }
 
-TEST_CASE("application UI pointer priority menu item activation returns exact result") {
+TEST_CASE("application UI pointer priority menu item activation applies action") {
 	ApplicationEditor editor(400, 280);
 	PrepareChromeEditor(editor);
 	DocumentWorkspace workspace(editor);
@@ -459,8 +467,6 @@ TEST_CASE("application UI pointer priority menu item activation returns exact re
 	const ApplicationPointerResult activate = ui.HandlePointer(
 		MakePointer(PointerAction::Release, onItem.x, onItem.y, 0));
 	CHECK(activate.consumed);
-	REQUIRE(activate.activated.has_value());
-	CHECK(*activate.activated == Scalpel::ApplicationAction::NewTab);
 	CHECK_FALSE(ui.MenuModel().openMenu.has_value());
 	CHECK(workspace.Tabs().size() == 2);
 	CHECK(editor.ActiveDocument() != first);
@@ -521,6 +527,8 @@ TEST_CASE("application UI pointer priority scrollbar drag owns motion over clien
 	CHECK(release.consumed);
 	CHECK(release.owner == ApplicationPointerOwner::ScrollBarDrag);
 	CHECK_FALSE(ui.ScrollBars().dragging);
+	CHECK_FALSE(ui.PointerOverChrome());
+	CHECK(release.cursor == ApplicationPointerCursor::Editor);
 }
 
 TEST_CASE("application UI pointer priority editor capture bypasses chrome") {
@@ -590,7 +598,6 @@ TEST_CASE("application UI pointer priority opening menu cancels scrollbar drag")
 	REQUIRE(ui.MenuModel().openMenu == Scalpel::ApplicationMenu::File);
 	CHECK(ui.ScrollBars().pressed == Scalpel::ScrollBarHit::None);
 	CHECK(ui.ScrollBars().hover == Scalpel::ScrollBarHit::None);
-	CHECK(open.damage.scrollBars);
 
 	// Active drag still owns heading presses until release; menu cannot steal them.
 	(void)ui.HandlePointer(
@@ -620,6 +627,7 @@ TEST_CASE("application UI pointer priority client delivers to editor") {
 	RecentFiles recent;
 	ApplicationUi ui(editor, workspace, recent, "");
 	SeedStrip(ui, editor);
+	(void)editor.TakeFrameDamage();
 
 	const ApplicationLayout layout = ui.Layout();
 	const Point onClient = Point::FromInts(
@@ -631,9 +639,5 @@ TEST_CASE("application UI pointer priority client delivers to editor") {
 	CHECK(move.owner == ApplicationPointerOwner::Editor);
 	CHECK(move.cursor == ApplicationPointerCursor::Editor);
 	CHECK_FALSE(ui.PointerOverChrome());
-	CHECK_FALSE(move.damage.frame);
-	CHECK_FALSE(move.damage.topChrome);
-	CHECK_FALSE(move.damage.scrollBars);
-	CHECK_FALSE(move.damage.client);
+	CHECK(editor.TakeFrameDamage().empty());
 }
-

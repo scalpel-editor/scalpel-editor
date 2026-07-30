@@ -459,6 +459,7 @@ ScrollBarPointerResult HandleScrollBarPointer(ScrollBarInteraction &interaction,
 			const ScrollBarHitResult hit = HitTestScrollBars(layout, point);
 			interaction.hover = hit.hit;
 			interaction.hoverAxis = hit.axis;
+			result.pointerOverScrollBar = hit.hit != ScrollBarHit::None;
 			return result;
 		}
 		if (input.action == PointerAction::Move ||

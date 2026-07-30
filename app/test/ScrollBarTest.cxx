@@ -243,6 +243,7 @@ TEST_CASE("scroll bar pointer pages track and drags thumb") {
 				10, 10, 0, 0, 4, 0});
 	CHECK(release.consumed);
 	CHECK_FALSE(interaction.dragging);
+	CHECK_FALSE(release.pointerOverScrollBar);
 
 	// Disabled bar rejects track paging.
 	auto disabled = vertical;
