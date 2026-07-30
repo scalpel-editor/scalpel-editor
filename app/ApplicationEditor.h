@@ -34,6 +34,20 @@ class Renderer;
 
 namespace Scalpel {
 
+/**
+ * Process-wide generic editor text face. Values map to Fontconfig family
+ * strings (monospace, serif, sans-serif, system-ui); the host resolves them.
+ */
+enum class EditorFont {
+	Monospace,
+	Serif,
+	Sans,
+	System,
+};
+
+/** Canonical Fontconfig family string for a generic editor-font choice. */
+[[nodiscard]] const char *EditorFontFamilyName(EditorFont font) noexcept;
+
 struct TickerRequest {
 	int reason = 0;
 	int milliseconds = 0;
@@ -134,6 +148,19 @@ public:
 	[[nodiscard]] int TextLeftGap() const noexcept;
 	// Font family name configured for a style (empty when unset).
 	[[nodiscard]] std::string StyleFontName(int style);
+	/**
+	 * Current generic editor text face. Startup default is System (system-ui),
+	 * matching Platform::DefaultFont(). Styles belong to this view; the choice
+	 * applies across all retained documents.
+	 */
+	[[nodiscard]] EditorFont CurrentEditorFont() const noexcept;
+	/**
+	 * Set the generic editor text face. No-op when unchanged. Updates
+	 * STYLE_DEFAULT, copies it through plain-text styles, restores the
+	 * monospace line-number gutter, and invalidates layout. Does not alter
+	 * document bytes, save point, undo history, or selection.
+	 */
+	void SetEditorFont(EditorFont font);
 	// Logical editor size and framebuffer pixel size change independently.
 	void Resize(int width, int height);
 	void SetFrameBufferSize(int width, int height);
@@ -360,6 +387,7 @@ private:
 	std::unordered_map<DocumentId, RetainedDocument> retainedDocuments;
 	DocumentId activeDocumentId = 0;
 	DocumentId nextDocumentId = 1;
+	EditorFont editorFont = EditorFont::System;
 	ScrollMetrics scrollbars;
 	static constexpr std::size_t tickerReasonCount = static_cast<std::size_t>(TickReason::platform) + 1;
 	std::array<FineTickerState, tickerReasonCount> tickers{};

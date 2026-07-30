@@ -44,6 +44,7 @@ struct UiStyle {
 	const int menuHeadingPadX = 12;
 	const int menuFileHeadingWidth = 48;
 	const int menuEditHeadingWidth = 48;
+	const int menuFontHeadingWidth = 48;
 	const int menuRecentHeadingWidth = 68;
 	const int menuItemHeight = 24;
 	const int menuSeparatorHeight = 9;

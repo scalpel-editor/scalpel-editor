@@ -443,6 +443,37 @@ std::string ApplicationEditor::StyleFontName(int style) {
 	return buffer;
 }
 
+const char *EditorFontFamilyName(EditorFont font) noexcept {
+	switch (font) {
+	case EditorFont::Monospace:
+		return "monospace";
+	case EditorFont::Serif:
+		return "serif";
+	case EditorFont::Sans:
+		return "sans-serif";
+	case EditorFont::System:
+		return "system-ui";
+	}
+	return "system-ui";
+}
+
+EditorFont ApplicationEditor::CurrentEditorFont() const noexcept {
+	return editorFont;
+}
+
+void ApplicationEditor::SetEditorFont(EditorFont font) {
+	if (font == editorFont) {
+		return;
+	}
+	editorFont = font;
+	// STYLE_DEFAULT is the template StyleClearAll copies onto every style.
+	const int defaultStyle = static_cast<int>(Scintilla::StylesCommon::Default);
+	StyleSetFont(defaultStyle, EditorFontFamilyName(font));
+	// Propagate default to plain-text styles, then restore the monospace gutter.
+	ApplyLineNumberStyle();
+	UpdateLineNumberWidth();
+}
+
 void ApplicationEditor::Resize(int width, int height) {
 	if (width <= 0 || height <= 0) {
 		throw std::invalid_argument("ApplicationEditor::Resize requires a positive size");

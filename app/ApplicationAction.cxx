@@ -15,7 +15,8 @@ constexpr Scintilla::KeyMod Ctrl = Scintilla::KeyMod::Ctrl;
 constexpr Scintilla::KeyMod CtrlShift =
 	Scintilla::KeyMod::Ctrl | Scintilla::KeyMod::Shift;
 
-// File then Edit; separatorBefore groups related rows for later menu paint.
+// File, Edit, then Font; separatorBefore groups related rows for later menu paint.
+// Font rows are menu-only: empty shortcut label and key zero (never match input).
 constexpr ApplicationActionInfo kActions[] = {
 	{ApplicationAction::NewTab, ApplicationMenu::File, "New Tab", "Ctrl+N",
 		Key('N'), Ctrl, false},
@@ -41,6 +42,14 @@ constexpr ApplicationActionInfo kActions[] = {
 		Key('V'), Ctrl, false},
 	{ApplicationAction::SelectAll, ApplicationMenu::Edit, "Select All", "Ctrl+A",
 		Key('A'), Ctrl, true},
+	{ApplicationAction::FontMonospace, ApplicationMenu::Font, "Monospace", "",
+		static_cast<Scintilla::Keys>(0), Scintilla::KeyMod::Norm, false},
+	{ApplicationAction::FontSerif, ApplicationMenu::Font, "Serif", "",
+		static_cast<Scintilla::Keys>(0), Scintilla::KeyMod::Norm, false},
+	{ApplicationAction::FontSans, ApplicationMenu::Font, "Sans", "",
+		static_cast<Scintilla::Keys>(0), Scintilla::KeyMod::Norm, false},
+	{ApplicationAction::FontSystem, ApplicationMenu::Font, "System", "",
+		static_cast<Scintilla::Keys>(0), Scintilla::KeyMod::Norm, false},
 };
 
 }
@@ -67,7 +76,15 @@ std::optional<ApplicationAction> MatchApplicationAction(
 	if (!input.pressed) {
 		return std::nullopt;
 	}
+	// Key zero is the unbound sentinel used by menu-only rows and by ordinary
+	// text-input events. Matching it would steal typing into the first such row.
+	if (input.key == static_cast<Scintilla::Keys>(0)) {
+		return std::nullopt;
+	}
 	for (const ApplicationActionInfo &info : kActions) {
+		if (info.key == static_cast<Scintilla::Keys>(0)) {
+			continue;
+		}
 		if (input.key == info.key && input.modifiers == info.modifiers) {
 			return info.action;
 		}
@@ -84,6 +101,10 @@ bool ApplicationActionEnabled(ApplicationAction action,
 	case ApplicationAction::SaveAs:
 	case ApplicationAction::CloseTab:
 	case ApplicationAction::Quit:
+	case ApplicationAction::FontMonospace:
+	case ApplicationAction::FontSerif:
+	case ApplicationAction::FontSans:
+	case ApplicationAction::FontSystem:
 		return true;
 	case ApplicationAction::Undo:
 		return editor.CanUndoEdit();
@@ -103,7 +124,7 @@ bool ApplicationActionEnabled(ApplicationAction action,
 
 void DispatchApplicationAction(ApplicationAction action,
 	DocumentWorkspace &workspace, ApplicationEditor &editor) {
-	// File actions always dispatch; the workspace no-ops during a prompt.
+	// File and Font actions always dispatch; the workspace no-ops during a prompt.
 	// Edit actions refuse when disabled so menus and shortcuts share one gate.
 	switch (action) {
 	case ApplicationAction::NewTab:
@@ -112,6 +133,10 @@ void DispatchApplicationAction(ApplicationAction action,
 	case ApplicationAction::SaveAs:
 	case ApplicationAction::CloseTab:
 	case ApplicationAction::Quit:
+	case ApplicationAction::FontMonospace:
+	case ApplicationAction::FontSerif:
+	case ApplicationAction::FontSans:
+	case ApplicationAction::FontSystem:
 		break;
 	case ApplicationAction::Undo:
 	case ApplicationAction::Redo:
@@ -161,6 +186,18 @@ void DispatchApplicationAction(ApplicationAction action,
 		break;
 	case ApplicationAction::SelectAll:
 		editor.RequestSelectAll();
+		break;
+	case ApplicationAction::FontMonospace:
+		editor.SetEditorFont(EditorFont::Monospace);
+		break;
+	case ApplicationAction::FontSerif:
+		editor.SetEditorFont(EditorFont::Serif);
+		break;
+	case ApplicationAction::FontSans:
+		editor.SetEditorFont(EditorFont::Sans);
+		break;
+	case ApplicationAction::FontSystem:
+		editor.SetEditorFont(EditorFont::System);
 		break;
 	}
 }

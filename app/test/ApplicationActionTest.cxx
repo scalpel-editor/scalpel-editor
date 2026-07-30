@@ -75,8 +75,8 @@ void TypeChar(ApplicationEditor &editor, char ch, uint32_t time) {
 
 }
 
-TEST_CASE("application actions table lists File and Edit in menu order") {
-	REQUIRE(Scalpel::ApplicationActionCount() == 12);
+TEST_CASE("application actions table lists File Edit and Font in menu order") {
+	REQUIRE(Scalpel::ApplicationActionCount() == 16);
 	const ApplicationActionInfo *table = Scalpel::ApplicationActionTable();
 	CHECK(table[0].action == ApplicationAction::NewTab);
 	CHECK(table[0].menu == ApplicationMenu::File);
@@ -84,6 +84,9 @@ TEST_CASE("application actions table lists File and Edit in menu order") {
 	CHECK(table[6].action == ApplicationAction::Undo);
 	CHECK(table[6].menu == ApplicationMenu::Edit);
 	CHECK(table[11].action == ApplicationAction::SelectAll);
+	CHECK(table[12].action == ApplicationAction::FontMonospace);
+	CHECK(table[12].menu == ApplicationMenu::Font);
+	CHECK(table[15].action == ApplicationAction::FontSystem);
 
 	CHECK(InfoFor(ApplicationAction::Open).label == "Open\u2026");
 	CHECK(InfoFor(ApplicationAction::SaveAs).shortcutLabel == "Ctrl+Shift+S");
@@ -94,6 +97,14 @@ TEST_CASE("application actions table lists File and Edit in menu order") {
 	CHECK(InfoFor(ApplicationAction::SelectAll).separatorBefore);
 	CHECK_FALSE(InfoFor(ApplicationAction::NewTab).separatorBefore);
 	CHECK_FALSE(InfoFor(ApplicationAction::Undo).separatorBefore);
+	CHECK(InfoFor(ApplicationAction::FontMonospace).label == "Monospace");
+	CHECK(InfoFor(ApplicationAction::FontSerif).label == "Serif");
+	CHECK(InfoFor(ApplicationAction::FontSans).label == "Sans");
+	CHECK(InfoFor(ApplicationAction::FontSystem).label == "System");
+	CHECK(InfoFor(ApplicationAction::FontMonospace).shortcutLabel.empty());
+	CHECK(InfoFor(ApplicationAction::FontSystem).key ==
+		static_cast<Scintilla::Keys>(0));
+	CHECK_FALSE(InfoFor(ApplicationAction::FontMonospace).separatorBefore);
 }
 
 TEST_CASE("application actions match listed shortcuts and ignore releases") {
@@ -425,4 +436,112 @@ TEST_CASE("application actions shortcuts match dispatch for file and edit") {
 	DispatchApplicationAction(*quit, workspace, editor);
 	// Dirty after select-all does not mark modified; buffer still clean.
 	CHECK(HasRequest(workspace.TakeRequests(), DocumentShellRequest::AcceptClose));
+}
+
+TEST_CASE("application actions font maps generic families and defaults to System") {
+	using Scalpel::EditorFont;
+	using Scalpel::EditorFontFamilyName;
+
+	CHECK(std::string(EditorFontFamilyName(EditorFont::Monospace)) == "monospace");
+	CHECK(std::string(EditorFontFamilyName(EditorFont::Serif)) == "serif");
+	CHECK(std::string(EditorFontFamilyName(EditorFont::Sans)) == "sans-serif");
+	CHECK(std::string(EditorFontFamilyName(EditorFont::System)) == "system-ui");
+
+	ApplicationEditor editor(320, 180);
+	CHECK(editor.CurrentEditorFont() == EditorFont::System);
+	CHECK(editor.StyleFontName(static_cast<int>(Scintilla::StylesCommon::Default)) ==
+		"system-ui");
+	CHECK(editor.StyleFontName(0) == "system-ui");
+	CHECK(editor.StyleFontName(static_cast<int>(Scintilla::StylesCommon::LineNumber)) ==
+		"monospace");
+}
+
+TEST_CASE("application actions font dispatch paths update styles without content state") {
+	using Scalpel::EditorFont;
+
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("font body");
+	DocumentWorkspace workspace(editor);
+	const auto first = workspace.ActiveTab();
+	const int defaultStyle = static_cast<int>(Scintilla::StylesCommon::Default);
+	const int lineNumber = static_cast<int>(Scintilla::StylesCommon::LineNumber);
+
+	// Seed undo history and a caret position so a font change must not clear them.
+	editor.HandleKeyboardInput(
+		Press(Scintilla::Keys::End, Scintilla::KeyMod::Norm));
+	TypeChar(editor, '!', 2);
+	REQUIRE(editor.Text() == "font body!");
+	REQUIRE(editor.Modified());
+	REQUIRE(editor.CanUndoEdit());
+	const std::string selectionBefore = editor.Text();
+
+	const ApplicationAction fontActions[] = {
+		ApplicationAction::FontMonospace,
+		ApplicationAction::FontSerif,
+		ApplicationAction::FontSans,
+		ApplicationAction::FontSystem,
+	};
+	const EditorFont fonts[] = {
+		EditorFont::Monospace,
+		EditorFont::Serif,
+		EditorFont::Sans,
+		EditorFont::System,
+	};
+	const char *families[] = {
+		"monospace",
+		"serif",
+		"sans-serif",
+		"system-ui",
+	};
+
+	for (std::size_t i = 0; i < 4; ++i) {
+		CHECK(ApplicationActionEnabled(fontActions[i], editor));
+		DispatchApplicationAction(fontActions[i], workspace, editor);
+		CHECK(editor.CurrentEditorFont() == fonts[i]);
+		CHECK(editor.StyleFontName(defaultStyle) == families[i]);
+		CHECK(editor.StyleFontName(0) == families[i]);
+		// Gutter stays monospace regardless of the body face.
+		CHECK(editor.StyleFontName(lineNumber) == "monospace");
+		// Content, dirty flag, and undo history are view-independent.
+		CHECK(editor.Text() == selectionBefore);
+		CHECK(editor.Modified());
+		CHECK(editor.CanUndoEdit());
+	}
+
+	// Re-dispatching the current face is a no-op for content state.
+	DispatchApplicationAction(ApplicationAction::FontSystem, workspace, editor);
+	CHECK(editor.Text() == selectionBefore);
+	CHECK(editor.Modified());
+	CHECK(editor.CanUndoEdit());
+
+	// Second tab inherits the process-wide face; switching back keeps it.
+	DispatchApplicationAction(ApplicationAction::FontSerif, workspace, editor);
+	REQUIRE(editor.CurrentEditorFont() == EditorFont::Serif);
+	DispatchApplicationAction(ApplicationAction::NewTab, workspace, editor);
+	CHECK(workspace.TabCount() == 2);
+	CHECK(editor.CurrentEditorFont() == EditorFont::Serif);
+	CHECK(editor.StyleFontName(defaultStyle) == "serif");
+	CHECK(editor.StyleFontName(lineNumber) == "monospace");
+	workspace.ActivateTab(first);
+	CHECK(editor.Text() == selectionBefore);
+	CHECK(editor.CurrentEditorFont() == EditorFont::Serif);
+	CHECK(editor.StyleFontName(defaultStyle) == "serif");
+	CHECK(editor.StyleFontName(lineNumber) == "monospace");
+}
+
+TEST_CASE("application actions font zero-key text events do not match font rows") {
+	// Text input uses key zero with Norm modifiers, the same unbound sentinel
+	// as menu-only font actions. Matching must reject that key entirely.
+	const KeyboardInput textEvent = {
+		static_cast<Scintilla::Keys>(0),
+		Scintilla::KeyMod::Norm,
+		"a",
+		1,
+		true,
+	};
+	CHECK_FALSE(MatchApplicationAction(textEvent).has_value());
+
+	// Bound shortcuts still match after the zero-key guard.
+	CHECK(MatchApplicationAction(Press('N', Scintilla::KeyMod::Ctrl)) ==
+		ApplicationAction::NewTab);
 }

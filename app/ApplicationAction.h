@@ -1,5 +1,5 @@
-// Fixed File / Edit application actions: metadata, shortcut match, enablement,
-// and one dispatcher shared by keyboard shortcuts and the menu bar.
+// Fixed File / Edit / Font application actions: metadata, shortcut match,
+// enablement, and one dispatcher shared by keyboard shortcuts and the menu bar.
 // main routes matched shortcuts and menu activations through DispatchApplicationAction
 // into DocumentWorkspace and ApplicationEditor; the list is compile-time-known and
 // does not support registration or runtime menu construction.
@@ -19,7 +19,7 @@ namespace Scalpel {
 class ApplicationEditor;
 class DocumentWorkspace;
 
-/** Compile-time-known application commands exposed by File and Edit. */
+/** Compile-time-known application commands exposed by File, Edit, and Font. */
 enum class ApplicationAction {
 	NewTab,
 	Open,
@@ -33,12 +33,17 @@ enum class ApplicationAction {
 	Copy,
 	Paste,
 	SelectAll,
+	FontMonospace,
+	FontSerif,
+	FontSans,
+	FontSystem,
 };
 
 /** Which permanent menu bar heading owns an item. */
 enum class ApplicationMenu {
 	File,
 	Edit,
+	Font,
 	Recent,
 };
 
@@ -64,15 +69,16 @@ struct ApplicationActionInfo {
 
 /**
  * Map a key press to an application action. Requires pressed and an exact
- * key+modifier match; returns nullopt for tab cycling and unbound keys.
+ * key+modifier match on a bound shortcut; menu-only actions (key zero) never
+ * match. Returns nullopt for tab cycling and unbound keys.
  */
 [[nodiscard]] std::optional<ApplicationAction> MatchApplicationAction(
 	const KeyboardInput &input) noexcept;
 
 /**
  * Whether the action may run against the current editor and clipboard offer.
- * File actions are always enabled; edit enablement follows document history,
- * selection, write state, and ClipboardPasteAvailable.
+ * File and Font actions are always enabled; edit enablement follows document
+ * history, selection, write state, and ClipboardPasteAvailable.
  */
 [[nodiscard]] bool ApplicationActionEnabled(ApplicationAction action,
 	ApplicationEditor &editor);

@@ -115,6 +115,8 @@ std::string_view HeadingLabel(ApplicationMenu menu) noexcept {
 		return "File";
 	case ApplicationMenu::Edit:
 		return "Edit";
+	case ApplicationMenu::Font:
+		return "Font";
 	case ApplicationMenu::Recent:
 		return "Recent";
 	}
@@ -127,6 +129,8 @@ int HeadingWidth(ApplicationMenu menu, const UiStyle &style) noexcept {
 		return style.menuFileHeadingWidth;
 	case ApplicationMenu::Edit:
 		return style.menuEditHeadingWidth;
+	case ApplicationMenu::Font:
+		return style.menuFontHeadingWidth;
 	case ApplicationMenu::Recent:
 		return style.menuRecentHeadingWidth;
 	}
@@ -202,6 +206,10 @@ bool MenuBarModel::IsEnabled(ApplicationAction action) const noexcept {
 	case ApplicationAction::SaveAs:
 	case ApplicationAction::CloseTab:
 	case ApplicationAction::Quit:
+	case ApplicationAction::FontMonospace:
+	case ApplicationAction::FontSerif:
+	case ApplicationAction::FontSans:
+	case ApplicationAction::FontSystem:
 		return true;
 	case ApplicationAction::Undo:
 		return undoEnabled;
