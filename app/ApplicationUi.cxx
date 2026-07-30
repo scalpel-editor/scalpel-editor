@@ -490,6 +490,10 @@ ApplicationLayout ApplicationUi::Layout() const {
 }
 
 void ApplicationUi::BeginFrameLayout() {
+	// Values copied into the layout must be current before painters read them.
+	(void)UpdateMenuBarActionState(menuModel, *editor);
+	stripModel.scrollOffset = ClampTabStripScroll(
+		editor->FrameWidth(), stripModel.tabs.size(), stripModel.scrollOffset);
 	frameLayout = Layout();
 }
 
@@ -945,6 +949,51 @@ bool ApplicationUi::SynchronizeTabs(bool revealActive) {
 		}
 	}
 	return changed;
+}
+
+void ApplicationUi::SynchronizeDirtyTabs() {
+	if (SynchronizeTabs()) {
+		editor->InvalidateTopChrome();
+	}
+}
+
+void ApplicationUi::SynchronizeInteraction() {
+	const DocumentId activeDocument = editor->ActiveDocument();
+	const bool documentChanged = activeDocument != lastActiveDocument;
+	if (documentChanged || !fileErrors.empty() || workspace->PromptActive() ||
+		menuModel.openMenu.has_value()) {
+		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
+	}
+	lastActiveDocument = activeDocument;
+}
+
+void ApplicationUi::HandleFrameSizeChange() {
+	// Width may change scroll clamping and tab layout. Keep an open menu;
+	// LayoutMenuBar recomputes headings and clamps the panel. Resize and
+	// scale cancel an in-progress scrollbar drag.
+	CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
+	(void)SynchronizeTabs(true);
+	editor->InvalidateTopChrome();
+	editor->InvalidateScrollBars();
+	if (!fileErrors.empty() || workspace->PromptActive() ||
+		menuModel.openMenu.has_value()) {
+		// Full frame so the card or dropdown cannot leave stale pixels.
+		editor->InvalidateFrame();
+	}
+}
+
+void ApplicationUi::RefreshOpenMenuActionState() {
+	// Clipboard offer can arrive while a dropdown is open; flip paste
+	// enablement and force a full-frame paint so the row updates.
+	if (menuModel.openMenu.has_value() &&
+		UpdateMenuBarActionState(menuModel, *editor)) {
+		editor->InvalidateFrame();
+	}
+}
+
+void ApplicationUi::PrepareForExit() {
+	DismissOpenMenu(menuModel, *editor);
+	CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
 }
 
 std::vector<ApplicationShellEffect> ApplicationUi::TakeShellEffects() {

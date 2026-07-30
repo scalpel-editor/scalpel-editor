@@ -1387,3 +1387,132 @@ TEST_CASE("application UI shell effects portal Save As continues dirty close") {
 	REQUIRE(read.has_value());
 	CHECK(*read == dirtyText);
 }
+
+TEST_CASE("application UI workflow menu portal edit dirty close cancel editor") {
+	// Controller path without Wayland: menu Open → portal → edit → dirty
+	// window close → cancel → editor typing again.
+	TempFile file("workflow-open\n");
+	ApplicationEditor editor(400, 280);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	REQUIRE(ui.SynchronizeTabs());
+	ui.BindPainters();
+	CHECK(ui.Overlay() == BoundOverlay::None);
+
+	// Menu → Open (File heading, second item after New Tab).
+	REQUIRE(ui.HandleKeyboard(MakeKey(Keys::Menu)).owner ==
+		ApplicationKeyboardOwner::Menu);
+	REQUIRE(ui.MenuModel().openMenu == Scalpel::ApplicationMenu::File);
+	CHECK(ui.ChromeOwnsInput());
+	CHECK(ui.SynchronizeComposition() == BoundOverlay::Menu);
+	(void)ui.HandleKeyboard(MakeKey(Keys::Down));
+	const ApplicationKeyboardResult openItem =
+		ui.HandleKeyboard(MakeKey(Keys::Return));
+	CHECK(openItem.owner == ApplicationKeyboardOwner::Menu);
+	CHECK_FALSE(ui.MenuModel().openMenu.has_value());
+
+	std::vector<ApplicationShellEffect> effects = ui.TakeShellEffects();
+	REQUIRE(effects.size() == 1);
+	REQUIRE(effects[0].kind == ApplicationShellEffectKind::ShowOpen);
+	ui.SynchronizeInteraction();
+
+	// Portal accept loads the file and refreshes tabs inside ApplicationUi.
+	ui.NotifyDialogResult(effects[0].dialogId, true, {file.path});
+	effects = ui.TakeShellEffects();
+	CHECK(effects.empty());
+	ui.SynchronizeInteraction();
+	CHECK(workspace.Path() == file.path);
+	CHECK(editor.Text() == "workflow-open\n");
+	REQUIRE(ui.StripModel().tabs.size() == 2);
+	CHECK(ui.SynchronizeComposition() == BoundOverlay::None);
+	CHECK_FALSE(ui.ChromeOwnsInput());
+
+	// Edit marks the buffer dirty and updates the strip marker.
+	DirtyBuffer(editor);
+	ui.SynchronizeDirtyTabs();
+	REQUIRE(editor.Modified());
+	bool activeDirty = false;
+	for (const Scalpel::TabStripTab &tab : ui.StripModel().tabs) {
+		if (tab.active) {
+			activeDirty = tab.dirty;
+			break;
+		}
+	}
+	CHECK(activeDirty);
+
+	// Dirty window close surfaces the unsaved card without accepting close.
+	workspace.RequestClose();
+	effects = ui.TakeShellEffects();
+	CHECK_FALSE(HasShellEffect(
+		effects, ApplicationShellEffectKind::AcceptClose));
+	REQUIRE(workspace.PromptActive());
+	ui.SynchronizeInteraction();
+	CHECK(ui.SynchronizeComposition() == BoundOverlay::UnsavedChanges);
+	CHECK(ui.ChromeOwnsInput());
+	CHECK(ui.CurrentPointerCursor() == ApplicationPointerCursor::Arrow);
+
+	// Cancel returns ownership to the editor; the dirty buffer remains.
+	const ApplicationKeyboardResult cancel =
+		ui.HandleKeyboard(MakeKey(Keys::Escape));
+	CHECK(cancel.owner == ApplicationKeyboardOwner::UnsavedPrompt);
+	CHECK_FALSE(workspace.PromptActive());
+	effects = ui.TakeShellEffects();
+	CHECK(effects.empty());
+	ui.SynchronizeInteraction();
+	CHECK(ui.SynchronizeComposition() == BoundOverlay::None);
+	CHECK_FALSE(ui.ChromeOwnsInput());
+	CHECK(editor.Modified());
+
+	// Editor input is live again after the modal path.
+	const std::string textBefore = editor.Text();
+	KeyboardInput insert;
+	insert.key = static_cast<Keys>(0);
+	insert.modifiers = KeyMod::Norm;
+	insert.text = "z";
+	insert.pressed = true;
+	const ApplicationKeyboardResult typed = ui.HandleKeyboard(insert);
+	CHECK(typed.owner == ApplicationKeyboardOwner::Editor);
+	CHECK(editor.Text() != textBefore);
+	CHECK(editor.Text().find('z') != std::string::npos);
+}
+
+TEST_CASE("application UI workflow frame size and exit cleanup") {
+	ApplicationEditor editor(320, 200);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	REQUIRE(ui.SynchronizeTabs());
+
+	ui.ScrollBars().dragging = true;
+	ui.ScrollBars().hover = Scalpel::ScrollBarHit::Thumb;
+	ui.MenuModel().openMenu = Scalpel::ApplicationMenu::File;
+	editor.Resize(480, 260);
+	ui.HandleFrameSizeChange();
+	CHECK_FALSE(ui.ScrollBars().dragging);
+	CHECK(ui.ScrollBars().hover == Scalpel::ScrollBarHit::None);
+	// Open menu survives resize; full-frame invalidation covers the panel.
+	REQUIRE(ui.MenuModel().openMenu == Scalpel::ApplicationMenu::File);
+	CHECK(HasDamage(editor.TakeFrameDamage(), PRectangle::FromInts(
+		0, 0, editor.FrameWidth(), editor.FrameHeight())));
+
+	ui.ScrollBars().dragging = true;
+	ui.PrepareForExit();
+	CHECK_FALSE(ui.MenuModel().openMenu.has_value());
+	CHECK_FALSE(ui.ScrollBars().dragging);
+
+	// Open-menu enablement refresh when a clipboard offer arrives.
+	ui.MenuModel().openMenu = Scalpel::ApplicationMenu::Edit;
+	(void)Scalpel::UpdateMenuBarActionState(ui.MenuModel(), editor);
+	const bool pasteBefore = ui.MenuModel().IsEnabled(
+		Scalpel::ApplicationAction::Paste);
+	editor.SetClipboardPasteAvailable(!pasteBefore);
+	(void)editor.TakeFrameDamage();
+	ui.RefreshOpenMenuActionState();
+	CHECK(ui.MenuModel().IsEnabled(Scalpel::ApplicationAction::Paste) !=
+		pasteBefore);
+	CHECK(HasDamage(editor.TakeFrameDamage(), PRectangle::FromInts(
+		0, 0, editor.FrameWidth(), editor.FrameHeight())));
+}

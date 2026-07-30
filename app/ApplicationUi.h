@@ -9,9 +9,11 @@
 // requests and outcomes are consumed here: application-side work (prompt
 // begin, tab refresh, recent-file record and persist, file-error queue) is
 // applied directly, while typed ApplicationShellEffect values carry only the
-// portal-dialog and window-close work the host must perform. ApplicationLayout
-// is the one frame-size snapshot used for hit testing and painting within an
-// event or paint pass.
+// portal-dialog and window-close work the host must perform. Frame-size
+// response, dirty-tab sync, open-menu enablement refresh, post-shell
+// interaction cleanup, and exit dismissal also live here so main stays a
+// platform pump. ApplicationLayout is the one frame-size snapshot used for
+// hit testing and painting within an event or paint pass.
 
 #ifndef APPLICATIONUI_H
 #define APPLICATIONUI_H
@@ -196,9 +198,10 @@ public:
 	 */
 	[[nodiscard]] ApplicationLayout Layout() const;
 	/**
-	 * Build and retain the snapshot shared by all painters in one frame.
-	 * BeginFrameLayout must precede ApplicationEditor frame painting, and
-	 * EndFrameLayout must follow it on both success and failure.
+	 * Finalize model values that feed the layout, then build and retain the
+	 * snapshot shared by all painters in one frame. Refreshes menu action
+	 * enablement and clamps tab-strip scroll. Must precede ApplicationEditor
+	 * frame painting; EndFrameLayout must follow it on both success and failure.
 	 */
 	void BeginFrameLayout();
 	void EndFrameLayout() noexcept;
@@ -298,6 +301,39 @@ public:
 	 * TakeShellEffects calls this when RefreshTabs is queued.
 	 */
 	bool SynchronizeTabs(bool revealActive = false);
+
+	/**
+	 * After editor pending work may have flipped dirty markers: rebuild the
+	 * tab strip and invalidate top chrome when display state changed.
+	 */
+	void SynchronizeDirtyTabs();
+
+	/**
+	 * After shell effects, dialog results, or input that may change the active
+	 * document or modal ownership: cancel scrollbar interaction when the
+	 * active document changed, a file-error or unsaved card is up, or a menu
+	 * is open.
+	 */
+	void SynchronizeInteraction();
+
+	/**
+	 * Respond to a logical frame size or scale change already applied to the
+	 * editor. Cancels scrollbar interaction, refreshes tab layout, and
+	 * invalidates chrome; full-frame when a modal card or open menu is visible.
+	 */
+	void HandleFrameSizeChange();
+
+	/**
+	 * While a menu is open, refresh action enablement (clipboard Paste and
+	 * similar) and invalidate the frame when a row changes.
+	 */
+	void RefreshOpenMenuActionState();
+
+	/**
+	 * Close any open menu and cancel scrollbar interaction before the process
+	 * exits (force-close or accept-close).
+	 */
+	void PrepareForExit();
 
 	/**
 	 * Consume DocumentWorkspace shell requests and outcomes. Applies prompt

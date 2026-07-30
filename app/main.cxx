@@ -1,26 +1,17 @@
-// Production Wayland editor process entry.
+// Production Wayland editor process entry: platform pump and transport.
 //
-// Ownership: ApplicationEditor retains Scintilla documents and paints one
-// surface (one renderer, one EGL context). DocumentWorkspace owns tab order,
-// paths, untitled numbering, file-dialog intents, and dirty-close prompts;
-// it returns shell requests and owns no Wayland or drawing. ApplicationUi owns
-// menu, tab-strip, scrollbar interaction, modal-card, file-error queue, hover,
-// press, painters, overlay composition, pointer and keyboard routing (file
-// error, unsaved card, menu, scrollbar drag, editor capture, permanent chrome,
-// then editor; keyboard: modals, menu, application shortcuts, tab cycling,
-// editor), and workspace-request consumption into typed shell effects. Focus
-// loss closes menus, cancels scrollbar interaction, and clears press state.
-// Opening a menu or modal card cancels tentative IME; ChromeOwnsInput drops
-// IME batches while chrome owns keyboard. MenuBar, TabStrip, and ScrollBar are
-// permanent chrome. The open menu dropdown, UnsavedChangesCard, and
-// FileErrorCard share the post-paint overlay slot through ApplicationUi. This
-// file is the event and rendering adapter: it maps portal request IDs to
-// application dialog identities, delivers results through ApplicationUi,
-// drains TakeShellEffects for portal dialogs and accept-close, dismisses menus
-// on force close, and submits frames. Hit
-// testing and painting share one ApplicationLayout snapshot per event or paint
-// pass. Text-input protocol conversion stays here. Open/save policy and prompt
-// transitions live in DocumentWorkspace, not here. Required-global loss
+// Construction, Wayland event collection, external-service transport
+// (clipboard, primary selection, text input, file dialogs), frame submission,
+// and waiting live here. ApplicationEditor retains Scintilla documents and
+// paints one surface. DocumentWorkspace owns tabs, paths, file-dialog intents,
+// and dirty-close policy. ApplicationUi owns chrome, overlays, input routing,
+// composition, shell-effect consumption, frame-size response, dirty-tab sync,
+// interaction cleanup, and exit dismissal. This file maps portal request IDs
+// to application dialog identities, delivers platform events and unconsumed
+// pointer input through ApplicationUi, applies CurrentPointerCursor, drops
+// IME batches while ChromeOwnsInput is true, drains TakeShellEffects for
+// portal dialogs and accept-close, submits frames, and waits. Open/save policy
+// and prompt transitions live in DocumentWorkspace. Required-global loss
 // force-closes without prompting the workspace.
 
 #include <cmath>
@@ -39,10 +30,7 @@
 #include "DocumentFile.h"
 #include "DocumentWorkspace.h"
 #include "GlContext.h"
-#include "MenuBar.h"
 #include "RecentFiles.h"
-#include "ScrollBar.h"
-#include "TabStrip.h"
 #include "WaylandWindow.h"
 
 namespace {
@@ -292,16 +280,6 @@ std::vector<Scalpel::FileDialogFilter> TextDialogFilters() {
 	return requestId;
 }
 
-/** Close an open menu and force a full-frame repaint so the dropdown cannot linger. */
-void DismissOpenMenu(Scalpel::MenuBarModel &menuModel,
-	Scalpel::ApplicationEditor &editor) {
-	if (!menuModel.openMenu.has_value()) {
-		return;
-	}
-	Scalpel::CloseMenuBar(menuModel);
-	editor.InvalidateFrame();
-}
-
 /**
  * Drain ApplicationUi shell effects. Application-side work is already applied;
  * only portal dialogs and accept-close remain host work.
@@ -356,22 +334,6 @@ void ApplyFileDialogResults(Scalpel::WaylandWindow &window,
 	}
 }
 
-void CancelScrollBarShellInteraction(Scalpel::ScrollBarInteraction &interaction,
-	Scalpel::ApplicationEditor &editor) {
-	const bool paintChanged = interaction.dragging ||
-		interaction.pressed != Scalpel::ScrollBarHit::None ||
-		interaction.hover != Scalpel::ScrollBarHit::None;
-	const bool wheelPending = interaction.verticalWheelRemainder != 0.0 ||
-		interaction.horizontalWheelRemainder != 0.0;
-	if (!paintChanged && !wheelPending) {
-		return;
-	}
-	Scalpel::CancelScrollBarInteraction(interaction);
-	if (paintChanged) {
-		editor.InvalidateScrollBars();
-	}
-}
-
 }
 
 int main() {
@@ -408,17 +370,6 @@ int main() {
 			}
 		};
 		bool quitAccepted = false;
-		const auto synchronizeScrollBarInteraction = [&] {
-			const Scalpel::DocumentId activeDocument = editor.ActiveDocument();
-			const bool documentChanged =
-				activeDocument != ui.LastActiveDocument();
-			if (documentChanged || !ui.FileErrors().empty() ||
-				workspace.PromptActive() ||
-				ui.MenuModel().openMenu.has_value()) {
-				CancelScrollBarShellInteraction(ui.ScrollBars(), editor);
-			}
-			ui.LastActiveDocument() = activeDocument;
-		};
 
 		(void)ui.SynchronizeTabs();
 		editor.InvalidateTopChrome();
@@ -429,32 +380,22 @@ int main() {
 			(void)window.TakePresentationResults();
 			DeliverClipboardResults(window, editor);
 			DeliverPrimarySelectionResults(window, editor);
-			// Modal cards and an open menu all suppress IME delivery.
 			DeliverTextInputBatches(window, editor, ui.ChromeOwnsInput());
 			ApplyFileDialogResults(window, ui, activeFileDialogs);
 			ApplyShellEffects(ui, window, activeFileDialogs, quitAccepted);
-			// Portal results can activate a document or surface a modal without
-			// an input event. Neither may inherit an old scrollbar interaction.
-			synchronizeScrollBarInteraction();
+			ui.SynchronizeInteraction();
 			SynchronizeTextInput(editor, window);
-			// Clipboard offer can arrive while a dropdown is open; flip paste
-			// enablement and force a full-frame paint so the row updates.
-			if (ui.MenuModel().openMenu.has_value() &&
-				Scalpel::UpdateMenuBarActionState(ui.MenuModel(), editor)) {
-				editor.InvalidateFrame();
-			}
+			ui.RefreshOpenMenuActionState();
 
 			if (window.ForceCloseRequested()) {
-				// Force-close exits without a prompt; drop menu state so the
-				// final frames cannot paint a stale dropdown.
-				DismissOpenMenu(ui.MenuModel(), editor);
+				ui.PrepareForExit();
 				break;
 			}
 			if (window.UserCloseRequested()) {
 				workspace.RequestClose();
 				ApplyShellEffects(
 					ui, window, activeFileDialogs, quitAccepted);
-				synchronizeScrollBarInteraction();
+				ui.SynchronizeInteraction();
 				window.ClearCloseRequest();
 				if (quitAccepted) {
 					break;
@@ -468,32 +409,17 @@ int main() {
 					editor.Resize(scale->logicalWidth, scale->logicalHeight);
 				}
 				editor.SetFrameBufferSize(scale->bufferWidth, scale->bufferHeight);
-				// Width may change scroll clamping and tab layout. Keep an open
-				// menu; LayoutMenuBar recomputes headings and clamps the panel.
-				// Resize and scale cancel an in-progress scrollbar drag.
-				CancelScrollBarShellInteraction(ui.ScrollBars(), editor);
-				(void)ui.SynchronizeTabs(true);
-				editor.InvalidateTopChrome();
-				editor.InvalidateScrollBars();
-				if (!ui.FileErrors().empty() || workspace.PromptActive() ||
-					ui.MenuModel().openMenu.has_value()) {
-					// Full frame so the card or dropdown cannot leave stale pixels.
-					editor.InvalidateFrame();
-				}
+				ui.HandleFrameSizeChange();
 			}
 
 			for (const Scalpel::InputEvent &input : window.TakeInputs()) {
 				if (const auto *focus =
 					std::get_if<Scalpel::KeyboardFocusInput>(&input)) {
-					// Focus gain/loss, menu dismiss, scrollbar cancel, and
-					// press clear are one ApplicationUi transition.
 					ui.HandleFocus(focus->focused);
 					continue;
 				}
 				if (const auto *pointer =
 					std::get_if<Scalpel::PointerInput>(&input)) {
-					// File error, unsaved card, menu, bars, and chrome ownership
-					// are decided inside ApplicationUi; deliver leftovers only.
 					const Scalpel::ApplicationPointerResult pointerResult =
 						ui.HandlePointer(*pointer);
 					if (!pointerResult.consumed) {
@@ -501,37 +427,28 @@ int main() {
 					}
 					ApplyShellEffects(
 						ui, window, activeFileDialogs, quitAccepted);
-					synchronizeScrollBarInteraction();
+					ui.SynchronizeInteraction();
 					continue;
 				}
 				if (const auto *keyboard =
 					std::get_if<Scalpel::KeyboardInput>(&input)) {
-					// Modal cards, menu, shortcuts, tab cycling, and editor
-					// delivery are decided inside ApplicationUi.
 					(void)ui.HandleKeyboard(*keyboard);
 				}
 				ApplyShellEffects(
 					ui, window, activeFileDialogs, quitAccepted);
-				// Includes menus opened from the keyboard as well as tab changes.
-				synchronizeScrollBarInteraction();
+				ui.SynchronizeInteraction();
 			}
 
 			if (quitAccepted || window.ForceCloseRequested()) {
-				DismissOpenMenu(ui.MenuModel(), editor);
-				CancelScrollBarShellInteraction(ui.ScrollBars(), editor);
+				ui.PrepareForExit();
 				break;
 			}
 
 			DispatchClipboardRequests(editor, window);
 			DispatchPrimarySelectionRequests(editor, window);
 			editor.RunPendingWork();
-			// Edits can flip dirty markers without a workspace request.
-			if (ui.SynchronizeTabs()) {
-				editor.InvalidateTopChrome();
-			}
+			ui.SynchronizeDirtyTabs();
 			SynchronizeTextInput(editor, window);
-			// Overlay priority, painter bind/unbind, and full-frame invalidation
-			// when overlays appear, change, or disappear live in ApplicationUi.
 			(void)ui.SynchronizeComposition();
 			applyPointerCursor();
 			QueueFrameDamage(editor, window);
@@ -542,14 +459,6 @@ int main() {
 				if (plan) {
 					window.PrepareFrame(*plan);
 					try {
-						// Finalize every model value copied into the layout before
-						// retaining one snapshot for both paint callbacks.
-						(void)Scalpel::UpdateMenuBarActionState(
-							ui.MenuModel(), editor);
-						ui.StripModel().scrollOffset =
-							Scalpel::ClampTabStripScroll(editor.FrameWidth(),
-								ui.StripModel().tabs.size(),
-								ui.StripModel().scrollOffset);
 						ui.BeginFrameLayout();
 						editor.PresentFrame(EditorDamage(plan->repaintDamage),
 							EglDamage(plan->eglDamage), plan->fullSwap);
