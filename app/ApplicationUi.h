@@ -2,7 +2,8 @@
 // Owns menu, tab-strip, scrollbar interaction, modal-card, error-queue, hover,
 // press, and which overlay is bound. Holds references to ApplicationEditor,
 // DocumentWorkspace, and RecentFiles; free routing functions still apply
-// transitions for now.
+// transitions for now. ApplicationLayout is the one frame-size snapshot used for
+// hit testing and painting within an event or paint pass.
 
 #ifndef APPLICATIONUI_H
 #define APPLICATIONUI_H
@@ -13,8 +14,11 @@
 
 #include "DocumentId.h"
 #include "DocumentWorkspace.h"
+#include "FileErrorCard.h"
+#include "Geometry.h"
 #include "MenuBar.h"
 #include "ScrollBar.h"
+#include "ScrollMetrics.h"
 #include "TabStrip.h"
 #include "UnsavedChangesCard.h"
 
@@ -30,6 +34,39 @@ enum class BoundOverlay {
 	UnsavedChanges,
 	FileError,
 };
+
+/**
+ * One frame's permanent chrome, client, and card rectangles.
+ * Built from frame size, chrome models, and editor scroll metrics plus the
+ * editor-owned client rectangle. Hit testing and painting during the same
+ * event or paint pass must share this snapshot rather than re-laying out
+ * independently. Card layouts depend only on frame size; which card is shown
+ * remains overlay selection policy.
+ */
+struct ApplicationLayout {
+	int frameWidth = 0;
+	int frameHeight = 0;
+	int topChromeInset = 0;
+	MenuBarLayout menu;
+	TabStripLayout tabs;
+	ScrollBarLayout scrollBars;
+	/** Scintilla client from ApplicationEditor; not recomputed here. */
+	Scintilla::Internal::PRectangle client;
+	UnsavedChangesCardLayout unsavedCard;
+	FileErrorCardLayout fileErrorCard;
+};
+
+/**
+ * Build the frame layout from explicit size, models, and editor metrics.
+ * topChromeInset is MenuBarHeight + TabStripHeight in production. client must
+ * be ApplicationEditor::EditorClientRectangle() (or a test double) so client
+ * geometry stays the editor's responsibility. scroll metrics come from
+ * ApplicationEditor::Scrollbars(); visibility and ranges are not re-derived.
+ */
+[[nodiscard]] ApplicationLayout BuildApplicationLayout(int frameWidth,
+	int frameHeight, int topChromeInset, const MenuBarModel &menuModel,
+	const TabStripModel &stripModel, const ScrollMetrics &scrollMetrics,
+	Scintilla::Internal::PRectangle client) noexcept;
 
 /**
  * Owns permanent-chrome models, scrollbar interaction, modal-card focus,
@@ -61,6 +98,12 @@ public:
 	[[nodiscard]] const std::string &RecentStatePath() const noexcept {
 		return recentStatePath;
 	}
+
+	/**
+	 * Layout snapshot from the current editor frame, chrome models, and
+	 * editor scroll metrics and client rectangle.
+	 */
+	[[nodiscard]] ApplicationLayout Layout() const;
 
 	[[nodiscard]] MenuBarModel &MenuModel() noexcept { return menuModel; }
 	[[nodiscard]] const MenuBarModel &MenuModel() const noexcept {

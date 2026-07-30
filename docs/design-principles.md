@@ -23,7 +23,7 @@ Important application state has one authority:
 - `ApplicationEditor` owns the production Scintilla host, retained documents, rendering, editor work deadlines, and editor-facing clipboard and text-input state.
 - `DocumentWorkspace` owns tabs, paths, file operations, portal request intents, and dirty-close policy.
 - `WaylandWindow` owns the display connection, Wayland and EGL objects, external services, input transport, scaling, and frame submission.
-- `ApplicationUi` owns chrome and overlay selection state. The shell still applies input priority and composition for now.
+- `ApplicationUi` owns chrome and overlay selection state and builds one `ApplicationLayout` snapshot per event or paint pass. The shell still applies input priority and composition for now.
 
 Components exchange copied values, stable identifiers, and explicit results instead of retaining pointers across unrelated lifetimes.
 
@@ -45,7 +45,7 @@ Editor layout remains in logical top-left coordinates. Scaling occurs at the ren
 
 ## Share layout work
 
-Text measurement, wrapping, hit testing, selection, caret placement, and drawing consume the same cached shaped runs. Painting does not independently measure text. Permanent chrome uses the same layout calculations for painting and hit testing within each component.
+Text measurement, wrapping, hit testing, selection, caret placement, and drawing consume the same cached shaped runs. Painting does not independently measure text. Application chrome hit testing and painting share one `ApplicationLayout` snapshot for the frame size, chrome models, and editor-owned client and scrollbar metrics.
 
 ## Test adverse event order
 

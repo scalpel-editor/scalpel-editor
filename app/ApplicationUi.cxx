@@ -7,6 +7,24 @@
 
 namespace Scalpel {
 
+ApplicationLayout BuildApplicationLayout(int frameWidth, int frameHeight,
+	int topChromeInset, const MenuBarModel &menuModel,
+	const TabStripModel &stripModel, const ScrollMetrics &scrollMetrics,
+	Scintilla::Internal::PRectangle client) noexcept {
+	ApplicationLayout layout;
+	layout.frameWidth = frameWidth;
+	layout.frameHeight = frameHeight;
+	layout.topChromeInset = topChromeInset;
+	layout.menu = LayoutMenuBar(frameWidth, frameHeight, menuModel);
+	layout.tabs = LayoutTabStrip(frameWidth, stripModel, MenuBarHeight());
+	layout.scrollBars = LayoutScrollBars(frameWidth, frameHeight, topChromeInset,
+		scrollMetrics.vertical, scrollMetrics.horizontal);
+	layout.client = client;
+	layout.unsavedCard = LayoutUnsavedChangesCard(frameWidth, frameHeight);
+	layout.fileErrorCard = LayoutFileErrorCard(frameWidth, frameHeight);
+	return layout;
+}
+
 ApplicationUi::ApplicationUi(ApplicationEditor &editor_,
 	DocumentWorkspace &workspace_,
 	RecentFiles &recent_,
@@ -17,6 +35,12 @@ ApplicationUi::ApplicationUi(ApplicationEditor &editor_,
 	recentStatePath(std::move(recentStatePath_)),
 	lastActiveDocument(editor_.ActiveDocument()) {
 	menuModel.recentFiles = recent_.Paths();
+}
+
+ApplicationLayout ApplicationUi::Layout() const {
+	return BuildApplicationLayout(editor->FrameWidth(), editor->FrameHeight(),
+		editor->TopChromeInset(), menuModel, stripModel, editor->Scrollbars(),
+		editor->EditorClientRectangle());
 }
 
 }

@@ -15,7 +15,8 @@
 // it delivers input and portal results into the workspace, performs shell
 // requests (dialogs, quit, strip refresh), dismisses menus and scrollbar drags
 // around portals, prompts, tab activation, force close, and focus loss, and
-// paints chrome. Open/save policy and prompt transitions live in
+// paints chrome. Hit testing and painting share one ApplicationLayout snapshot
+// per event or paint pass. Open/save policy and prompt transitions live in
 // DocumentWorkspace, not here. Required-global loss force-closes without
 // prompting the workspace.
 
@@ -708,15 +709,15 @@ bool HandleFileErrorPointer(const Scalpel::PointerInput &input,
 }
 
 [[nodiscard]] bool PointerInTopChrome(const Scalpel::PointerInput &input,
-	const Scalpel::ApplicationEditor &editor) noexcept {
+	const Scalpel::ApplicationLayout &layout) noexcept {
 	if (input.action == Scalpel::PointerAction::Leave) {
 		return false;
 	}
-	const int inset = editor.TopChromeInset();
+	const int inset = layout.topChromeInset;
 	if (inset <= 0) {
 		return false;
 	}
-	return input.x >= 0.0 && input.x < static_cast<double>(editor.FrameWidth()) &&
+	return input.x >= 0.0 && input.x < static_cast<double>(layout.frameWidth) &&
 		input.y >= 0.0 && input.y < static_cast<double>(inset);
 }
 
@@ -745,24 +746,18 @@ void ApplyScrollBarShellRequest(Scalpel::ApplicationEditor &editor,
 	}
 }
 
-[[nodiscard]] Scalpel::ScrollBarLayout CurrentScrollBarLayout(
-	const Scalpel::ApplicationEditor &editor) {
-	return Scalpel::LayoutScrollBars(editor.FrameWidth(), editor.FrameHeight(),
-		editor.TopChromeInset(), editor.Scrollbars().vertical,
-		editor.Scrollbars().horizontal);
-}
-
 /**
  * Apply scrollbar pointer transitions. Returns true when the event must not
  * reach the editor. Active drag owns motion and release even outside the track.
+ * layout.scrollBars must match the current frame and editor metrics.
  */
 bool HandleScrollBarShellPointer(const Scalpel::PointerInput &input,
+	const Scalpel::ScrollBarLayout &scrollBars,
 	Scalpel::ScrollBarInteraction &interaction,
 	Scalpel::ApplicationEditor &editor,
 	bool &pointerOverChrome) {
-	const Scalpel::ScrollBarLayout layout = CurrentScrollBarLayout(editor);
 	const Scalpel::ScrollBarPointerResult result =
-		Scalpel::HandleScrollBarPointer(interaction, layout, input);
+		Scalpel::HandleScrollBarPointer(interaction, scrollBars, input);
 	if (result.barDirty) {
 		editor.InvalidateScrollBars();
 	}
@@ -775,20 +770,19 @@ bool HandleScrollBarShellPointer(const Scalpel::PointerInput &input,
 
 Scalpel::TabStripHitResult UpdateTabStripPointerState(
 	const Scalpel::PointerInput &input,
+	const Scalpel::ApplicationLayout &layout,
 	Scalpel::TabStripModel &model,
 	Scalpel::ApplicationEditor &editor,
 	bool &pointerOverChrome) {
 	Scalpel::TabStripHitResult hit;
 	if (input.action != Scalpel::PointerAction::Leave) {
-		const Scalpel::TabStripLayout layout = Scalpel::LayoutTabStrip(
-			editor.FrameWidth(), model, Scalpel::MenuBarHeight());
 		hit = Scalpel::HitTestTabStrip(
-			layout, Scintilla::Internal::Point(input.x, input.y));
+			layout.tabs, Scintilla::Internal::Point(input.x, input.y));
 	}
 
 	// Arrow cursor over the whole permanent chrome band (menu bar + strip).
 	pointerOverChrome = hit.kind != Scalpel::TabStripHit::None ||
-		PointerInTopChrome(input, editor);
+		PointerInTopChrome(input, layout);
 	Scalpel::DocumentId hoveredId = 0;
 	bool closeHovered = false;
 	if (hit.kind == Scalpel::TabStripHit::Tab ||
@@ -811,8 +805,10 @@ Scalpel::TabStripHitResult UpdateTabStripPointerState(
  * active scrollbar drag, open menu, top chrome, scrollbar hit, then editor.
  * Editor selection capture still bypasses chrome so selection release is
  * delivered; an active scrollbar drag is cancelled when a menu opens.
+ * layout is one frame snapshot shared by menu, tab, and scrollbar hit tests.
  */
 bool HandleTopChromePointer(const Scalpel::PointerInput &input,
+	const Scalpel::ApplicationLayout &layout,
 	Scalpel::MenuBarModel &menuModel,
 	Scalpel::TabStripModel &stripModel,
 	Scalpel::ScrollBarInteraction &scrollBarInteraction,
@@ -826,18 +822,17 @@ bool HandleTopChromePointer(const Scalpel::PointerInput &input,
 	// Active scrollbar drag owns the sequence before top chrome (not when the
 	// editor already holds a selection capture).
 	if (!captured && scrollBarInteraction.dragging) {
-		return HandleScrollBarShellPointer(
-			input, scrollBarInteraction, editor, pointerOverChrome);
+		return HandleScrollBarShellPointer(input, layout.scrollBars,
+			scrollBarInteraction, editor, pointerOverChrome);
 	}
 
 	const bool menuWasOpen = menuModel.openMenu.has_value();
 	// Keep enablement current before open/toggle/hover so disabled items and
 	// keyboard-equivalent pointer activation match the active document.
+	// Geometry still comes from the shared layout snapshot.
 	(void)Scalpel::UpdateMenuBarActionState(menuModel, editor);
-	const Scalpel::MenuBarLayout menuLayout = Scalpel::LayoutMenuBar(
-		editor.FrameWidth(), editor.FrameHeight(), menuModel);
 	const Scalpel::MenuBarPointerResult menuResult =
-		Scalpel::HandleMenuBarPointer(menuModel, menuLayout, input, captured);
+		Scalpel::HandleMenuBarPointer(menuModel, layout.menu, input, captured);
 
 	if (!menuWasOpen && menuModel.openMenu.has_value()) {
 		// Opening a menu cancels tentative IME; batches stay dropped while open.
@@ -862,7 +857,8 @@ bool HandleTopChromePointer(const Scalpel::PointerInput &input,
 	// over chrome. Scintilla must see release to drop capture; the menu
 	// handler already refused to consume those events.
 	if (captured) {
-		(void)UpdateTabStripPointerState(input, stripModel, editor, pointerOverChrome);
+		(void)UpdateTabStripPointerState(
+			input, layout, stripModel, editor, pointerOverChrome);
 		if (menuResult.pointerOverMenu) {
 			pointerOverChrome = true;
 		}
@@ -878,7 +874,7 @@ bool HandleTopChromePointer(const Scalpel::PointerInput &input,
 			editor.InvalidateTopChrome();
 		}
 		pointerOverChrome = menuResult.pointerOverMenu ||
-			PointerInTopChrome(input, editor);
+			PointerInTopChrome(input, layout);
 		// Surface leave still needs to clear editor hover.
 		if (input.action == Scalpel::PointerAction::Leave) {
 			return false;
@@ -888,21 +884,22 @@ bool HandleTopChromePointer(const Scalpel::PointerInput &input,
 
 	if (menuResult.consumed) {
 		// Closed menu still swallows bar-band events (heading open, empty bar).
-		(void)UpdateTabStripPointerState(input, stripModel, editor, pointerOverChrome);
+		(void)UpdateTabStripPointerState(
+			input, layout, stripModel, editor, pointerOverChrome);
 		if (menuResult.pointerOverMenu) {
 			pointerOverChrome = true;
 		}
 		return true;
 	}
 
-	const Scalpel::TabStripHitResult stripHit =
-		UpdateTabStripPointerState(input, stripModel, editor, pointerOverChrome);
+	const Scalpel::TabStripHitResult stripHit = UpdateTabStripPointerState(
+		input, layout, stripModel, editor, pointerOverChrome);
 	if (menuResult.pointerOverMenu) {
 		pointerOverChrome = true;
 	}
 
 	const bool inStrip = stripHit.kind != Scalpel::TabStripHit::None;
-	const bool inTopChrome = inStrip || PointerInTopChrome(input, editor);
+	const bool inTopChrome = inStrip || PointerInTopChrome(input, layout);
 	if (inTopChrome) {
 		if (!inStrip) {
 			// Menu bar band already handled above when it owns the hit.
@@ -926,7 +923,7 @@ bool HandleTopChromePointer(const Scalpel::PointerInput &input,
 			}
 			if (delta != 0) {
 				const int next = Scalpel::AdjustTabStripScroll(
-					editor.FrameWidth(), stripModel.tabs.size(),
+					layout.frameWidth, stripModel.tabs.size(),
 					stripModel.scrollOffset, delta,
 					Scalpel::TabStripPreferredTabWidth() / 2);
 				if (next != stripModel.scrollOffset) {
@@ -957,8 +954,8 @@ bool HandleTopChromePointer(const Scalpel::PointerInput &input,
 	}
 
 	// Below top chrome: scrollbar hit testing before the editor.
-	if (HandleScrollBarShellPointer(
-		input, scrollBarInteraction, editor, pointerOverChrome)) {
+	if (HandleScrollBarShellPointer(input, layout.scrollBars,
+		scrollBarInteraction, editor, pointerOverChrome)) {
 		return true;
 	}
 	// Surface leave still needs to clear editor hover.
@@ -1067,56 +1064,47 @@ int main() {
 		editor.InvalidateScrollBars();
 
 		editor.SetPermanentChromePainter(
-			[&](Scintilla::Internal::Surface &surface, int width, int height) {
+			[&](Scintilla::Internal::Surface &surface, int, int) {
 				// Heading open styling does not depend on edit flags, but keep
 				// the model aligned with the editor before any chrome paint.
 				(void)Scalpel::UpdateMenuBarActionState(ui.MenuModel(), editor);
-				const Scalpel::MenuBarLayout menuLayout =
-					Scalpel::LayoutMenuBar(width, height, ui.MenuModel());
-				menuPainter.PaintBar(surface, menuLayout, ui.MenuModel());
 				ui.StripModel().scrollOffset = Scalpel::ClampTabStripScroll(
-					width, ui.StripModel().tabs.size(),
+					editor.FrameWidth(), ui.StripModel().tabs.size(),
 					ui.StripModel().scrollOffset);
-				const Scalpel::TabStripLayout stripLayout = Scalpel::LayoutTabStrip(
-					width, ui.StripModel(), Scalpel::MenuBarHeight());
-				stripPainter.Paint(surface, stripLayout, ui.StripModel());
-				const Scalpel::ScrollBarLayout scrollLayout =
-					Scalpel::LayoutScrollBars(width, height, topChromeInset,
-						editor.Scrollbars().vertical,
-						editor.Scrollbars().horizontal);
-				Scalpel::PaintScrollBars(surface, scrollLayout,
+				// One snapshot for bar, strip, and scrollbars this paint.
+				const Scalpel::ApplicationLayout layout = ui.Layout();
+				menuPainter.PaintBar(surface, layout.menu, ui.MenuModel());
+				stripPainter.Paint(surface, layout.tabs, ui.StripModel());
+				Scalpel::PaintScrollBars(surface, layout.scrollBars,
 					Scalpel::ScrollBarPaintFromInteraction(ui.ScrollBars()));
 			});
 
 		const auto paintMenuDropdown =
-			[&](Scintilla::Internal::Surface &surface, int width, int height) {
+			[&](Scintilla::Internal::Surface &surface, int, int) {
 				// Open dropdown rows read enablement from the model; refresh so
 				// delayed clipboard and active-tab state paint correctly.
 				(void)Scalpel::UpdateMenuBarActionState(ui.MenuModel(), editor);
-				const Scalpel::MenuBarLayout menuLayout =
-					Scalpel::LayoutMenuBar(width, height, ui.MenuModel());
-				menuPainter.PaintDropdown(surface, menuLayout, ui.MenuModel());
+				const Scalpel::ApplicationLayout layout = ui.Layout();
+				menuPainter.PaintDropdown(surface, layout.menu, ui.MenuModel());
 			};
 
 		const auto paintUnsavedCard =
-			[&](Scintilla::Internal::Surface &surface, int width, int height) {
-				const Scalpel::UnsavedChangesCardLayout layout =
-					Scalpel::LayoutUnsavedChangesCard(width, height);
+			[&](Scintilla::Internal::Surface &surface, int, int) {
+				const Scalpel::ApplicationLayout layout = ui.Layout();
 				const std::string subtitle = UnsavedPromptSubtitle(workspace);
-				cardPainter.Paint(surface, layout, "Save changes?", subtitle,
-					ui.CardFocus());
+				cardPainter.Paint(surface, layout.unsavedCard, "Save changes?",
+					subtitle, ui.CardFocus());
 			};
 
 		const auto paintFileError =
-			[&](Scintilla::Internal::Surface &surface, int width, int height) {
+			[&](Scintilla::Internal::Surface &surface, int, int) {
 				if (ui.FileErrors().empty()) {
 					return;
 				}
-				const Scalpel::FileErrorCardLayout layout =
-					Scalpel::LayoutFileErrorCard(width, height);
+				const Scalpel::ApplicationLayout layout = ui.Layout();
 				const Scalpel::DocumentFileError &error = ui.FileErrors().front();
-				fileErrorPainter.Paint(
-					surface, layout, FileErrorTitle(error), error.path);
+				fileErrorPainter.Paint(surface, layout.fileErrorCard,
+					FileErrorTitle(error), error.path);
 			};
 
 		while (!quitAccepted && !window.ForceCloseRequested()) {
@@ -1185,13 +1173,6 @@ int main() {
 				}
 			}
 
-			const Scalpel::UnsavedChangesCardLayout promptLayout =
-				Scalpel::LayoutUnsavedChangesCard(
-					editor.FrameWidth(), editor.FrameHeight());
-			const Scalpel::FileErrorCardLayout fileErrorLayout =
-				Scalpel::LayoutFileErrorCard(
-					editor.FrameWidth(), editor.FrameHeight());
-
 			for (const Scalpel::InputEvent &input : window.TakeInputs()) {
 				if (const auto *focus =
 					std::get_if<Scalpel::KeyboardFocusInput>(&input)) {
@@ -1204,6 +1185,9 @@ int main() {
 					}
 					continue;
 				}
+				// One layout snapshot for hit testing this event (and any paint
+				// that does not rebuild after model changes).
+				const Scalpel::ApplicationLayout layout = ui.Layout();
 				// Input priority: file error, unsaved card, open menu, active
 				// scrollbar drag, top chrome, scrollbar hit, then editor.
 				if (!ui.FileErrors().empty()) {
@@ -1215,7 +1199,7 @@ int main() {
 							editor, ui.FileErrorPressHit());
 					} else if (const auto *pointer =
 						std::get_if<Scalpel::PointerInput>(&input)) {
-						HandleFileErrorPointer(*pointer, fileErrorLayout,
+						HandleFileErrorPointer(*pointer, layout.fileErrorCard,
 							ui.FileErrors(), editor, ui.FileErrorPressHit());
 					}
 					continue;
@@ -1229,9 +1213,9 @@ int main() {
 							ui.CardFocus());
 					} else if (const auto *pointer =
 						std::get_if<Scalpel::PointerInput>(&input)) {
-						(void)UpdateTabStripPointerState(*pointer,
+						(void)UpdateTabStripPointerState(*pointer, layout,
 							ui.StripModel(), editor, ui.PointerOverChrome());
-						HandlePromptPointer(*pointer, promptLayout,
+						HandlePromptPointer(*pointer, layout.unsavedCard,
 							ui.PromptPressHit(), workspace, editor,
 							ui.CardFocus());
 					}
@@ -1253,7 +1237,7 @@ int main() {
 				} else {
 					const auto &pointer =
 						std::get<Scalpel::PointerInput>(input);
-					if (!HandleTopChromePointer(pointer, ui.MenuModel(),
+					if (!HandleTopChromePointer(pointer, layout, ui.MenuModel(),
 						ui.StripModel(), ui.ScrollBars(), recent,
 						recentStatePath, workspace, editor,
 						ui.PointerOverChrome())) {
