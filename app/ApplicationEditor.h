@@ -20,8 +20,9 @@
 #include "ApplicationPrimarySelection.h"
 #include "ApplicationTextInput.h"
 #include "ApplicationInput.h"
+#include "DocumentId.h"
 #include "EditorNotifications.h"
-#include "ScrollBar.h"
+#include "ScrollMetrics.h"
 #include "ScintillaBase.h"
 
 namespace Scintilla::Internal {
@@ -46,12 +47,6 @@ struct FineTickerState {
 	bool running = false;
 };
 
-/** Vertical and horizontal ranges owned by ApplicationEditor host callbacks. */
-struct ScrollMetrics {
-	ScrollAxisMetrics vertical;
-	ScrollAxisMetrics horizontal;
-};
-
 class ApplicationResources {
 protected:
 	ApplicationResources(int width, int height);
@@ -64,9 +59,6 @@ protected:
 	std::unique_ptr<Scintilla::Internal::Renderer> renderer;
 	std::unique_ptr<Scintilla::Internal::DrawSurface> frame;
 };
-
-/** Opaque handle for a retained Scintilla document. Zero is never valid. */
-using DocumentId = uint64_t;
 
 /**
  * The application-facing editor host used by both test and Wayland targets.

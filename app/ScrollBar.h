@@ -12,6 +12,7 @@
 #include "Geometry.h"
 #include "Platform.h"
 #include "Position.h"
+#include "ScrollMetrics.h"
 
 namespace Scalpel {
 
@@ -20,18 +21,6 @@ namespace Scalpel {
 
 /** Preferred minimum thumb length when the track is long enough. */
 [[nodiscard]] int ScrollBarMinThumbLength() noexcept;
-
-/**
- * One axis of scroll range for chrome layout and interaction.
- * Units are display lines for vertical bars and logical pixels for horizontal.
- */
-struct ScrollAxisMetrics {
-	Scintilla::Line position = 0;
-	Scintilla::Line upperBound = 0;
-	Scintilla::Line pageSize = 0;
-	Scintilla::Line pageIncrement = 0;
-	bool visible = false;
-};
 
 /** Which bar axis a layout, hit, or interaction targets. */
 enum class ScrollBarAxis {

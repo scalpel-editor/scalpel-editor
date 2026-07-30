@@ -14,10 +14,12 @@
 #include <unordered_set>
 #include <vector>
 
-#include "ApplicationEditor.h"
+#include "DocumentId.h"
 #include "UnsavedChangesPrompt.h"
 
 namespace Scalpel {
+
+class ApplicationEditor;
 
 /** Side effects the shell performs (dialogs, window close, prompt chrome). */
 enum class DocumentShellRequest {

@@ -11,12 +11,13 @@
 #include <optional>
 #include <string_view>
 
-#include "ApplicationEditor.h"
 #include "ApplicationInput.h"
-#include "DocumentWorkspace.h"
 #include "EditorInputTypes.h"
 
 namespace Scalpel {
+
+class ApplicationEditor;
+class DocumentWorkspace;
 
 /** Compile-time-known application commands exposed by File and Edit. */
 enum class ApplicationAction {

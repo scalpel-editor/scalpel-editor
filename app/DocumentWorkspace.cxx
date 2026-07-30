@@ -4,6 +4,7 @@
 #include <iostream>
 #include <utility>
 
+#include "ApplicationEditor.h"
 #include "DocumentFile.h"
 
 namespace Scalpel {

@@ -13,7 +13,7 @@
 #include <string_view>
 #include <vector>
 
-#include "ApplicationEditor.h"
+#include "DocumentId.h"
 #include "Geometry.h"
 #include "Platform.h"
 

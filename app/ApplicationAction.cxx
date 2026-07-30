@@ -1,5 +1,8 @@
 #include "ApplicationAction.h"
 
+#include "ApplicationEditor.h"
+#include "DocumentWorkspace.h"
+
 namespace Scalpel {
 
 namespace {
