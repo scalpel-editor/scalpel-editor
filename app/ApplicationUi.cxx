@@ -708,13 +708,26 @@ void ApplicationUi::NotifyPromptBegan() {
 	promptPressHit.reset();
 }
 
-void ApplicationUi::NotifyFileErrorBecameActive() {
+void ApplicationUi::AppendFileErrors(std::vector<DocumentFileError> errors) {
+	if (errors.empty()) {
+		return;
+	}
+	const bool becameActive = fileErrors.empty();
+	for (DocumentFileError &error : errors) {
+		fileErrors.push_back(std::move(error));
+	}
+	if (!becameActive) {
+		return;
+	}
 	DismissOpenMenu(menuModel, *editor);
 	// Opening a modal card cancels tentative IME; batches stay dropped while
 	// any error remains in the queue.
 	editor->CancelActiveTextInput();
 	CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
 	fileErrorPressHit = false;
+	// The higher-priority card must not leave a press armed on the prompt
+	// underneath it. Otherwise a later release could activate that button.
+	promptPressHit.reset();
 	editor->InvalidateFrame();
 }
 

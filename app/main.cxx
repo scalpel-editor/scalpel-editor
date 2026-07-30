@@ -430,16 +430,7 @@ void CollectWorkspaceOutcomes(Scalpel::DocumentWorkspace &workspace,
 		SyncRecentMenu(recent, ui.MenuModel(), ui.Editor());
 	}
 
-	const std::vector<Scalpel::DocumentFileError> errors =
-		workspace.TakeFileErrors();
-	if (errors.empty()) {
-		return;
-	}
-	const bool wasEmpty = ui.FileErrors().empty();
-	ui.FileErrors().insert(ui.FileErrors().end(), errors.begin(), errors.end());
-	if (wasEmpty) {
-		ui.NotifyFileErrorBecameActive();
-	}
+	ui.AppendFileErrors(workspace.TakeFileErrors());
 }
 
 void PerformShellRequests(Scalpel::DocumentWorkspace &workspace,

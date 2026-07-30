@@ -14,6 +14,7 @@
 #include <deque>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "ApplicationInput.h"
 #include "DocumentId.h"
@@ -217,10 +218,12 @@ public:
 	void NotifyPromptBegan();
 
 	/**
-	 * First file-error card became active. Closes the menu, cancels tentative
-	 * IME, and invalidates the full frame for the overlay.
+	 * Append file errors to the application-owned queue. When the queue was
+	 * empty, activates the card in one transition: close the menu, cancel
+	 * tentative IME and scrollbar interaction, clear lower-priority prompt
+	 * press state, and invalidate the full frame.
 	 */
-	void NotifyFileErrorBecameActive();
+	void AppendFileErrors(std::vector<DocumentFileError> errors);
 
 	[[nodiscard]] MenuBarModel &MenuModel() noexcept { return menuModel; }
 	[[nodiscard]] const MenuBarModel &MenuModel() const noexcept {
@@ -264,9 +267,6 @@ public:
 		return promptPressHit;
 	}
 
-	[[nodiscard]] std::deque<DocumentFileError> &FileErrors() noexcept {
-		return fileErrors;
-	}
 	[[nodiscard]] const std::deque<DocumentFileError> &FileErrors()
 		const noexcept {
 		return fileErrors;

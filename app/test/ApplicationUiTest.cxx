@@ -145,12 +145,12 @@ TEST_CASE("application UI state mutates owned fields in place") {
 	ui.CardFocus() = 2;
 	CHECK(ui.CardFocus() == 2);
 
+	ui.AppendFileErrors({DocumentFileError{
+		DocumentFileOperation::Open, "/missing.txt"}});
 	ui.FileErrorPressHit() = true;
 	ui.PromptPressHit() = UnsavedCardHit::Save;
 	ui.SetOverlay(BoundOverlay::FileError);
 	ui.LastActiveDocument() = 42;
-	ui.FileErrors().push_back(DocumentFileError{
-		DocumentFileOperation::Open, "/missing.txt"});
 	ui.MenuModel().openMenu = Scalpel::ApplicationMenu::File;
 	ui.StripModel().hoveredId = 7;
 	ui.ScrollBars().dragging = true;
@@ -334,8 +334,8 @@ TEST_CASE("application UI pointer priority file error owns over prompt and chrom
 	RecentFiles recent;
 	ApplicationUi ui(editor, workspace, recent, "");
 	SeedStrip(ui, editor);
-	ui.FileErrors().push_back(DocumentFileError{
-		DocumentFileOperation::Open, "/missing.txt"});
+	ui.AppendFileErrors({DocumentFileError{
+		DocumentFileOperation::Open, "/missing.txt"}});
 	// Dirty close would otherwise raise the unsaved card; file error still wins.
 	DirtyBuffer(editor);
 	workspace.RequestClose();
@@ -407,6 +407,40 @@ TEST_CASE("application UI pointer priority unsaved prompt blocks menu and editor
 	CHECK(cancel.consumed);
 	CHECK(cancel.owner == ApplicationPointerOwner::UnsavedPrompt);
 	CHECK_FALSE(workspace.PromptActive());
+}
+
+TEST_CASE("application UI file error clears an underlying prompt press") {
+	ApplicationEditor editor(320, 200);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	DirtyBuffer(editor);
+	workspace.RequestClose();
+	REQUIRE(workspace.PromptActive());
+	ui.NotifyPromptBegan();
+	(void)workspace.TakeRequests();
+
+	const ApplicationLayout layout = ui.Layout();
+	const Point onCancel = Point::FromInts(
+		static_cast<int>(layout.unsavedCard.cancelButton.left + 2),
+		static_cast<int>(layout.unsavedCard.cancelButton.top + 2));
+	(void)ui.HandlePointer(
+		MakePointer(PointerAction::Press, onCancel.x, onCancel.y, 0));
+	REQUIRE(ui.PromptPressHit() == UnsavedCardHit::Cancel);
+
+	ui.AppendFileErrors({DocumentFileError{
+		DocumentFileOperation::Open, "/missing.txt"}});
+	CHECK_FALSE(ui.PromptPressHit().has_value());
+	(void)ui.HandleKeyboard(MakeKey(Keys::Escape));
+	REQUIRE(ui.FileErrors().empty());
+
+	const ApplicationPointerResult release = ui.HandlePointer(
+		MakePointer(PointerAction::Release, onCancel.x, onCancel.y, 0));
+	CHECK(release.owner == ApplicationPointerOwner::UnsavedPrompt);
+	CHECK(release.consumed);
+	CHECK(workspace.PromptActive());
 }
 
 TEST_CASE("application UI pointer priority open menu owns strip and dismisses outside") {
@@ -670,8 +704,8 @@ TEST_CASE("application UI keyboard routing file error owns over prompt") {
 	RecentFiles recent;
 	ApplicationUi ui(editor, workspace, recent, "");
 	SeedStrip(ui, editor);
-	ui.FileErrors().push_back(DocumentFileError{
-		DocumentFileOperation::Open, "/missing.txt"});
+	ui.AppendFileErrors({DocumentFileError{
+		DocumentFileOperation::Open, "/missing.txt"}});
 	DirtyBuffer(editor);
 	workspace.RequestClose();
 	REQUIRE(workspace.PromptActive());
@@ -870,9 +904,8 @@ TEST_CASE("application UI keyboard routing cancels IME when menu or card opens")
 
 	editor.HandleTextInputBatch(preedit);
 	REQUIRE(editor.ImeIndicatorAt(0) != 0);
-	ui.FileErrors().push_back(DocumentFileError{
-		DocumentFileOperation::Save, "/fail.txt"});
-	ui.NotifyFileErrorBecameActive();
+	ui.AppendFileErrors({DocumentFileError{
+		DocumentFileOperation::Save, "/fail.txt"}});
 	CHECK(ui.ChromeOwnsInput());
 	CHECK(editor.ImeIndicatorAt(0) == 0);
 	CHECK(editor.Text().find("\xC3\xA9") == std::string::npos);
