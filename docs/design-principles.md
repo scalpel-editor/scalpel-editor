@@ -2,7 +2,7 @@
 
 scalpel-editor is a direct application, not a reusable GUI framework. Code is judged by whether it makes the editor correct, understandable, testable, and inexpensive to change under the constraints imposed by Wayland and Scintilla.
 
-Transferable observations from this implementation are collected separately in [custom-wayland-ui.md](custom-wayland-ui.md).
+The concrete application composition is described in [application-ui.md](application-ui.md). Transferable observations from this implementation are collected separately in [custom-wayland-ui.md](custom-wayland-ui.md).
 
 ## Prefer explicit protocol lifecycles
 
@@ -23,7 +23,7 @@ Important application state has one authority:
 - `ApplicationEditor` owns the production Scintilla host, retained documents, rendering, editor work deadlines, and editor-facing clipboard and text-input state.
 - `DocumentWorkspace` owns tabs, paths, file operations, application file-dialog intents, and dirty-close policy.
 - `WaylandWindow` owns the display connection, Wayland and EGL objects, external services, input transport, scaling, and frame submission.
-- `ApplicationUi` owns chrome models, painters, overlay selection, composition, and the current application pointer-cursor choice, builds one `ApplicationLayout` snapshot per event or paint pass, and routes pointer and keyboard events with explicit owners. Focus loss is one transition that clears menu, scrollbar, and press state. Opening a menu or modal card cancels tentative IME. Permanent-chrome and overlay painters bind through `ApplicationUi` and are unbound when it is destroyed. Workspace requests and outcomes are consumed there: application-side work is applied directly, while typed shell effects carry only portal-dialog and window-close work to the host. Window-close delivery, frame-size chrome response, dirty-tab sync, open-menu enablement refresh, post-transition interaction cleanup, and exit dismissal also live there so `main` stays a platform pump. Each controller entry point leaves interaction state consistent without a follow-up host call. Dialog effects contain an application identity and copied document path; `main` alone maps the portal's request IDs to those identities.
+- `ApplicationUi` owns application composition: chrome models and painters, overlay and cursor selection, layout snapshots, input priority, focus transitions, and the application side of workspace requests and outcomes. Typed effects carry only portal-dialog and accepted-close work to `main.cxx`; dialog effects use application identities while the platform pump alone maps portal request IDs. Each controller entry point leaves interaction state consistent before returning. The complete boundary is described in [application-ui.md](application-ui.md).
 
 Components exchange copied values, stable identifiers, and explicit results instead of retaining pointers across unrelated lifetimes.
 

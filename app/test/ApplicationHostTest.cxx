@@ -606,6 +606,7 @@ TEST_CASE("production editor document switching keeps independent undo histories
 
 TEST_CASE("production editor document switching restores selection and scroll") {
 	Scalpel::ApplicationEditor editor(240, 100);
+	editor.SetWrapMode(Scintilla::Wrap::None);
 	const Scalpel::DocumentId first = editor.ActiveDocument();
 	std::string manyLines;
 	for (int line = 0; line < 40; ++line) {
@@ -615,7 +616,7 @@ TEST_CASE("production editor document switching restores selection and scroll") 
 	editor.RenderFrame();
 	editor.SetSel(5, 12);
 	editor.SetFirstVisibleLine(8);
-	editor.SetXOffset(40);
+	editor.ScrollHorizontalTo(40);
 	CHECK(editor.GetSelectionStart() == 5);
 	CHECK(editor.GetSelectionEnd() == 12);
 	CHECK(editor.GetFirstVisibleLine() == 8);
@@ -627,7 +628,7 @@ TEST_CASE("production editor document switching restores selection and scroll") 
 	editor.RenderFrame();
 	editor.SetSel(0, 5);
 	editor.SetFirstVisibleLine(1);
-	editor.SetXOffset(0);
+	editor.ScrollHorizontalTo(0);
 	CHECK(editor.GetSelectionStart() == 0);
 	CHECK(editor.GetSelectionEnd() == 5);
 	CHECK(editor.GetFirstVisibleLine() == 1);

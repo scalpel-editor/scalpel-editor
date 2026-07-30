@@ -22,6 +22,7 @@ cmake --build build --target scalpel-editor
 ## Design documentation
 
 - [Scintilla core boundary](docs/scintilla-core.md)
+- [Application UI](docs/application-ui.md)
 - [Rendering](docs/rendering.md)
 - [Wayland shell](docs/wayland.md)
 - [Design principles](docs/design-principles.md)

@@ -4,7 +4,7 @@ This document records lessons from building a custom Wayland user interface with
 
 A useful lesson explains a recurring problem, identifies the rule it protects, states the conditions under which it applies, and is supported by difficult event ordering or failure cases. A project-specific class name is only an example; the protected rule is the reusable part.
 
-The concrete implementation behind these observations is described in [wayland.md](wayland.md) and [rendering.md](rendering.md).
+The concrete implementation behind these observations is described in [application-ui.md](application-ui.md), [wayland.md](wayland.md), and [rendering.md](rendering.md).
 
 ## Judge direct UI code by the right criteria
 
