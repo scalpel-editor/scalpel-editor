@@ -627,7 +627,7 @@ TEST_CASE("document workspace tabs independent text after switch") {
 	CHECK(editor.Text() == "beta");
 }
 
-TEST_CASE("document workspace portal routing open registers request ID") {
+TEST_CASE("document workspace dialog routing open captures identity") {
 	TempFile a("alpha\n");
 	TempFile b("beta\n");
 	ApplicationEditor editor(320, 180);
@@ -637,9 +637,9 @@ TEST_CASE("document workspace portal routing open registers request ID") {
 
 	workspace.RequestOpen();
 	REQUIRE(HasRequest(workspace.TakeRequests(), DocumentShellRequest::ShowOpen));
-	workspace.RegisterOpenRequest(41);
+	const auto dialog = workspace.BeginOpenDialog();
 
-	workspace.HandlePortalResult(41, true, {a.path, b.path});
+	workspace.HandleDialogResult(dialog.id, true, {a.path, b.path});
 	CHECK(workspace.TabCount() == 3);
 	CHECK(workspace.ActiveTab() != startup);
 	// Last accepted path is active.
@@ -659,29 +659,29 @@ TEST_CASE("document workspace portal routing open registers request ID") {
 	CHECK(foundA);
 }
 
-TEST_CASE("document workspace portal routing ignores unknown request ID") {
+TEST_CASE("document workspace dialog routing ignores unknown identity") {
 	TempFile file("ignored\n");
 	ApplicationEditor editor(320, 180);
 	editor.LoadInitialBuffer("startup\n");
 	DocumentWorkspace workspace(editor);
 
-	workspace.HandlePortalResult(99, true, {file.path});
+	workspace.HandleDialogResult({99}, true, {file.path});
 	CHECK(workspace.TabCount() == 1);
 	CHECK(editor.Text() == "startup\n");
 	CHECK(workspace.Path().empty());
 }
 
-TEST_CASE("document workspace portal routing open cancel is a no-op") {
+TEST_CASE("document workspace dialog routing open cancel is a no-op") {
 	ApplicationEditor editor(320, 180);
 	editor.LoadInitialBuffer("startup\n");
 	DocumentWorkspace workspace(editor);
-	workspace.RegisterOpenRequest(7);
-	workspace.HandlePortalResult(7, false, {});
+	const auto dialog = workspace.BeginOpenDialog();
+	workspace.HandleDialogResult(dialog.id, false, {});
 	CHECK(workspace.TabCount() == 1);
 	CHECK(editor.Text() == "startup\n");
 }
 
-TEST_CASE("document workspace portal routing Save As targets initiating tab") {
+TEST_CASE("document workspace dialog routing Save As targets initiating tab") {
 	TempFile file("");
 	ApplicationEditor editor(320, 180);
 	editor.LoadInitialBuffer("keep me");
@@ -692,7 +692,7 @@ TEST_CASE("document workspace portal routing Save As targets initiating tab") {
 
 	workspace.RequestSaveAs();
 	REQUIRE(HasRequest(workspace.TakeRequests(), DocumentShellRequest::ShowSaveAs));
-	workspace.RegisterSaveAsRequest(12);
+	const auto dialog = workspace.BeginSaveAsDialog();
 
 	// Switch away while the portal is open; the result must still hit first.
 	workspace.NewTab();
@@ -700,7 +700,7 @@ TEST_CASE("document workspace portal routing Save As targets initiating tab") {
 	const DocumentId second = workspace.ActiveTab();
 	REQUIRE(second != first);
 
-	workspace.HandlePortalResult(12, true, {file.path});
+	workspace.HandleDialogResult(dialog.id, true, {file.path});
 	CHECK(workspace.ActiveTab() == second);
 	CHECK(editor.Text() == "other");
 	workspace.ActivateTab(first);
@@ -712,7 +712,7 @@ TEST_CASE("document workspace portal routing Save As targets initiating tab") {
 	CHECK(*read == dirtyText);
 }
 
-TEST_CASE("document workspace portal routing Save As ignores closed tab") {
+TEST_CASE("document workspace dialog routing Save As ignores closed tab") {
 	TempFile file("");
 	ApplicationEditor editor(320, 180);
 	editor.LoadInitialBuffer("gone");
@@ -720,7 +720,7 @@ TEST_CASE("document workspace portal routing Save As ignores closed tab") {
 	const DocumentId first = workspace.ActiveTab();
 	workspace.RequestSaveAs();
 	(void)workspace.TakeRequests();
-	workspace.RegisterSaveAsRequest(20);
+	const auto dialog = workspace.BeginSaveAsDialog();
 
 	workspace.NewTab();
 	const DocumentId second = workspace.ActiveTab();
@@ -728,7 +728,7 @@ TEST_CASE("document workspace portal routing Save As ignores closed tab") {
 	REQUIRE_FALSE(editor.HasDocument(first));
 	REQUIRE(workspace.ActiveTab() == second);
 
-	workspace.HandlePortalResult(20, true, {file.path});
+	workspace.HandleDialogResult(dialog.id, true, {file.path});
 	CHECK(workspace.Path().empty());
 	CHECK(workspace.TabCount() == 1);
 	const auto read = Scalpel::ReadDocumentFile(file.path);
@@ -737,7 +737,7 @@ TEST_CASE("document workspace portal routing Save As ignores closed tab") {
 	CHECK(read->empty());
 }
 
-TEST_CASE("document workspace portal routing delayed Save As continues prompt") {
+TEST_CASE("document workspace dialog routing delayed Save As continues prompt") {
 	TempFile file("");
 	ApplicationEditor editor(320, 180);
 	editor.LoadInitialBuffer("untitled body");
@@ -749,9 +749,9 @@ TEST_CASE("document workspace portal routing delayed Save As continues prompt") 
 	workspace.Choose(UnsavedChoice::Save);
 	REQUIRE(HasRequest(workspace.TakeRequests(), DocumentShellRequest::ShowSaveAs));
 	REQUIRE(workspace.AwaitingSaveAs());
-	workspace.RegisterSaveAsRequest(33);
+	const auto dialog = workspace.BeginSaveAsDialog();
 
-	workspace.HandlePortalResult(33, true, {file.path});
+	workspace.HandleDialogResult(dialog.id, true, {file.path});
 	CHECK_FALSE(workspace.PromptActive());
 	CHECK_FALSE(editor.HasDocument(dirty));
 	CHECK(workspace.TabCount() == 1);
@@ -760,7 +760,7 @@ TEST_CASE("document workspace portal routing delayed Save As continues prompt") 
 	CHECK(read->find('x') != std::string::npos);
 }
 
-TEST_CASE("document workspace portal routing Save As cancel keeps prompt") {
+TEST_CASE("document workspace dialog routing Save As cancel keeps prompt") {
 	ApplicationEditor editor(320, 180);
 	editor.LoadInitialBuffer("untitled");
 	DirtyBuffer(editor);
@@ -770,15 +770,15 @@ TEST_CASE("document workspace portal routing Save As cancel keeps prompt") {
 	workspace.Choose(UnsavedChoice::Save);
 	(void)workspace.TakeRequests();
 	REQUIRE(workspace.AwaitingSaveAs());
-	workspace.RegisterSaveAsRequest(44);
+	const auto dialog = workspace.BeginSaveAsDialog();
 
-	workspace.HandlePortalResult(44, false, {});
+	workspace.HandleDialogResult(dialog.id, false, {});
 	CHECK(workspace.PromptActive());
 	CHECK(workspace.Pending() == UnsavedPending::CloseWindow);
 	CHECK_FALSE(workspace.AwaitingSaveAs());
 }
 
-TEST_CASE("document workspace portal routing stale Save As keeps newer prompt") {
+TEST_CASE("document workspace dialog routing stale Save As keeps newer prompt") {
 	TempFile file("");
 	ApplicationEditor editor(320, 180);
 	editor.LoadInitialBuffer("untitled");
@@ -789,7 +789,7 @@ TEST_CASE("document workspace portal routing stale Save As keeps newer prompt") 
 	(void)workspace.TakeRequests();
 	workspace.Choose(UnsavedChoice::Save);
 	(void)workspace.TakeRequests();
-	workspace.RegisterSaveAsRequest(45);
+	const auto dialog = workspace.BeginSaveAsDialog();
 
 	// Cancelling the card abandons this close decision, but the portal request
 	// may still deliver a result after another close decision has begun.
@@ -800,7 +800,7 @@ TEST_CASE("document workspace portal routing stale Save As keeps newer prompt") 
 	REQUIRE(workspace.PromptActive());
 	REQUIRE_FALSE(workspace.AwaitingSaveAs());
 
-	workspace.HandlePortalResult(45, true, {file.path});
+	workspace.HandleDialogResult(dialog.id, true, {file.path});
 	CHECK(workspace.PromptActive());
 	CHECK(workspace.Pending() == UnsavedPending::CloseWindow);
 	CHECK_FALSE(HasRequest(workspace.TakeRequests(),
@@ -809,7 +809,7 @@ TEST_CASE("document workspace portal routing stale Save As keeps newer prompt") 
 	CHECK_FALSE(editor.Modified());
 }
 
-TEST_CASE("document workspace portal routing open selects existing among many") {
+TEST_CASE("document workspace dialog routing open selects existing among many") {
 	TempFile existing("once\n");
 	TempFile extra("twice\n");
 	ApplicationEditor editor(320, 180);
@@ -821,8 +821,9 @@ TEST_CASE("document workspace portal routing open selects existing among many") 
 	workspace.NewTab();
 	REQUIRE(workspace.TabCount() == 3);
 
-	workspace.RegisterOpenRequest(55);
-	workspace.HandlePortalResult(55, true, {existing.path, extra.path});
+	const auto dialog = workspace.BeginOpenDialog();
+	workspace.HandleDialogResult(
+		dialog.id, true, {existing.path, extra.path});
 	// Last path is active; existing path did not duplicate.
 	CHECK(workspace.TabCount() == 4);
 	CHECK(workspace.Path() == extra.path);
@@ -837,7 +838,7 @@ TEST_CASE("document workspace portal routing open selects existing among many") 
 	CHECK(existingCount == 1);
 }
 
-TEST_CASE("document workspace portal routing note Save As dialog failed") {
+TEST_CASE("document workspace dialog routing abandons failed Save As") {
 	ApplicationEditor editor(320, 180);
 	editor.LoadInitialBuffer("untitled");
 	DirtyBuffer(editor);
@@ -848,7 +849,8 @@ TEST_CASE("document workspace portal routing note Save As dialog failed") {
 	(void)workspace.TakeRequests();
 	REQUIRE(workspace.AwaitingSaveAs());
 
-	workspace.NoteSaveAsDialogFailed();
+	const auto dialog = workspace.BeginSaveAsDialog();
+	workspace.AbandonDialog(dialog.id);
 	CHECK(workspace.PromptActive());
 	CHECK_FALSE(workspace.AwaitingSaveAs());
 }
@@ -1040,9 +1042,9 @@ TEST_CASE("document workspace window close delayed Save As advances walk") {
 	REQUIRE(workspace.PromptTab() == first);
 	workspace.Choose(UnsavedChoice::Save);
 	REQUIRE(HasRequest(workspace.TakeRequests(), DocumentShellRequest::ShowSaveAs));
-	workspace.RegisterSaveAsRequest(77);
+	const auto dialog = workspace.BeginSaveAsDialog();
 
-	workspace.HandlePortalResult(77, true, {file.path});
+	workspace.HandleDialogResult(dialog.id, true, {file.path});
 	CHECK(workspace.PromptActive());
 	CHECK(workspace.Pending() == UnsavedPending::CloseWindow);
 	CHECK(workspace.PromptTab() == second);
@@ -1074,9 +1076,9 @@ TEST_CASE("document workspace multi-document open-many edit switch and inactive 
 		"/tmp/./" + Scalpel::DocumentBaseName(alpha.path);
 
 	// Open many: every distinct normalized path becomes its own tab.
-	workspace.RegisterOpenRequest(101);
-	workspace.HandlePortalResult(
-		101, true, {alpha.path, alphaAlias, beta.path});
+	const auto openDialog = workspace.BeginOpenDialog();
+	workspace.HandleDialogResult(
+		openDialog.id, true, {alpha.path, alphaAlias, beta.path});
 	REQUIRE(workspace.TabCount() == 3);
 	CHECK(workspace.Path() == beta.path);
 	CHECK(editor.Text() == "beta body\n");
@@ -1097,10 +1099,10 @@ TEST_CASE("document workspace multi-document open-many edit switch and inactive 
 	// still writes beta and leaves the visible tab alone.
 	workspace.RequestSaveAs();
 	REQUIRE(HasRequest(workspace.TakeRequests(), DocumentShellRequest::ShowSaveAs));
-	workspace.RegisterSaveAsRequest(102);
+	const auto saveDialog = workspace.BeginSaveAsDialog();
 	workspace.ActivateTab(startup);
 	REQUIRE(workspace.ActiveTab() == startup);
-	workspace.HandlePortalResult(102, true, {saveAsTarget.path});
+	workspace.HandleDialogResult(saveDialog.id, true, {saveAsTarget.path});
 	CHECK(workspace.ActiveTab() == startup);
 	CHECK(editor.Text() == "startup\n");
 	workspace.ActivateTab(betaId);
@@ -1211,8 +1213,8 @@ TEST_CASE("document workspace multi-document portal failure preserves tabs") {
 	const std::string dirtyText = editor.Text();
 
 	// Portal open failure (cancel or error) leaves tabs and dirty state alone.
-	workspace.RegisterOpenRequest(201);
-	workspace.HandlePortalResult(201, false, {});
+	const auto failedOpen = workspace.BeginOpenDialog();
+	workspace.HandleDialogResult(failedOpen.id, false, {});
 	CHECK(workspace.TabCount() == 1);
 	CHECK(workspace.ActiveTab() == startup);
 	CHECK(editor.Text() == dirtyText);
@@ -1224,7 +1226,8 @@ TEST_CASE("document workspace multi-document portal failure preserves tabs") {
 	workspace.Choose(UnsavedChoice::Save);
 	REQUIRE(HasRequest(workspace.TakeRequests(), DocumentShellRequest::ShowSaveAs));
 	REQUIRE(workspace.AwaitingSaveAs());
-	workspace.NoteSaveAsDialogFailed();
+	const auto failedSave = workspace.BeginSaveAsDialog();
+	workspace.AbandonDialog(failedSave.id);
 	CHECK(workspace.PromptActive());
 	CHECK(workspace.Pending() == UnsavedPending::CloseWindow);
 	CHECK_FALSE(workspace.AwaitingSaveAs());
@@ -1234,8 +1237,8 @@ TEST_CASE("document workspace multi-document portal failure preserves tabs") {
 	// A later successful open still creates a sibling tab.
 	workspace.Choose(UnsavedChoice::Cancel);
 	REQUIRE_FALSE(workspace.PromptActive());
-	workspace.RegisterOpenRequest(202);
-	workspace.HandlePortalResult(202, true, {file.path});
+	const auto laterOpen = workspace.BeginOpenDialog();
+	workspace.HandleDialogResult(laterOpen.id, true, {file.path});
 	CHECK(workspace.TabCount() == 2);
 	CHECK(editor.Text() == "on disk\n");
 	workspace.ActivateTab(startup);

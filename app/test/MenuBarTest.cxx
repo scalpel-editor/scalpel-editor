@@ -1719,8 +1719,8 @@ TEST_CASE("menu bar workflow keyboard open pointer edit portal quit cancel") {
 	REQUIRE(write(openFd, openBody, sizeof(openBody) - 1) ==
 		static_cast<ssize_t>(sizeof(openBody) - 1));
 	REQUIRE(close(openFd) == 0);
-	workspace.RegisterOpenRequest(501);
-	workspace.HandlePortalResult(501, true, {openPath});
+	const auto dialog = workspace.BeginOpenDialog();
+	workspace.HandleDialogResult(dialog.id, true, {openPath});
 	CHECK(workspace.TabCount() == 2);
 	CHECK(workspace.Path() == openPath);
 	CHECK(editor.Text() == "from portal\n");

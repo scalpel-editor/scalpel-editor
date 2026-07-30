@@ -6,9 +6,9 @@ Thin Wayland callbacks copy protocol events into state objects grouped by concer
 
 ## Application boundary
 
-`ApplicationEditor` owns Scintilla state, drawing, invalidation, editor deadlines, clipboard values, surrounding text, cursor rectangles, and tentative IME edits. `DocumentWorkspace` owns tabs, file paths, open and save policy, stable file-dialog intents, and dirty-close transitions.
+`ApplicationEditor` owns Scintilla state, drawing, invalidation, editor deadlines, clipboard values, surrounding text, cursor rectangles, and tentative IME edits. `DocumentWorkspace` owns tabs, file paths, open and save policy, stable application file-dialog intents, and dirty-close transitions.
 
-`main.cxx` is the platform adapter and current event pump. `ApplicationUi` owns chrome models, painters, overlay selection and composition, supplies one `ApplicationLayout` snapshot per event or paint pass, applies pointer and keyboard priority plus focus-loss transitions, and consumes workspace requests and outcomes into typed shell effects; `main` delivers platform events and unconsumed pointer input, applies `CurrentPointerCursor`, drops IME batches while `ChromeOwnsInput` is true, feeds portal results through `ApplicationUi` named methods, performs only the host half of shell effects (portal dialogs and accept-close), calls `SynchronizeComposition` before paint, submits frames, and waits for the next external event or application deadline. Wayland transport does not decide document-close or presentation policy.
+`main.cxx` is the platform adapter and current event pump. `ApplicationUi` owns chrome models, painters, overlay selection and composition, supplies one `ApplicationLayout` snapshot per event or paint pass, applies pointer and keyboard priority plus focus-loss transitions, and consumes workspace requests and outcomes; application-side transitions are applied there, while typed shell effects carry only portal-dialog and accept-close work. Dialog effects carry an application identity and copied document path. `main` delivers platform events and unconsumed pointer input, applies `CurrentPointerCursor`, drops IME batches while `ChromeOwnsInput` is true, maps portal request IDs to application dialog identities, feeds results through `ApplicationUi` named methods, calls `SynchronizeComposition` before paint, submits frames, and waits for the next external event or application deadline. Wayland transport does not decide document-close or presentation policy.
 
 ## Global and service behavior
 
@@ -39,7 +39,7 @@ Asynchronous operations do not retain an editor pointer:
 - Clipboard paste results carry a request identity and apply only to the current document generation.
 - Primary-selection paste retains its requested document position and applies only while the document revision remains current.
 - Text-input state uses protocol commit serials and publishes copied batches only at `done`.
-- File-dialog results carry a stable request ID and are matched to the original open or save intent, including the initiating tab.
+- File-dialog results carry a stable portal request ID. `main` maps it to the application dialog identity that retains the original open or save intent, including the initiating tab.
 - Portal parent handles are accepted only from the current xdg-foreign export.
 
 Cancellation, unavailable services, invalid MIME data, invalid UTF-8, I/O failure, size limits, timeouts, and superseded requests are observable results.

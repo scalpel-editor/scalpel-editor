@@ -10,7 +10,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -55,15 +54,37 @@ struct DocumentTabInfo {
 };
 
 /**
- * Owns ordered tabs, the active tab, paths, untitled numbering, portal request
+ * Application-owned identity for one file-dialog intent. This is deliberately
+ * distinct from the request ID returned by the platform dialog transport.
+ */
+struct DocumentDialogId {
+	uint64_t value = 0;
+};
+
+[[nodiscard]] bool operator==(DocumentDialogId left,
+	DocumentDialogId right) noexcept;
+[[nodiscard]] bool operator!=(DocumentDialogId left,
+	DocumentDialogId right) noexcept;
+
+/**
+ * Intent captured when a workspace dialog request crosses into the UI.
+ * documentPath selects the initial folder and Save As suggestion.
+ */
+struct DocumentDialogIntent {
+	DocumentDialogId id;
+	std::string documentPath;
+};
+
+/**
+ * Owns ordered tabs, the active tab, paths, untitled numbering, file-dialog
  * intents, and unsaved-changes prompt transitions. Uses ApplicationEditor for
  * document bytes and dirty state. Returns shell requests plus successful path
  * and file-error outcomes; owns no Wayland, persistence, or drawing.
  *
  * A running workspace always has at least one tab. Opening a path creates a
  * tab (or activates the existing lexically normalized path) instead of
- * replacing the buffer. Portal results are matched by the stable request ID
- * returned from Show, not by dialog order alone.
+ * replacing the buffer. File-dialog results are matched by an application
+ * dialog identity; the platform host maps its transport IDs to that identity.
  *
  * Dirty CloseTab prompts remove one tab after Save or Discard. Dirty window
  * close walks dirty tabs in strip order; Save or Discard advances, and Cancel
@@ -121,34 +142,30 @@ public:
 	/** Save / Discard / Cancel from the card or its keyboard shortcuts. */
 	void Choose(UnsavedChoice choice);
 
+	/** Capture an Open intent and its current document path. */
+	[[nodiscard]] DocumentDialogIntent BeginOpenDialog();
 	/**
-	 * Record a portal Open request ID returned from Show so the later result
-	 * is applied as multi-path open rather than ignored.
+	 * Capture the tab and prompt generation that queued the next Save As, plus
+	 * that tab's path. The returned identity remains valid across tab changes.
 	 */
-	void RegisterOpenRequest(uint64_t requestId);
+	[[nodiscard]] DocumentDialogIntent BeginSaveAsDialog();
 	/**
-	 * Record a portal Save As request ID for the tab that initiated the
-	 * dialog (captured when ShowSaveAs was queued).
+	 * The platform could not start a captured dialog. Removes its intent and,
+	 * for an awaiting dirty-close Save As, keeps the prompt active.
 	 */
-	void RegisterSaveAsRequest(uint64_t requestId);
-	/**
-	 * The Show for a queued Save As failed before a request ID existed. Clears
-	 * the pending target and, when the prompt is awaiting Save As, keeps the
-	 * card active.
-	 */
-	void NoteSaveAsDialogFailed();
+	void AbandonDialog(DocumentDialogId dialogId);
 
 	/**
-	 * Route a portal file-dialog result by its stable request ID. Unknown IDs
+	 * Route a file-dialog result by application identity. Unknown identities
 	 * and Save As results for closed tabs are ignored. accepted is false for
 	 * cancel, failure, or an empty path list; Open uses every path, Save As
 	 * uses the first.
 	 */
-	void HandlePortalResult(uint64_t requestId, bool accepted,
+	void HandleDialogResult(DocumentDialogId dialogId, bool accepted,
 		const std::vector<std::string> &paths);
 
 	/**
-	 * Apply open paths without a portal request ID (tests and direct loads).
+	 * Apply open paths without a dialog identity (tests and direct loads).
 	 * accepted is false for cancel, failure, or no path. An existing lexically
 	 * normalized path selects that tab; otherwise a new tab is created for each
 	 * path.
@@ -162,13 +179,13 @@ public:
 	 */
 	[[nodiscard]] bool OpenPath(std::string_view path);
 	/**
-	 * Apply a Save As path to the active tab without a portal request ID.
+	 * Apply a Save As path to the active tab without a dialog identity.
 	 * When the prompt is awaiting Save As, success continues the pending close;
 	 * cancel or write failure keeps it.
 	 */
 	void HandleSaveResult(bool accepted, std::string_view savedPath);
 	/**
-	 * Apply a Save As path to a specific tab. Used for delayed portal results
+	 * Apply a Save As path to a specific tab. Used for delayed dialog results
 	 * when another tab may be active.
 	 */
 	void HandleSaveResult(DocumentId tabId, bool accepted,
@@ -187,13 +204,14 @@ private:
 		int untitledNumber = 0;
 	};
 
-	enum class PortalIntentKind {
+	enum class DialogIntentKind {
 		Open,
 		SaveAs,
 	};
 
-	struct PortalIntent {
-		PortalIntentKind kind = PortalIntentKind::Open;
+	struct ActiveDialogIntent {
+		DocumentDialogId id;
+		DialogIntentKind kind = DialogIntentKind::Open;
 		DocumentId tabId = 0;
 		/**
 		 * Non-zero when this Save As may advance one exact dirty-close prompt.
@@ -203,6 +221,7 @@ private:
 
 	void Queue(DocumentShellRequest request);
 	void QueueShowSaveAs();
+	[[nodiscard]] DocumentDialogId NextDialogId();
 	void BeginPrompt(UnsavedPending pending, DocumentId tabId);
 	void ClearDirtyCloseState() noexcept;
 	void ApplyOutcome(UnsavedOutcome outcome, UnsavedPending completedKind,
@@ -243,15 +262,16 @@ private:
 	std::unordered_set<DocumentId> windowCloseResolved;
 	/**
 	 * Tab that should receive the next Save As dialog result. Set when
-	 * ShowSaveAs is queued; consumed by RegisterSaveAsRequest or failure.
+	 * ShowSaveAs is queued; consumed by BeginSaveAsDialog.
 	 */
 	std::optional<DocumentId> pendingSaveAsTab;
-	/** Exact prompt that the next registered Save As may continue, or zero. */
+	/** Exact prompt that the next captured Save As may continue, or zero. */
 	uint64_t pendingSaveAsPromptGeneration = 0;
 	/** Monotonic identity of the currently visible dirty-close prompt. */
 	uint64_t activePromptGeneration = 0;
 	uint64_t lastPromptGeneration = 0;
-	std::unordered_map<uint64_t, PortalIntent> portalIntents;
+	uint64_t lastDialogId = 0;
+	std::vector<ActiveDialogIntent> activeDialogs;
 	UnsavedChangesPrompt prompt;
 	std::vector<DocumentShellRequest> requests;
 	std::vector<std::string> recentPaths;

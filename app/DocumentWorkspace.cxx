@@ -1,5 +1,6 @@
 #include "DocumentWorkspace.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <iostream>
 #include <utility>
@@ -14,6 +15,14 @@ namespace {
 	return std::filesystem::path(std::string(path)).lexically_normal().string();
 }
 
+}
+
+bool operator==(DocumentDialogId left, DocumentDialogId right) noexcept {
+	return left.value == right.value;
+}
+
+bool operator!=(DocumentDialogId left, DocumentDialogId right) noexcept {
+	return !(left == right);
 }
 
 DocumentWorkspace::DocumentWorkspace(ApplicationEditor &editorHost) :
@@ -284,53 +293,76 @@ void DocumentWorkspace::Choose(UnsavedChoice choice) {
 	ApplyOutcome(prompt.Choose(choice, !path.empty()), kind, tabId);
 }
 
-void DocumentWorkspace::RegisterOpenRequest(uint64_t requestId) {
-	if (requestId == 0) {
-		return;
-	}
-	PortalIntent intent;
-	intent.kind = PortalIntentKind::Open;
-	portalIntents[requestId] = intent;
+DocumentDialogId DocumentWorkspace::NextDialogId() {
+	do {
+		++lastDialogId;
+		if (lastDialogId == 0) {
+			++lastDialogId;
+		}
+	} while (std::any_of(activeDialogs.begin(), activeDialogs.end(),
+		[this](const ActiveDialogIntent &intent) {
+			return intent.id.value == lastDialogId;
+		}));
+	return {lastDialogId};
 }
 
-void DocumentWorkspace::RegisterSaveAsRequest(uint64_t requestId) {
-	if (requestId == 0) {
-		return;
-	}
-	PortalIntent intent;
-	intent.kind = PortalIntentKind::SaveAs;
+DocumentDialogIntent DocumentWorkspace::BeginOpenDialog() {
+	ActiveDialogIntent intent;
+	intent.id = NextDialogId();
+	intent.kind = DialogIntentKind::Open;
+	activeDialogs.push_back(intent);
+	return {intent.id, Path()};
+}
+
+DocumentDialogIntent DocumentWorkspace::BeginSaveAsDialog() {
+	ActiveDialogIntent intent;
+	intent.id = NextDialogId();
+	intent.kind = DialogIntentKind::SaveAs;
 	intent.tabId = pendingSaveAsTab.value_or(activeId);
 	intent.promptGeneration = pendingSaveAsPromptGeneration;
+	const std::string documentPath = PathOf(intent.tabId);
 	pendingSaveAsTab.reset();
 	pendingSaveAsPromptGeneration = 0;
-	portalIntents[requestId] = intent;
+	activeDialogs.push_back(intent);
+	return {intent.id, documentPath};
 }
 
-void DocumentWorkspace::NoteSaveAsDialogFailed() {
+void DocumentWorkspace::AbandonDialog(DocumentDialogId dialogId) {
+	const auto found = std::find_if(activeDialogs.begin(), activeDialogs.end(),
+		[dialogId](const ActiveDialogIntent &intent) {
+			return intent.id == dialogId;
+		});
+	if (found == activeDialogs.end()) {
+		return;
+	}
 	const bool continuePrompt =
-		pendingSaveAsPromptGeneration != 0 &&
-		pendingSaveAsPromptGeneration == activePromptGeneration &&
+		found->kind == DialogIntentKind::SaveAs &&
+		found->promptGeneration != 0 &&
+		found->promptGeneration == activePromptGeneration &&
 		prompt.AwaitingSaveAs();
-	pendingSaveAsTab.reset();
-	pendingSaveAsPromptGeneration = 0;
+	activeDialogs.erase(found);
 	if (continuePrompt) {
 		prompt.NotifySaveIncomplete();
 		editor.InvalidateClient();
 	}
 }
 
-void DocumentWorkspace::HandlePortalResult(uint64_t requestId, bool accepted,
+void DocumentWorkspace::HandleDialogResult(DocumentDialogId dialogId,
+	bool accepted,
 	const std::vector<std::string> &paths) {
-	const auto it = portalIntents.find(requestId);
-	if (it == portalIntents.end()) {
+	const auto found = std::find_if(activeDialogs.begin(), activeDialogs.end(),
+		[dialogId](const ActiveDialogIntent &intent) {
+			return intent.id == dialogId;
+		});
+	if (found == activeDialogs.end()) {
 		return;
 	}
-	const PortalIntent intent = it->second;
-	portalIntents.erase(it);
+	const ActiveDialogIntent intent = *found;
+	activeDialogs.erase(found);
 
 	const bool usable = accepted && !paths.empty();
 
-	if (intent.kind == PortalIntentKind::Open) {
+	if (intent.kind == DialogIntentKind::Open) {
 		if (usable) {
 			(void)ApplyOpenPaths(paths);
 		}

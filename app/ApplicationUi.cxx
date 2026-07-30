@@ -955,14 +955,29 @@ std::vector<ApplicationShellEffect> ApplicationUi::TakeShellEffects() {
 		case DocumentShellRequest::ShowOpen:
 			// Portals take over interaction; the in-window menu must not stay open.
 			DismissOpenMenu(menuModel, *editor);
-			effects.push_back(ApplicationShellEffect::ShowOpen);
+			{
+				DocumentDialogIntent dialog = workspace->BeginOpenDialog();
+				effects.push_back({
+					ApplicationShellEffectKind::ShowOpen,
+					dialog.id,
+					std::move(dialog.documentPath),
+				});
+			}
 			break;
 		case DocumentShellRequest::ShowSaveAs:
 			DismissOpenMenu(menuModel, *editor);
-			effects.push_back(ApplicationShellEffect::ShowSaveAs);
+			{
+				DocumentDialogIntent dialog = workspace->BeginSaveAsDialog();
+				effects.push_back({
+					ApplicationShellEffectKind::ShowSaveAs,
+					dialog.id,
+					std::move(dialog.documentPath),
+				});
+			}
 			break;
 		case DocumentShellRequest::AcceptClose:
-			effects.push_back(ApplicationShellEffect::AcceptClose);
+			effects.push_back({
+				ApplicationShellEffectKind::AcceptClose, {}, {}});
 			break;
 		case DocumentShellRequest::PromptBegan:
 			// Card input and paint priority is higher than the menu.
@@ -971,7 +986,6 @@ std::vector<ApplicationShellEffect> ApplicationUi::TakeShellEffects() {
 		case DocumentShellRequest::RefreshTabs:
 			(void)SynchronizeTabs(true);
 			editor->InvalidateTopChrome();
-			effects.push_back(ApplicationShellEffect::RefreshTabs);
 			break;
 		}
 	}
@@ -983,33 +997,23 @@ std::vector<ApplicationShellEffect> ApplicationUi::TakeShellEffects() {
 	if (recentChanged) {
 		PersistRecentFiles(recentStatePath, *recent);
 		SyncRecentMenu(*recent, menuModel, *editor);
-		effects.push_back(ApplicationShellEffect::PersistRecentFiles);
 	}
 
 	std::vector<DocumentFileError> errors = workspace->TakeFileErrors();
 	if (!errors.empty()) {
 		AppendFileErrors(std::move(errors));
-		effects.push_back(ApplicationShellEffect::DisplayFileError);
 	}
 
 	return effects;
 }
 
-void ApplicationUi::NotifyOpenDialogStarted(uint64_t requestId) {
-	workspace->RegisterOpenRequest(requestId);
+void ApplicationUi::NotifyDialogFailed(DocumentDialogId dialogId) {
+	workspace->AbandonDialog(dialogId);
 }
 
-void ApplicationUi::NotifySaveAsDialogStarted(uint64_t requestId) {
-	workspace->RegisterSaveAsRequest(requestId);
-}
-
-void ApplicationUi::NotifySaveAsDialogFailed() {
-	workspace->NoteSaveAsDialogFailed();
-}
-
-void ApplicationUi::NotifyPortalResult(uint64_t requestId, bool accepted,
+void ApplicationUi::NotifyDialogResult(DocumentDialogId dialogId, bool accepted,
 	const std::vector<std::string> &paths) {
-	workspace->HandlePortalResult(requestId, accepted, paths);
+	workspace->HandleDialogResult(dialogId, accepted, paths);
 }
 
 }

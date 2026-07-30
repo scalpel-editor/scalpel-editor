@@ -6,11 +6,12 @@
 // focus loss is one transition that clears menu, scrollbar, and press state.
 // Opening a menu or modal card cancels tentative IME. Permanent-chrome and
 // active-overlay composition bind only through ApplicationUi. Workspace
-// requests and outcomes are consumed into typed ApplicationShellEffect values:
-// application-side work (prompt begin, tab refresh, recent-file record and
-// persist, file-error queue) is applied here; portal dialogs, request IDs, and
-// window close remain host work. ApplicationLayout is the one frame-size
-// snapshot used for hit testing and painting within an event or paint pass.
+// requests and outcomes are consumed here: application-side work (prompt
+// begin, tab refresh, recent-file record and persist, file-error queue) is
+// applied directly, while typed ApplicationShellEffect values carry only the
+// portal-dialog and window-close work the host must perform. ApplicationLayout
+// is the one frame-size snapshot used for hit testing and painting within an
+// event or paint pass.
 
 #ifndef APPLICATIONUI_H
 #define APPLICATIONUI_H
@@ -136,19 +137,24 @@ struct ApplicationKeyboardResult {
 };
 
 /**
- * Application-level shell work produced while draining workspace requests and
- * outcomes. ApplicationUi applies prompt begin, tab refresh, recent-file
- * record/persist, and file-error queueing when producing these values. The
- * platform host must still perform ShowOpen, ShowSaveAs (including request-ID
- * registration or startup failure), and AcceptClose.
+ * Host work produced while draining workspace requests and outcomes.
  */
-enum class ApplicationShellEffect {
+enum class ApplicationShellEffectKind {
 	ShowOpen,
 	ShowSaveAs,
 	AcceptClose,
-	PersistRecentFiles,
-	RefreshTabs,
-	DisplayFileError,
+};
+
+/**
+ * One typed host effect. Dialog effects carry an application-owned identity
+ * plus the document path used to choose their initial folder and name. The
+ * platform host maps its own request ID to dialogId; transport IDs never enter
+ * ApplicationUi or DocumentWorkspace.
+ */
+struct ApplicationShellEffect {
+	ApplicationShellEffectKind kind = ApplicationShellEffectKind::AcceptClose;
+	DocumentDialogId dialogId;
+	std::string documentPath;
 };
 
 /**
@@ -296,39 +302,24 @@ public:
 	/**
 	 * Consume DocumentWorkspace shell requests and outcomes. Applies prompt
 	 * begin, tab refresh, recent-file record/persist, and file-error queueing
-	 * here. Returns every produced effect, including those already applied, so
-	 * the host can run portal dialogs and accept close. A second call with no
-	 * new workspace work returns empty.
+	 * here. Returns only portal-dialog and accept-close work for the host. A
+	 * second call with no new workspace work returns empty.
 	 */
 	[[nodiscard]] std::vector<ApplicationShellEffect> TakeShellEffects();
 
 	/**
-	 * Record a portal Open request ID so a later NotifyPortalResult is applied
-	 * as multi-path open. Call after the host successfully starts the dialog
-	 * for a ShowOpen effect.
+	 * The host failed to start a dialog. Clears its captured intent and keeps
+	 * an awaiting dirty-close prompt active when appropriate.
 	 */
-	void NotifyOpenDialogStarted(uint64_t requestId);
+	void NotifyDialogFailed(DocumentDialogId dialogId);
 
 	/**
-	 * Record a portal Save As request ID for the tab that queued ShowSaveAs.
-	 * Call after the host successfully starts the dialog.
+	 * Route a file-dialog result by the application identity carried in its
+	 * shell effect. Unknown identities and Save As results for closed tabs are
+	 * ignored. accepted is false for cancel, failure, or an empty path list.
+	 * Does not drain shell effects; call TakeShellEffects afterward.
 	 */
-	void NotifySaveAsDialogStarted(uint64_t requestId);
-
-	/**
-	 * The host failed to start a Save As dialog before a request ID existed.
-	 * Clears the pending Save As target and keeps an awaiting dirty-close
-	 * prompt active when appropriate.
-	 */
-	void NotifySaveAsDialogFailed();
-
-	/**
-	 * Route a portal file-dialog result by its stable request ID. Unknown IDs
-	 * and Save As results for closed tabs are ignored. accepted is false for
-	 * cancel, failure, or an empty path list. Does not drain shell effects;
-	 * call TakeShellEffects afterward.
-	 */
-	void NotifyPortalResult(uint64_t requestId, bool accepted,
+	void NotifyDialogResult(DocumentDialogId dialogId, bool accepted,
 		const std::vector<std::string> &paths);
 
 	[[nodiscard]] MenuBarModel &MenuModel() noexcept { return menuModel; }

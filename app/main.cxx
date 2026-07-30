@@ -2,7 +2,7 @@
 //
 // Ownership: ApplicationEditor retains Scintilla documents and paints one
 // surface (one renderer, one EGL context). DocumentWorkspace owns tab order,
-// paths, untitled numbering, portal request intents, and dirty-close prompts;
+// paths, untitled numbering, file-dialog intents, and dirty-close prompts;
 // it returns shell requests and owns no Wayland or drawing. ApplicationUi owns
 // menu, tab-strip, scrollbar interaction, modal-card, file-error queue, hover,
 // press, painters, overlay composition, pointer and keyboard routing (file
@@ -14,9 +14,10 @@
 // IME batches while chrome owns keyboard. MenuBar, TabStrip, and ScrollBar are
 // permanent chrome. The open menu dropdown, UnsavedChangesCard, and
 // FileErrorCard share the post-paint overlay slot through ApplicationUi. This
-// file is the event and rendering adapter: it delivers portal results through
-// ApplicationUi named methods, drains TakeShellEffects for portal dialogs and
-// accept-close, dismisses menus on force close, and submits frames. Hit
+// file is the event and rendering adapter: it maps portal request IDs to
+// application dialog identities, delivers results through ApplicationUi,
+// drains TakeShellEffects for portal dialogs and accept-close, dismisses menus
+// on force close, and submits frames. Hit
 // testing and painting share one ApplicationLayout snapshot per event or paint
 // pass. Text-input protocol conversion stays here. Open/save policy and prompt
 // transitions live in DocumentWorkspace, not here. Required-global loss
@@ -29,6 +30,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -304,45 +306,53 @@ void DismissOpenMenu(Scalpel::MenuBarModel &menuModel,
  * Drain ApplicationUi shell effects. Application-side work is already applied;
  * only portal dialogs and accept-close remain host work.
  */
+using ActiveFileDialogs =
+	std::unordered_map<uint64_t, Scalpel::DocumentDialogId>;
+
 void ApplyShellEffects(Scalpel::ApplicationUi &ui,
 	Scalpel::WaylandWindow &window,
+	ActiveFileDialogs &activeFileDialogs,
 	bool &quitAccepted) {
-	for (const Scalpel::ApplicationShellEffect effect : ui.TakeShellEffects()) {
-		switch (effect) {
-		case Scalpel::ApplicationShellEffect::ShowOpen:
+	for (const Scalpel::ApplicationShellEffect &effect : ui.TakeShellEffects()) {
+		switch (effect.kind) {
+		case Scalpel::ApplicationShellEffectKind::ShowOpen:
 			if (const std::optional<uint64_t> requestId =
-					StartOpenDialog(window, ui.Workspace().Path())) {
-				ui.NotifyOpenDialogStarted(*requestId);
-			}
-			break;
-		case Scalpel::ApplicationShellEffect::ShowSaveAs:
-			if (const std::optional<uint64_t> requestId =
-					RequestSaveAsDialog(window, ui.Workspace().Path())) {
-				ui.NotifySaveAsDialogStarted(*requestId);
+					StartOpenDialog(window, effect.documentPath)) {
+				activeFileDialogs[*requestId] = effect.dialogId;
 			} else {
-				ui.NotifySaveAsDialogFailed();
+				ui.NotifyDialogFailed(effect.dialogId);
 			}
 			break;
-		case Scalpel::ApplicationShellEffect::AcceptClose:
-			quitAccepted = true;
+		case Scalpel::ApplicationShellEffectKind::ShowSaveAs:
+			if (const std::optional<uint64_t> requestId =
+					RequestSaveAsDialog(window, effect.documentPath)) {
+				activeFileDialogs[*requestId] = effect.dialogId;
+			} else {
+				ui.NotifyDialogFailed(effect.dialogId);
+			}
 			break;
-		case Scalpel::ApplicationShellEffect::PersistRecentFiles:
-		case Scalpel::ApplicationShellEffect::RefreshTabs:
-		case Scalpel::ApplicationShellEffect::DisplayFileError:
-			// Applied inside ApplicationUi::TakeShellEffects.
+		case Scalpel::ApplicationShellEffectKind::AcceptClose:
+			quitAccepted = true;
 			break;
 		}
 	}
 }
 
 void ApplyFileDialogResults(Scalpel::WaylandWindow &window,
-	Scalpel::ApplicationUi &ui) {
+	Scalpel::ApplicationUi &ui,
+	ActiveFileDialogs &activeFileDialogs) {
 	for (const Scalpel::FileDialogResult &result :
 		window.TakeFileDialogResults()) {
+		const auto intent = activeFileDialogs.find(result.id);
+		if (intent == activeFileDialogs.end()) {
+			continue;
+		}
+		const Scalpel::DocumentDialogId dialogId = intent->second;
+		activeFileDialogs.erase(intent);
 		const bool accepted =
 			result.status == Scalpel::FileDialogResultStatus::Accepted &&
 			!result.paths.empty();
-		ui.NotifyPortalResult(result.id, accepted, result.paths);
+		ui.NotifyDialogResult(dialogId, accepted, result.paths);
 	}
 }
 
@@ -388,6 +398,7 @@ int main() {
 		Scalpel::RecentFiles recent =
 			Scalpel::LoadRecentFiles(recentStatePath);
 		Scalpel::ApplicationUi ui(editor, workspace, recent, recentStatePath);
+		ActiveFileDialogs activeFileDialogs;
 		const auto applyPointerCursor = [&] {
 			if (ui.CurrentPointerCursor() ==
 				Scalpel::ApplicationPointerCursor::Arrow) {
@@ -420,8 +431,8 @@ int main() {
 			DeliverPrimarySelectionResults(window, editor);
 			// Modal cards and an open menu all suppress IME delivery.
 			DeliverTextInputBatches(window, editor, ui.ChromeOwnsInput());
-			ApplyFileDialogResults(window, ui);
-			ApplyShellEffects(ui, window, quitAccepted);
+			ApplyFileDialogResults(window, ui, activeFileDialogs);
+			ApplyShellEffects(ui, window, activeFileDialogs, quitAccepted);
 			// Portal results can activate a document or surface a modal without
 			// an input event. Neither may inherit an old scrollbar interaction.
 			synchronizeScrollBarInteraction();
@@ -441,7 +452,8 @@ int main() {
 			}
 			if (window.UserCloseRequested()) {
 				workspace.RequestClose();
-				ApplyShellEffects(ui, window, quitAccepted);
+				ApplyShellEffects(
+					ui, window, activeFileDialogs, quitAccepted);
 				synchronizeScrollBarInteraction();
 				window.ClearCloseRequest();
 				if (quitAccepted) {
@@ -487,7 +499,8 @@ int main() {
 					if (!pointerResult.consumed) {
 						editor.HandlePointerInput(*pointer);
 					}
-					ApplyShellEffects(ui, window, quitAccepted);
+					ApplyShellEffects(
+						ui, window, activeFileDialogs, quitAccepted);
 					synchronizeScrollBarInteraction();
 					continue;
 				}
@@ -497,7 +510,8 @@ int main() {
 					// delivery are decided inside ApplicationUi.
 					(void)ui.HandleKeyboard(*keyboard);
 				}
-				ApplyShellEffects(ui, window, quitAccepted);
+				ApplyShellEffects(
+					ui, window, activeFileDialogs, quitAccepted);
 				// Includes menus opened from the keyboard as well as tab changes.
 				synchronizeScrollBarInteraction();
 			}

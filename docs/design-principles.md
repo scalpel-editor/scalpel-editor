@@ -21,9 +21,9 @@ Important application state has one authority:
 
 - Scintilla documents own text, selection, caret, undo history, and scroll positions.
 - `ApplicationEditor` owns the production Scintilla host, retained documents, rendering, editor work deadlines, and editor-facing clipboard and text-input state.
-- `DocumentWorkspace` owns tabs, paths, file operations, portal request intents, and dirty-close policy.
+- `DocumentWorkspace` owns tabs, paths, file operations, application file-dialog intents, and dirty-close policy.
 - `WaylandWindow` owns the display connection, Wayland and EGL objects, external services, input transport, scaling, and frame submission.
-- `ApplicationUi` owns chrome models, painters, overlay selection, composition, and the current application pointer-cursor choice, builds one `ApplicationLayout` snapshot per event or paint pass, and routes pointer and keyboard events with explicit owners. Focus loss is one transition that clears menu, scrollbar, and press state. Opening a menu or modal card cancels tentative IME. Permanent-chrome and overlay painters bind through `ApplicationUi` and are unbound when it is destroyed. Workspace requests and outcomes are consumed into typed shell effects: application-side work is applied in `ApplicationUi`, while portal dialogs, request IDs, and window close remain host work.
+- `ApplicationUi` owns chrome models, painters, overlay selection, composition, and the current application pointer-cursor choice, builds one `ApplicationLayout` snapshot per event or paint pass, and routes pointer and keyboard events with explicit owners. Focus loss is one transition that clears menu, scrollbar, and press state. Opening a menu or modal card cancels tentative IME. Permanent-chrome and overlay painters bind through `ApplicationUi` and are unbound when it is destroyed. Workspace requests and outcomes are consumed there: application-side work is applied directly, while typed shell effects carry only portal-dialog and window-close work to the host. Dialog effects contain an application identity and copied document path; `main` alone maps the portal's request IDs to those identities.
 
 Components exchange copied values, stable identifiers, and explicit results instead of retaining pointers across unrelated lifetimes.
 
