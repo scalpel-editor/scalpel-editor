@@ -1,6 +1,7 @@
 #include "ApplicationTest.h"
 
 #include "MenuBar.h"
+#include "ScrollBar.h"
 
 TEST_CASE("production editor host constructs and renders its initial buffer") {
 	Scalpel::ApplicationEditor editor(320, 180);
