@@ -5,18 +5,18 @@
 // paths, untitled numbering, portal request intents, and dirty-close prompts;
 // it returns shell requests and owns no Wayland or drawing. ApplicationUi owns
 // menu, tab-strip, scrollbar interaction, modal-card, file-error queue, hover,
-// press, painters, overlay composition, and pointer and keyboard routing (file
+// press, painters, overlay composition, pointer and keyboard routing (file
 // error, unsaved card, menu, scrollbar drag, editor capture, permanent chrome,
 // then editor; keyboard: modals, menu, application shortcuts, tab cycling,
-// editor). Focus loss closes menus, cancels scrollbar interaction, and clears
-// press state. Opening a menu or modal card cancels tentative IME;
-// ChromeOwnsInput drops IME batches while chrome owns keyboard. MenuBar,
-// TabStrip, and ScrollBar are permanent chrome. The open menu dropdown,
-// UnsavedChangesCard, and FileErrorCard share the post-paint overlay slot
-// through ApplicationUi. This file is the event and rendering adapter: it
-// delivers portal results, calls ApplicationUi for pointer, keyboard, focus,
-// and composition, performs shell requests (dialogs, quit, strip refresh),
-// dismisses menus around portals and force close, and submits frames. Hit
+// editor), and workspace-request consumption into typed shell effects. Focus
+// loss closes menus, cancels scrollbar interaction, and clears press state.
+// Opening a menu or modal card cancels tentative IME; ChromeOwnsInput drops
+// IME batches while chrome owns keyboard. MenuBar, TabStrip, and ScrollBar are
+// permanent chrome. The open menu dropdown, UnsavedChangesCard, and
+// FileErrorCard share the post-paint overlay slot through ApplicationUi. This
+// file is the event and rendering adapter: it delivers portal results through
+// ApplicationUi named methods, drains TakeShellEffects for portal dialogs and
+// accept-close, dismisses menus on force close, and submits frames. Hit
 // testing and painting share one ApplicationLayout snapshot per event or paint
 // pass. Text-input protocol conversion stays here. Open/save policy and prompt
 // transitions live in DocumentWorkspace, not here. Required-global loss
@@ -290,73 +290,6 @@ std::vector<Scalpel::FileDialogFilter> TextDialogFilters() {
 	return requestId;
 }
 
-/** Rebuild strip tabs from the workspace. Returns true when display state changed. */
-bool SyncTabStripTabs(const Scalpel::DocumentWorkspace &workspace,
-	Scalpel::TabStripModel &model, int stripWidth) {
-	const std::vector<Scalpel::DocumentTabInfo> tabs = workspace.Tabs();
-	bool changed = model.tabs.size() != tabs.size();
-	std::vector<Scalpel::TabStripTab> next;
-	next.reserve(tabs.size());
-	for (const Scalpel::DocumentTabInfo &info : tabs) {
-		Scalpel::TabStripTab tab;
-		tab.id = info.id;
-		tab.label = info.label;
-		tab.dirty = info.dirty;
-		tab.active = info.active;
-		next.push_back(std::move(tab));
-	}
-	if (!changed) {
-		for (std::size_t i = 0; i < next.size(); ++i) {
-			if (next[i].id != model.tabs[i].id ||
-				next[i].label != model.tabs[i].label ||
-				next[i].dirty != model.tabs[i].dirty ||
-				next[i].active != model.tabs[i].active) {
-				changed = true;
-				break;
-			}
-		}
-	}
-	model.tabs = std::move(next);
-
-	bool hoverValid = model.hoveredId == 0;
-	for (const Scalpel::TabStripTab &tab : model.tabs) {
-		if (tab.id == model.hoveredId) {
-			hoverValid = true;
-			break;
-		}
-	}
-	if (!hoverValid) {
-		model.hoveredId = 0;
-		model.closeHovered = false;
-		changed = true;
-	}
-
-	const int clamped = Scalpel::ClampTabStripScroll(
-		stripWidth, model.tabs.size(), model.scrollOffset);
-	if (clamped != model.scrollOffset) {
-		model.scrollOffset = clamped;
-		changed = true;
-	}
-	return changed;
-}
-
-void RevealActiveTab(Scalpel::TabStripModel &model, int stripWidth) {
-	std::size_t activeIndex = 0;
-	bool found = false;
-	for (std::size_t i = 0; i < model.tabs.size(); ++i) {
-		if (model.tabs[i].active) {
-			activeIndex = i;
-			found = true;
-			break;
-		}
-	}
-	if (!found) {
-		return;
-	}
-	model.scrollOffset = Scalpel::ScrollTabStripToIndex(
-		stripWidth, model.tabs.size(), activeIndex, model.scrollOffset);
-}
-
 /** Close an open menu and force a full-frame repaint so the dropdown cannot linger. */
 void DismissOpenMenu(Scalpel::MenuBarModel &menuModel,
 	Scalpel::ApplicationEditor &editor) {
@@ -367,98 +300,49 @@ void DismissOpenMenu(Scalpel::MenuBarModel &menuModel,
 	editor.InvalidateFrame();
 }
 
-void PersistRecentFiles(const std::string &statePath,
-	const Scalpel::RecentFiles &recent) {
-	if (statePath.empty()) {
-		return;
-	}
-	if (!Scalpel::SaveRecentFiles(statePath, recent)) {
-		std::cerr << "scalpel-editor: failed to write recent-file state\n";
-	}
-}
-
-void SyncRecentMenu(const Scalpel::RecentFiles &recent,
-	Scalpel::MenuBarModel &menuModel,
-	Scalpel::ApplicationEditor &editor) {
-	if (menuModel.recentFiles == recent.Paths()) {
-		return;
-	}
-	menuModel.recentFiles = recent.Paths();
-	editor.InvalidateTopChrome();
-	// Recent rows are identified by index. If the MRU list rewrites while
-	// Recent is open (for example a late portal Open/Save As), focus, hover,
-	// and press would still point at the old index and could activate the
-	// wrong path. Dismiss so the next open rebuilds from the new list.
-	if (menuModel.openMenu == Scalpel::ApplicationMenu::Recent) {
-		DismissOpenMenu(menuModel, editor);
-	}
-}
-
-void CollectWorkspaceOutcomes(Scalpel::DocumentWorkspace &workspace,
-	Scalpel::RecentFiles &recent,
-	const std::string &recentStatePath,
-	Scalpel::ApplicationUi &ui) {
-	bool recentChanged = false;
-	for (const std::string &path : workspace.TakeRecentPaths()) {
-		recentChanged = recent.Record(path) || recentChanged;
-	}
-	if (recentChanged) {
-		PersistRecentFiles(recentStatePath, recent);
-		SyncRecentMenu(recent, ui.MenuModel(), ui.Editor());
-	}
-
-	ui.AppendFileErrors(workspace.TakeFileErrors());
-}
-
-void PerformShellRequests(Scalpel::DocumentWorkspace &workspace,
+/**
+ * Drain ApplicationUi shell effects. Application-side work is already applied;
+ * only portal dialogs and accept-close remain host work.
+ */
+void ApplyShellEffects(Scalpel::ApplicationUi &ui,
 	Scalpel::WaylandWindow &window,
-	Scalpel::ApplicationUi &ui,
 	bool &quitAccepted) {
-	for (const Scalpel::DocumentShellRequest request :
-		workspace.TakeRequests()) {
-		switch (request) {
-		case Scalpel::DocumentShellRequest::ShowOpen:
-			// Portals take over interaction; the in-window menu must not stay open.
-			DismissOpenMenu(ui.MenuModel(), ui.Editor());
+	for (const Scalpel::ApplicationShellEffect effect : ui.TakeShellEffects()) {
+		switch (effect) {
+		case Scalpel::ApplicationShellEffect::ShowOpen:
 			if (const std::optional<uint64_t> requestId =
-					StartOpenDialog(window, workspace.Path())) {
-				workspace.RegisterOpenRequest(*requestId);
+					StartOpenDialog(window, ui.Workspace().Path())) {
+				ui.NotifyOpenDialogStarted(*requestId);
 			}
 			break;
-		case Scalpel::DocumentShellRequest::ShowSaveAs:
-			DismissOpenMenu(ui.MenuModel(), ui.Editor());
+		case Scalpel::ApplicationShellEffect::ShowSaveAs:
 			if (const std::optional<uint64_t> requestId =
-					RequestSaveAsDialog(window, workspace.Path())) {
-				workspace.RegisterSaveAsRequest(*requestId);
+					RequestSaveAsDialog(window, ui.Workspace().Path())) {
+				ui.NotifySaveAsDialogStarted(*requestId);
 			} else {
-				workspace.NoteSaveAsDialogFailed();
+				ui.NotifySaveAsDialogFailed();
 			}
 			break;
-		case Scalpel::DocumentShellRequest::AcceptClose:
+		case Scalpel::ApplicationShellEffect::AcceptClose:
 			quitAccepted = true;
 			break;
-		case Scalpel::DocumentShellRequest::PromptBegan:
-			// Card input and paint priority is higher than the menu.
-			ui.NotifyPromptBegan();
-			break;
-		case Scalpel::DocumentShellRequest::RefreshTabs:
-			(void)SyncTabStripTabs(workspace, ui.StripModel(),
-				ui.Editor().FrameWidth());
-			RevealActiveTab(ui.StripModel(), ui.Editor().FrameWidth());
-			ui.Editor().InvalidateTopChrome();
+		case Scalpel::ApplicationShellEffect::PersistRecentFiles:
+		case Scalpel::ApplicationShellEffect::RefreshTabs:
+		case Scalpel::ApplicationShellEffect::DisplayFileError:
+			// Applied inside ApplicationUi::TakeShellEffects.
 			break;
 		}
 	}
 }
 
 void ApplyFileDialogResults(Scalpel::WaylandWindow &window,
-	Scalpel::DocumentWorkspace &workspace) {
+	Scalpel::ApplicationUi &ui) {
 	for (const Scalpel::FileDialogResult &result :
 		window.TakeFileDialogResults()) {
 		const bool accepted =
 			result.status == Scalpel::FileDialogResultStatus::Accepted &&
 			!result.paths.empty();
-		workspace.HandlePortalResult(result.id, accepted, result.paths);
+		ui.NotifyPortalResult(result.id, accepted, result.paths);
 	}
 }
 
@@ -525,7 +409,7 @@ int main() {
 			ui.LastActiveDocument() = activeDocument;
 		};
 
-		(void)SyncTabStripTabs(workspace, ui.StripModel(), editor.FrameWidth());
+		(void)ui.SynchronizeTabs();
 		editor.InvalidateTopChrome();
 		editor.InvalidateScrollBars();
 		ui.BindPainters();
@@ -536,9 +420,8 @@ int main() {
 			DeliverPrimarySelectionResults(window, editor);
 			// Modal cards and an open menu all suppress IME delivery.
 			DeliverTextInputBatches(window, editor, ui.ChromeOwnsInput());
-			ApplyFileDialogResults(window, workspace);
-			PerformShellRequests(workspace, window, ui, quitAccepted);
-			CollectWorkspaceOutcomes(workspace, recent, recentStatePath, ui);
+			ApplyFileDialogResults(window, ui);
+			ApplyShellEffects(ui, window, quitAccepted);
 			// Portal results can activate a document or surface a modal without
 			// an input event. Neither may inherit an old scrollbar interaction.
 			synchronizeScrollBarInteraction();
@@ -558,7 +441,7 @@ int main() {
 			}
 			if (window.UserCloseRequested()) {
 				workspace.RequestClose();
-				PerformShellRequests(workspace, window, ui, quitAccepted);
+				ApplyShellEffects(ui, window, quitAccepted);
 				synchronizeScrollBarInteraction();
 				window.ClearCloseRequest();
 				if (quitAccepted) {
@@ -577,9 +460,7 @@ int main() {
 				// menu; LayoutMenuBar recomputes headings and clamps the panel.
 				// Resize and scale cancel an in-progress scrollbar drag.
 				CancelScrollBarShellInteraction(ui.ScrollBars(), editor);
-				(void)SyncTabStripTabs(
-					workspace, ui.StripModel(), editor.FrameWidth());
-				RevealActiveTab(ui.StripModel(), editor.FrameWidth());
+				(void)ui.SynchronizeTabs(true);
 				editor.InvalidateTopChrome();
 				editor.InvalidateScrollBars();
 				if (!ui.FileErrors().empty() || workspace.PromptActive() ||
@@ -606,9 +487,7 @@ int main() {
 					if (!pointerResult.consumed) {
 						editor.HandlePointerInput(*pointer);
 					}
-					PerformShellRequests(workspace, window, ui, quitAccepted);
-					CollectWorkspaceOutcomes(workspace, recent, recentStatePath,
-						ui);
+					ApplyShellEffects(ui, window, quitAccepted);
 					synchronizeScrollBarInteraction();
 					continue;
 				}
@@ -618,9 +497,7 @@ int main() {
 					// delivery are decided inside ApplicationUi.
 					(void)ui.HandleKeyboard(*keyboard);
 				}
-				PerformShellRequests(workspace, window, ui, quitAccepted);
-				CollectWorkspaceOutcomes(workspace, recent, recentStatePath,
-					ui);
+				ApplyShellEffects(ui, window, quitAccepted);
 				// Includes menus opened from the keyboard as well as tab changes.
 				synchronizeScrollBarInteraction();
 			}
@@ -635,7 +512,7 @@ int main() {
 			DispatchPrimarySelectionRequests(editor, window);
 			editor.RunPendingWork();
 			// Edits can flip dirty markers without a workspace request.
-			if (SyncTabStripTabs(workspace, ui.StripModel(), editor.FrameWidth())) {
+			if (ui.SynchronizeTabs()) {
 				editor.InvalidateTopChrome();
 			}
 			SynchronizeTextInput(editor, window);

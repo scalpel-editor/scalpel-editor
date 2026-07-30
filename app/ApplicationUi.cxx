@@ -878,4 +878,138 @@ void ApplicationUi::AppendFileErrors(std::vector<DocumentFileError> errors) {
 	editor->InvalidateFrame();
 }
 
+bool ApplicationUi::SynchronizeTabs(bool revealActive) {
+	const std::vector<DocumentTabInfo> tabs = workspace->Tabs();
+	bool changed = stripModel.tabs.size() != tabs.size();
+	std::vector<TabStripTab> next;
+	next.reserve(tabs.size());
+	for (const DocumentTabInfo &info : tabs) {
+		TabStripTab tab;
+		tab.id = info.id;
+		tab.label = info.label;
+		tab.dirty = info.dirty;
+		tab.active = info.active;
+		next.push_back(std::move(tab));
+	}
+	if (!changed) {
+		for (std::size_t i = 0; i < next.size(); ++i) {
+			if (next[i].id != stripModel.tabs[i].id ||
+				next[i].label != stripModel.tabs[i].label ||
+				next[i].dirty != stripModel.tabs[i].dirty ||
+				next[i].active != stripModel.tabs[i].active) {
+				changed = true;
+				break;
+			}
+		}
+	}
+	stripModel.tabs = std::move(next);
+
+	bool hoverValid = stripModel.hoveredId == 0;
+	for (const TabStripTab &tab : stripModel.tabs) {
+		if (tab.id == stripModel.hoveredId) {
+			hoverValid = true;
+			break;
+		}
+	}
+	if (!hoverValid) {
+		stripModel.hoveredId = 0;
+		stripModel.closeHovered = false;
+		changed = true;
+	}
+
+	const int stripWidth = editor->FrameWidth();
+	const int clamped = ClampTabStripScroll(
+		stripWidth, stripModel.tabs.size(), stripModel.scrollOffset);
+	if (clamped != stripModel.scrollOffset) {
+		stripModel.scrollOffset = clamped;
+		changed = true;
+	}
+
+	if (revealActive) {
+		std::size_t activeIndex = 0;
+		bool found = false;
+		for (std::size_t i = 0; i < stripModel.tabs.size(); ++i) {
+			if (stripModel.tabs[i].active) {
+				activeIndex = i;
+				found = true;
+				break;
+			}
+		}
+		if (found) {
+			const int revealed = ScrollTabStripToIndex(stripWidth,
+				stripModel.tabs.size(), activeIndex, stripModel.scrollOffset);
+			if (revealed != stripModel.scrollOffset) {
+				stripModel.scrollOffset = revealed;
+				changed = true;
+			}
+		}
+	}
+	return changed;
+}
+
+std::vector<ApplicationShellEffect> ApplicationUi::TakeShellEffects() {
+	std::vector<ApplicationShellEffect> effects;
+
+	for (const DocumentShellRequest request : workspace->TakeRequests()) {
+		switch (request) {
+		case DocumentShellRequest::ShowOpen:
+			// Portals take over interaction; the in-window menu must not stay open.
+			DismissOpenMenu(menuModel, *editor);
+			effects.push_back(ApplicationShellEffect::ShowOpen);
+			break;
+		case DocumentShellRequest::ShowSaveAs:
+			DismissOpenMenu(menuModel, *editor);
+			effects.push_back(ApplicationShellEffect::ShowSaveAs);
+			break;
+		case DocumentShellRequest::AcceptClose:
+			effects.push_back(ApplicationShellEffect::AcceptClose);
+			break;
+		case DocumentShellRequest::PromptBegan:
+			// Card input and paint priority is higher than the menu.
+			NotifyPromptBegan();
+			break;
+		case DocumentShellRequest::RefreshTabs:
+			(void)SynchronizeTabs(true);
+			editor->InvalidateTopChrome();
+			effects.push_back(ApplicationShellEffect::RefreshTabs);
+			break;
+		}
+	}
+
+	bool recentChanged = false;
+	for (const std::string &path : workspace->TakeRecentPaths()) {
+		recentChanged = recent->Record(path) || recentChanged;
+	}
+	if (recentChanged) {
+		PersistRecentFiles(recentStatePath, *recent);
+		SyncRecentMenu(*recent, menuModel, *editor);
+		effects.push_back(ApplicationShellEffect::PersistRecentFiles);
+	}
+
+	std::vector<DocumentFileError> errors = workspace->TakeFileErrors();
+	if (!errors.empty()) {
+		AppendFileErrors(std::move(errors));
+		effects.push_back(ApplicationShellEffect::DisplayFileError);
+	}
+
+	return effects;
+}
+
+void ApplicationUi::NotifyOpenDialogStarted(uint64_t requestId) {
+	workspace->RegisterOpenRequest(requestId);
+}
+
+void ApplicationUi::NotifySaveAsDialogStarted(uint64_t requestId) {
+	workspace->RegisterSaveAsRequest(requestId);
+}
+
+void ApplicationUi::NotifySaveAsDialogFailed() {
+	workspace->NoteSaveAsDialogFailed();
+}
+
+void ApplicationUi::NotifyPortalResult(uint64_t requestId, bool accepted,
+	const std::vector<std::string> &paths) {
+	workspace->HandlePortalResult(requestId, accepted, paths);
+}
+
 }

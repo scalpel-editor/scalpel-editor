@@ -5,10 +5,12 @@
 // routing go through HandlePointer and HandleKeyboard with explicit owners;
 // focus loss is one transition that clears menu, scrollbar, and press state.
 // Opening a menu or modal card cancels tentative IME. Permanent-chrome and
-// active-overlay composition bind only through ApplicationUi; shell-effect
-// routing still lives in the host for now. ApplicationLayout is the one
-// frame-size snapshot used for hit testing and painting within an event or
-// paint pass.
+// active-overlay composition bind only through ApplicationUi. Workspace
+// requests and outcomes are consumed into typed ApplicationShellEffect values:
+// application-side work (prompt begin, tab refresh, recent-file record and
+// persist, file-error queue) is applied here; portal dialogs, request IDs, and
+// window close remain host work. ApplicationLayout is the one frame-size
+// snapshot used for hit testing and painting within an event or paint pass.
 
 #ifndef APPLICATIONUI_H
 #define APPLICATIONUI_H
@@ -134,6 +136,22 @@ struct ApplicationKeyboardResult {
 };
 
 /**
+ * Application-level shell work produced while draining workspace requests and
+ * outcomes. ApplicationUi applies prompt begin, tab refresh, recent-file
+ * record/persist, and file-error queueing when producing these values. The
+ * platform host must still perform ShowOpen, ShowSaveAs (including request-ID
+ * registration or startup failure), and AcceptClose.
+ */
+enum class ApplicationShellEffect {
+	ShowOpen,
+	ShowSaveAs,
+	AcceptClose,
+	PersistRecentFiles,
+	RefreshTabs,
+	DisplayFileError,
+};
+
+/**
  * Owns permanent-chrome models, painters, scrollbar interaction, modal-card
  * focus, file-error queue, pointer hover and press state, and overlay
  * selection and composition. Editor host, workspace, and recent files remain
@@ -254,6 +272,7 @@ public:
 	/**
 	 * Unsaved-prompt card became active. Closes the menu, cancels tentative
 	 * IME and scrollbar interaction, and resets card focus and press state.
+	 * Also applied automatically when TakeShellEffects consumes PromptBegan.
 	 */
 	void NotifyPromptBegan();
 
@@ -261,9 +280,56 @@ public:
 	 * Append file errors to the application-owned queue. When the queue was
 	 * empty, activates the card in one transition: close the menu, cancel
 	 * tentative IME and scrollbar interaction, clear lower-priority prompt
-	 * press state, and invalidate the full frame.
+	 * press state, and invalidate the full frame. Also applied automatically
+	 * when TakeShellEffects consumes workspace file-error outcomes.
 	 */
 	void AppendFileErrors(std::vector<DocumentFileError> errors);
+
+	/**
+	 * Rebuild the tab strip from the workspace. revealActive scrolls the
+	 * active tab into view. Returns true when strip display state changed.
+	 * Used for dirty-marker sync and resize without a workspace request;
+	 * TakeShellEffects calls this when RefreshTabs is queued.
+	 */
+	bool SynchronizeTabs(bool revealActive = false);
+
+	/**
+	 * Consume DocumentWorkspace shell requests and outcomes. Applies prompt
+	 * begin, tab refresh, recent-file record/persist, and file-error queueing
+	 * here. Returns every produced effect, including those already applied, so
+	 * the host can run portal dialogs and accept close. A second call with no
+	 * new workspace work returns empty.
+	 */
+	[[nodiscard]] std::vector<ApplicationShellEffect> TakeShellEffects();
+
+	/**
+	 * Record a portal Open request ID so a later NotifyPortalResult is applied
+	 * as multi-path open. Call after the host successfully starts the dialog
+	 * for a ShowOpen effect.
+	 */
+	void NotifyOpenDialogStarted(uint64_t requestId);
+
+	/**
+	 * Record a portal Save As request ID for the tab that queued ShowSaveAs.
+	 * Call after the host successfully starts the dialog.
+	 */
+	void NotifySaveAsDialogStarted(uint64_t requestId);
+
+	/**
+	 * The host failed to start a Save As dialog before a request ID existed.
+	 * Clears the pending Save As target and keeps an awaiting dirty-close
+	 * prompt active when appropriate.
+	 */
+	void NotifySaveAsDialogFailed();
+
+	/**
+	 * Route a portal file-dialog result by its stable request ID. Unknown IDs
+	 * and Save As results for closed tabs are ignored. accepted is false for
+	 * cancel, failure, or an empty path list. Does not drain shell effects;
+	 * call TakeShellEffects afterward.
+	 */
+	void NotifyPortalResult(uint64_t requestId, bool accepted,
+		const std::vector<std::string> &paths);
 
 	[[nodiscard]] MenuBarModel &MenuModel() noexcept { return menuModel; }
 	[[nodiscard]] const MenuBarModel &MenuModel() const noexcept {

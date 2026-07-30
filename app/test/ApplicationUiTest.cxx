@@ -1,12 +1,16 @@
 #include "catch.hpp"
 
 #include <algorithm>
+#include <cstdio>
 #include <string>
+#include <string_view>
+#include <unistd.h>
 #include <vector>
 
 #include "ApplicationEditor.h"
 #include "ApplicationTextInput.h"
 #include "ApplicationUi.h"
+#include "DocumentFile.h"
 #include "DocumentWorkspace.h"
 #include "FileErrorCard.h"
 #include "MenuBar.h"
@@ -22,6 +26,7 @@ using Scalpel::ApplicationLayout;
 using Scalpel::ApplicationPointerCursor;
 using Scalpel::ApplicationPointerOwner;
 using Scalpel::ApplicationPointerResult;
+using Scalpel::ApplicationShellEffect;
 using Scalpel::ApplicationTextInputBatch;
 using Scalpel::ApplicationTextInputPreedit;
 using Scalpel::ApplicationUi;
@@ -91,6 +96,35 @@ bool HasDamage(const std::vector<PRectangle> &damage,
 	const PRectangle expected) {
 	return std::find(damage.begin(), damage.end(), expected) != damage.end();
 }
+
+bool HasShellEffect(const std::vector<ApplicationShellEffect> &effects,
+	ApplicationShellEffect want) {
+	return std::find(effects.begin(), effects.end(), want) != effects.end();
+}
+
+class TempFile {
+public:
+	explicit TempFile(std::string_view contents) {
+		char pattern[] = "/tmp/scalpel-ui-shell-XXXXXX";
+		const int fd = mkstemp(pattern);
+		REQUIRE(fd >= 0);
+		path = pattern;
+		if (!contents.empty()) {
+			const ssize_t written = write(fd, contents.data(), contents.size());
+			REQUIRE(written == static_cast<ssize_t>(contents.size()));
+		}
+		REQUIRE(close(fd) == 0);
+	}
+	~TempFile() {
+		if (!path.empty()) {
+			(void)std::remove(path.c_str());
+		}
+	}
+	TempFile(const TempFile &) = delete;
+	TempFile &operator=(const TempFile &) = delete;
+
+	std::string path;
+};
 
 }
 
@@ -1113,4 +1147,204 @@ TEST_CASE("application UI overlay priority paints through bound entry points") {
 	CHECK_FALSE((cleared[dropSample + 0] == dropR &&
 		cleared[dropSample + 1] == dropG &&
 		cleared[dropSample + 2] == dropB));
+}
+
+TEST_CASE("application UI shell effects open and save as dismiss the menu") {
+	ApplicationEditor editor(320, 180);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+
+	ui.MenuModel().openMenu = Scalpel::ApplicationMenu::File;
+	workspace.RequestOpen();
+	const std::vector<ApplicationShellEffect> openEffects = ui.TakeShellEffects();
+	REQUIRE(HasShellEffect(openEffects, ApplicationShellEffect::ShowOpen));
+	CHECK_FALSE(ui.MenuModel().openMenu.has_value());
+	CHECK(ui.TakeShellEffects().empty());
+
+	ui.MenuModel().openMenu = Scalpel::ApplicationMenu::File;
+	workspace.RequestSaveAs();
+	const std::vector<ApplicationShellEffect> saveEffects = ui.TakeShellEffects();
+	REQUIRE(HasShellEffect(saveEffects, ApplicationShellEffect::ShowSaveAs));
+	CHECK_FALSE(ui.MenuModel().openMenu.has_value());
+}
+
+TEST_CASE("application UI shell effects accept close for a clean workspace") {
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("clean\n");
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+
+	workspace.RequestClose();
+	const std::vector<ApplicationShellEffect> effects = ui.TakeShellEffects();
+	REQUIRE(effects.size() == 1);
+	CHECK(effects[0] == ApplicationShellEffect::AcceptClose);
+	CHECK(ui.TakeShellEffects().empty());
+}
+
+TEST_CASE("application UI shell effects apply prompt begin without accept close") {
+	ApplicationEditor editor(320, 180);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+
+	ui.MenuModel().openMenu = Scalpel::ApplicationMenu::File;
+	ui.CardFocus() = 2;
+	DirtyBuffer(editor);
+	workspace.RequestClose();
+	REQUIRE(workspace.PromptActive());
+
+	const std::vector<ApplicationShellEffect> effects = ui.TakeShellEffects();
+	CHECK_FALSE(HasShellEffect(effects, ApplicationShellEffect::AcceptClose));
+	// PromptBegan is applied inside TakeShellEffects, not returned as a host effect.
+	CHECK_FALSE(ui.MenuModel().openMenu.has_value());
+	CHECK(ui.CardFocus() == 0);
+	CHECK(ui.CurrentPointerCursor() == ApplicationPointerCursor::Arrow);
+}
+
+TEST_CASE("application UI shell effects refresh tabs from workspace requests") {
+	ApplicationEditor editor(320, 180);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	// Seed only the initial tab so NewTab must rewrite the strip.
+	REQUIRE(ui.SynchronizeTabs());
+	REQUIRE(ui.StripModel().tabs.size() == 1);
+
+	workspace.NewTab();
+	const std::vector<ApplicationShellEffect> effects = ui.TakeShellEffects();
+	REQUIRE(HasShellEffect(effects, ApplicationShellEffect::RefreshTabs));
+	CHECK(ui.StripModel().tabs.size() == 2);
+	CHECK(ui.StripModel().tabs.back().active);
+}
+
+TEST_CASE("application UI shell effects record recent paths and file errors") {
+	TempFile file("opened\n");
+	ApplicationEditor editor(320, 180);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	(void)ui.SynchronizeTabs();
+
+	REQUIRE(workspace.OpenPath(file.path));
+	const std::vector<ApplicationShellEffect> openEffects = ui.TakeShellEffects();
+	CHECK(HasShellEffect(openEffects, ApplicationShellEffect::RefreshTabs));
+	CHECK(HasShellEffect(openEffects, ApplicationShellEffect::PersistRecentFiles));
+	REQUIRE(recent.Paths().size() == 1);
+	CHECK(recent.Paths()[0] == file.path);
+	REQUIRE(ui.MenuModel().recentFiles.size() == 1);
+	CHECK(ui.MenuModel().recentFiles[0] == file.path);
+
+	// A missing path surfaces a file-error effect and activates the queue.
+	CHECK_FALSE(workspace.OpenPath("/tmp/scalpel-ui-shell-missing-path"));
+	const std::vector<ApplicationShellEffect> errorEffects = ui.TakeShellEffects();
+	REQUIRE(HasShellEffect(errorEffects, ApplicationShellEffect::DisplayFileError));
+	REQUIRE_FALSE(ui.FileErrors().empty());
+	CHECK(ui.FileErrors().front().operation == DocumentFileOperation::Open);
+	CHECK(ui.FileErrors().front().path ==
+		"/tmp/scalpel-ui-shell-missing-path");
+}
+
+TEST_CASE("application UI shell effects portal open result refreshes tabs") {
+	TempFile file("portal-open\n");
+	ApplicationEditor editor(320, 180);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	(void)ui.SynchronizeTabs();
+	const auto initialId = workspace.ActiveTab();
+
+	workspace.RequestOpen();
+	REQUIRE(HasShellEffect(ui.TakeShellEffects(), ApplicationShellEffect::ShowOpen));
+	ui.NotifyOpenDialogStarted(77);
+	ui.NotifyPortalResult(77, true, {file.path});
+
+	const std::vector<ApplicationShellEffect> effects = ui.TakeShellEffects();
+	CHECK(HasShellEffect(effects, ApplicationShellEffect::RefreshTabs));
+	CHECK(HasShellEffect(effects, ApplicationShellEffect::PersistRecentFiles));
+	CHECK(workspace.ActiveTab() != initialId);
+	CHECK(workspace.Path() == file.path);
+	CHECK(editor.Text() == "portal-open\n");
+	REQUIRE(ui.StripModel().tabs.size() == 2);
+}
+
+TEST_CASE("application UI shell effects portal cancel leaves the buffer") {
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("unchanged\n");
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+
+	workspace.RequestOpen();
+	REQUIRE(HasShellEffect(ui.TakeShellEffects(), ApplicationShellEffect::ShowOpen));
+	ui.NotifyOpenDialogStarted(8);
+	ui.NotifyPortalResult(8, false, {});
+	CHECK(ui.TakeShellEffects().empty());
+	CHECK(workspace.TabCount() == 1);
+	CHECK(editor.Text() == "unchanged\n");
+	CHECK(recent.Paths().empty());
+}
+
+TEST_CASE("application UI shell effects save as startup failure keeps prompt") {
+	ApplicationEditor editor(320, 180);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+
+	DirtyBuffer(editor);
+	workspace.CloseTab(workspace.ActiveTab());
+	REQUIRE(workspace.PromptActive());
+	(void)ui.TakeShellEffects();
+
+	workspace.Choose(Scalpel::UnsavedChoice::Save);
+	REQUIRE(workspace.AwaitingSaveAs());
+	REQUIRE(HasShellEffect(ui.TakeShellEffects(), ApplicationShellEffect::ShowSaveAs));
+	// Host failed before a request ID existed. The card stays, but the Save As
+	// wait clears so the user can choose again.
+	ui.NotifySaveAsDialogFailed();
+	CHECK(workspace.PromptActive());
+	CHECK_FALSE(workspace.AwaitingSaveAs());
+	CHECK(ui.TakeShellEffects().empty());
+}
+
+TEST_CASE("application UI shell effects portal Save As continues dirty close") {
+	TempFile file("");
+	ApplicationEditor editor(320, 180);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	(void)ui.SynchronizeTabs();
+
+	DirtyBuffer(editor);
+	const std::string dirtyText = editor.Text();
+	workspace.CloseTab(workspace.ActiveTab());
+	REQUIRE(workspace.PromptActive());
+	(void)ui.TakeShellEffects();
+
+	workspace.Choose(Scalpel::UnsavedChoice::Save);
+	REQUIRE(HasShellEffect(ui.TakeShellEffects(), ApplicationShellEffect::ShowSaveAs));
+	ui.NotifySaveAsDialogStarted(55);
+	ui.NotifyPortalResult(55, true, {file.path});
+
+	const std::vector<ApplicationShellEffect> effects = ui.TakeShellEffects();
+	CHECK(HasShellEffect(effects, ApplicationShellEffect::RefreshTabs));
+	CHECK(HasShellEffect(effects, ApplicationShellEffect::PersistRecentFiles));
+	CHECK_FALSE(workspace.PromptActive());
+	// Closing the last dirty tab replaces it with a fresh untitled.
+	CHECK(workspace.Path().empty());
+	CHECK_FALSE(editor.Modified());
+	const auto read = Scalpel::ReadDocumentFile(file.path);
+	REQUIRE(read.has_value());
+	CHECK(*read == dirtyText);
 }
