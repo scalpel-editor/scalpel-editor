@@ -23,7 +23,7 @@ Important application state has one authority:
 - `ApplicationEditor` owns the production Scintilla host, retained documents, rendering, editor work deadlines, and editor-facing clipboard and text-input state.
 - `DocumentWorkspace` owns tabs, paths, file operations, portal request intents, and dirty-close policy.
 - `WaylandWindow` owns the display connection, Wayland and EGL objects, external services, input transport, scaling, and frame submission.
-- The application coordinator owns input priority and composition of permanent chrome and overlays.
+- `ApplicationUi` owns chrome and overlay selection state. The shell still applies input priority and composition for now.
 
 Components exchange copied values, stable identifiers, and explicit results instead of retaining pointers across unrelated lifetimes.
 

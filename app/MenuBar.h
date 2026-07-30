@@ -1,12 +1,12 @@
 // Logical layout, hit-testing, open-menu pointer and keyboard navigation, and
 // opaque painting for fixed actions and dynamic Recent rows above the tab strip.
-// main owns MenuBarModel, refreshes edit enablement via UpdateMenuBarActionState
-// before open and paint, converts input into model transitions via
-// HandleMenuBarPointer and HandleMenuBarKeyboard, dispatches returned actions
-// through ApplicationAction, and paints the permanent bar plus the overlay slot
-// for open dropdowns. Overlay priority in main is file error, then unsaved
-// card, then the open menu. Layout, hit-testing, and input transitions stay
-// Wayland-free.
+// ApplicationUi owns MenuBarModel. The shell refreshes edit enablement via
+// UpdateMenuBarActionState before open and paint, converts input into model
+// transitions via HandleMenuBarPointer and HandleMenuBarKeyboard, dispatches
+// returned actions through ApplicationAction, and paints the permanent bar plus
+// the overlay slot for open dropdowns. Overlay priority is file error, then
+// unsaved card, then the open menu. Layout, hit-testing, and input transitions
+// stay Wayland-free.
 
 #ifndef MENUBAR_H
 #define MENUBAR_H

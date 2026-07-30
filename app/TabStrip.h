@@ -1,7 +1,8 @@
 // Fixed logical layout, hit-testing, and opaque painting for the permanent tab strip
-// below the menu bar. main feeds DocumentWorkspace tab snapshots into TabStripModel
-// and paints both chrome bands via ApplicationEditor permanent chrome; layout
-// accepts a top offset (MenuBarHeight) and stays Wayland-free.
+// below the menu bar. ApplicationUi owns TabStripModel; the shell feeds
+// DocumentWorkspace tab snapshots into it and paints both chrome bands via
+// ApplicationEditor permanent chrome. Layout accepts a top offset (MenuBarHeight)
+// and stays Wayland-free.
 
 #ifndef TABSTRIP_H
 #define TABSTRIP_H

@@ -1,7 +1,8 @@
 // Axis-neutral layout, hit testing, paint, and pointer transitions for fixed
-// in-window scrollbars. ApplicationEditor owns ranges and positions; main owns
-// one ScrollBarInteraction and applies returned position requests. This unit
-// stays free of Wayland and Scintilla editor internals.
+// in-window scrollbars. ApplicationEditor owns ranges and positions;
+// ApplicationUi owns one ScrollBarInteraction and the shell applies returned
+// position requests. This unit stays free of Wayland and Scintilla editor
+// internals.
 
 #ifndef SCROLLBAR_H
 #define SCROLLBAR_H
@@ -69,7 +70,7 @@ struct ScrollBarPaintState {
 };
 
 /**
- * Pointer interaction state owned by main (or a test harness).
+ * Pointer interaction state owned by ApplicationUi (or a test harness).
  * Does not store editor positions; drag motion produces set-position requests.
  */
 struct ScrollBarInteraction {

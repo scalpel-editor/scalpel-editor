@@ -71,9 +71,10 @@ protected:
  * constructing another host: one document is active for input and paint; the
  * rest keep their text, undo, save point, and a snapshot of selection and
  * scroll until activated again. DocumentWorkspace maps tabs and file paths onto
- * these IDs; main paints the menu bar and tab strip as permanent top chrome and
- * binds the file-error card, unsaved-changes card, or open menu dropdown into
- * the post-paint overlay slot (file error first, then unsaved card, then menu).
+ * these IDs. ApplicationUi owns chrome and overlay selection state; the shell
+ * paints the menu bar and tab strip as permanent top chrome and binds the
+ * file-error card, unsaved-changes card, or open menu dropdown into the
+ * post-paint overlay slot (file error first, then unsaved card, then menu).
  */
 class ApplicationEditor final : private ApplicationResources, public Scintilla::Internal::ScintillaBase {
 public:
