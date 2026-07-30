@@ -1,12 +1,14 @@
 // Application chrome and overlay selection state for the production editor.
 // Owns menu, tab-strip, scrollbar interaction, modal-card, error-queue, hover,
-// press, and which overlay is bound. Holds references to ApplicationEditor,
-// DocumentWorkspace, and RecentFiles. Pointer and keyboard routing go through
-// HandlePointer and HandleKeyboard with explicit owners; focus loss is one
-// transition that clears menu, scrollbar, and press state. Opening a menu or
-// modal card cancels tentative IME. Shell-effect routing still lives in the
-// host for now. ApplicationLayout is the one frame-size snapshot used for hit
-// testing and painting within an event or paint pass.
+// press, painters, and which overlay is bound. Holds references to
+// ApplicationEditor, DocumentWorkspace, and RecentFiles. Pointer and keyboard
+// routing go through HandlePointer and HandleKeyboard with explicit owners;
+// focus loss is one transition that clears menu, scrollbar, and press state.
+// Opening a menu or modal card cancels tentative IME. Permanent-chrome and
+// active-overlay composition bind only through ApplicationUi; shell-effect
+// routing still lives in the host for now. ApplicationLayout is the one
+// frame-size snapshot used for hit testing and painting within an event or
+// paint pass.
 
 #ifndef APPLICATIONUI_H
 #define APPLICATIONUI_H
@@ -132,9 +134,10 @@ struct ApplicationKeyboardResult {
 };
 
 /**
- * Owns permanent-chrome models, scrollbar interaction, modal-card focus,
- * file-error queue, pointer hover and press state, and overlay selection.
- * Editor host, workspace, and recent files remain external injectees.
+ * Owns permanent-chrome models, painters, scrollbar interaction, modal-card
+ * focus, file-error queue, pointer hover and press state, and overlay
+ * selection and composition. Editor host, workspace, and recent files remain
+ * external injectees.
  */
 class ApplicationUi final {
 public:
@@ -176,6 +179,34 @@ public:
 	void EndFrameLayout() noexcept;
 	/** The retained frame snapshot; throws when no frame layout is active. */
 	[[nodiscard]] const ApplicationLayout &FrameLayout() const;
+
+	/**
+	 * Install permanent-chrome and overlay painter callbacks on the editor.
+	 * Call once after construction. Overlay selection still runs through
+	 * SynchronizeComposition each frame; this only installs the permanent
+	 * chrome entry point and seeds the current overlay binding.
+	 */
+	void BindPainters();
+
+	/**
+	 * Select the active overlay by priority (file error, unsaved prompt, open
+	 * menu, none), bind or clear the editor overlay painter, close a lower-
+	 * priority open menu when a modal card wins, and invalidate the full frame
+	 * when the bound overlay appears, changes, or disappears.
+	 */
+	BoundOverlay SynchronizeComposition();
+
+	/**
+	 * Paint permanent chrome (menu bar, tab strip, scrollbars) using the
+	 * retained frame layout. Requires BeginFrameLayout.
+	 */
+	void PaintPermanentChrome(Scintilla::Internal::Surface &surface) const;
+
+	/**
+	 * Paint the currently bound overlay, if any, using the retained frame
+	 * layout. Requires BeginFrameLayout. No-op when Overlay is None.
+	 */
+	void PaintActiveOverlay(Scintilla::Internal::Surface &surface) const;
 
 	/**
 	 * Route one pointer event through modal cards, menu, permanent chrome,
@@ -245,8 +276,8 @@ public:
 	[[nodiscard]] int &CardFocus() noexcept { return cardFocus; }
 	[[nodiscard]] int CardFocus() const noexcept { return cardFocus; }
 
+	/** Overlay currently bound through SynchronizeComposition. */
 	[[nodiscard]] BoundOverlay Overlay() const noexcept { return overlay; }
-	void SetOverlay(BoundOverlay value) noexcept { overlay = value; }
 
 	[[nodiscard]] bool PointerOverChrome() const noexcept {
 		return pointerOverChrome;
@@ -280,6 +311,8 @@ public:
 	}
 
 private:
+	[[nodiscard]] BoundOverlay DesiredOverlay() const noexcept;
+
 	ApplicationEditor *editor = nullptr;
 	DocumentWorkspace *workspace = nullptr;
 	RecentFiles *recent = nullptr;
@@ -287,6 +320,10 @@ private:
 	MenuBarModel menuModel;
 	TabStripModel stripModel;
 	ScrollBarInteraction scrollBarInteraction;
+	MenuBarPainter menuPainter;
+	TabStripPainter stripPainter;
+	UnsavedChangesCardPainter cardPainter;
+	FileErrorCardPainter fileErrorPainter;
 	int cardFocus = 0;
 	BoundOverlay overlay = BoundOverlay::None;
 	bool pointerOverChrome = false;

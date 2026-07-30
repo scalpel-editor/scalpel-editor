@@ -3,10 +3,12 @@
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
+#include <string_view>
 #include <utility>
 
 #include "ApplicationAction.h"
 #include "ApplicationEditor.h"
+#include "DocumentFile.h"
 #include "RecentFiles.h"
 
 namespace Scalpel {
@@ -84,6 +86,35 @@ void CancelScrollBarShellInteraction(ScrollBarInteraction &interaction,
 	if (paintChanged) {
 		editor.InvalidateScrollBars();
 	}
+}
+
+/** Card subtitle names the tab that owns the dirty-close prompt. */
+[[nodiscard]] std::string UnsavedPromptSubtitle(
+	const DocumentWorkspace &workspace) {
+	const DocumentId promptId = workspace.PromptTab();
+	for (const DocumentTabInfo &tab : workspace.Tabs()) {
+		if (tab.id != promptId) {
+			continue;
+		}
+		std::string label = tab.label;
+		// Drop the dirty marker; the card already asks about unsaved changes.
+		if (label.size() >= 2 &&
+			label.compare(label.size() - 2, 2, " *") == 0) {
+			label.resize(label.size() - 2);
+		}
+		return label;
+	}
+	if (workspace.Path().empty()) {
+		return "Untitled";
+	}
+	return DocumentBaseName(workspace.Path());
+}
+
+[[nodiscard]] std::string_view FileErrorTitle(
+	const DocumentFileError &error) noexcept {
+	return error.operation == DocumentFileOperation::Open ?
+		"Could not open file" :
+		"Could not save file";
 }
 
 void ApplyScrollBarShellRequest(ApplicationEditor &editor,
@@ -452,6 +483,88 @@ const ApplicationLayout &ApplicationUi::FrameLayout() const {
 			"ApplicationUi::FrameLayout requires BeginFrameLayout");
 	}
 	return *frameLayout;
+}
+
+BoundOverlay ApplicationUi::DesiredOverlay() const noexcept {
+	if (!fileErrors.empty()) {
+		return BoundOverlay::FileError;
+	}
+	if (workspace->PromptActive()) {
+		return BoundOverlay::UnsavedChanges;
+	}
+	if (menuModel.openMenu.has_value()) {
+		return BoundOverlay::Menu;
+	}
+	return BoundOverlay::None;
+}
+
+void ApplicationUi::BindPainters() {
+	editor->SetPermanentChromePainter(
+		[this](Scintilla::Internal::Surface &surface, int, int) {
+			PaintPermanentChrome(surface);
+		});
+	// Seed the overlay path from current models without a host ladder.
+	(void)SynchronizeComposition();
+}
+
+BoundOverlay ApplicationUi::SynchronizeComposition() {
+	// Modal cards outrank an open menu. Drop menu state so it does not linger
+	// after the card closes or paint under the card.
+	if ((!fileErrors.empty() || workspace->PromptActive()) &&
+		menuModel.openMenu.has_value()) {
+		CloseMenuBar(menuModel);
+	}
+	const BoundOverlay desired = DesiredOverlay();
+	if (desired == overlay) {
+		return overlay;
+	}
+	if (desired == BoundOverlay::None) {
+		editor->SetOverlayPainter(nullptr);
+	} else if (overlay == BoundOverlay::None) {
+		// One shared overlay entry point; PaintActiveOverlay reads overlay.
+		editor->SetOverlayPainter(
+			[this](Scintilla::Internal::Surface &surface, int, int) {
+				PaintActiveOverlay(surface);
+			});
+	}
+	overlay = desired;
+	// Transparent overlays and dropdowns must not leave preserved pixels.
+	editor->InvalidateFrame();
+	return overlay;
+}
+
+void ApplicationUi::PaintPermanentChrome(
+	Scintilla::Internal::Surface &surface) const {
+	const ApplicationLayout &layout = FrameLayout();
+	menuPainter.PaintBar(surface, layout.menu, menuModel);
+	stripPainter.Paint(surface, layout.tabs, stripModel);
+	PaintScrollBars(surface, layout.scrollBars,
+		ScrollBarPaintFromInteraction(scrollBarInteraction));
+}
+
+void ApplicationUi::PaintActiveOverlay(
+	Scintilla::Internal::Surface &surface) const {
+	const ApplicationLayout &layout = FrameLayout();
+	switch (overlay) {
+	case BoundOverlay::None:
+		return;
+	case BoundOverlay::Menu:
+		menuPainter.PaintDropdown(surface, layout.menu, menuModel);
+		return;
+	case BoundOverlay::UnsavedChanges: {
+		const std::string subtitle = UnsavedPromptSubtitle(*workspace);
+		cardPainter.Paint(surface, layout.unsavedCard, "Save changes?",
+			subtitle, cardFocus);
+		return;
+	}
+	case BoundOverlay::FileError:
+		if (fileErrors.empty()) {
+			return;
+		}
+		fileErrorPainter.Paint(surface, layout.fileErrorCard,
+			FileErrorTitle(fileErrors.front()), fileErrors.front().path);
+		return;
+	}
 }
 
 ApplicationPointerResult ApplicationUi::HandlePointer(

@@ -23,7 +23,7 @@ Important application state has one authority:
 - `ApplicationEditor` owns the production Scintilla host, retained documents, rendering, editor work deadlines, and editor-facing clipboard and text-input state.
 - `DocumentWorkspace` owns tabs, paths, file operations, portal request intents, and dirty-close policy.
 - `WaylandWindow` owns the display connection, Wayland and EGL objects, external services, input transport, scaling, and frame submission.
-- `ApplicationUi` owns chrome and overlay selection state, builds one `ApplicationLayout` snapshot per event or paint pass, and routes pointer and keyboard events with explicit owners. Focus loss is one transition that clears menu, scrollbar, and press state. Opening a menu or modal card cancels tentative IME. The shell still applies overlay composition for now.
+- `ApplicationUi` owns chrome models, painters, overlay selection, and composition, builds one `ApplicationLayout` snapshot per event or paint pass, and routes pointer and keyboard events with explicit owners. Focus loss is one transition that clears menu, scrollbar, and press state. Opening a menu or modal card cancels tentative IME. Permanent-chrome and overlay painters bind only through `ApplicationUi`.
 
 Components exchange copied values, stable identifiers, and explicit results instead of retaining pointers across unrelated lifetimes.
 

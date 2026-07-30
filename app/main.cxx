@@ -5,20 +5,21 @@
 // paths, untitled numbering, portal request intents, and dirty-close prompts;
 // it returns shell requests and owns no Wayland or drawing. ApplicationUi owns
 // menu, tab-strip, scrollbar interaction, modal-card, file-error queue, hover,
-// press, overlay-selection state, and pointer and keyboard routing (file error,
-// unsaved card, menu, scrollbar drag, editor capture, permanent chrome, then
-// editor; keyboard: modals, menu, application shortcuts, tab cycling, editor).
-// Focus loss closes menus, cancels scrollbar interaction, and clears press
-// state. Opening a menu or modal card cancels tentative IME; ChromeOwnsInput
-// drops IME batches while chrome owns keyboard. MenuBar, TabStrip, and
-// ScrollBar are permanent chrome. The open menu dropdown, UnsavedChangesCard,
-// and FileErrorCard share the post-paint overlay slot. This file is the event
-// and rendering adapter: it delivers portal results, calls ApplicationUi for
-// pointer, keyboard, and focus, performs shell requests (dialogs, quit, strip
-// refresh), dismisses menus around portals and force close, and paints chrome.
-// Hit testing and painting share one ApplicationLayout snapshot per event or
-// paint pass. Text-input protocol conversion stays here. Open/save policy and
-// prompt transitions live in DocumentWorkspace, not here. Required-global loss
+// press, painters, overlay composition, and pointer and keyboard routing (file
+// error, unsaved card, menu, scrollbar drag, editor capture, permanent chrome,
+// then editor; keyboard: modals, menu, application shortcuts, tab cycling,
+// editor). Focus loss closes menus, cancels scrollbar interaction, and clears
+// press state. Opening a menu or modal card cancels tentative IME;
+// ChromeOwnsInput drops IME batches while chrome owns keyboard. MenuBar,
+// TabStrip, and ScrollBar are permanent chrome. The open menu dropdown,
+// UnsavedChangesCard, and FileErrorCard share the post-paint overlay slot
+// through ApplicationUi. This file is the event and rendering adapter: it
+// delivers portal results, calls ApplicationUi for pointer, keyboard, focus,
+// and composition, performs shell requests (dialogs, quit, strip refresh),
+// dismisses menus around portals and force close, and submits frames. Hit
+// testing and painting share one ApplicationLayout snapshot per event or paint
+// pass. Text-input protocol conversion stays here. Open/save policy and prompt
+// transitions live in DocumentWorkspace, not here. Required-global loss
 // force-closes without prompting the workspace.
 
 #include <cmath>
@@ -35,13 +36,11 @@
 #include "ApplicationUi.h"
 #include "DocumentFile.h"
 #include "DocumentWorkspace.h"
-#include "FileErrorCard.h"
 #include "GlContext.h"
 #include "MenuBar.h"
 #include "RecentFiles.h"
 #include "ScrollBar.h"
 #include "TabStrip.h"
-#include "UnsavedChangesCard.h"
 #include "WaylandWindow.h"
 
 namespace {
@@ -358,28 +357,6 @@ void RevealActiveTab(Scalpel::TabStripModel &model, int stripWidth) {
 		stripWidth, model.tabs.size(), activeIndex, model.scrollOffset);
 }
 
-/** Card subtitle names the tab that owns the dirty-close prompt. */
-[[nodiscard]] std::string UnsavedPromptSubtitle(
-	const Scalpel::DocumentWorkspace &workspace) {
-	const Scalpel::DocumentId promptId = workspace.PromptTab();
-	for (const Scalpel::DocumentTabInfo &tab : workspace.Tabs()) {
-		if (tab.id != promptId) {
-			continue;
-		}
-		std::string label = tab.label;
-		// Drop the dirty marker; the card already asks about unsaved changes.
-		if (label.size() >= 2 &&
-			label.compare(label.size() - 2, 2, " *") == 0) {
-			label.resize(label.size() - 2);
-		}
-		return label;
-	}
-	if (workspace.Path().empty()) {
-		return "Untitled";
-	}
-	return Scalpel::DocumentBaseName(workspace.Path());
-}
-
 /** Close an open menu and force a full-frame repaint so the dropdown cannot linger. */
 void DismissOpenMenu(Scalpel::MenuBarModel &menuModel,
 	Scalpel::ApplicationEditor &editor) {
@@ -485,13 +462,6 @@ void ApplyFileDialogResults(Scalpel::WaylandWindow &window,
 	}
 }
 
-std::string_view FileErrorTitle(
-	const Scalpel::DocumentFileError &error) noexcept {
-	return error.operation == Scalpel::DocumentFileOperation::Open ?
-		"Could not open file" :
-		"Could not save file";
-}
-
 void CancelScrollBarShellInteraction(Scalpel::ScrollBarInteraction &interaction,
 	Scalpel::ApplicationEditor &editor) {
 	const bool paintChanged = interaction.dragging ||
@@ -543,10 +513,6 @@ int main() {
 				window.SetCursor(editor.WindowState().cursor);
 			}
 		};
-		Scalpel::MenuBarPainter menuPainter;
-		Scalpel::TabStripPainter stripPainter;
-		Scalpel::UnsavedChangesCardPainter cardPainter;
-		Scalpel::FileErrorCardPainter fileErrorPainter;
 		bool quitAccepted = false;
 		const auto synchronizeScrollBarInteraction = [&] {
 			const Scalpel::DocumentId activeDocument = editor.ActiveDocument();
@@ -563,40 +529,7 @@ int main() {
 		(void)SyncTabStripTabs(workspace, ui.StripModel(), editor.FrameWidth());
 		editor.InvalidateTopChrome();
 		editor.InvalidateScrollBars();
-
-		editor.SetPermanentChromePainter(
-			[&](Scintilla::Internal::Surface &surface, int, int) {
-				const Scalpel::ApplicationLayout &layout = ui.FrameLayout();
-				menuPainter.PaintBar(surface, layout.menu, ui.MenuModel());
-				stripPainter.Paint(surface, layout.tabs, ui.StripModel());
-				Scalpel::PaintScrollBars(surface, layout.scrollBars,
-					Scalpel::ScrollBarPaintFromInteraction(ui.ScrollBars()));
-			});
-
-		const auto paintMenuDropdown =
-			[&](Scintilla::Internal::Surface &surface, int, int) {
-				const Scalpel::ApplicationLayout &layout = ui.FrameLayout();
-				menuPainter.PaintDropdown(surface, layout.menu, ui.MenuModel());
-			};
-
-		const auto paintUnsavedCard =
-			[&](Scintilla::Internal::Surface &surface, int, int) {
-				const Scalpel::ApplicationLayout &layout = ui.FrameLayout();
-				const std::string subtitle = UnsavedPromptSubtitle(workspace);
-				cardPainter.Paint(surface, layout.unsavedCard, "Save changes?",
-					subtitle, ui.CardFocus());
-			};
-
-		const auto paintFileError =
-			[&](Scintilla::Internal::Surface &surface, int, int) {
-				if (ui.FileErrors().empty()) {
-					return;
-				}
-				const Scalpel::ApplicationLayout &layout = ui.FrameLayout();
-				const Scalpel::DocumentFileError &error = ui.FileErrors().front();
-				fileErrorPainter.Paint(surface, layout.fileErrorCard,
-					FileErrorTitle(error), error.path);
-			};
+		ui.BindPainters();
 
 		while (!quitAccepted && !window.ForceCloseRequested()) {
 			(void)window.TakePresentationResults();
@@ -708,43 +641,14 @@ int main() {
 				editor.InvalidateTopChrome();
 			}
 			SynchronizeTextInput(editor, window);
-			if (!ui.FileErrors().empty()) {
+			// Overlay priority, painter bind/unbind, and full-frame invalidation
+			// when overlays appear, change, or disappear live in ApplicationUi.
+			(void)ui.SynchronizeComposition();
+			if (ui.Overlay() == Scalpel::BoundOverlay::FileError ||
+				ui.Overlay() == Scalpel::BoundOverlay::UnsavedChanges) {
 				window.SetCursor(Scintilla::Internal::Window::Cursor::arrow);
-				if (ui.MenuModel().openMenu.has_value()) {
-					Scalpel::CloseMenuBar(ui.MenuModel());
-				}
-				if (ui.Overlay() != Scalpel::BoundOverlay::FileError) {
-					editor.SetOverlayPainter(paintFileError);
-					ui.SetOverlay(Scalpel::BoundOverlay::FileError);
-					editor.InvalidateFrame();
-				}
-			} else if (workspace.PromptActive()) {
-				window.SetCursor(Scintilla::Internal::Window::Cursor::arrow);
-				if (ui.MenuModel().openMenu.has_value()) {
-					Scalpel::CloseMenuBar(ui.MenuModel());
-				}
-				if (ui.Overlay() != Scalpel::BoundOverlay::UnsavedChanges) {
-					editor.SetOverlayPainter(paintUnsavedCard);
-					ui.SetOverlay(Scalpel::BoundOverlay::UnsavedChanges);
-					editor.InvalidateFrame();
-				}
-			} else if (ui.MenuModel().openMenu.has_value()) {
-				applyPointerCursor();
-				// Dropdown uses the overlay path only while a menu is open.
-				if (ui.Overlay() != Scalpel::BoundOverlay::Menu) {
-					editor.SetOverlayPainter(paintMenuDropdown);
-					ui.SetOverlay(Scalpel::BoundOverlay::Menu);
-					editor.InvalidateFrame();
-				}
 			} else {
 				applyPointerCursor();
-				if (ui.Overlay() != Scalpel::BoundOverlay::None) {
-					// Clear the painter and damage the full frame so preserved
-					// buffer contents cannot leave a stale dropdown or card.
-					editor.SetOverlayPainter(nullptr);
-					ui.SetOverlay(Scalpel::BoundOverlay::None);
-					editor.InvalidateFrame();
-				}
 			}
 			QueueFrameDamage(editor, window);
 			if (window.CanSubmitFrame()) {

@@ -218,8 +218,8 @@ public:
 	 * (editor client plus top chrome) and PresentFrame uses a full buffer swap
 	 * so alpha overlays do not darken preserved pixels outside partial damage.
 	 * Call InvalidateFrame when overlay pixels above the client can change.
-	 * main binds either the open menu dropdown or the unsaved-changes card
-	 * here, never both; the card has priority.
+	 * ApplicationUi binds exactly one of the open menu dropdown, unsaved-
+	 * changes card, or file-error card here; modal cards outrank the menu.
 	 */
 	using OverlayPainter = std::function<void(Scintilla::Internal::Surface &surface,
 		int width, int height)>;

@@ -149,7 +149,6 @@ TEST_CASE("application UI state mutates owned fields in place") {
 		DocumentFileOperation::Open, "/missing.txt"}});
 	ui.FileErrorPressHit() = true;
 	ui.PromptPressHit() = UnsavedCardHit::Save;
-	ui.SetOverlay(BoundOverlay::FileError);
 	ui.LastActiveDocument() = 42;
 	ui.MenuModel().openMenu = Scalpel::ApplicationMenu::File;
 	ui.StripModel().hoveredId = 7;
@@ -158,13 +157,16 @@ TEST_CASE("application UI state mutates owned fields in place") {
 	CHECK(ui.FileErrorPressHit());
 	REQUIRE(ui.PromptPressHit().has_value());
 	CHECK(*ui.PromptPressHit() == UnsavedCardHit::Save);
-	CHECK(ui.Overlay() == BoundOverlay::FileError);
 	CHECK(ui.LastActiveDocument() == 42);
 	REQUIRE(ui.FileErrors().size() == 1);
 	CHECK(ui.FileErrors().front().path == "/missing.txt");
 	CHECK(ui.MenuModel().openMenu == Scalpel::ApplicationMenu::File);
 	CHECK(ui.StripModel().hoveredId == 7);
 	CHECK(ui.ScrollBars().dragging);
+	// Composition decides the bound overlay; open menu loses to file error.
+	CHECK(ui.SynchronizeComposition() == BoundOverlay::FileError);
+	CHECK(ui.Overlay() == BoundOverlay::FileError);
+	CHECK_FALSE(ui.MenuModel().openMenu.has_value());
 }
 
 TEST_CASE("application UI layout snapshot matches component layouts and editor client") {
@@ -291,26 +293,26 @@ TEST_CASE("application UI layout hit testing and paint share one snapshot") {
 
 	CHECK_THROWS_WITH(ui.FrameLayout(),
 		"ApplicationUi::FrameLayout requires BeginFrameLayout");
-	ui.BeginFrameLayout();
+	// Force an overlay so both permanent-chrome and overlay paint entry points
+	// run during one RenderFrame and share the retained snapshot.
+	ui.MenuModel().openMenu = Scalpel::ApplicationMenu::File;
+	ui.BindPainters();
+	REQUIRE(ui.Overlay() == BoundOverlay::Menu);
 	const ApplicationLayout *chromeLayout = nullptr;
 	const ApplicationLayout *overlayLayout = nullptr;
 	editor.SetPermanentChromePainter(
 		[&](Surface &surface, int, int) {
 			chromeLayout = &ui.FrameLayout();
-			surface.FillRectangle(chromeLayout->menu.bar,
-				Fill(ColourRGBA(0x20, 0x20, 0x20, 0xff)));
-			surface.FillRectangle(chromeLayout->tabs.strip,
-				Fill(ColourRGBA(0x30, 0x30, 0x30, 0xff)));
-			Scalpel::PaintScrollBars(surface, chromeLayout->scrollBars, {});
+			ui.PaintPermanentChrome(surface);
 		});
 	editor.SetOverlayPainter(
 		[&](Surface &surface, int, int) {
 			overlayLayout = &ui.FrameLayout();
-			surface.FillRectangle(overlayLayout->unsavedCard.card,
-				Fill(ColourRGBA(0x40, 0x40, 0x40, 0xff)));
+			ui.PaintActiveOverlay(surface);
 		});
 	(void)editor.TakeFrameDamage();
 	editor.InvalidateFrame();
+	ui.BeginFrameLayout();
 	editor.RenderFrame();
 	REQUIRE(chromeLayout != nullptr);
 	REQUIRE(overlayLayout != nullptr);
@@ -909,4 +911,144 @@ TEST_CASE("application UI keyboard routing cancels IME when menu or card opens")
 	CHECK(ui.ChromeOwnsInput());
 	CHECK(editor.ImeIndicatorAt(0) == 0);
 	CHECK(editor.Text().find("\xC3\xA9") == std::string::npos);
+}
+
+TEST_CASE("application UI overlay priority file error outranks prompt and menu") {
+	ApplicationEditor editor(320, 200);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	ui.BindPainters();
+	CHECK(ui.Overlay() == BoundOverlay::None);
+
+	ui.MenuModel().openMenu = Scalpel::ApplicationMenu::File;
+	CHECK(ui.SynchronizeComposition() == BoundOverlay::Menu);
+	CHECK(ui.Overlay() == BoundOverlay::Menu);
+
+	DirtyBuffer(editor);
+	workspace.RequestClose();
+	ui.NotifyPromptBegan();
+	REQUIRE(workspace.PromptActive());
+	// Prompt wins over menu; menu model is closed so it cannot linger.
+	CHECK(ui.SynchronizeComposition() == BoundOverlay::UnsavedChanges);
+	CHECK_FALSE(ui.MenuModel().openMenu.has_value());
+
+	// Re-open menu while the prompt is still active; composition still closes it.
+	ui.MenuModel().openMenu = Scalpel::ApplicationMenu::Edit;
+	ui.AppendFileErrors({DocumentFileError{
+		DocumentFileOperation::Open, "/missing.txt"}});
+	CHECK(ui.SynchronizeComposition() == BoundOverlay::FileError);
+	CHECK_FALSE(ui.MenuModel().openMenu.has_value());
+	CHECK(workspace.PromptActive());
+	REQUIRE_FALSE(ui.FileErrors().empty());
+}
+
+TEST_CASE("application UI overlay priority invalidates full frame on change") {
+	ApplicationEditor editor(320, 200);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	ui.BindPainters();
+	(void)editor.TakeFrameDamage();
+
+	ui.MenuModel().openMenu = Scalpel::ApplicationMenu::File;
+	CHECK(ui.SynchronizeComposition() == BoundOverlay::Menu);
+	const std::vector<PRectangle> menuDamage = editor.TakeFrameDamage();
+	REQUIRE_FALSE(menuDamage.empty());
+	CHECK(HasDamage(menuDamage,
+		PRectangle::FromInts(0, 0, editor.FrameWidth(), editor.FrameHeight())));
+
+	// Same overlay again must not queue another full-frame damage.
+	CHECK(ui.SynchronizeComposition() == BoundOverlay::Menu);
+	CHECK(editor.TakeFrameDamage().empty());
+
+	ui.MenuModel().openMenu.reset();
+	Scalpel::CloseMenuBar(ui.MenuModel());
+	CHECK(ui.SynchronizeComposition() == BoundOverlay::None);
+	const std::vector<PRectangle> clearDamage = editor.TakeFrameDamage();
+	REQUIRE_FALSE(clearDamage.empty());
+	CHECK(HasDamage(clearDamage,
+		PRectangle::FromInts(0, 0, editor.FrameWidth(), editor.FrameHeight())));
+
+	// File error activation path also damages the full frame.
+	ui.AppendFileErrors({DocumentFileError{
+		DocumentFileOperation::Save, "/fail.txt"}});
+	// AppendFileErrors already invalidated; SynchronizeComposition does again
+	// when the bound overlay changes to FileError.
+	(void)editor.TakeFrameDamage();
+	CHECK(ui.SynchronizeComposition() == BoundOverlay::FileError);
+	const std::vector<PRectangle> errorDamage = editor.TakeFrameDamage();
+	REQUIRE_FALSE(errorDamage.empty());
+	CHECK(HasDamage(errorDamage,
+		PRectangle::FromInts(0, 0, editor.FrameWidth(), editor.FrameHeight())));
+}
+
+TEST_CASE("application UI overlay priority paints through bound entry points") {
+	ApplicationEditor editor(320, 200);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	ui.MenuModel().openMenu = Scalpel::ApplicationMenu::File;
+	ui.BindPainters();
+	REQUIRE(ui.Overlay() == BoundOverlay::Menu);
+
+	(void)editor.TakeFrameDamage();
+	editor.InvalidateFrame();
+	ui.BeginFrameLayout();
+	editor.RenderFrame();
+	const ApplicationLayout &frameLayout = ui.FrameLayout();
+	REQUIRE_FALSE(frameLayout.menu.bar.Empty());
+	REQUIRE(frameLayout.menu.dropdownMenu.has_value());
+	REQUIRE_FALSE(frameLayout.menu.dropdown.Empty());
+	const int barX = static_cast<int>(frameLayout.menu.bar.left + 4);
+	const int barY = static_cast<int>(frameLayout.menu.bar.top + 4);
+	const int dropX = static_cast<int>(
+		(frameLayout.menu.dropdown.left + frameLayout.menu.dropdown.right) / 2.0);
+	const int dropY = static_cast<int>(
+		(frameLayout.menu.dropdown.top + frameLayout.menu.dropdown.bottom) / 2.0);
+	ui.EndFrameLayout();
+
+	// Permanent chrome paints the menu bar; open File dropdown paints through
+	// the overlay entry point into the client area.
+	const std::vector<uint8_t> pixels = editor.FramePixels();
+	const int width = editor.FrameWidth();
+	const size_t barSample =
+		(static_cast<size_t>(barY) * static_cast<size_t>(width) +
+			static_cast<size_t>(barX)) *
+		4U;
+	CHECK(pixels[barSample + 3] == 0xff);
+	CHECK_FALSE((pixels[barSample + 0] == 0x00 &&
+		pixels[barSample + 1] == 0x00 &&
+		pixels[barSample + 2] == 0x00));
+
+	const size_t dropSample =
+		(static_cast<size_t>(dropY) * static_cast<size_t>(width) +
+			static_cast<size_t>(dropX)) *
+		4U;
+	CHECK(pixels[dropSample + 3] == 0xff);
+	CHECK_FALSE((pixels[dropSample + 0] == 0x00 &&
+		pixels[dropSample + 1] == 0x00 &&
+		pixels[dropSample + 2] == 0x00));
+	const uint8_t dropR = pixels[dropSample + 0];
+	const uint8_t dropG = pixels[dropSample + 1];
+	const uint8_t dropB = pixels[dropSample + 2];
+
+	// Closing the menu clears the overlay so the dropdown panel cannot remain.
+	Scalpel::CloseMenuBar(ui.MenuModel());
+	CHECK(ui.SynchronizeComposition() == BoundOverlay::None);
+	(void)editor.TakeFrameDamage();
+	editor.InvalidateFrame();
+	ui.BeginFrameLayout();
+	editor.RenderFrame();
+	ui.EndFrameLayout();
+	const std::vector<uint8_t> cleared = editor.FramePixels();
+	CHECK_FALSE((cleared[dropSample + 0] == dropR &&
+		cleared[dropSample + 1] == dropG &&
+		cleared[dropSample + 2] == dropB));
 }
