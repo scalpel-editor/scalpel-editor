@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "ApplicationEditor.h"
+#include "ApplicationTextInput.h"
 #include "ApplicationUi.h"
 #include "DocumentWorkspace.h"
 #include "FileErrorCard.h"
@@ -15,22 +16,29 @@
 #include "UnsavedChangesCard.h"
 
 using Scalpel::ApplicationEditor;
+using Scalpel::ApplicationKeyboardOwner;
+using Scalpel::ApplicationKeyboardResult;
 using Scalpel::ApplicationLayout;
 using Scalpel::ApplicationPointerCursor;
 using Scalpel::ApplicationPointerOwner;
 using Scalpel::ApplicationPointerResult;
+using Scalpel::ApplicationTextInputBatch;
+using Scalpel::ApplicationTextInputPreedit;
 using Scalpel::ApplicationUi;
 using Scalpel::BoundOverlay;
 using Scalpel::BuildApplicationLayout;
 using Scalpel::DocumentFileError;
 using Scalpel::DocumentFileOperation;
 using Scalpel::DocumentWorkspace;
+using Scalpel::KeyboardInput;
 using Scalpel::PointerAction;
 using Scalpel::PointerInput;
 using Scalpel::RecentFiles;
 using Scalpel::UnsavedCardHit;
 using Scintilla::Internal::PRectangle;
 using Scintilla::Internal::Point;
+using Scintilla::KeyMod;
+using Scintilla::Keys;
 
 namespace {
 
@@ -42,6 +50,19 @@ PointerInput MakePointer(PointerAction action, double x, double y,
 	input.y = y;
 	input.button = button;
 	return input;
+}
+
+KeyboardInput MakeKey(Keys key, KeyMod modifiers = KeyMod::Norm,
+	bool pressed = true) {
+	KeyboardInput input;
+	input.key = key;
+	input.modifiers = modifiers;
+	input.pressed = pressed;
+	return input;
+}
+
+KeyboardInput MakeLetter(char upper, KeyMod modifiers = KeyMod::Norm) {
+	return MakeKey(static_cast<Keys>(upper), modifiers);
 }
 
 void PrepareChromeEditor(ApplicationEditor &editor) {
@@ -640,4 +661,219 @@ TEST_CASE("application UI pointer priority client delivers to editor") {
 	CHECK(move.cursor == ApplicationPointerCursor::Editor);
 	CHECK_FALSE(ui.PointerOverChrome());
 	CHECK(editor.TakeFrameDamage().empty());
+}
+
+TEST_CASE("application UI keyboard routing file error owns over prompt") {
+	ApplicationEditor editor(320, 200);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	ui.FileErrors().push_back(DocumentFileError{
+		DocumentFileOperation::Open, "/missing.txt"});
+	DirtyBuffer(editor);
+	workspace.RequestClose();
+	REQUIRE(workspace.PromptActive());
+	CHECK(ui.ChromeOwnsInput());
+	(void)editor.TakeFrameDamage();
+
+	const ApplicationKeyboardResult dismiss =
+		ui.HandleKeyboard(MakeKey(Keys::Escape));
+	CHECK(dismiss.owner == ApplicationKeyboardOwner::FileError);
+	CHECK(ui.FileErrors().empty());
+	CHECK(workspace.PromptActive());
+	CHECK(HasDamage(editor.TakeFrameDamage(), PRectangle::FromInts(
+		0, 0, editor.FrameWidth(), editor.FrameHeight())));
+	// Prompt still owns input after the file error is dismissed.
+	CHECK(ui.ChromeOwnsInput());
+	const ApplicationKeyboardResult cancel =
+		ui.HandleKeyboard(MakeKey(Keys::Escape));
+	CHECK(cancel.owner == ApplicationKeyboardOwner::UnsavedPrompt);
+	CHECK_FALSE(workspace.PromptActive());
+	CHECK_FALSE(ui.ChromeOwnsInput());
+}
+
+TEST_CASE("application UI keyboard routing unsaved prompt blocks menu and editor") {
+	ApplicationEditor editor(320, 200);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	DirtyBuffer(editor);
+	workspace.RequestClose();
+	REQUIRE(workspace.PromptActive());
+	ui.CardFocus() = 0;
+	(void)editor.TakeFrameDamage();
+
+	// Menu open accelerators must not run while the card owns input.
+	const ApplicationKeyboardResult menuKey =
+		ui.HandleKeyboard(MakeKey(Keys::Menu));
+	CHECK(menuKey.owner == ApplicationKeyboardOwner::UnsavedPrompt);
+	CHECK_FALSE(ui.MenuModel().openMenu.has_value());
+
+	// Typing must not reach the buffer (dirty marker left only the earlier 'x').
+	const ApplicationKeyboardResult letter =
+		ui.HandleKeyboard(MakeLetter('Z'));
+	CHECK(letter.owner == ApplicationKeyboardOwner::UnsavedPrompt);
+	CHECK(editor.Text().find('Z') == std::string::npos);
+
+	// Focus cycle and activate Cancel.
+	const ApplicationKeyboardResult tab =
+		ui.HandleKeyboard(MakeKey(Keys::Tab));
+	CHECK(tab.owner == ApplicationKeyboardOwner::UnsavedPrompt);
+	CHECK(ui.CardFocus() == 1);
+	(void)ui.HandleKeyboard(MakeKey(Keys::Tab));
+	CHECK(ui.CardFocus() == 2);
+	const ApplicationKeyboardResult activate =
+		ui.HandleKeyboard(MakeKey(Keys::Return));
+	CHECK(activate.owner == ApplicationKeyboardOwner::UnsavedPrompt);
+	CHECK_FALSE(workspace.PromptActive());
+}
+
+TEST_CASE("application UI keyboard routing menu accelerators and open menu") {
+	ApplicationEditor editor(400, 280);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	const Scalpel::DocumentId first = editor.ActiveDocument();
+	(void)editor.TakeFrameDamage();
+
+	const ApplicationKeyboardResult open =
+		ui.HandleKeyboard(MakeKey(Keys::Menu));
+	CHECK(open.owner == ApplicationKeyboardOwner::Menu);
+	REQUIRE(ui.MenuModel().openMenu == Scalpel::ApplicationMenu::File);
+	CHECK(ui.ChromeOwnsInput());
+	CHECK(HasDamage(editor.TakeFrameDamage(), PRectangle::FromInts(
+		0, 0, editor.FrameWidth(), editor.FrameHeight())));
+
+	// While open, editor shortcuts and typing do not reach the buffer.
+	const std::string textBefore = editor.Text();
+	const ApplicationKeyboardResult blocked =
+		ui.HandleKeyboard(MakeLetter('Z'));
+	CHECK(blocked.owner == ApplicationKeyboardOwner::Menu);
+	CHECK(editor.Text() == textBefore);
+
+	// Activate New Tab from the focused File item (first enabled item).
+	const ApplicationKeyboardResult activate =
+		ui.HandleKeyboard(MakeKey(Keys::Return));
+	CHECK(activate.owner == ApplicationKeyboardOwner::Menu);
+	CHECK_FALSE(ui.MenuModel().openMenu.has_value());
+	CHECK(workspace.Tabs().size() == 2);
+	CHECK(editor.ActiveDocument() != first);
+}
+
+TEST_CASE("application UI keyboard routing application shortcuts and editor") {
+	ApplicationEditor editor(320, 200);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	const Scalpel::DocumentId first = editor.ActiveDocument();
+
+	const ApplicationKeyboardResult newTab =
+		ui.HandleKeyboard(MakeLetter('N', KeyMod::Ctrl));
+	CHECK(newTab.owner == ApplicationKeyboardOwner::ApplicationShortcut);
+	CHECK(workspace.Tabs().size() == 2);
+	CHECK(editor.ActiveDocument() != first);
+
+	// Ctrl+Tab cycles without going through the File/Edit action table.
+	const ApplicationKeyboardResult cycle =
+		ui.HandleKeyboard(MakeKey(Keys::Tab, KeyMod::Ctrl));
+	CHECK(cycle.owner == ApplicationKeyboardOwner::ApplicationShortcut);
+	CHECK(workspace.ActiveTab() == first);
+
+	// Text insertion uses the text field, not the key code alone.
+	KeyboardInput insert;
+	insert.key = static_cast<Keys>(0);
+	insert.modifiers = KeyMod::Norm;
+	insert.text = "q";
+	insert.pressed = true;
+	const ApplicationKeyboardResult typed = ui.HandleKeyboard(insert);
+	CHECK(typed.owner == ApplicationKeyboardOwner::Editor);
+	CHECK(editor.Text().find('q') != std::string::npos);
+}
+
+TEST_CASE("application UI focus loss closes menu cancels bars and clears press") {
+	ApplicationEditor editor(320, 200);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+
+	ui.HandleFocus(true);
+
+	// Seed chrome that must not survive surface focus loss.
+	ui.MenuModel().openMenu = Scalpel::ApplicationMenu::File;
+	ui.MenuModel().focusedItem = Scalpel::ApplicationAction::Save;
+	ui.ScrollBars().hover = Scalpel::ScrollBarHit::Thumb;
+	ui.ScrollBars().pressed = Scalpel::ScrollBarHit::Thumb;
+	ui.ScrollBars().dragging = true;
+	ui.FileErrorPressHit() = true;
+	ui.PromptPressHit() = UnsavedCardHit::Discard;
+	(void)editor.TakeFrameDamage();
+
+	ui.HandleFocus(false);
+	CHECK_FALSE(ui.MenuModel().openMenu.has_value());
+	CHECK_FALSE(ui.MenuModel().focusedItem.has_value());
+	CHECK(ui.ScrollBars().hover == Scalpel::ScrollBarHit::None);
+	CHECK(ui.ScrollBars().pressed == Scalpel::ScrollBarHit::None);
+	CHECK_FALSE(ui.ScrollBars().dragging);
+	CHECK_FALSE(ui.FileErrorPressHit());
+	CHECK_FALSE(ui.PromptPressHit().has_value());
+	CHECK(HasDamage(editor.TakeFrameDamage(), PRectangle::FromInts(
+		0, 0, editor.FrameWidth(), editor.FrameHeight())));
+}
+
+TEST_CASE("application UI keyboard routing cancels IME when menu or card opens") {
+	ApplicationEditor editor(320, 200);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+
+	ApplicationTextInputBatch preedit;
+	preedit.preedit = ApplicationTextInputPreedit{"\xC3\xA9", 2, 2};
+	editor.HandleTextInputBatch(preedit);
+	CHECK(editor.Text().find("\xC3\xA9") != std::string::npos);
+	CHECK(editor.ImeIndicatorAt(0) != 0);
+	CHECK_FALSE(ui.ChromeOwnsInput());
+
+	// Opening a menu cancels tentative IME; host must drop batches while open.
+	const ApplicationKeyboardResult open =
+		ui.HandleKeyboard(MakeKey(Keys::Menu));
+	CHECK(open.owner == ApplicationKeyboardOwner::Menu);
+	REQUIRE(ui.MenuModel().openMenu.has_value());
+	CHECK(ui.ChromeOwnsInput());
+	CHECK(editor.ImeIndicatorAt(0) == 0);
+	CHECK(editor.Text().find("\xC3\xA9") == std::string::npos);
+
+	// Escape closes the menu; chrome no longer owns input.
+	(void)ui.HandleKeyboard(MakeKey(Keys::Escape));
+	CHECK_FALSE(ui.MenuModel().openMenu.has_value());
+	CHECK_FALSE(ui.ChromeOwnsInput());
+
+	// Opening a modal card cancels tentative IME the same way.
+	editor.HandleKeyboardInput({Keys::Home, KeyMod::Norm, {}, 1, true});
+	editor.HandleTextInputBatch(preedit);
+	REQUIRE(editor.Text().find("\xC3\xA9") != std::string::npos);
+	CHECK(editor.ImeIndicatorAt(0) != 0);
+	ui.NotifyPromptBegan();
+	CHECK(editor.ImeIndicatorAt(0) == 0);
+	CHECK(editor.Text().find("\xC3\xA9") == std::string::npos);
+
+	editor.HandleTextInputBatch(preedit);
+	REQUIRE(editor.ImeIndicatorAt(0) != 0);
+	ui.FileErrors().push_back(DocumentFileError{
+		DocumentFileOperation::Save, "/fail.txt"});
+	ui.NotifyFileErrorBecameActive();
+	CHECK(ui.ChromeOwnsInput());
+	CHECK(editor.ImeIndicatorAt(0) == 0);
+	CHECK(editor.Text().find("\xC3\xA9") == std::string::npos);
 }

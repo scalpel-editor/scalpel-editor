@@ -492,4 +492,230 @@ ApplicationPointerResult ApplicationUi::HandlePointer(
 		pointerOverChrome);
 }
 
+namespace {
+
+[[nodiscard]] bool IsSaveShortcut(const KeyboardInput &input) {
+	return input.pressed &&
+		input.key == static_cast<Scintilla::Keys>('S') &&
+		input.modifiers == Scintilla::KeyMod::Ctrl;
+}
+
+[[nodiscard]] bool IsNextTabShortcut(const KeyboardInput &input) {
+	return input.pressed &&
+		input.key == Scintilla::Keys::Tab &&
+		input.modifiers == Scintilla::KeyMod::Ctrl;
+}
+
+[[nodiscard]] bool IsPrevTabShortcut(const KeyboardInput &input) {
+	return input.pressed &&
+		input.key == Scintilla::Keys::Tab &&
+		input.modifiers == (Scintilla::KeyMod::Ctrl | Scintilla::KeyMod::Shift);
+}
+
+[[nodiscard]] bool IsLetterKey(const KeyboardInput &input, char upper,
+	char lower) {
+	if (!input.pressed || input.modifiers != Scintilla::KeyMod::Norm) {
+		return false;
+	}
+	if (input.key == static_cast<Scintilla::Keys>(upper) ||
+		input.key == static_cast<Scintilla::Keys>(lower)) {
+		return true;
+	}
+	return input.text == std::string(1, upper) ||
+		input.text == std::string(1, lower);
+}
+
+void DismissFileError(std::deque<DocumentFileError> &errors,
+	ApplicationEditor &editor, bool &pressHit) {
+	if (!errors.empty()) {
+		errors.pop_front();
+	}
+	pressHit = false;
+	editor.InvalidateFrame();
+}
+
+void HandleFileErrorKeyboard(const KeyboardInput &input,
+	std::deque<DocumentFileError> &errors, ApplicationEditor &editor,
+	bool &pressHit) {
+	if (!input.pressed) {
+		return;
+	}
+	if (input.key == Scintilla::Keys::Escape ||
+		input.key == Scintilla::Keys::Return ||
+		input.key == static_cast<Scintilla::Keys>(' ') ||
+		input.text == " ") {
+		DismissFileError(errors, editor, pressHit);
+	}
+}
+
+void HandlePromptKeyboard(const KeyboardInput &input,
+	DocumentWorkspace &workspace, ApplicationEditor &editor, int &cardFocus) {
+	if (!input.pressed) {
+		return;
+	}
+	if (input.key == Scintilla::Keys::Escape) {
+		workspace.Choose(UnsavedChoice::Cancel);
+		return;
+	}
+	if (input.key == Scintilla::Keys::Tab) {
+		const int delta =
+			(input.modifiers == Scintilla::KeyMod::Shift) ? -1 : 1;
+		cardFocus = CycleUnsavedCardFocus(cardFocus, delta);
+		editor.InvalidateClient();
+		return;
+	}
+	if (input.key == Scintilla::Keys::Left) {
+		cardFocus = CycleUnsavedCardFocus(cardFocus, -1);
+		editor.InvalidateClient();
+		return;
+	}
+	if (input.key == Scintilla::Keys::Right) {
+		cardFocus = CycleUnsavedCardFocus(cardFocus, 1);
+		editor.InvalidateClient();
+		return;
+	}
+	if (input.key == Scintilla::Keys::Return ||
+		input.key == static_cast<Scintilla::Keys>(' ') ||
+		input.text == " ") {
+		const UnsavedChoice choice = cardFocus == 0 ?
+			UnsavedChoice::Save :
+			(cardFocus == 1 ? UnsavedChoice::Discard : UnsavedChoice::Cancel);
+		workspace.Choose(choice);
+		return;
+	}
+	if (IsSaveShortcut(input) || IsLetterKey(input, 'S', 's')) {
+		workspace.Choose(UnsavedChoice::Save);
+		return;
+	}
+	if (IsLetterKey(input, 'D', 'd')) {
+		workspace.Choose(UnsavedChoice::Discard);
+		return;
+	}
+	// Ignore other keys while the prompt owns input.
+}
+
+/**
+ * Menu open accelerators and open-menu navigation before application shortcuts.
+ * Returns true when the event must not reach shortcuts or the editor.
+ */
+bool HandleMenuBarKeyboardInput(const KeyboardInput &input,
+	MenuBarModel &menuModel, RecentFiles &recent,
+	const std::string &recentStatePath, DocumentWorkspace &workspace,
+	ApplicationEditor &editor, ScrollBarInteraction &scrollBarInteraction) {
+	const bool menuWasOpen = menuModel.openMenu.has_value();
+	// Refresh before open accelerators so FirstEnabledItem uses live state.
+	(void)UpdateMenuBarActionState(menuModel, editor);
+	const MenuBarKeyboardResult menuResult =
+		HandleMenuBarKeyboard(menuModel, input);
+	if (!menuWasOpen && menuModel.openMenu.has_value()) {
+		// Opening a menu cancels tentative IME; batches stay dropped while open.
+		editor.CancelActiveTextInput();
+		CancelScrollBarShellInteraction(scrollBarInteraction, editor);
+	}
+	if (menuResult.barDirty) {
+		editor.InvalidateTopChrome();
+	}
+	if (menuResult.frameDirty) {
+		editor.InvalidateFrame();
+	}
+	if (menuResult.activated) {
+		ActivateMenuBarItem(*menuResult.activated, menuModel, recent,
+			recentStatePath, workspace, editor);
+	}
+	return menuResult.consumed;
+}
+
+/**
+ * Application File/Edit shortcuts and tab cycling, then editor typing.
+ * Returns ApplicationShortcut when a shortcut or cycle ran; Editor otherwise.
+ */
+ApplicationKeyboardOwner HandleEditorKeyboard(const KeyboardInput &input,
+	DocumentWorkspace &workspace, ApplicationEditor &editor) {
+	if (const std::optional<ApplicationAction> action =
+		MatchApplicationAction(input)) {
+		DispatchApplicationAction(*action, workspace, editor);
+		return ApplicationKeyboardOwner::ApplicationShortcut;
+	}
+	if (IsPrevTabShortcut(input)) {
+		workspace.CycleTab(-1);
+		return ApplicationKeyboardOwner::ApplicationShortcut;
+	}
+	if (IsNextTabShortcut(input)) {
+		workspace.CycleTab(1);
+		return ApplicationKeyboardOwner::ApplicationShortcut;
+	}
+	editor.HandleKeyboardInput(input);
+	return ApplicationKeyboardOwner::Editor;
+}
+
+}
+
+ApplicationKeyboardResult ApplicationUi::HandleKeyboard(
+	const KeyboardInput &input) {
+	ApplicationKeyboardResult result;
+
+	if (!fileErrors.empty()) {
+		result.owner = ApplicationKeyboardOwner::FileError;
+		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
+		HandleFileErrorKeyboard(input, fileErrors, *editor, fileErrorPressHit);
+		return result;
+	}
+
+	if (workspace->PromptActive()) {
+		result.owner = ApplicationKeyboardOwner::UnsavedPrompt;
+		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
+		HandlePromptKeyboard(input, *workspace, *editor, cardFocus);
+		return result;
+	}
+
+	// Menu accelerators and open-menu navigation run before application
+	// shortcuts and editor typing.
+	if (HandleMenuBarKeyboardInput(input, menuModel, *recent, recentStatePath,
+		*workspace, *editor, scrollBarInteraction)) {
+		result.owner = ApplicationKeyboardOwner::Menu;
+		return result;
+	}
+
+	result.owner = HandleEditorKeyboard(input, *workspace, *editor);
+	return result;
+}
+
+void ApplicationUi::HandleFocus(bool focused) {
+	editor->SetKeyboardFocus(focused);
+	if (focused) {
+		return;
+	}
+	// Focus loss closes chrome that should not survive leaving the surface.
+	// SetKeyboardFocus already cancels tentative IME on the editor.
+	DismissOpenMenu(menuModel, *editor);
+	CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
+	fileErrorPressHit = false;
+	promptPressHit.reset();
+}
+
+bool ApplicationUi::ChromeOwnsInput() const noexcept {
+	return !fileErrors.empty() || workspace->PromptActive() ||
+		menuModel.openMenu.has_value();
+}
+
+void ApplicationUi::NotifyPromptBegan() {
+	DismissOpenMenu(menuModel, *editor);
+	// Opening a modal card cancels tentative IME; batches stay dropped while
+	// the card is active.
+	editor->CancelActiveTextInput();
+	CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
+	cardFocus = 0;
+	promptPressHit.reset();
+}
+
+void ApplicationUi::NotifyFileErrorBecameActive() {
+	DismissOpenMenu(menuModel, *editor);
+	// Opening a modal card cancels tentative IME; batches stay dropped while
+	// any error remains in the queue.
+	editor->CancelActiveTextInput();
+	CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
+	fileErrorPressHit = false;
+	editor->InvalidateFrame();
+}
+
 }

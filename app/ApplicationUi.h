@@ -1,10 +1,12 @@
 // Application chrome and overlay selection state for the production editor.
 // Owns menu, tab-strip, scrollbar interaction, modal-card, error-queue, hover,
 // press, and which overlay is bound. Holds references to ApplicationEditor,
-// DocumentWorkspace, and RecentFiles. Pointer routing goes through
-// HandlePointer with an explicit owner; keyboard and shell-effect routing still
-// live in the host for now. ApplicationLayout is the one frame-size snapshot
-// used for hit testing and painting within an event or paint pass.
+// DocumentWorkspace, and RecentFiles. Pointer and keyboard routing go through
+// HandlePointer and HandleKeyboard with explicit owners; focus loss is one
+// transition that clears menu, scrollbar, and press state. Opening a menu or
+// modal card cancels tentative IME. Shell-effect routing still lives in the
+// host for now. ApplicationLayout is the one frame-size snapshot used for hit
+// testing and painting within an event or paint pass.
 
 #ifndef APPLICATIONUI_H
 #define APPLICATIONUI_H
@@ -105,6 +107,30 @@ struct ApplicationPointerResult {
 };
 
 /**
+ * Who owns keyboard handling for one event after priority resolution.
+ * Order when deciding: file error, unsaved prompt, open menu (including open
+ * accelerators while closed), application shortcuts and tab cycling, then
+ * editor delivery.
+ */
+enum class ApplicationKeyboardOwner {
+	FileError,
+	UnsavedPrompt,
+	Menu,
+	ApplicationShortcut,
+	Editor,
+};
+
+/**
+ * Keyboard ownership result from ApplicationUi::HandleKeyboard.
+ * Application actions, menu transitions, tab cycling, and editor key delivery
+ * are applied inside ApplicationUi; the host only observes the owner for tests
+ * and shell-request follow-up.
+ */
+struct ApplicationKeyboardResult {
+	ApplicationKeyboardOwner owner = ApplicationKeyboardOwner::Editor;
+};
+
+/**
  * Owns permanent-chrome models, scrollbar interaction, modal-card focus,
  * file-error queue, pointer hover and press state, and overlay selection.
  * Editor host, workspace, and recent files remain external injectees.
@@ -160,6 +186,41 @@ public:
 	 */
 	[[nodiscard]] ApplicationPointerResult HandlePointer(
 		const PointerInput &input);
+
+	/**
+	 * Route one keyboard event through modal cards, menu navigation, open
+	 * accelerators, application shortcuts, tab cycling, and editor delivery.
+	 * Modal owners and an open menu consume every key; shortcuts and editor
+	 * typing apply inside this method.
+	 */
+	[[nodiscard]] ApplicationKeyboardResult HandleKeyboard(
+		const KeyboardInput &input);
+
+	/**
+	 * Apply keyboard focus gain or loss. Loss is one transition: editor focus
+	 * cancel (including tentative IME), close any open menu, cancel scrollbar
+	 * interaction, and clear modal press state.
+	 */
+	void HandleFocus(bool focused);
+
+	/**
+	 * True while a file-error card, unsaved prompt, or open menu owns input.
+	 * The platform host drops IME batches while this is true; protocol
+	 * conversion stays in the adapter.
+	 */
+	[[nodiscard]] bool ChromeOwnsInput() const noexcept;
+
+	/**
+	 * Unsaved-prompt card became active. Closes the menu, cancels tentative
+	 * IME and scrollbar interaction, and resets card focus and press state.
+	 */
+	void NotifyPromptBegan();
+
+	/**
+	 * First file-error card became active. Closes the menu, cancels tentative
+	 * IME, and invalidates the full frame for the overlay.
+	 */
+	void NotifyFileErrorBecameActive();
 
 	[[nodiscard]] MenuBarModel &MenuModel() noexcept { return menuModel; }
 	[[nodiscard]] const MenuBarModel &MenuModel() const noexcept {

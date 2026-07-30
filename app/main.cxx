@@ -5,21 +5,23 @@
 // paths, untitled numbering, portal request intents, and dirty-close prompts;
 // it returns shell requests and owns no Wayland or drawing. ApplicationUi owns
 // menu, tab-strip, scrollbar interaction, modal-card, file-error queue, hover,
-// press, overlay-selection state, and pointer routing (file error, unsaved
-// card, menu, scrollbar drag, editor capture, permanent chrome, then editor).
-// MenuBar, TabStrip, and ScrollBar are permanent chrome. The open menu
-// dropdown, UnsavedChangesCard, and FileErrorCard share the post-paint overlay
-// slot. This file is the event and rendering adapter: it delivers keyboard and
-// portal results, calls ApplicationUi::HandlePointer for pointer events,
-// performs shell requests (dialogs, quit, strip refresh), dismisses menus and
-// scrollbar drags around portals, prompts, force close, and focus loss, and
-// paints chrome. Hit testing and painting share one ApplicationLayout snapshot
-// per event or paint pass. Open/save policy and prompt transitions live in
-// DocumentWorkspace, not here. Required-global loss force-closes without
-// prompting the workspace.
+// press, overlay-selection state, and pointer and keyboard routing (file error,
+// unsaved card, menu, scrollbar drag, editor capture, permanent chrome, then
+// editor; keyboard: modals, menu, application shortcuts, tab cycling, editor).
+// Focus loss closes menus, cancels scrollbar interaction, and clears press
+// state. Opening a menu or modal card cancels tentative IME; ChromeOwnsInput
+// drops IME batches while chrome owns keyboard. MenuBar, TabStrip, and
+// ScrollBar are permanent chrome. The open menu dropdown, UnsavedChangesCard,
+// and FileErrorCard share the post-paint overlay slot. This file is the event
+// and rendering adapter: it delivers portal results, calls ApplicationUi for
+// pointer, keyboard, and focus, performs shell requests (dialogs, quit, strip
+// refresh), dismisses menus around portals and force close, and paints chrome.
+// Hit testing and painting share one ApplicationLayout snapshot per event or
+// paint pass. Text-input protocol conversion stays here. Open/save policy and
+// prompt transitions live in DocumentWorkspace, not here. Required-global loss
+// force-closes without prompting the workspace.
 
 #include <cmath>
-#include <deque>
 #include <exception>
 #include <iostream>
 #include <memory>
@@ -29,7 +31,6 @@
 #include <utility>
 #include <vector>
 
-#include "ApplicationAction.h"
 #include "ApplicationEditor.h"
 #include "ApplicationUi.h"
 #include "DocumentFile.h"
@@ -41,7 +42,6 @@
 #include "ScrollBar.h"
 #include "TabStrip.h"
 #include "UnsavedChangesCard.h"
-#include "UnsavedChangesPrompt.h"
 #include "WaylandWindow.h"
 
 namespace {
@@ -202,7 +202,7 @@ void DeliverTextInputBatches(Scalpel::WaylandWindow &window,
 	Scalpel::ApplicationEditor &editor, bool chromeOwnsInput) {
 	for (Scalpel::WaylandTextInputBatch &batch : window.TakeTextInputBatches()) {
 		if (chromeOwnsInput) {
-			// Unsaved card or open menu owns input; drop IME until it closes.
+			// Modal card or open menu owns input; drop IME until it closes.
 			continue;
 		}
 		editor.HandleTextInputBatch(ApplicationBatch(std::move(batch)));
@@ -420,16 +420,14 @@ void SyncRecentMenu(const Scalpel::RecentFiles &recent,
 void CollectWorkspaceOutcomes(Scalpel::DocumentWorkspace &workspace,
 	Scalpel::RecentFiles &recent,
 	const std::string &recentStatePath,
-	Scalpel::MenuBarModel &menuModel,
-	std::deque<Scalpel::DocumentFileError> &fileErrors,
-	Scalpel::ApplicationEditor &editor) {
+	Scalpel::ApplicationUi &ui) {
 	bool recentChanged = false;
 	for (const std::string &path : workspace.TakeRecentPaths()) {
 		recentChanged = recent.Record(path) || recentChanged;
 	}
 	if (recentChanged) {
 		PersistRecentFiles(recentStatePath, recent);
-		SyncRecentMenu(recent, menuModel, editor);
+		SyncRecentMenu(recent, ui.MenuModel(), ui.Editor());
 	}
 
 	const std::vector<Scalpel::DocumentFileError> errors =
@@ -437,63 +435,30 @@ void CollectWorkspaceOutcomes(Scalpel::DocumentWorkspace &workspace,
 	if (errors.empty()) {
 		return;
 	}
-	const bool wasEmpty = fileErrors.empty();
-	fileErrors.insert(fileErrors.end(), errors.begin(), errors.end());
+	const bool wasEmpty = ui.FileErrors().empty();
+	ui.FileErrors().insert(ui.FileErrors().end(), errors.begin(), errors.end());
 	if (wasEmpty) {
-		DismissOpenMenu(menuModel, editor);
-		editor.CancelActiveTextInput();
-		editor.InvalidateFrame();
-	}
-}
-
-void ActivateMenuBarItem(Scalpel::MenuBarItemId item,
-	Scalpel::MenuBarModel &menuModel,
-	Scalpel::RecentFiles &recent,
-	const std::string &recentStatePath,
-	Scalpel::DocumentWorkspace &workspace,
-	Scalpel::ApplicationEditor &editor) {
-	switch (item.kind) {
-	case Scalpel::MenuBarItemKind::ApplicationAction:
-		Scalpel::DispatchApplicationAction(item.action, workspace, editor);
-		break;
-	case Scalpel::MenuBarItemKind::RecentFile:
-		if (item.recentIndex < recent.Paths().size()) {
-			const std::string path = recent.Paths()[item.recentIndex];
-			(void)workspace.OpenPath(path);
-		}
-		break;
-	case Scalpel::MenuBarItemKind::ClearRecentFiles:
-		if (recent.Clear()) {
-			PersistRecentFiles(recentStatePath, recent);
-			SyncRecentMenu(recent, menuModel, editor);
-		}
-		break;
-	case Scalpel::MenuBarItemKind::EmptyRecentFiles:
-		break;
+		ui.NotifyFileErrorBecameActive();
 	}
 }
 
 void PerformShellRequests(Scalpel::DocumentWorkspace &workspace,
 	Scalpel::WaylandWindow &window,
-	Scalpel::ApplicationEditor &editor,
-	Scalpel::MenuBarModel &menuModel,
-	Scalpel::TabStripModel &stripModel,
-	bool &quitAccepted,
-	int &cardFocus,
-	std::optional<Scalpel::UnsavedCardHit> &pressHit) {
+	Scalpel::ApplicationUi &ui,
+	bool &quitAccepted) {
 	for (const Scalpel::DocumentShellRequest request :
 		workspace.TakeRequests()) {
 		switch (request) {
 		case Scalpel::DocumentShellRequest::ShowOpen:
 			// Portals take over interaction; the in-window menu must not stay open.
-			DismissOpenMenu(menuModel, editor);
+			DismissOpenMenu(ui.MenuModel(), ui.Editor());
 			if (const std::optional<uint64_t> requestId =
 					StartOpenDialog(window, workspace.Path())) {
 				workspace.RegisterOpenRequest(*requestId);
 			}
 			break;
 		case Scalpel::DocumentShellRequest::ShowSaveAs:
-			DismissOpenMenu(menuModel, editor);
+			DismissOpenMenu(ui.MenuModel(), ui.Editor());
 			if (const std::optional<uint64_t> requestId =
 					RequestSaveAsDialog(window, workspace.Path())) {
 				workspace.RegisterSaveAsRequest(*requestId);
@@ -506,14 +471,13 @@ void PerformShellRequests(Scalpel::DocumentWorkspace &workspace,
 			break;
 		case Scalpel::DocumentShellRequest::PromptBegan:
 			// Card input and paint priority is higher than the menu.
-			DismissOpenMenu(menuModel, editor);
-			cardFocus = 0;
-			pressHit.reset();
+			ui.NotifyPromptBegan();
 			break;
 		case Scalpel::DocumentShellRequest::RefreshTabs:
-			(void)SyncTabStripTabs(workspace, stripModel, editor.FrameWidth());
-			RevealActiveTab(stripModel, editor.FrameWidth());
-			editor.InvalidateTopChrome();
+			(void)SyncTabStripTabs(workspace, ui.StripModel(),
+				ui.Editor().FrameWidth());
+			RevealActiveTab(ui.StripModel(), ui.Editor().FrameWidth());
+			ui.Editor().InvalidateTopChrome();
 			break;
 		}
 	}
@@ -530,118 +494,11 @@ void ApplyFileDialogResults(Scalpel::WaylandWindow &window,
 	}
 }
 
-[[nodiscard]] bool IsSaveShortcut(const Scalpel::KeyboardInput &input) {
-	return input.pressed &&
-		input.key == static_cast<Scintilla::Keys>('S') &&
-		input.modifiers == Scintilla::KeyMod::Ctrl;
-}
-
-[[nodiscard]] bool IsNextTabShortcut(const Scalpel::KeyboardInput &input) {
-	return input.pressed &&
-		input.key == Scintilla::Keys::Tab &&
-		input.modifiers == Scintilla::KeyMod::Ctrl;
-}
-
-[[nodiscard]] bool IsPrevTabShortcut(const Scalpel::KeyboardInput &input) {
-	return input.pressed &&
-		input.key == Scintilla::Keys::Tab &&
-		input.modifiers == (Scintilla::KeyMod::Ctrl | Scintilla::KeyMod::Shift);
-}
-
-[[nodiscard]] bool IsLetterKey(const Scalpel::KeyboardInput &input, char upper,
-	char lower) {
-	if (!input.pressed || input.modifiers != Scintilla::KeyMod::Norm) {
-		return false;
-	}
-	if (input.key == static_cast<Scintilla::Keys>(upper) ||
-		input.key == static_cast<Scintilla::Keys>(lower)) {
-		return true;
-	}
-	return input.text == std::string(1, upper) ||
-		input.text == std::string(1, lower);
-}
-
-bool HandlePromptKeyboard(const Scalpel::KeyboardInput &input,
-	Scalpel::DocumentWorkspace &workspace,
-	Scalpel::ApplicationEditor &editor,
-	int &cardFocus) {
-	if (!input.pressed) {
-		return true;
-	}
-	if (input.key == Scintilla::Keys::Escape) {
-		workspace.Choose(Scalpel::UnsavedChoice::Cancel);
-		return true;
-	}
-	if (input.key == Scintilla::Keys::Tab) {
-		const int delta =
-			(input.modifiers == Scintilla::KeyMod::Shift) ? -1 : 1;
-		cardFocus = Scalpel::CycleUnsavedCardFocus(cardFocus, delta);
-		editor.InvalidateClient();
-		return true;
-	}
-	if (input.key == Scintilla::Keys::Left) {
-		cardFocus = Scalpel::CycleUnsavedCardFocus(cardFocus, -1);
-		editor.InvalidateClient();
-		return true;
-	}
-	if (input.key == Scintilla::Keys::Right) {
-		cardFocus = Scalpel::CycleUnsavedCardFocus(cardFocus, 1);
-		editor.InvalidateClient();
-		return true;
-	}
-	if (input.key == Scintilla::Keys::Return ||
-		input.key == static_cast<Scintilla::Keys>(' ') ||
-		input.text == " ") {
-		const Scalpel::UnsavedChoice choice = cardFocus == 0 ?
-			Scalpel::UnsavedChoice::Save :
-			(cardFocus == 1 ? Scalpel::UnsavedChoice::Discard :
-				Scalpel::UnsavedChoice::Cancel);
-		workspace.Choose(choice);
-		return true;
-	}
-	if (IsSaveShortcut(input) || IsLetterKey(input, 'S', 's')) {
-		workspace.Choose(Scalpel::UnsavedChoice::Save);
-		return true;
-	}
-	if (IsLetterKey(input, 'D', 'd')) {
-		workspace.Choose(Scalpel::UnsavedChoice::Discard);
-		return true;
-	}
-	// Ignore other keys while the prompt owns input.
-	return true;
-}
-
 std::string_view FileErrorTitle(
 	const Scalpel::DocumentFileError &error) noexcept {
 	return error.operation == Scalpel::DocumentFileOperation::Open ?
 		"Could not open file" :
 		"Could not save file";
-}
-
-void DismissFileError(std::deque<Scalpel::DocumentFileError> &errors,
-	Scalpel::ApplicationEditor &editor,
-	bool &pressHit) {
-	if (!errors.empty()) {
-		errors.pop_front();
-	}
-	pressHit = false;
-	editor.InvalidateFrame();
-}
-
-bool HandleFileErrorKeyboard(const Scalpel::KeyboardInput &input,
-	std::deque<Scalpel::DocumentFileError> &errors,
-	Scalpel::ApplicationEditor &editor,
-	bool &pressHit) {
-	if (!input.pressed) {
-		return true;
-	}
-	if (input.key == Scintilla::Keys::Escape ||
-		input.key == Scintilla::Keys::Return ||
-		input.key == static_cast<Scintilla::Keys>(' ') ||
-		input.text == " ") {
-		DismissFileError(errors, editor, pressHit);
-	}
-	return true;
 }
 
 void CancelScrollBarShellInteraction(Scalpel::ScrollBarInteraction &interaction,
@@ -658,60 +515,6 @@ void CancelScrollBarShellInteraction(Scalpel::ScrollBarInteraction &interaction,
 	if (paintChanged) {
 		editor.InvalidateScrollBars();
 	}
-}
-
-/**
- * Apply menu keyboard transitions before editor shortcuts.
- * Returns true when the event must not reach the editor (open accelerators
- * while closed, or any key while a menu owns input).
- */
-bool HandleMenuBarKeyboardInput(const Scalpel::KeyboardInput &input,
-	Scalpel::MenuBarModel &menuModel,
-	Scalpel::RecentFiles &recent,
-	const std::string &recentStatePath,
-	Scalpel::DocumentWorkspace &workspace,
-	Scalpel::ApplicationEditor &editor) {
-	const bool menuWasOpen = menuModel.openMenu.has_value();
-	// Refresh before open accelerators so FirstEnabledItem uses live state.
-	(void)Scalpel::UpdateMenuBarActionState(menuModel, editor);
-	const Scalpel::MenuBarKeyboardResult menuResult =
-		Scalpel::HandleMenuBarKeyboard(menuModel, input);
-	if (!menuWasOpen && menuModel.openMenu.has_value()) {
-		editor.CancelActiveTextInput();
-	}
-	if (menuResult.barDirty) {
-		editor.InvalidateTopChrome();
-	}
-	if (menuResult.frameDirty) {
-		editor.InvalidateFrame();
-	}
-	if (menuResult.activated) {
-		ActivateMenuBarItem(*menuResult.activated, menuModel, recent,
-			recentStatePath, workspace, editor);
-	}
-	return menuResult.consumed;
-}
-
-bool HandleEditorKeyboard(const Scalpel::KeyboardInput &input,
-	Scalpel::DocumentWorkspace &workspace,
-	Scalpel::ApplicationEditor &editor) {
-	// File/Edit shortcuts and Ctrl+Q share the menu action dispatcher.
-	if (const std::optional<Scalpel::ApplicationAction> action =
-		Scalpel::MatchApplicationAction(input)) {
-		Scalpel::DispatchApplicationAction(*action, workspace, editor);
-		return true;
-	}
-	// Tab cycling stays outside the File/Edit action list.
-	if (IsPrevTabShortcut(input)) {
-		workspace.CycleTab(-1);
-		return true;
-	}
-	if (IsNextTabShortcut(input)) {
-		workspace.CycleTab(1);
-		return true;
-	}
-	editor.HandleKeyboardInput(input);
-	return false;
 }
 
 }
@@ -809,15 +612,10 @@ int main() {
 			DeliverClipboardResults(window, editor);
 			DeliverPrimarySelectionResults(window, editor);
 			// Modal cards and an open menu all suppress IME delivery.
-			DeliverTextInputBatches(window, editor,
-				!ui.FileErrors().empty() || workspace.PromptActive() ||
-					ui.MenuModel().openMenu.has_value());
+			DeliverTextInputBatches(window, editor, ui.ChromeOwnsInput());
 			ApplyFileDialogResults(window, workspace);
-			PerformShellRequests(workspace, window, editor, ui.MenuModel(),
-				ui.StripModel(), quitAccepted, ui.CardFocus(),
-				ui.PromptPressHit());
-			CollectWorkspaceOutcomes(workspace, recent, recentStatePath,
-				ui.MenuModel(), ui.FileErrors(), editor);
+			PerformShellRequests(workspace, window, ui, quitAccepted);
+			CollectWorkspaceOutcomes(workspace, recent, recentStatePath, ui);
 			// Portal results can activate a document or surface a modal without
 			// an input event. Neither may inherit an old scrollbar interaction.
 			synchronizeScrollBarInteraction();
@@ -837,9 +635,7 @@ int main() {
 			}
 			if (window.UserCloseRequested()) {
 				workspace.RequestClose();
-				PerformShellRequests(workspace, window, editor, ui.MenuModel(),
-					ui.StripModel(), quitAccepted, ui.CardFocus(),
-					ui.PromptPressHit());
+				PerformShellRequests(workspace, window, ui, quitAccepted);
 				synchronizeScrollBarInteraction();
 				window.ClearCloseRequest();
 				if (quitAccepted) {
@@ -873,13 +669,9 @@ int main() {
 			for (const Scalpel::InputEvent &input : window.TakeInputs()) {
 				if (const auto *focus =
 					std::get_if<Scalpel::KeyboardFocusInput>(&input)) {
-					editor.SetKeyboardFocus(focus->focused);
-					if (!focus->focused) {
-						// Focus loss closes the menu; IME cancel is in SetKeyboardFocus.
-						DismissOpenMenu(ui.MenuModel(), editor);
-						CancelScrollBarShellInteraction(
-							ui.ScrollBars(), editor);
-					}
+					// Focus gain/loss, menu dismiss, scrollbar cancel, and
+					// press clear are one ApplicationUi transition.
+					ui.HandleFocus(focus->focused);
 					continue;
 				}
 				if (const auto *pointer =
@@ -892,54 +684,21 @@ int main() {
 					if (!pointerResult.consumed) {
 						editor.HandlePointerInput(*pointer);
 					}
-					PerformShellRequests(workspace, window, editor,
-						ui.MenuModel(), ui.StripModel(), quitAccepted,
-						ui.CardFocus(), ui.PromptPressHit());
+					PerformShellRequests(workspace, window, ui, quitAccepted);
 					CollectWorkspaceOutcomes(workspace, recent, recentStatePath,
-						ui.MenuModel(), ui.FileErrors(), editor);
+						ui);
 					synchronizeScrollBarInteraction();
-					continue;
-				}
-				// Keyboard still routes here until keyboard ownership moves.
-				if (!ui.FileErrors().empty()) {
-					CancelScrollBarShellInteraction(
-						ui.ScrollBars(), editor);
-					if (const auto *keyboard =
-						std::get_if<Scalpel::KeyboardInput>(&input)) {
-						HandleFileErrorKeyboard(*keyboard, ui.FileErrors(),
-							editor, ui.FileErrorPressHit());
-					}
-					continue;
-				}
-				if (workspace.PromptActive()) {
-					CancelScrollBarShellInteraction(
-						ui.ScrollBars(), editor);
-					if (const auto *keyboard =
-						std::get_if<Scalpel::KeyboardInput>(&input)) {
-						HandlePromptKeyboard(*keyboard, workspace, editor,
-							ui.CardFocus());
-					}
-					PerformShellRequests(workspace, window, editor,
-						ui.MenuModel(), ui.StripModel(), quitAccepted,
-						ui.CardFocus(), ui.PromptPressHit());
-					CollectWorkspaceOutcomes(workspace, recent, recentStatePath,
-						ui.MenuModel(), ui.FileErrors(), editor);
 					continue;
 				}
 				if (const auto *keyboard =
 					std::get_if<Scalpel::KeyboardInput>(&input)) {
-					// Menu accelerators and open-menu navigation run before
-					// application shortcuts and editor typing.
-					if (!HandleMenuBarKeyboardInput(*keyboard, ui.MenuModel(),
-						recent, recentStatePath, workspace, editor)) {
-						HandleEditorKeyboard(*keyboard, workspace, editor);
-					}
+					// Modal cards, menu, shortcuts, tab cycling, and editor
+					// delivery are decided inside ApplicationUi.
+					(void)ui.HandleKeyboard(*keyboard);
 				}
-				PerformShellRequests(workspace, window, editor, ui.MenuModel(),
-					ui.StripModel(), quitAccepted, ui.CardFocus(),
-					ui.PromptPressHit());
+				PerformShellRequests(workspace, window, ui, quitAccepted);
 				CollectWorkspaceOutcomes(workspace, recent, recentStatePath,
-					ui.MenuModel(), ui.FileErrors(), editor);
+					ui);
 				// Includes menus opened from the keyboard as well as tab changes.
 				synchronizeScrollBarInteraction();
 			}
