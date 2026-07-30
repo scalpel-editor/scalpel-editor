@@ -2,10 +2,11 @@
 // opaque painting for fixed actions and dynamic Recent rows above the tab strip.
 // ApplicationUi owns MenuBarModel, paints the permanent bar and open dropdown,
 // and selects the overlay by priority (file error, unsaved card, then menu).
-// UpdateMenuBarActionState refreshes edit enablement before open and paint.
-// HandleMenuBarPointer and HandleMenuBarKeyboard convert input into model
-// transitions; activated items dispatch through ApplicationAction. Layout,
-// hit-testing, and input transitions stay Wayland-free.
+// UpdateMenuBarActionState refreshes edit enablement and the selected font
+// action before open and paint. HandleMenuBarPointer and HandleMenuBarKeyboard
+// convert input into model transitions; activated items dispatch through
+// ApplicationAction. Layout, hit-testing, and input transitions stay
+// Wayland-free.
 
 #ifndef MENUBAR_H
 #define MENUBAR_H
@@ -111,21 +112,27 @@ struct MenuBarModel {
 	bool copyEnabled = true;
 	bool pasteEnabled = true;
 	bool selectAllEnabled = true;
+	/**
+	 * Current Font menu radio choice (FontMonospace … FontSystem). Refreshed
+	 * from ApplicationEditor with edit enablement; default matches System.
+	 */
+	ApplicationAction selectedFontAction = ApplicationAction::FontSystem;
 	/** Most-recent path first; owned strings keep layout labels stable. */
 	std::vector<std::string> recentFiles;
 
-	/** File actions are always enabled; edit flags follow the fields above. */
+	/** File and Font actions are always enabled; edit flags follow the fields. */
 	[[nodiscard]] bool IsEnabled(ApplicationAction action) const noexcept;
 	[[nodiscard]] bool IsEnabled(MenuBarItemId item) const noexcept;
 };
 
 /**
- * Copy ApplicationActionEnabled results into the model edit flags.
- * Call when a menu opens and whenever the open dropdown is about to paint so
- * active-document history, selection, and clipboard offer stay current. If a
- * live change disables the keyboard-focused item, focus moves to the first
- * enabled item in the open menu.
- * Returns true when any flag changed (caller may invalidate for repaint).
+ * Copy ApplicationActionEnabled results and the current editor font choice into
+ * the model. Call when a menu opens and whenever the open dropdown is about to
+ * paint so active-document history, selection, clipboard offer, and the Font
+ * radio stay current. If a live change disables the keyboard-focused item,
+ * focus moves to the first enabled item in the open menu.
+ * Returns true when any flag or the selected font changed (caller may
+ * invalidate for repaint).
  */
 bool UpdateMenuBarActionState(MenuBarModel &model,
 	ApplicationEditor &editor);
@@ -142,10 +149,17 @@ struct MenuBarItemLayout {
 	ApplicationAction action = ApplicationAction::NewTab;
 	bool separatorBefore = false;
 	bool enabled = true;
+	/** True for the single selected Font radio row; false elsewhere. */
+	bool selected = false;
 	/** Full row hit target for the action (excludes the separator band). */
 	Scintilla::Internal::PRectangle row;
 	/** Thin rule above the row when separatorBefore is true; empty otherwise. */
 	Scintilla::Internal::PRectangle separator;
+	/**
+	 * Left radio-mark cell for Font rows; empty for File, Edit, and Recent.
+	 * Painted with geometry so the mark does not depend on a text glyph.
+	 */
+	Scintilla::Internal::PRectangle indicator;
 	Scintilla::Internal::PRectangle label;
 	Scintilla::Internal::PRectangle shortcut;
 	std::string labelText;
@@ -164,7 +178,7 @@ struct MenuBarLayout {
 
 enum class MenuBarHit {
 	None,
-	/** File or Edit heading. */
+	/** File, Edit, Font, or Recent heading. */
 	Heading,
 	/** Actionable item row inside the open dropdown. */
 	Item,
@@ -244,11 +258,11 @@ void CloseMenuBar(MenuBarModel &model) noexcept;
 /**
  * Apply one keyboard event to the menu model.
  * F10 / Keys::Menu open File with the first enabled item focused. Alt+F,
- * Alt+E, and Alt+R open the named menu. While open: Left/Right switch menus,
- * Up/Down move among enabled items with wrapping, Enter activates the focused
- * enabled item, Escape closes, and all other keys plus releases are consumed
- * so they cannot reach the editor. When closed, only the open accelerators are
- * consumed.
+ * Alt+E, Alt+T, and Alt+R open the named menu (Font uses T so it does not
+ * conflict with File). While open: Left/Right switch menus, Up/Down move among
+ * enabled items with wrapping, Enter activates the focused enabled item,
+ * Escape closes, and all other keys plus releases are consumed so they cannot
+ * reach the editor. When closed, only the open accelerators are consumed.
  */
 [[nodiscard]] MenuBarKeyboardResult HandleMenuBarKeyboard(MenuBarModel &model,
 	const KeyboardInput &input) noexcept;
@@ -266,7 +280,7 @@ public:
 	MenuBarPainter(const MenuBarPainter &) = delete;
 	MenuBarPainter &operator=(const MenuBarPainter &) = delete;
 
-	/** Permanent File / Edit strip only (no dropdown). */
+	/** Permanent File / Edit / Font / Recent strip only (no dropdown). */
 	void PaintBar(Scintilla::Internal::Surface &surface,
 		const MenuBarLayout &layout,
 		const MenuBarModel &model) const;

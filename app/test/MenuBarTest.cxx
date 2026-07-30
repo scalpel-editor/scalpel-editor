@@ -37,6 +37,7 @@ using Scalpel::HitTestMenuBar;
 using Scalpel::KeyboardInput;
 using Scalpel::LayoutMenuBar;
 using Scalpel::LayoutUnsavedChangesCard;
+using Scalpel::MenuBarHeadingLayout;
 using Scalpel::MenuBarHeight;
 using Scalpel::MenuBarHit;
 using Scalpel::MenuBarHitResult;
@@ -311,6 +312,22 @@ TEST_CASE("menu bar keyboard navigates items and switches menus") {
 		CHECK(toFile.consumed);
 		CHECK(*model.openMenu == ApplicationMenu::File);
 		CHECK(*model.focusedItem == ApplicationAction::NewTab);
+	}
+
+	SECTION("Right cycles File Edit Font Recent and wraps to File") {
+		CHECK(*model.openMenu == ApplicationMenu::File);
+		(void)HandleMenuBarKeyboard(model, MakeKey(Keys::Right));
+		CHECK(*model.openMenu == ApplicationMenu::Edit);
+		(void)HandleMenuBarKeyboard(model, MakeKey(Keys::Right));
+		CHECK(*model.openMenu == ApplicationMenu::Font);
+		REQUIRE(model.focusedItem.has_value());
+		CHECK(*model.focusedItem == ApplicationAction::FontMonospace);
+		(void)HandleMenuBarKeyboard(model, MakeKey(Keys::Right));
+		CHECK(*model.openMenu == ApplicationMenu::Recent);
+		(void)HandleMenuBarKeyboard(model, MakeKey(Keys::Right));
+		CHECK(*model.openMenu == ApplicationMenu::File);
+		(void)HandleMenuBarKeyboard(model, MakeKey(Keys::Left));
+		CHECK(*model.openMenu == ApplicationMenu::Recent);
 	}
 }
 
@@ -642,23 +659,27 @@ TEST_CASE("menu bar height is fixed and positive") {
 	CHECK(MenuBarHeight() < 40);
 }
 
-TEST_CASE("menu bar layout places File Edit and Recent headings") {
+TEST_CASE("menu bar layout places File Edit Font and Recent headings") {
 	const MenuBarLayout layout = LayoutMenuBar(400, 300, ClosedBar());
 	CHECK(layout.bar == PRectangle::FromInts(0, 0, 400, MenuBarHeight()));
-	REQUIRE(layout.headings.size() == 3);
+	REQUIRE(layout.headings.size() == 4);
 	CHECK(layout.headings[0].menu == ApplicationMenu::File);
 	CHECK(layout.headings[0].label == "File");
 	CHECK(layout.headings[1].menu == ApplicationMenu::Edit);
 	CHECK(layout.headings[1].label == "Edit");
-	CHECK(layout.headings[2].menu == ApplicationMenu::Recent);
-	CHECK(layout.headings[2].label == "Recent");
+	CHECK(layout.headings[2].menu == ApplicationMenu::Font);
+	CHECK(layout.headings[2].label == "Font");
+	CHECK(layout.headings[3].menu == ApplicationMenu::Recent);
+	CHECK(layout.headings[3].label == "Recent");
 	CHECK(NonEmpty(layout.headings[0].bounds));
 	CHECK(NonEmpty(layout.headings[1].bounds));
 	CHECK(NonEmpty(layout.headings[2].bounds));
+	CHECK(NonEmpty(layout.headings[3].bounds));
 	CHECK(layout.headings[0].bounds.left == 0);
 	CHECK(layout.headings[0].bounds.right == layout.headings[1].bounds.left);
 	CHECK(layout.headings[1].bounds.right == layout.headings[2].bounds.left);
-	CHECK(layout.headings[2].bounds.right <= 400);
+	CHECK(layout.headings[2].bounds.right == layout.headings[3].bounds.left);
+	CHECK(layout.headings[3].bounds.right <= 400);
 	CHECK_FALSE(NonEmpty(layout.dropdown));
 	CHECK(layout.items.empty());
 }
@@ -1052,12 +1073,14 @@ TEST_CASE("menu bar model enablement matches edit flags") {
 	MenuBarModel model;
 	CHECK(model.IsEnabled(ApplicationAction::Save));
 	CHECK(model.IsEnabled(ApplicationAction::Undo));
+	CHECK(model.IsEnabled(ApplicationAction::FontMonospace));
 	model.undoEnabled = false;
 	model.copyEnabled = false;
 	CHECK_FALSE(model.IsEnabled(ApplicationAction::Undo));
 	CHECK_FALSE(model.IsEnabled(ApplicationAction::Copy));
 	CHECK(model.IsEnabled(ApplicationAction::Paste));
 	CHECK(model.IsEnabled(ApplicationAction::Quit));
+	CHECK(model.IsEnabled(ApplicationAction::FontSystem));
 }
 
 TEST_CASE("menu bar action state follows editor enablement") {
@@ -1076,6 +1099,7 @@ TEST_CASE("menu bar action state follows editor enablement") {
 	CHECK_FALSE(model.IsEnabled(ApplicationAction::Paste));
 	CHECK(model.IsEnabled(ApplicationAction::SelectAll));
 	CHECK(model.IsEnabled(ApplicationAction::Save));
+	CHECK(model.selectedFontAction == ApplicationAction::FontSystem);
 	// Stable while nothing changes.
 	CHECK_FALSE(UpdateMenuBarActionState(model, editor));
 
@@ -1104,6 +1128,123 @@ TEST_CASE("menu bar action state follows editor enablement") {
 	REQUIRE(paste);
 	CHECK(undo->enabled);
 	CHECK_FALSE(paste->enabled);
+
+	// Font selection tracks the editor view state.
+	editor.SetEditorFont(Scalpel::EditorFont::Serif);
+	CHECK(UpdateMenuBarActionState(model, editor));
+	CHECK(model.selectedFontAction == ApplicationAction::FontSerif);
+	CHECK_FALSE(UpdateMenuBarActionState(model, editor));
+}
+
+TEST_CASE("menu bar font dropdown order labels selection and indicator") {
+	MenuBarModel model = OpenMenu(ApplicationMenu::Font);
+	model.selectedFontAction = ApplicationAction::FontSans;
+	const MenuBarLayout layout = LayoutMenuBar(400, 300, model);
+	REQUIRE(layout.items.size() == 4);
+	CHECK(layout.items[0].action == ApplicationAction::FontMonospace);
+	CHECK(layout.items[0].labelText == "Monospace");
+	CHECK(layout.items[1].action == ApplicationAction::FontSerif);
+	CHECK(layout.items[1].labelText == "Serif");
+	CHECK(layout.items[2].action == ApplicationAction::FontSans);
+	CHECK(layout.items[2].labelText == "Sans");
+	CHECK(layout.items[3].action == ApplicationAction::FontSystem);
+	CHECK(layout.items[3].labelText == "System");
+
+	int selectedCount = 0;
+	for (const MenuBarItemLayout &item : layout.items) {
+		CHECK(item.enabled);
+		CHECK(item.shortcutText.empty());
+		CHECK_FALSE(item.separatorBefore);
+		CHECK(NonEmpty(item.indicator));
+		CHECK(item.indicator.right <= item.label.left + 0.5);
+		if (item.selected) {
+			++selectedCount;
+			CHECK(item.action == ApplicationAction::FontSans);
+		}
+	}
+	CHECK(selectedCount == 1);
+
+	// Re-selecting the current face stays enabled and activatable.
+	const auto *sans = FindItem(layout, ApplicationAction::FontSans);
+	REQUIRE(sans);
+	CHECK(sans->selected);
+	CHECK(sans->enabled);
+}
+
+TEST_CASE("menu bar font Alt T pointer activation and narrow clamp") {
+	SECTION("Alt+T opens Font with the first row focused") {
+		MenuBarModel model;
+		const MenuBarKeyboardResult open = HandleMenuBarKeyboard(model,
+			MakeLetter('T', KeyMod::Alt));
+		CHECK(open.consumed);
+		REQUIRE(model.openMenu.has_value());
+		CHECK(*model.openMenu == ApplicationMenu::Font);
+		REQUIRE(model.focusedItem.has_value());
+		CHECK(*model.focusedItem == ApplicationAction::FontMonospace);
+	}
+
+	SECTION("pointer press and release activates a Font row and closes") {
+		MenuBarModel model = OpenMenu(ApplicationMenu::Font);
+		model.selectedFontAction = ApplicationAction::FontSystem;
+		const MenuBarLayout layout = Layout(model);
+		const auto *serif = FindItem(layout, ApplicationAction::FontSerif);
+		REQUIRE(serif);
+		const Point point = Center(serif->row);
+		(void)HandleMenuBarPointer(model, layout,
+			MakePointer(PointerAction::Press, point.x, point.y, 0), false);
+		const MenuBarPointerResult release = HandleMenuBarPointer(model, layout,
+			MakePointer(PointerAction::Release, point.x, point.y, 0), false);
+		REQUIRE(release.activated.has_value());
+		CHECK(*release.activated == ApplicationAction::FontSerif);
+		CHECK_FALSE(model.openMenu.has_value());
+	}
+
+	SECTION("narrow frame still lays out four headings and clamps Font panel") {
+		const int width = 100;
+		MenuBarModel model = OpenMenu(ApplicationMenu::Font);
+		const MenuBarLayout layout = LayoutMenuBar(width, 200, model);
+		REQUIRE(layout.headings.size() == 4);
+		CHECK(layout.bar.right == width);
+		for (const MenuBarHeadingLayout &heading : layout.headings) {
+			CHECK(heading.bounds.left >= 0);
+			CHECK(heading.bounds.right <= width);
+		}
+		if (NonEmpty(layout.dropdown)) {
+			CHECK(layout.dropdown.left >= 0);
+			CHECK(layout.dropdown.right <= width);
+		}
+	}
+}
+
+TEST_CASE("menu bar font selection indicator paints only on the current row") {
+	ApplicationEditor editor(360, 220);
+	MenuBarPainter painter;
+	MenuBarModel model = OpenMenu(ApplicationMenu::Font);
+	model.selectedFontAction = ApplicationAction::FontMonospace;
+	const MenuBarLayout layout = LayoutMenuBar(360, 220, model);
+	const auto *mono = FindItem(layout, ApplicationAction::FontMonospace);
+	const auto *serif = FindItem(layout, ApplicationAction::FontSerif);
+	REQUIRE(mono);
+	REQUIRE(serif);
+	REQUIRE(mono->selected);
+	REQUIRE_FALSE(serif->selected);
+	const auto pixels = PaintMenu(editor, painter, layout, model);
+
+	const int markX = static_cast<int>(
+		(mono->indicator.left + mono->indicator.right) / 2.0);
+	const int markY = static_cast<int>(
+		(mono->indicator.top + mono->indicator.bottom) / 2.0);
+	const int idleX = static_cast<int>(
+		(serif->indicator.left + serif->indicator.right) / 2.0);
+	const int idleY = static_cast<int>(
+		(serif->indicator.top + serif->indicator.bottom) / 2.0);
+	const Rgba mark = Sample(pixels, 360, markX, markY);
+	const Rgba idle = Sample(pixels, 360, idleX, idleY);
+	// Selected mark is dark ink; unselected indicator cell stays near panel fill.
+	CHECK(Differs(mark, idle));
+	const int markLum = static_cast<int>(mark.r) + mark.g + mark.b;
+	const int idleLum = static_cast<int>(idle.r) + idle.g + idle.b;
+	CHECK(markLum < idleLum);
 }
 
 TEST_CASE("menu bar editor integration stacks chrome above the inset client") {
@@ -1589,7 +1730,7 @@ TEST_CASE("menu bar editor integration narrow resize and framebuffer scale") {
 		const MenuBarLayout narrow =
 			LayoutMenuBar(80, 100, menuModel);
 		CHECK(narrow.bar.right == 80);
-		REQUIRE(narrow.headings.size() == 3);
+		REQUIRE(narrow.headings.size() == 4);
 		CHECK(narrow.headings[0].bounds.left == 0);
 		CHECK(narrow.headings[0].bounds.right <= 80);
 		const auto stripLayout = LayoutTabStrip(80, stripModel, menuH);

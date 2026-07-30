@@ -50,6 +50,10 @@ struct UiStyle {
 	const int menuSeparatorHeight = 9;
 	const int menuDropdownPadY = 4;
 	const int menuLabelPadLeft = 12;
+	/** Left column reserved for the Font radio mark on each Font row. */
+	const int menuSelectionIndicatorWidth = 18;
+	/** Edge length of the filled square used as the Font radio mark. */
+	const int menuSelectionMarkSize = 6;
 	const int menuShortcutPadRight = 12;
 	const int menuLabelShortcutGap = 24;
 	const int menuShortcutColumnWidth = 100;

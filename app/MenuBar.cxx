@@ -4,6 +4,7 @@
 
 #include <algorithm>
 
+#include "ApplicationEditor.h"
 #include "DocumentFile.h"
 
 namespace Scalpel {
@@ -196,6 +197,32 @@ std::string ItemShortcut(MenuBarItemId item) {
 	return {};
 }
 
+ApplicationAction ActionForEditorFont(EditorFont font) noexcept {
+	switch (font) {
+	case EditorFont::Monospace:
+		return ApplicationAction::FontMonospace;
+	case EditorFont::Serif:
+		return ApplicationAction::FontSerif;
+	case EditorFont::Sans:
+		return ApplicationAction::FontSans;
+	case EditorFont::System:
+		return ApplicationAction::FontSystem;
+	}
+	return ApplicationAction::FontSystem;
+}
+
+bool IsFontMenuAction(ApplicationAction action) noexcept {
+	switch (action) {
+	case ApplicationAction::FontMonospace:
+	case ApplicationAction::FontSerif:
+	case ApplicationAction::FontSans:
+	case ApplicationAction::FontSystem:
+		return true;
+	default:
+		return false;
+	}
+}
+
 }
 
 bool MenuBarModel::IsEnabled(ApplicationAction action) const noexcept {
@@ -249,18 +276,22 @@ bool UpdateMenuBarActionState(MenuBarModel &model, ApplicationEditor &editor) {
 	const bool paste = ApplicationActionEnabled(ApplicationAction::Paste, editor);
 	const bool selectAll =
 		ApplicationActionEnabled(ApplicationAction::SelectAll, editor);
+	const ApplicationAction selectedFont =
+		ActionForEditorFont(editor.CurrentEditorFont());
 	const bool changed = model.undoEnabled != undo ||
 		model.redoEnabled != redo ||
 		model.cutEnabled != cut ||
 		model.copyEnabled != copy ||
 		model.pasteEnabled != paste ||
-		model.selectAllEnabled != selectAll;
+		model.selectAllEnabled != selectAll ||
+		model.selectedFontAction != selectedFont;
 	model.undoEnabled = undo;
 	model.redoEnabled = redo;
 	model.cutEnabled = cut;
 	model.copyEnabled = copy;
 	model.pasteEnabled = paste;
 	model.selectAllEnabled = selectAll;
+	model.selectedFontAction = selectedFont;
 	if (model.openMenu.has_value() && model.focusedItem.has_value() &&
 		!model.IsEnabled(*model.focusedItem)) {
 		model.focusedItem = FirstEnabledItem(model, *model.openMenu);
@@ -289,6 +320,7 @@ MenuBarLayout LayoutMenuBar(int frameWidth, int frameHeight,
 	const ApplicationMenu menus[] = {
 		ApplicationMenu::File,
 		ApplicationMenu::Edit,
+		ApplicationMenu::Font,
 		ApplicationMenu::Recent,
 	};
 	for (ApplicationMenu menu : menus) {
@@ -352,7 +384,10 @@ MenuBarLayout LayoutMenuBar(int frameWidth, int frameHeight,
 
 	const int innerLeft = dropdownLeft;
 	const int innerRight = dropdownLeft + dropdownWidth;
-	const int shortcutWidth = std::min(style.menuShortcutColumnWidth,
+	const bool fontMenu = open == ApplicationMenu::Font;
+	// Font rows use a left radio column and no shortcut column.
+	const int indicatorWidth = fontMenu ? style.menuSelectionIndicatorWidth : 0;
+	const int shortcutWidth = fontMenu ? 0 : std::min(style.menuShortcutColumnWidth,
 		std::max(0, dropdownWidth - style.menuLabelPadLeft - style.menuShortcutPadRight -
 			style.menuLabelShortcutGap / 2));
 
@@ -379,23 +414,38 @@ MenuBarLayout LayoutMenuBar(int frameWidth, int frameHeight,
 		}
 		const PRectangle row = PRectangle::FromInts(
 			innerLeft, y, innerRight, rowBottom);
+		const int labelLeft = innerLeft + style.menuLabelPadLeft + indicatorWidth;
 		const int labelRight = std::max(
-			innerLeft + style.menuLabelPadLeft,
+			labelLeft,
 			innerRight - style.menuShortcutPadRight - shortcutWidth -
-				style.menuLabelShortcutGap);
+				(shortcutWidth > 0 ? style.menuLabelShortcutGap : 0));
+		PRectangle indicator = empty;
+		if (indicatorWidth > 0) {
+			indicator = PRectangle::FromInts(
+				innerLeft + style.menuLabelPadLeft, y,
+				innerLeft + style.menuLabelPadLeft + indicatorWidth, rowBottom);
+		}
 		const PRectangle label = PRectangle::FromInts(
-			innerLeft + style.menuLabelPadLeft, y, labelRight, rowBottom);
-		const PRectangle shortcut = PRectangle::FromInts(
-			innerRight - style.menuShortcutPadRight - shortcutWidth, y,
-			innerRight - style.menuShortcutPadRight, rowBottom);
+			labelLeft, y, labelRight, rowBottom);
+		const PRectangle shortcut = shortcutWidth > 0 ?
+			PRectangle::FromInts(
+				innerRight - style.menuShortcutPadRight - shortcutWidth, y,
+				innerRight - style.menuShortcutPadRight, rowBottom) :
+			empty;
+		const bool selected = fontMenu &&
+			item.kind == MenuBarItemKind::ApplicationAction &&
+			IsFontMenuAction(item.action) &&
+			item.action == model.selectedFontAction;
 
 		layout.items.push_back(MenuBarItemLayout{
 			item,
 			item.action,
 			separatorBefore,
 			model.IsEnabled(item),
+			selected,
 			row,
 			separator,
+			indicator,
 			label,
 			shortcut,
 			ItemLabel(model, item),
@@ -725,16 +775,19 @@ ApplicationMenu AdjacentMenu(ApplicationMenu menu, bool forward) noexcept {
 	const ApplicationMenu menus[] = {
 		ApplicationMenu::File,
 		ApplicationMenu::Edit,
+		ApplicationMenu::Font,
 		ApplicationMenu::Recent,
 	};
+	constexpr std::size_t menuCount = sizeof(menus) / sizeof(menus[0]);
 	std::size_t index = 0;
-	for (std::size_t candidate = 0; candidate < 3; ++candidate) {
+	for (std::size_t candidate = 0; candidate < menuCount; ++candidate) {
 		if (menus[candidate] == menu) {
 			index = candidate;
 			break;
 		}
 	}
-	index = forward ? (index + 1) % 3 : (index + 2) % 3;
+	index = forward ? (index + 1) % menuCount :
+		(index + menuCount - 1) % menuCount;
 	return menus[index];
 }
 
@@ -760,6 +813,10 @@ MenuBarKeyboardResult HandleMenuBarKeyboard(MenuBarModel &model,
 		}
 		if (IsAltLetter(input, 'E')) {
 			OpenMenuFromKeyboard(model, ApplicationMenu::Edit, result);
+			return result;
+		}
+		if (IsAltLetter(input, 'T')) {
+			OpenMenuFromKeyboard(model, ApplicationMenu::Font, result);
 			return result;
 		}
 		if (IsAltLetter(input, 'R')) {
@@ -791,6 +848,10 @@ MenuBarKeyboardResult HandleMenuBarKeyboard(MenuBarModel &model,
 	}
 	if (IsAltLetter(input, 'E')) {
 		OpenMenuFromKeyboard(model, ApplicationMenu::Edit, result);
+		return result;
+	}
+	if (IsAltLetter(input, 'T')) {
+		OpenMenuFromKeyboard(model, ApplicationMenu::Font, result);
 		return result;
 	}
 	if (IsAltLetter(input, 'R')) {
@@ -915,15 +976,28 @@ void MenuBarPainter::PaintDropdown(Surface &surface, const MenuBarLayout &layout
 				Fill(focused ? style.focusFill : style.menuItemHover));
 		}
 
+		const ColourRGBA ink = item.enabled ? style.text : style.disabledText;
+		// Font radio mark is pure geometry so it does not depend on the editor
+		// face or on a particular check glyph being present in the UI font.
+		if (item.selected && NonEmpty(item.indicator)) {
+			const double mark = static_cast<double>(style.menuSelectionMarkSize);
+			const double cx = (item.indicator.left + item.indicator.right) / 2.0;
+			const double cy = (item.indicator.top + item.indicator.bottom) / 2.0;
+			const PRectangle markRc(
+				cx - mark / 2.0, cy - mark / 2.0,
+				cx + mark / 2.0, cy + mark / 2.0);
+			surface.FillRectangle(markRc, Fill(ink));
+		}
 		if (!font) {
 			continue;
 		}
-		const ColourRGBA ink = item.enabled ? style.text : style.disabledText;
 		const ColourRGBA shortcutInk =
 			item.enabled ? style.mutedText : style.disabledText;
 		DrawLeftAlignedLabel(surface, item.label, font, item.labelText, ink);
-		DrawRightAlignedLabel(surface, item.shortcut, font, item.shortcutText,
-			shortcutInk);
+		if (NonEmpty(item.shortcut) && !item.shortcutText.empty()) {
+			DrawRightAlignedLabel(surface, item.shortcut, font, item.shortcutText,
+				shortcutInk);
+		}
 	}
 
 	// Draw last so row hover and focus fills cannot cover the panel edge.
