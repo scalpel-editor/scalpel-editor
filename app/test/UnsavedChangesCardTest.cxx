@@ -1,5 +1,7 @@
 #include "catch.hpp"
 
+#include <type_traits>
+
 #include "ApplicationEditor.h"
 #include "UnsavedChangesCard.h"
 
@@ -8,8 +10,13 @@ using Scalpel::LayoutUnsavedChangesCard;
 using Scalpel::UnsavedCardHit;
 using Scalpel::UnsavedChangesCardLayout;
 using Scalpel::UnsavedChangesCardPainter;
+using Scalpel::UiStyle;
 using Scintilla::Internal::Point;
 using Scintilla::Internal::PRectangle;
+
+static_assert(!std::is_default_constructible_v<UiStyle>);
+static_assert(std::is_copy_constructible_v<UiStyle>);
+static_assert(!std::is_copy_assignable_v<UiStyle>);
 
 namespace {
 
@@ -113,6 +120,15 @@ TEST_CASE("UnsavedChangesCard focus cycles through three buttons") {
 	CHECK(Scalpel::CycleUnsavedCardFocus(2, 1) == 0);
 	CHECK(Scalpel::CycleUnsavedCardFocus(0, -1) == 2);
 	CHECK(Scalpel::CycleUnsavedCardFocus(2, -1) == 1);
+}
+
+TEST_CASE("UnsavedChangesCard painter owns its immutable style") {
+	const UiStyle source = Scalpel::DefaultUiStyle();
+	UnsavedChangesCardPainter painter(source);
+
+	CHECK(&painter.Style() != &source);
+	CHECK(painter.Style().cardPad == source.cardPad);
+	CHECK(painter.Style().focusFill == source.focusFill);
 }
 
 TEST_CASE("UnsavedChangesCard paint draws non-background pixels in the card") {

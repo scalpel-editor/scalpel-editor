@@ -6,6 +6,9 @@ namespace Scalpel {
 
 namespace {
 
+// Save, Discard, and Cancel are fixed behavior, not visual style.
+constexpr int kButtonCount = 3;
+
 int CardContentHeight(const UiStyle &style) noexcept {
 	return style.cardPad + style.cardTitleHeight + style.unsavedTitleSubtitleGap +
 		style.unsavedSubtitleHeight + style.cardButtonTopGap +
@@ -105,12 +108,11 @@ UnsavedChangesCardLayout LayoutUnsavedChangesCard(int width, int height) noexcep
 		innerLeft, y, innerRight, y + style.unsavedSubtitleHeight);
 	y += style.unsavedSubtitleHeight + style.cardButtonTopGap;
 
-	const int buttonCount = style.unsavedButtonCount;
-	const int totalGaps = style.unsavedButtonGap * (buttonCount - 1);
+	const int totalGaps = style.unsavedButtonGap * (kButtonCount - 1);
 	const int buttonWidth = innerWidth > totalGaps
-		? (innerWidth - totalGaps) / buttonCount
-		: std::max(1, innerWidth / buttonCount);
-	const int usedButtonsWidth = buttonWidth * buttonCount +
+		? (innerWidth - totalGaps) / kButtonCount
+		: std::max(1, innerWidth / kButtonCount);
+	const int usedButtonsWidth = buttonWidth * kButtonCount +
 		(innerWidth > totalGaps ? totalGaps : 0);
 	const int leftover = std::max(0, innerWidth - usedButtonsWidth);
 
@@ -145,14 +147,13 @@ UnsavedCardHit HitTestUnsavedChangesCard(const UnsavedChangesCardLayout &layout,
 }
 
 int CycleUnsavedCardFocus(int focusedIndex, int delta) noexcept {
-	const int count = DefaultUiStyle().unsavedButtonCount;
-	int index = focusedIndex % count;
+	int index = focusedIndex % kButtonCount;
 	if (index < 0) {
-		index += count;
+		index += kButtonCount;
 	}
-	index = (index + delta) % count;
+	index = (index + delta) % kButtonCount;
 	if (index < 0) {
-		index += count;
+		index += kButtonCount;
 	}
 	return index;
 }

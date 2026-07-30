@@ -43,7 +43,7 @@ public:
 	[[nodiscard]] const UiStyle &Style() const noexcept { return style; }
 
 private:
-	const UiStyle &style;
+	UiStyle style;
 	std::shared_ptr<Scintilla::Internal::Font> titleFont;
 	std::shared_ptr<Scintilla::Internal::Font> bodyFont;
 };

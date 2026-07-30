@@ -13,94 +13,100 @@ namespace Scalpel {
 
 /**
  * Immutable visual constants for permanent chrome and modal cards.
- * Painters and layout helpers take a reference; production uses DefaultUiStyle().
+ * Production layout and painters use DefaultUiStyle().
  */
 struct UiStyle {
-	// Typography (FontParameters.size is device pixels at 96 DPI).
-	const char *fontName = "system-ui";
-	float chromeLabelPoints = 12.0f;
-	float cardTitlePoints = 16.0f;
-	float cardBodyPoints = 14.0f;
+	UiStyle(const UiStyle &) = default;
+	UiStyle &operator=(const UiStyle &) = delete;
+
+	// Typography in points; painters convert to device pixels at 96 DPI.
+	const char *const fontName = "system-ui";
+	const float chromeLabelPoints = 12.0f;
+	const float cardTitlePoints = 16.0f;
+	const float cardBodyPoints = 14.0f;
 
 	// Shared ink and focus.
-	Scintilla::Internal::ColourRGBA text{0x20, 0x20, 0x20, 0xff};
-	Scintilla::Internal::ColourRGBA mutedText{0x60, 0x60, 0x60, 0xff};
-	Scintilla::Internal::ColourRGBA disabledText{0xa0, 0xa0, 0xa0, 0xff};
-	Scintilla::Internal::ColourRGBA focusFill{0xd0, 0xe4, 0xf8, 0xff};
-	Scintilla::Internal::ColourRGBA focusBorder{0x30, 0x70, 0xb0, 0xff};
-	Scintilla::Internal::ColourRGBA chromeBorder{0xb8, 0xb8, 0xb8, 0xff};
-	Scintilla::Internal::ColourRGBA hoverFill{0xee, 0xee, 0xee, 0xff};
-	Scintilla::Internal::ColourRGBA panelFill{0xfc, 0xfc, 0xfc, 0xff};
+	const Scintilla::Internal::ColourRGBA text{0x20, 0x20, 0x20, 0xff};
+	const Scintilla::Internal::ColourRGBA mutedText{0x60, 0x60, 0x60, 0xff};
+	const Scintilla::Internal::ColourRGBA disabledText{0xa0, 0xa0, 0xa0, 0xff};
+	const Scintilla::Internal::ColourRGBA focusFill{0xd0, 0xe4, 0xf8, 0xff};
+	const Scintilla::Internal::ColourRGBA focusBorder{0x30, 0x70, 0xb0, 0xff};
+	const Scintilla::Internal::ColourRGBA chromeBorder{0xb8, 0xb8, 0xb8, 0xff};
+	const Scintilla::Internal::ColourRGBA hoverFill{0xee, 0xee, 0xee, 0xff};
+	const Scintilla::Internal::ColourRGBA panelFill{0xfc, 0xfc, 0xfc, 0xff};
 
 	// Menu bar and dropdown.
-	Scintilla::Internal::ColourRGBA menuBarFill{0xe8, 0xe8, 0xe8, 0xff};
-	Scintilla::Internal::ColourRGBA menuItemHover{0xe8, 0xf0, 0xf8, 0xff};
-	Scintilla::Internal::ColourRGBA menuSeparator{0xd0, 0xd0, 0xd0, 0xff};
-	Scintilla::Internal::ColourRGBA menuDropdownShadow{0x00, 0x00, 0x00, 0x28};
-	int menuBarHeight = 24;
-	int menuHeadingPadX = 12;
-	int menuFileHeadingWidth = 48;
-	int menuEditHeadingWidth = 48;
-	int menuRecentHeadingWidth = 68;
-	int menuItemHeight = 24;
-	int menuSeparatorHeight = 9;
-	int menuDropdownPadY = 4;
-	int menuLabelPadLeft = 12;
-	int menuShortcutPadRight = 12;
-	int menuLabelShortcutGap = 24;
-	int menuShortcutColumnWidth = 100;
-	int menuDropdownPreferredWidth = 220;
-	int menuRecentDropdownPreferredWidth = 440;
+	const Scintilla::Internal::ColourRGBA menuBarFill{0xe8, 0xe8, 0xe8, 0xff};
+	const Scintilla::Internal::ColourRGBA menuItemHover{0xe8, 0xf0, 0xf8, 0xff};
+	const Scintilla::Internal::ColourRGBA menuSeparator{0xd0, 0xd0, 0xd0, 0xff};
+	const Scintilla::Internal::ColourRGBA menuDropdownShadow{0x00, 0x00, 0x00, 0x28};
+	const int menuBarHeight = 24;
+	const int menuHeadingPadX = 12;
+	const int menuFileHeadingWidth = 48;
+	const int menuEditHeadingWidth = 48;
+	const int menuRecentHeadingWidth = 68;
+	const int menuItemHeight = 24;
+	const int menuSeparatorHeight = 9;
+	const int menuDropdownPadY = 4;
+	const int menuLabelPadLeft = 12;
+	const int menuShortcutPadRight = 12;
+	const int menuLabelShortcutGap = 24;
+	const int menuShortcutColumnWidth = 100;
+	const int menuDropdownPreferredWidth = 220;
+	const int menuRecentDropdownPreferredWidth = 440;
 
 	// Tab strip.
-	Scintilla::Internal::ColourRGBA tabStripFill{0xe4, 0xe4, 0xe4, 0xff};
-	Scintilla::Internal::ColourRGBA tabDirtyAccent{0xc0, 0x60, 0x20, 0xff};
-	Scintilla::Internal::ColourRGBA tabCloseFill{0xd0, 0xd0, 0xd0, 0xff};
-	Scintilla::Internal::ColourRGBA tabCloseHoverFill{0xc0, 0x70, 0x70, 0xff};
-	Scintilla::Internal::ColourRGBA tabGlyphInk{0x40, 0x40, 0x40, 0xff};
-	int tabStripHeight = 28;
-	int tabPreferredWidth = 140;
-	int tabAddButtonWidth = 28;
-	int tabCloseSize = 14;
-	int tabClosePadRight = 6;
-	int tabLabelPadLeft = 10;
-	int tabLabelPadRight = 4;
-	int tabDefaultScrollStep = 40;
+	const Scintilla::Internal::ColourRGBA tabStripFill{0xe4, 0xe4, 0xe4, 0xff};
+	const Scintilla::Internal::ColourRGBA tabDirtyAccent{0xc0, 0x60, 0x20, 0xff};
+	const Scintilla::Internal::ColourRGBA tabCloseFill{0xd0, 0xd0, 0xd0, 0xff};
+	const Scintilla::Internal::ColourRGBA tabCloseHoverFill{0xc0, 0x70, 0x70, 0xff};
+	const Scintilla::Internal::ColourRGBA tabGlyphInk{0x40, 0x40, 0x40, 0xff};
+	const int tabStripHeight = 28;
+	const int tabPreferredWidth = 140;
+	const int tabAddButtonWidth = 28;
+	const int tabCloseSize = 14;
+	const int tabClosePadRight = 6;
+	const int tabLabelPadLeft = 10;
+	const int tabLabelPadRight = 4;
+	const int tabDefaultScrollStep = 40;
 
 	// Scrollbars.
-	Scintilla::Internal::ColourRGBA scrollTrackFill{0xff, 0xff, 0xff, 0xff};
-	Scintilla::Internal::ColourRGBA scrollThumbFill{0xc8, 0xc8, 0xc8, 0xff};
-	Scintilla::Internal::ColourRGBA scrollThumbHover{0xb0, 0xb0, 0xb0, 0xff};
-	Scintilla::Internal::ColourRGBA scrollThumbPressed{0x98, 0x98, 0x98, 0xff};
-	int scrollBarThickness = 14;
-	int scrollBarMinThumb = 24;
+	const Scintilla::Internal::ColourRGBA scrollTrackFill{0xff, 0xff, 0xff, 0xff};
+	const Scintilla::Internal::ColourRGBA scrollThumbFill{0xc8, 0xc8, 0xc8, 0xff};
+	const Scintilla::Internal::ColourRGBA scrollThumbHover{0xb0, 0xb0, 0xb0, 0xff};
+	const Scintilla::Internal::ColourRGBA scrollThumbPressed{0x98, 0x98, 0x98, 0xff};
+	const int scrollBarThickness = 14;
+	const int scrollBarMinThumb = 24;
 
 	// Modal cards (shared chrome).
-	Scintilla::Internal::ColourRGBA cardScrim{0x00, 0x00, 0x00, 0x59};
-	Scintilla::Internal::ColourRGBA cardFill{0xf0, 0xf0, 0xf0, 0xff};
-	Scintilla::Internal::ColourRGBA cardBorder{0x90, 0x90, 0x90, 0xff};
-	Scintilla::Internal::ColourRGBA cardButtonFill{0xe0, 0xe0, 0xe0, 0xff};
-	Scintilla::Internal::ColourRGBA cardButtonBorder{0xa0, 0xa0, 0xa0, 0xff};
-	int cardMargin = 16;
-	int cardPad = 16;
-	int cardTitleHeight = 24;
-	int cardButtonHeight = 32;
-	int cardButtonTopGap = 16;
+	const Scintilla::Internal::ColourRGBA cardScrim{0x00, 0x00, 0x00, 0x59};
+	const Scintilla::Internal::ColourRGBA cardFill{0xf0, 0xf0, 0xf0, 0xff};
+	const Scintilla::Internal::ColourRGBA cardBorder{0x90, 0x90, 0x90, 0xff};
+	const Scintilla::Internal::ColourRGBA cardButtonFill{0xe0, 0xe0, 0xe0, 0xff};
+	const Scintilla::Internal::ColourRGBA cardButtonBorder{0xa0, 0xa0, 0xa0, 0xff};
+	const int cardMargin = 16;
+	const int cardPad = 16;
+	const int cardTitleHeight = 24;
+	const int cardButtonHeight = 32;
+	const int cardButtonTopGap = 16;
 
 	// Unsaved-changes card.
-	int unsavedCardMaxWidth = 360;
-	int unsavedCardMinWidth = 200;
-	int unsavedSubtitleHeight = 20;
-	int unsavedTitleSubtitleGap = 6;
-	int unsavedButtonGap = 8;
-	int unsavedButtonCount = 3;
+	const int unsavedCardMaxWidth = 360;
+	const int unsavedCardMinWidth = 200;
+	const int unsavedSubtitleHeight = 20;
+	const int unsavedTitleSubtitleGap = 6;
+	const int unsavedButtonGap = 8;
 
 	// File-error card.
-	int fileErrorCardMaxWidth = 480;
-	int fileErrorCardMinWidth = 220;
-	int fileErrorPathHeight = 24;
-	int fileErrorTitlePathGap = 8;
-	int fileErrorButtonWidth = 96;
+	const int fileErrorCardMaxWidth = 480;
+	const int fileErrorCardMinWidth = 220;
+	const int fileErrorPathHeight = 24;
+	const int fileErrorTitlePathGap = 8;
+	const int fileErrorButtonWidth = 96;
+
+private:
+	UiStyle() = default;
+	friend const UiStyle &DefaultUiStyle() noexcept;
 };
 
 /** Production fixed style. The only style until runtime themes exist. */
