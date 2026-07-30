@@ -827,10 +827,8 @@ bool HandleTopChromePointer(const Scalpel::PointerInput &input,
 	}
 
 	const bool menuWasOpen = menuModel.openMenu.has_value();
-	// Keep enablement current before open/toggle/hover so disabled items and
-	// keyboard-equivalent pointer activation match the active document.
-	// Geometry still comes from the shared layout snapshot.
-	(void)Scalpel::UpdateMenuBarActionState(menuModel, editor);
+	// The caller refreshes enablement before building layout so item activation
+	// and geometry read one coherent snapshot.
 	const Scalpel::MenuBarPointerResult menuResult =
 		Scalpel::HandleMenuBarPointer(menuModel, layout.menu, input, captured);
 
@@ -1065,14 +1063,7 @@ int main() {
 
 		editor.SetPermanentChromePainter(
 			[&](Scintilla::Internal::Surface &surface, int, int) {
-				// Heading open styling does not depend on edit flags, but keep
-				// the model aligned with the editor before any chrome paint.
-				(void)Scalpel::UpdateMenuBarActionState(ui.MenuModel(), editor);
-				ui.StripModel().scrollOffset = Scalpel::ClampTabStripScroll(
-					editor.FrameWidth(), ui.StripModel().tabs.size(),
-					ui.StripModel().scrollOffset);
-				// One snapshot for bar, strip, and scrollbars this paint.
-				const Scalpel::ApplicationLayout layout = ui.Layout();
+				const Scalpel::ApplicationLayout &layout = ui.FrameLayout();
 				menuPainter.PaintBar(surface, layout.menu, ui.MenuModel());
 				stripPainter.Paint(surface, layout.tabs, ui.StripModel());
 				Scalpel::PaintScrollBars(surface, layout.scrollBars,
@@ -1081,16 +1072,13 @@ int main() {
 
 		const auto paintMenuDropdown =
 			[&](Scintilla::Internal::Surface &surface, int, int) {
-				// Open dropdown rows read enablement from the model; refresh so
-				// delayed clipboard and active-tab state paint correctly.
-				(void)Scalpel::UpdateMenuBarActionState(ui.MenuModel(), editor);
-				const Scalpel::ApplicationLayout layout = ui.Layout();
+				const Scalpel::ApplicationLayout &layout = ui.FrameLayout();
 				menuPainter.PaintDropdown(surface, layout.menu, ui.MenuModel());
 			};
 
 		const auto paintUnsavedCard =
 			[&](Scintilla::Internal::Surface &surface, int, int) {
-				const Scalpel::ApplicationLayout layout = ui.Layout();
+				const Scalpel::ApplicationLayout &layout = ui.FrameLayout();
 				const std::string subtitle = UnsavedPromptSubtitle(workspace);
 				cardPainter.Paint(surface, layout.unsavedCard, "Save changes?",
 					subtitle, ui.CardFocus());
@@ -1101,7 +1089,7 @@ int main() {
 				if (ui.FileErrors().empty()) {
 					return;
 				}
-				const Scalpel::ApplicationLayout layout = ui.Layout();
+				const Scalpel::ApplicationLayout &layout = ui.FrameLayout();
 				const Scalpel::DocumentFileError &error = ui.FileErrors().front();
 				fileErrorPainter.Paint(surface, layout.fileErrorCard,
 					FileErrorTitle(error), error.path);
@@ -1185,8 +1173,10 @@ int main() {
 					}
 					continue;
 				}
-				// One layout snapshot for hit testing this event (and any paint
-				// that does not rebuild after model changes).
+				// Refresh model values copied into MenuBarLayout before taking
+				// the one snapshot used by every hit test for this event.
+				(void)Scalpel::UpdateMenuBarActionState(
+					ui.MenuModel(), editor);
 				const Scalpel::ApplicationLayout layout = ui.Layout();
 				// Input priority: file error, unsaved card, open menu, active
 				// scrollbar drag, top chrome, scrollbar hit, then editor.
@@ -1317,10 +1307,21 @@ int main() {
 				if (plan) {
 					window.PrepareFrame(*plan);
 					try {
+						// Finalize every model value copied into the layout before
+						// retaining one snapshot for both paint callbacks.
+						(void)Scalpel::UpdateMenuBarActionState(
+							ui.MenuModel(), editor);
+						ui.StripModel().scrollOffset =
+							Scalpel::ClampTabStripScroll(editor.FrameWidth(),
+								ui.StripModel().tabs.size(),
+								ui.StripModel().scrollOffset);
+						ui.BeginFrameLayout();
 						editor.PresentFrame(EditorDamage(plan->repaintDamage),
 							EglDamage(plan->eglDamage), plan->fullSwap);
+						ui.EndFrameLayout();
 						window.SubmitFrame(plan->submission);
 					} catch (...) {
+						ui.EndFrameLayout();
 						window.CancelFrame();
 						throw;
 					}

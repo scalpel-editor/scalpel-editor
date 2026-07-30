@@ -104,6 +104,15 @@ public:
 	 * editor scroll metrics and client rectangle.
 	 */
 	[[nodiscard]] ApplicationLayout Layout() const;
+	/**
+	 * Build and retain the snapshot shared by all painters in one frame.
+	 * BeginFrameLayout must precede ApplicationEditor frame painting, and
+	 * EndFrameLayout must follow it on both success and failure.
+	 */
+	void BeginFrameLayout();
+	void EndFrameLayout() noexcept;
+	/** The retained frame snapshot; throws when no frame layout is active. */
+	[[nodiscard]] const ApplicationLayout &FrameLayout() const;
 
 	[[nodiscard]] MenuBarModel &MenuModel() noexcept { return menuModel; }
 	[[nodiscard]] const MenuBarModel &MenuModel() const noexcept {
@@ -179,6 +188,7 @@ private:
 	bool fileErrorPressHit = false;
 	std::optional<UnsavedCardHit> promptPressHit;
 	std::deque<DocumentFileError> fileErrors;
+	std::optional<ApplicationLayout> frameLayout;
 	DocumentId lastActiveDocument = 0;
 };
 

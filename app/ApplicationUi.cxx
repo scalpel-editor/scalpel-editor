@@ -1,5 +1,6 @@
 #include "ApplicationUi.h"
 
+#include <stdexcept>
 #include <utility>
 
 #include "ApplicationEditor.h"
@@ -41,6 +42,22 @@ ApplicationLayout ApplicationUi::Layout() const {
 	return BuildApplicationLayout(editor->FrameWidth(), editor->FrameHeight(),
 		editor->TopChromeInset(), menuModel, stripModel, editor->Scrollbars(),
 		editor->EditorClientRectangle());
+}
+
+void ApplicationUi::BeginFrameLayout() {
+	frameLayout = Layout();
+}
+
+void ApplicationUi::EndFrameLayout() noexcept {
+	frameLayout.reset();
+}
+
+const ApplicationLayout &ApplicationUi::FrameLayout() const {
+	if (!frameLayout.has_value()) {
+		throw std::logic_error(
+			"ApplicationUi::FrameLayout requires BeginFrameLayout");
+	}
+	return *frameLayout;
 }
 
 }

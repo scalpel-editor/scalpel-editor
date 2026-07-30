@@ -1,7 +1,5 @@
 #include "catch.hpp"
 
-#include <optional>
-
 #include "ApplicationEditor.h"
 #include "ApplicationUi.h"
 #include "DocumentWorkspace.h"
@@ -221,27 +219,40 @@ TEST_CASE("application UI layout hit testing and paint share one snapshot") {
 	CHECK(Scalpel::HitTestScrollBars(layout.scrollBars, onClient).hit ==
 		Scalpel::ScrollBarHit::None);
 
-	int chromePaints = 0;
-	std::optional<ApplicationLayout> painted;
+	CHECK_THROWS_WITH(ui.FrameLayout(),
+		"ApplicationUi::FrameLayout requires BeginFrameLayout");
+	ui.BeginFrameLayout();
+	const ApplicationLayout *chromeLayout = nullptr;
+	const ApplicationLayout *overlayLayout = nullptr;
 	editor.SetPermanentChromePainter(
 		[&](Surface &surface, int, int) {
-			++chromePaints;
-			painted = ui.Layout();
-			surface.FillRectangle(painted->menu.bar,
+			chromeLayout = &ui.FrameLayout();
+			surface.FillRectangle(chromeLayout->menu.bar,
 				Fill(ColourRGBA(0x20, 0x20, 0x20, 0xff)));
-			surface.FillRectangle(painted->tabs.strip,
+			surface.FillRectangle(chromeLayout->tabs.strip,
 				Fill(ColourRGBA(0x30, 0x30, 0x30, 0xff)));
-			Scalpel::PaintScrollBars(surface, painted->scrollBars, {});
+			Scalpel::PaintScrollBars(surface, chromeLayout->scrollBars, {});
+		});
+	editor.SetOverlayPainter(
+		[&](Surface &surface, int, int) {
+			overlayLayout = &ui.FrameLayout();
+			surface.FillRectangle(overlayLayout->unsavedCard.card,
+				Fill(ColourRGBA(0x40, 0x40, 0x40, 0xff)));
 		});
 	(void)editor.TakeFrameDamage();
 	editor.InvalidateFrame();
 	editor.RenderFrame();
-	CHECK(chromePaints == 1);
-	REQUIRE(painted.has_value());
-	CHECK(painted->frameWidth == layout.frameWidth);
-	CHECK(painted->frameHeight == layout.frameHeight);
-	CHECK(painted->menu.bar == layout.menu.bar);
-	CHECK(painted->tabs.strip == layout.tabs.strip);
-	CHECK(painted->scrollBars.vertical.track == layout.scrollBars.vertical.track);
-	CHECK(painted->client == layout.client);
+	REQUIRE(chromeLayout != nullptr);
+	REQUIRE(overlayLayout != nullptr);
+	CHECK(chromeLayout == overlayLayout);
+	CHECK(chromeLayout->frameWidth == layout.frameWidth);
+	CHECK(chromeLayout->frameHeight == layout.frameHeight);
+	CHECK(chromeLayout->menu.bar == layout.menu.bar);
+	CHECK(chromeLayout->tabs.strip == layout.tabs.strip);
+	CHECK(chromeLayout->scrollBars.vertical.track ==
+		layout.scrollBars.vertical.track);
+	CHECK(chromeLayout->client == layout.client);
+	ui.EndFrameLayout();
+	CHECK_THROWS_WITH(ui.FrameLayout(),
+		"ApplicationUi::FrameLayout requires BeginFrameLayout");
 }

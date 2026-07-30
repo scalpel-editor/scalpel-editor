@@ -28,7 +28,7 @@ Colour attachments are linear `GL_RGBA8`. Internal alpha is premultiplied and bl
 
 Scintilla paints the editor client. A permanent-chrome callback paints the menu bar, tab strip, scrollbars, and scrollbar junction without forcing full-frame damage. A post-paint overlay callback paints exactly one open menu, unsaved-changes card, or file-error card; transparent overlays expand painting to the full frame and use a full swap so preserved pixels cannot accumulate blending.
 
-`ApplicationUi` owns the chrome models, hover and press state, and which overlay is selected. It builds one `ApplicationLayout` snapshot (menu, tabs, scrollbars, client, cards) from frame size and editor metrics for each event or paint pass. The shell still applies input priority and painter binding for now. Individual controls own their layout, hit testing, interaction state, and paint operations without a widget hierarchy.
+`ApplicationUi` owns the chrome models, hover and press state, and which overlay is selected. It builds one `ApplicationLayout` snapshot (menu, tabs, scrollbars, client, cards) from frame size and editor metrics for each event or paint pass. Immediately before frame painting, the shell finalizes model values copied into the layout and retains one snapshot that both the permanent-chrome and active-overlay callbacks read. The shell still applies input priority and painter binding for now. Individual controls own their layout, hit testing, interaction state, and paint operations without a widget hierarchy.
 
 Autocomplete lists, call tips, and the Scintilla context menu use explicit production stubs. Their core behavior remains compiled and testable, but real Wayland popup surfaces are not implemented.
 
