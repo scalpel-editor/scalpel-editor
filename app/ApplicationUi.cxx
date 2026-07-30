@@ -1,5 +1,7 @@
 #include "ApplicationUi.h"
 
+#include <utility>
+
 #include "ApplicationEditor.h"
 #include "RecentFiles.h"
 
