@@ -242,7 +242,8 @@ public:
 	 * Applies model transitions, editor invalidation, scroll requests, menu
 	 * item activation, and tab operations. When consumed is false the host
 	 * must deliver the same event to ApplicationEditor (selection capture and
-	 * surface leave still need editor delivery).
+	 * surface leave still need editor delivery). Any document or modal change
+	 * leaves scrollbar interaction consistent before this method returns.
 	 */
 	[[nodiscard]] ApplicationPointerResult HandlePointer(
 		const PointerInput &input);
@@ -259,7 +260,8 @@ public:
 	 * Route one keyboard event through modal cards, menu navigation, open
 	 * accelerators, application shortcuts, tab cycling, and editor delivery.
 	 * Modal owners and an open menu consume every key; shortcuts and editor
-	 * typing apply inside this method.
+	 * typing apply inside this method. Any document or modal change leaves
+	 * scrollbar interaction consistent before this method returns.
 	 */
 	[[nodiscard]] ApplicationKeyboardResult HandleKeyboard(
 		const KeyboardInput &input);
@@ -309,12 +311,11 @@ public:
 	void SynchronizeDirtyTabs();
 
 	/**
-	 * After shell effects, dialog results, or input that may change the active
-	 * document or modal ownership: cancel scrollbar interaction when the
-	 * active document changed, a file-error or unsaved card is up, or a menu
-	 * is open.
+	 * Route a platform window-close request into workspace close policy.
+	 * Resulting portal-dialog or accept-close work is returned by the next
+	 * TakeShellEffects call.
 	 */
-	void SynchronizeInteraction();
+	void RequestClose();
 
 	/**
 	 * Respond to a logical frame size or scale change already applied to the
@@ -353,7 +354,8 @@ public:
 	 * Route a file-dialog result by the application identity carried in its
 	 * shell effect. Unknown identities and Save As results for closed tabs are
 	 * ignored. accepted is false for cancel, failure, or an empty path list.
-	 * Does not drain shell effects; call TakeShellEffects afterward.
+	 * Leaves interaction state consistent but does not drain shell effects;
+	 * call TakeShellEffects afterward.
 	 */
 	void NotifyDialogResult(DocumentDialogId dialogId, bool accepted,
 		const std::vector<std::string> &paths);
@@ -405,15 +407,9 @@ public:
 		return fileErrors;
 	}
 
-	[[nodiscard]] DocumentId &LastActiveDocument() noexcept {
-		return lastActiveDocument;
-	}
-	[[nodiscard]] DocumentId LastActiveDocument() const noexcept {
-		return lastActiveDocument;
-	}
-
 private:
 	[[nodiscard]] BoundOverlay DesiredOverlay() const noexcept;
+	void SynchronizeInteraction();
 
 	ApplicationEditor *editor = nullptr;
 	DocumentWorkspace *workspace = nullptr;

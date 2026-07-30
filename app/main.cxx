@@ -5,14 +5,14 @@
 // and waiting live here. ApplicationEditor retains Scintilla documents and
 // paints one surface. DocumentWorkspace owns tabs, paths, file-dialog intents,
 // and dirty-close policy. ApplicationUi owns chrome, overlays, input routing,
-// composition, shell-effect consumption, frame-size response, dirty-tab sync,
-// interaction cleanup, and exit dismissal. This file maps portal request IDs
-// to application dialog identities, delivers platform events and unconsumed
-// pointer input through ApplicationUi, applies CurrentPointerCursor, drops
-// IME batches while ChromeOwnsInput is true, drains TakeShellEffects for
-// portal dialogs and accept-close, submits frames, and waits. Open/save policy
-// and prompt transitions live in DocumentWorkspace. Required-global loss
-// force-closes without prompting the workspace.
+// composition, shell-effect consumption, close requests, frame-size response,
+// dirty-tab sync, interaction cleanup, and exit dismissal. This file maps
+// portal request IDs to application dialog identities, delivers platform
+// events and unconsumed pointer input through ApplicationUi, applies
+// CurrentPointerCursor, drops IME batches while ChromeOwnsInput is true, drains
+// TakeShellEffects for portal dialogs and accept-close, submits frames, and
+// waits. Open/save policy and prompt transitions live in DocumentWorkspace.
+// Required-global loss force-closes without prompting the workspace.
 
 #include <cmath>
 #include <exception>
@@ -383,7 +383,6 @@ int main() {
 			DeliverTextInputBatches(window, editor, ui.ChromeOwnsInput());
 			ApplyFileDialogResults(window, ui, activeFileDialogs);
 			ApplyShellEffects(ui, window, activeFileDialogs, quitAccepted);
-			ui.SynchronizeInteraction();
 			SynchronizeTextInput(editor, window);
 			ui.RefreshOpenMenuActionState();
 
@@ -392,10 +391,9 @@ int main() {
 				break;
 			}
 			if (window.UserCloseRequested()) {
-				workspace.RequestClose();
+				ui.RequestClose();
 				ApplyShellEffects(
 					ui, window, activeFileDialogs, quitAccepted);
-				ui.SynchronizeInteraction();
 				window.ClearCloseRequest();
 				if (quitAccepted) {
 					break;
@@ -427,7 +425,6 @@ int main() {
 					}
 					ApplyShellEffects(
 						ui, window, activeFileDialogs, quitAccepted);
-					ui.SynchronizeInteraction();
 					continue;
 				}
 				if (const auto *keyboard =
@@ -436,7 +433,6 @@ int main() {
 				}
 				ApplyShellEffects(
 					ui, window, activeFileDialogs, quitAccepted);
-				ui.SynchronizeInteraction();
 			}
 
 			if (quitAccepted || window.ForceCloseRequested()) {

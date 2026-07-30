@@ -600,20 +600,15 @@ ApplicationPointerResult ApplicationUi::HandlePointer(
 	(void)UpdateMenuBarActionState(menuModel, *editor);
 	const ApplicationLayout layout = Layout();
 
+	ApplicationPointerResult result;
 	if (!fileErrors.empty()) {
-		ApplicationPointerResult result;
 		result.owner = ApplicationPointerOwner::FileError;
 		result.consumed = true;
 		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
 		HandleFileErrorPointer(input, layout.fileErrorCard, fileErrors, *editor,
 			fileErrorPressHit);
 		pointerCursor = CursorBelowModal(input, layout);
-		result.cursor = CurrentPointerCursor();
-		return result;
-	}
-
-	if (workspace->PromptActive()) {
-		ApplicationPointerResult result;
+	} else if (workspace->PromptActive()) {
 		result.owner = ApplicationPointerOwner::UnsavedPrompt;
 		result.consumed = true;
 		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
@@ -622,17 +617,18 @@ ApplicationPointerResult ApplicationUi::HandlePointer(
 		HandlePromptPointer(input, layout.unsavedCard, promptPressHit,
 			*workspace, *editor, cardFocus);
 		pointerCursor = CursorBelowModal(input, layout);
-		// An active modal forces the arrow; dismissal restores the cursor for
-		// the underlying chrome or editor location.
-		result.cursor = CurrentPointerCursor();
-		return result;
+	} else {
+		result = HandleChromePointer(
+			input, layout, menuModel, stripModel,
+			scrollBarInteraction, *recent, recentStatePath, *workspace, *editor,
+			pointerOverChrome);
+		pointerCursor = result.cursor;
 	}
 
-	ApplicationPointerResult result = HandleChromePointer(
-		input, layout, menuModel, stripModel,
-		scrollBarInteraction, *recent, recentStatePath, *workspace, *editor,
-		pointerOverChrome);
-	pointerCursor = result.cursor;
+	SynchronizeInteraction();
+	// A modal that appeared during routing forces the arrow; dismissal restores
+	// the cursor for the underlying chrome or editor location.
+	result.cursor = CurrentPointerCursor();
 	return result;
 }
 
@@ -809,25 +805,20 @@ ApplicationKeyboardResult ApplicationUi::HandleKeyboard(
 		result.owner = ApplicationKeyboardOwner::FileError;
 		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
 		HandleFileErrorKeyboard(input, fileErrors, *editor, fileErrorPressHit);
-		return result;
-	}
-
-	if (workspace->PromptActive()) {
+	} else if (workspace->PromptActive()) {
 		result.owner = ApplicationKeyboardOwner::UnsavedPrompt;
 		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
 		HandlePromptKeyboard(input, *workspace, *editor, cardFocus);
-		return result;
-	}
-
-	// Menu accelerators and open-menu navigation run before application
-	// shortcuts and editor typing.
-	if (HandleMenuBarKeyboardInput(input, menuModel, *recent, recentStatePath,
-		*workspace, *editor, scrollBarInteraction)) {
+	} else if (HandleMenuBarKeyboardInput(input, menuModel, *recent,
+		recentStatePath, *workspace, *editor, scrollBarInteraction)) {
+		// Menu accelerators and open-menu navigation run before application
+		// shortcuts and editor typing.
 		result.owner = ApplicationKeyboardOwner::Menu;
-		return result;
+	} else {
+		result.owner = HandleEditorKeyboard(input, *workspace, *editor);
 	}
 
-	result.owner = HandleEditorKeyboard(input, *workspace, *editor);
+	SynchronizeInteraction();
 	return result;
 }
 
@@ -957,6 +948,11 @@ void ApplicationUi::SynchronizeDirtyTabs() {
 	}
 }
 
+void ApplicationUi::RequestClose() {
+	workspace->RequestClose();
+	SynchronizeInteraction();
+}
+
 void ApplicationUi::SynchronizeInteraction() {
 	const DocumentId activeDocument = editor->ActiveDocument();
 	const bool documentChanged = activeDocument != lastActiveDocument;
@@ -1053,16 +1049,19 @@ std::vector<ApplicationShellEffect> ApplicationUi::TakeShellEffects() {
 		AppendFileErrors(std::move(errors));
 	}
 
+	SynchronizeInteraction();
 	return effects;
 }
 
 void ApplicationUi::NotifyDialogFailed(DocumentDialogId dialogId) {
 	workspace->AbandonDialog(dialogId);
+	SynchronizeInteraction();
 }
 
 void ApplicationUi::NotifyDialogResult(DocumentDialogId dialogId, bool accepted,
 	const std::vector<std::string> &paths) {
 	workspace->HandleDialogResult(dialogId, accepted, paths);
+	SynchronizeInteraction();
 }
 
 }

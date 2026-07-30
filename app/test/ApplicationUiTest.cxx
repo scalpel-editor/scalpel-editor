@@ -159,7 +159,6 @@ TEST_CASE("application UI state owns chrome and overlay defaults") {
 	CHECK_FALSE(ui.FileErrorPressHit());
 	CHECK_FALSE(ui.PromptPressHit().has_value());
 	CHECK(ui.Overlay() == BoundOverlay::None);
-	CHECK(ui.LastActiveDocument() == editor.ActiveDocument());
 }
 
 TEST_CASE("application UI state seeds recent paths into the menu model") {
@@ -187,7 +186,6 @@ TEST_CASE("application UI state mutates owned fields in place") {
 		DocumentFileOperation::Open, "/missing.txt"}});
 	ui.FileErrorPressHit() = true;
 	ui.PromptPressHit() = UnsavedCardHit::Save;
-	ui.LastActiveDocument() = 42;
 	ui.MenuModel().openMenu = Scalpel::ApplicationMenu::File;
 	ui.StripModel().hoveredId = 7;
 	ui.ScrollBars().dragging = true;
@@ -195,7 +193,6 @@ TEST_CASE("application UI state mutates owned fields in place") {
 	CHECK(ui.FileErrorPressHit());
 	REQUIRE(ui.PromptPressHit().has_value());
 	CHECK(*ui.PromptPressHit() == UnsavedCardHit::Save);
-	CHECK(ui.LastActiveDocument() == 42);
 	REQUIRE(ui.FileErrors().size() == 1);
 	CHECK(ui.FileErrors().front().path == "/missing.txt");
 	CHECK(ui.MenuModel().openMenu == Scalpel::ApplicationMenu::File);
@@ -849,17 +846,21 @@ TEST_CASE("application UI keyboard routing application shortcuts and editor") {
 	SeedStrip(ui, editor);
 	const Scalpel::DocumentId first = editor.ActiveDocument();
 
+	ui.ScrollBars().dragging = true;
 	const ApplicationKeyboardResult newTab =
 		ui.HandleKeyboard(MakeLetter('N', KeyMod::Ctrl));
 	CHECK(newTab.owner == ApplicationKeyboardOwner::ApplicationShortcut);
 	CHECK(workspace.Tabs().size() == 2);
 	CHECK(editor.ActiveDocument() != first);
+	CHECK_FALSE(ui.ScrollBars().dragging);
 
 	// Ctrl+Tab cycles without going through the File/Edit action table.
+	ui.ScrollBars().dragging = true;
 	const ApplicationKeyboardResult cycle =
 		ui.HandleKeyboard(MakeKey(Keys::Tab, KeyMod::Ctrl));
 	CHECK(cycle.owner == ApplicationKeyboardOwner::ApplicationShortcut);
 	CHECK(workspace.ActiveTab() == first);
+	CHECK_FALSE(ui.ScrollBars().dragging);
 
 	// Text insertion uses the text field, not the key code alone.
 	KeyboardInput insert;
@@ -1416,13 +1417,13 @@ TEST_CASE("application UI workflow menu portal edit dirty close cancel editor") 
 	std::vector<ApplicationShellEffect> effects = ui.TakeShellEffects();
 	REQUIRE(effects.size() == 1);
 	REQUIRE(effects[0].kind == ApplicationShellEffectKind::ShowOpen);
-	ui.SynchronizeInteraction();
 
 	// Portal accept loads the file and refreshes tabs inside ApplicationUi.
+	ui.ScrollBars().dragging = true;
 	ui.NotifyDialogResult(effects[0].dialogId, true, {file.path});
+	CHECK_FALSE(ui.ScrollBars().dragging);
 	effects = ui.TakeShellEffects();
 	CHECK(effects.empty());
-	ui.SynchronizeInteraction();
 	CHECK(workspace.Path() == file.path);
 	CHECK(editor.Text() == "workflow-open\n");
 	REQUIRE(ui.StripModel().tabs.size() == 2);
@@ -1443,12 +1444,13 @@ TEST_CASE("application UI workflow menu portal edit dirty close cancel editor") 
 	CHECK(activeDirty);
 
 	// Dirty window close surfaces the unsaved card without accepting close.
-	workspace.RequestClose();
+	ui.ScrollBars().dragging = true;
+	ui.RequestClose();
+	CHECK_FALSE(ui.ScrollBars().dragging);
 	effects = ui.TakeShellEffects();
 	CHECK_FALSE(HasShellEffect(
 		effects, ApplicationShellEffectKind::AcceptClose));
 	REQUIRE(workspace.PromptActive());
-	ui.SynchronizeInteraction();
 	CHECK(ui.SynchronizeComposition() == BoundOverlay::UnsavedChanges);
 	CHECK(ui.ChromeOwnsInput());
 	CHECK(ui.CurrentPointerCursor() == ApplicationPointerCursor::Arrow);
@@ -1460,7 +1462,6 @@ TEST_CASE("application UI workflow menu portal edit dirty close cancel editor") 
 	CHECK_FALSE(workspace.PromptActive());
 	effects = ui.TakeShellEffects();
 	CHECK(effects.empty());
-	ui.SynchronizeInteraction();
 	CHECK(ui.SynchronizeComposition() == BoundOverlay::None);
 	CHECK_FALSE(ui.ChromeOwnsInput());
 	CHECK(editor.Modified());
