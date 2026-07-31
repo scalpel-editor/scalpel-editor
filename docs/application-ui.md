@@ -73,6 +73,14 @@ Fontconfig resolves the canonical family through the host configuration when the
 
 `ApplicationUi` binds the permanent-chrome and overlay painter callbacks and unbinds callbacks that capture it when it is destroyed. Permanent chrome can use bounded damage. A transparent menu or modal overlay expands damage to the full frame and selects a full swap so old blended pixels cannot remain.
 
+## Document open and save
+
+`DocumentWorkspace` opens and saves document files as raw bytes. A readable file succeeds even when its contents are not valid UTF-8: it becomes a normal clean document, is recorded as a successful recent path, and does not enqueue a file error or warning. Open and save do not validate, replace, transcode, or normalize invalid sequences. Valid UTF-8 and invalid bytes may coexist in one document.
+
+Saving an unchanged document writes its content bytes exactly. After an edit, bytes outside the edited range remain exact; normal text input continues to insert UTF-8. How invalid bytes behave under caret movement, deletion, and painting is the editor core rule in [scintilla-core.md](scintilla-core.md) (Text and layout contract); the workspace does not reimplement that logic.
+
+Invalid UTF-8 in file contents is separate from path encoding, I/O failures, line-ending policy, external-change conflicts, oversized-file limits, and the clipboard, primary-selection, and IME paths, which reject malformed UTF-8 at those external text-transfer boundaries.
+
 ## Workspace work and host effects
 
 `DocumentWorkspace` records product decisions without calling the platform. `ApplicationUi::TakeShellEffects` consumes them according to where the work belongs:

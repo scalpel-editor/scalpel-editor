@@ -228,6 +228,52 @@ TEST_CASE("document workspace single-document open result loads path") {
 	CHECK(workspace.ActiveTab() != startupId);
 }
 
+TEST_CASE("document workspace preserves invalid UTF-8 file bytes through open edit and save") {
+	// Stray continuation, truncated lead, and overlong sequence mixed with valid UTF-8.
+	const std::string fixture =
+		"ok\x80" "mid\xC2" "\xC0\x80" "end";
+	TempFile file(fixture);
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("startup\n");
+	DocumentWorkspace workspace(editor);
+
+	REQUIRE(workspace.OpenPath(file.path));
+	CHECK(workspace.Path() == file.path);
+	CHECK(editor.Text() == fixture);
+	CHECK_FALSE(editor.Modified());
+	CHECK_FALSE(workspace.BufferModified());
+	{
+		const std::vector<std::string> recent = workspace.TakeRecentPaths();
+		REQUIRE(recent.size() == 1);
+		CHECK(recent[0] == file.path);
+	}
+	CHECK(workspace.TakeFileErrors().empty());
+
+	// Unchanged save must reproduce the fixture bytes exactly.
+	workspace.RequestSave();
+	CHECK_FALSE(editor.Modified());
+	CHECK(workspace.TakeFileErrors().empty());
+	{
+		const auto read = Scalpel::ReadDocumentFile(file.path);
+		REQUIRE(read.has_value());
+		CHECK(*read == fixture);
+	}
+
+	// Normal text edit adjacent to the trailing malformed range; untouched bytes stay exact.
+	DirtyBuffer(editor);
+	const std::string afterEdit = fixture + "x";
+	CHECK(editor.Text() == afterEdit);
+	workspace.RequestSave();
+	CHECK_FALSE(editor.Modified());
+	CHECK(workspace.TakeFileErrors().empty());
+	{
+		const auto read = Scalpel::ReadDocumentFile(file.path);
+		REQUIRE(read.has_value());
+		CHECK(*read == afterEdit);
+	}
+	CHECK(workspace.TakeRecentPaths().empty());
+}
+
 TEST_CASE("document workspace recent paths report only successful file use") {
 	TempFile first("first\n");
 	TempFile second("second\n");
