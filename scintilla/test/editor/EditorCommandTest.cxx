@@ -342,3 +342,33 @@ TEST_CASE("SetZoom command resets zoom to zero") {
 	editor.RunCommand(EditorCommand::SetZoom);
 	CHECK(editor.GetZoom() == 0);
 }
+
+TEST_CASE("Standard zoom hotkeys increase decrease and reset zoom") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.SetText("keep");
+	CHECK(editor.GetZoom() == 0);
+
+	// Ctrl++ arrives as '+' with Ctrl|Shift on a US layout.
+	bool consumed = false;
+	editor.KeyDown(static_cast<Keys>('+'), KeyMod::Ctrl | KeyMod::Shift, &consumed);
+	CHECK(consumed);
+	CHECK(editor.GetZoom() == 1);
+
+	consumed = false;
+	editor.KeyDown(static_cast<Keys>('-'), KeyMod::Ctrl, &consumed);
+	CHECK(consumed);
+	CHECK(editor.GetZoom() == 0);
+
+	consumed = false;
+	editor.KeyDown(static_cast<Keys>('-'), KeyMod::Ctrl, &consumed);
+	CHECK(consumed);
+	CHECK(editor.GetZoom() == -1);
+
+	consumed = false;
+	editor.KeyDown(static_cast<Keys>('0'), KeyMod::Ctrl, &consumed);
+	CHECK(consumed);
+	CHECK(editor.GetZoom() == 0);
+	// Zoom shortcuts must not insert text.
+	CHECK(editor.Text() == "keep");
+}

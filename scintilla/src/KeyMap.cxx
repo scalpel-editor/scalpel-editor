@@ -142,6 +142,10 @@ const KeyToCommand KeyMap::MapDefault[] = {
 	{Keys::Add,		KeyMod::Ctrl,	EditorCommand::ZoomIn},
 	{Keys::Subtract,	KeyMod::Ctrl,	EditorCommand::ZoomOut},
 	{Keys::Divide,		KeyMod::Ctrl,	EditorCommand::SetZoom},
+	// Standard non-keypad zoom: Ctrl++ (Shift produces +), Ctrl+-, Ctrl+0.
+	{Key('+'),		CtrlShift,	EditorCommand::ZoomIn},
+	{Key('-'),		KeyMod::Ctrl,	EditorCommand::ZoomOut},
+	{Key('0'),		KeyMod::Ctrl,	EditorCommand::SetZoom},
 	{Key('L'),		KeyMod::Ctrl,	EditorCommand::LineCut},
 	{Key('L'),		CtrlShift,	EditorCommand::LineDelete},
 	{Key('T'),		CtrlShift,	EditorCommand::LineCopy},
