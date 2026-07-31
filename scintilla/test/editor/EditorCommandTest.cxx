@@ -349,9 +349,9 @@ TEST_CASE("Standard zoom hotkeys increase decrease and reset zoom") {
 	editor.SetText("keep");
 	CHECK(editor.GetZoom() == 0);
 
-	// Ctrl++ arrives as '+' with Ctrl|Shift on a US layout.
+	// Ctrl+= arrives as '=' with Ctrl (no Shift) on a US layout.
 	bool consumed = false;
-	editor.KeyDown(static_cast<Keys>('+'), KeyMod::Ctrl | KeyMod::Shift, &consumed);
+	editor.KeyDown(static_cast<Keys>('='), KeyMod::Ctrl, &consumed);
 	CHECK(consumed);
 	CHECK(editor.GetZoom() == 1);
 
