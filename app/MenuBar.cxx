@@ -139,8 +139,16 @@ int HeadingWidth(ApplicationMenu menu, const UiStyle &style) noexcept {
 }
 
 int DropdownPreferredWidth(ApplicationMenu menu, const UiStyle &style) noexcept {
-	return menu == ApplicationMenu::Recent ?
-		style.menuRecentDropdownPreferredWidth : style.menuDropdownPreferredWidth;
+	switch (menu) {
+	case ApplicationMenu::Edit:
+		return style.menuEditDropdownPreferredWidth;
+	case ApplicationMenu::Recent:
+		return style.menuRecentDropdownPreferredWidth;
+	case ApplicationMenu::File:
+	case ApplicationMenu::Font:
+		return style.menuDropdownPreferredWidth;
+	}
+	return style.menuDropdownPreferredWidth;
 }
 
 int DropdownContentHeight(const MenuBarModel &model, ApplicationMenu menu,

@@ -828,6 +828,7 @@ TEST_CASE("menu bar Edit dropdown reflects enablement flags") {
 	model.cutEnabled = false;
 	model.pasteEnabled = true;
 	const MenuBarLayout layout = LayoutMenuBar(400, 300, model);
+	CHECK(layout.dropdown.right - layout.dropdown.left == 240);
 	REQUIRE(layout.items.size() == CountMenuItems(ApplicationMenu::Edit));
 
 	const auto *undo = FindItem(layout, ApplicationAction::Undo);
