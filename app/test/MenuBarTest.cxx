@@ -868,6 +868,19 @@ TEST_CASE("menu bar narrow window clamps dropdown into the frame") {
 		CHECK(tiny.dropdown.left >= 0);
 		CHECK(tiny.dropdown.right <= 20);
 	}
+
+	// Font pushes Recent entirely past this narrow bar. Keyboard navigation can
+	// still open it, so its clamped dropdown must remain visible and usable.
+	MenuBarModel hiddenRecent = OpenMenu(ApplicationMenu::Recent);
+	hiddenRecent.recentFiles = {"/tmp/recent.txt"};
+	const MenuBarLayout recent = LayoutMenuBar(100, 200, hiddenRecent);
+	REQUIRE(recent.headings.size() == 4);
+	CHECK_FALSE(NonEmpty(recent.headings[3].bounds));
+	REQUIRE(recent.dropdownMenu == ApplicationMenu::Recent);
+	REQUIRE(NonEmpty(recent.dropdown));
+	CHECK(recent.dropdown.left == 0);
+	CHECK(recent.dropdown.right == 100);
+	REQUIRE(recent.items.size() == 2);
 }
 
 TEST_CASE("menu bar short frame clamps dropdown bottom") {
@@ -1209,10 +1222,10 @@ TEST_CASE("menu bar font Alt T pointer activation and narrow clamp") {
 			CHECK(heading.bounds.left >= 0);
 			CHECK(heading.bounds.right <= width);
 		}
-		if (NonEmpty(layout.dropdown)) {
-			CHECK(layout.dropdown.left >= 0);
-			CHECK(layout.dropdown.right <= width);
-		}
+		REQUIRE(layout.dropdownMenu == ApplicationMenu::Font);
+		REQUIRE(NonEmpty(layout.dropdown));
+		CHECK(layout.dropdown.left >= 0);
+		CHECK(layout.dropdown.right <= width);
 	}
 }
 

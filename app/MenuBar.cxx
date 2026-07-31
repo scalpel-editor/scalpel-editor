@@ -349,7 +349,7 @@ MenuBarLayout LayoutMenuBar(int frameWidth, int frameHeight,
 	const ApplicationMenu open = *model.openMenu;
 	const MenuBarHeadingLayout *openHeading = nullptr;
 	for (const MenuBarHeadingLayout &heading : layout.headings) {
-		if (heading.menu == open && NonEmpty(heading.bounds)) {
+		if (heading.menu == open) {
 			openHeading = &heading;
 			break;
 		}
@@ -362,7 +362,11 @@ MenuBarLayout LayoutMenuBar(int frameWidth, int frameHeight,
 	if (dropdownWidth > frameWidth) {
 		dropdownWidth = frameWidth;
 	}
-	int dropdownLeft = static_cast<int>(openHeading->bounds.left);
+	// Keyboard navigation may open a heading that was squeezed to zero width.
+	// Its preferred dropdown is then wider than the frame, so anchoring at zero
+	// keeps the full clamped panel visible instead of creating an input trap.
+	int dropdownLeft = NonEmpty(openHeading->bounds) ?
+		static_cast<int>(openHeading->bounds.left) : 0;
 	if (dropdownLeft + dropdownWidth > frameWidth) {
 		dropdownLeft = std::max(0, frameWidth - dropdownWidth);
 	}

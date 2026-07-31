@@ -466,14 +466,18 @@ TEST_CASE("application actions font dispatch paths update styles without content
 	const int defaultStyle = static_cast<int>(Scintilla::StylesCommon::Default);
 	const int lineNumber = static_cast<int>(Scintilla::StylesCommon::LineNumber);
 
-	// Seed undo history and a caret position so a font change must not clear them.
+	// Seed undo history and a selection so a font change must not clear them.
 	editor.HandleKeyboardInput(
 		Press(Scintilla::Keys::End, Scintilla::KeyMod::Norm));
 	TypeChar(editor, '!', 2);
 	REQUIRE(editor.Text() == "font body!");
 	REQUIRE(editor.Modified());
 	REQUIRE(editor.CanUndoEdit());
-	const std::string selectionBefore = editor.Text();
+	DispatchApplicationAction(ApplicationAction::SelectAll, workspace, editor);
+	REQUIRE(editor.HasSelection());
+	const std::string textBefore = editor.Text();
+	const auto selectionStartBefore = editor.GetSelectionStart();
+	const auto selectionEndBefore = editor.GetSelectionEnd();
 
 	const ApplicationAction fontActions[] = {
 		ApplicationAction::FontMonospace,
@@ -502,15 +506,19 @@ TEST_CASE("application actions font dispatch paths update styles without content
 		CHECK(editor.StyleFontName(0) == families[i]);
 		// Gutter stays monospace regardless of the body face.
 		CHECK(editor.StyleFontName(lineNumber) == "monospace");
-		// Content, dirty flag, and undo history are view-independent.
-		CHECK(editor.Text() == selectionBefore);
+		// Content, selection, dirty flag, and undo history are view-independent.
+		CHECK(editor.Text() == textBefore);
+		CHECK(editor.GetSelectionStart() == selectionStartBefore);
+		CHECK(editor.GetSelectionEnd() == selectionEndBefore);
 		CHECK(editor.Modified());
 		CHECK(editor.CanUndoEdit());
 	}
 
 	// Re-dispatching the current face is a no-op for content state.
 	DispatchApplicationAction(ApplicationAction::FontSystem, workspace, editor);
-	CHECK(editor.Text() == selectionBefore);
+	CHECK(editor.Text() == textBefore);
+	CHECK(editor.GetSelectionStart() == selectionStartBefore);
+	CHECK(editor.GetSelectionEnd() == selectionEndBefore);
 	CHECK(editor.Modified());
 	CHECK(editor.CanUndoEdit());
 
@@ -523,7 +531,9 @@ TEST_CASE("application actions font dispatch paths update styles without content
 	CHECK(editor.StyleFontName(defaultStyle) == "serif");
 	CHECK(editor.StyleFontName(lineNumber) == "monospace");
 	workspace.ActivateTab(first);
-	CHECK(editor.Text() == selectionBefore);
+	CHECK(editor.Text() == textBefore);
+	CHECK(editor.GetSelectionStart() == selectionStartBefore);
+	CHECK(editor.GetSelectionEnd() == selectionEndBefore);
 	CHECK(editor.CurrentEditorFont() == EditorFont::Serif);
 	CHECK(editor.StyleFontName(defaultStyle) == "serif");
 	CHECK(editor.StyleFontName(lineNumber) == "monospace");

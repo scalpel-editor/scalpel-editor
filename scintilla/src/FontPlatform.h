@@ -89,8 +89,10 @@ public:
  * different diagnostics; the application always passes the C string
  * "system-ui" and never a backslash-escaped form.
  *
- * Tests load explicit paths so installed fonts and the user's Fontconfig rules
- * cannot change their results. Cached faces stay alive until this cache is
+ * Deterministic layout and raster tests load explicit paths so installed fonts
+ * and the user's Fontconfig rules cannot change their results. Focused
+ * production-lookup tests exercise the host configuration without naming its
+ * chosen concrete families. Cached faces stay alive until this cache is
  * destroyed; each face also retains the shared FreeType owner needed by its
  * FT_Face. HarfBuzz fonts belong to FontFace and are destroyed before the
  * FT_Face.
