@@ -834,15 +834,30 @@ TEST_CASE("menu bar Edit dropdown reflects enablement flags") {
 	const auto *cut = FindItem(layout, ApplicationAction::Cut);
 	const auto *paste = FindItem(layout, ApplicationAction::Paste);
 	const auto *selectAll = FindItem(layout, ApplicationAction::SelectAll);
+	const auto *toLf = FindItem(layout,
+		ApplicationAction::ConvertLineEndingsToLf);
+	const auto *toCrLf = FindItem(layout,
+		ApplicationAction::ConvertLineEndingsToCrLf);
 	REQUIRE(undo);
 	REQUIRE(cut);
 	REQUIRE(paste);
 	REQUIRE(selectAll);
+	REQUIRE(toLf);
+	REQUIRE(toCrLf);
 	CHECK_FALSE(undo->enabled);
 	CHECK_FALSE(cut->enabled);
 	CHECK(paste->enabled);
 	CHECK(selectAll->enabled);
 	CHECK(selectAll->separatorBefore);
+	CHECK(toLf->enabled);
+	CHECK(toLf->separatorBefore);
+	CHECK(toCrLf->enabled);
+	CHECK_FALSE(toCrLf->separatorBefore);
+	CHECK(toLf->shortcutText.empty());
+	CHECK_FALSE(NonEmpty(toLf->shortcut));
+	CHECK(toLf->label.right > selectAll->label.right);
+	CHECK(toLf->labelText == "Convert Line Endings to LF");
+	CHECK(toCrLf->labelText == "Convert Line Endings to CRLF");
 }
 
 TEST_CASE("menu bar narrow window clamps dropdown into the frame") {

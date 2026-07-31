@@ -42,6 +42,12 @@ constexpr ApplicationActionInfo kActions[] = {
 		Key('V'), Ctrl, false},
 	{ApplicationAction::SelectAll, ApplicationMenu::Edit, "Select All", "Ctrl+A",
 		Key('A'), Ctrl, true},
+	{ApplicationAction::ConvertLineEndingsToLf, ApplicationMenu::Edit,
+		"Convert Line Endings to LF", "", static_cast<Scintilla::Keys>(0),
+		Scintilla::KeyMod::Norm, true},
+	{ApplicationAction::ConvertLineEndingsToCrLf, ApplicationMenu::Edit,
+		"Convert Line Endings to CRLF", "", static_cast<Scintilla::Keys>(0),
+		Scintilla::KeyMod::Norm, false},
 	{ApplicationAction::FontMonospace, ApplicationMenu::Font, "Monospace", "",
 		static_cast<Scintilla::Keys>(0), Scintilla::KeyMod::Norm, false},
 	{ApplicationAction::FontSerif, ApplicationMenu::Font, "Serif", "",
@@ -101,6 +107,8 @@ bool ApplicationActionEnabled(ApplicationAction action,
 	case ApplicationAction::SaveAs:
 	case ApplicationAction::CloseTab:
 	case ApplicationAction::Quit:
+	case ApplicationAction::ConvertLineEndingsToLf:
+	case ApplicationAction::ConvertLineEndingsToCrLf:
 	case ApplicationAction::FontMonospace:
 	case ApplicationAction::FontSerif:
 	case ApplicationAction::FontSans:
@@ -144,6 +152,8 @@ void DispatchApplicationAction(ApplicationAction action,
 	case ApplicationAction::Copy:
 	case ApplicationAction::Paste:
 	case ApplicationAction::SelectAll:
+	case ApplicationAction::ConvertLineEndingsToLf:
+	case ApplicationAction::ConvertLineEndingsToCrLf:
 		if (!ApplicationActionEnabled(action, editor)) {
 			return;
 		}
@@ -186,6 +196,12 @@ void DispatchApplicationAction(ApplicationAction action,
 		break;
 	case ApplicationAction::SelectAll:
 		editor.RequestSelectAll();
+		break;
+	case ApplicationAction::ConvertLineEndingsToLf:
+		editor.ConvertLineEndings(Scintilla::EndOfLine::Lf);
+		break;
+	case ApplicationAction::ConvertLineEndingsToCrLf:
+		editor.ConvertLineEndings(Scintilla::EndOfLine::CrLf);
 		break;
 	case ApplicationAction::FontMonospace:
 		editor.SetEditorFont(EditorFont::Monospace);

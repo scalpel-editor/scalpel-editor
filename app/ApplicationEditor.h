@@ -200,6 +200,8 @@ public:
 	void RequestRedo();
 	void RequestCut();
 	void RequestSelectAll();
+	/** Convert every line ending as one undoable edit; insertion remains LF. */
+	void ConvertLineEndings(Scintilla::EndOfLine lineEnding);
 	void RequestClipboardCopy();
 	void RequestClipboardPaste();
 	void SetClipboardPasteAvailable(bool available) noexcept;

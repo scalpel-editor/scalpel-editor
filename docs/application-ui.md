@@ -77,6 +77,8 @@ Fontconfig resolves the canonical family through the host configuration when the
 
 `DocumentWorkspace` opens and saves document files as raw bytes. A readable file succeeds even when its contents are not valid UTF-8: it becomes a normal clean document, is recorded as a successful recent path, and does not enqueue a file error or warning. Open and save do not validate, replace, transcode, or normalize invalid sequences. Valid UTF-8 and invalid bytes may coexist in one document.
 
+LF is the editor's native line ending: Enter inserts LF, including after a document has been converted to CRLF. Open and Save neither detect nor change line endings, so untouched bytes and any mixed endings remain as they are. The Edit menu provides `Convert Line Endings to LF` and `Convert Line Endings to CRLF` as explicit whole-document edits; either conversion is one undo action and marks the document modified when bytes change.
+
 Saving an unchanged document writes its content bytes exactly. After an edit, bytes outside the edited range remain exact; normal text input continues to insert UTF-8. How invalid bytes behave under caret movement, deletion, and painting is the editor core rule in [scintilla-core.md](scintilla-core.md) (Text and layout contract); the workspace does not reimplement that logic.
 
 Invalid UTF-8 in file contents is separate from path encoding, I/O failures, line-ending policy, external-change conflicts, oversized-file limits, and the clipboard, primary-selection, and IME paths, which reject malformed UTF-8 at those external text-transfer boundaries.

@@ -233,6 +233,8 @@ bool MenuBarModel::IsEnabled(ApplicationAction action) const noexcept {
 	case ApplicationAction::SaveAs:
 	case ApplicationAction::CloseTab:
 	case ApplicationAction::Quit:
+	case ApplicationAction::ConvertLineEndingsToLf:
+	case ApplicationAction::ConvertLineEndingsToCrLf:
 	case ApplicationAction::FontMonospace:
 	case ApplicationAction::FontSerif:
 	case ApplicationAction::FontSans:
@@ -418,11 +420,14 @@ MenuBarLayout LayoutMenuBar(int frameWidth, int frameHeight,
 		}
 		const PRectangle row = PRectangle::FromInts(
 			innerLeft, y, innerRight, rowBottom);
+		const std::string labelText = ItemLabel(model, item);
+		const std::string shortcutText = ItemShortcut(item);
+		const int rowShortcutWidth = shortcutText.empty() ? 0 : shortcutWidth;
 		const int labelLeft = innerLeft + style.menuLabelPadLeft + indicatorWidth;
 		const int labelRight = std::max(
 			labelLeft,
-			innerRight - style.menuShortcutPadRight - shortcutWidth -
-				(shortcutWidth > 0 ? style.menuLabelShortcutGap : 0));
+			innerRight - style.menuShortcutPadRight - rowShortcutWidth -
+				(rowShortcutWidth > 0 ? style.menuLabelShortcutGap : 0));
 		PRectangle indicator = empty;
 		if (indicatorWidth > 0) {
 			indicator = PRectangle::FromInts(
@@ -431,9 +436,9 @@ MenuBarLayout LayoutMenuBar(int frameWidth, int frameHeight,
 		}
 		const PRectangle label = PRectangle::FromInts(
 			labelLeft, y, labelRight, rowBottom);
-		const PRectangle shortcut = shortcutWidth > 0 ?
+		const PRectangle shortcut = rowShortcutWidth > 0 ?
 			PRectangle::FromInts(
-				innerRight - style.menuShortcutPadRight - shortcutWidth, y,
+				innerRight - style.menuShortcutPadRight - rowShortcutWidth, y,
 				innerRight - style.menuShortcutPadRight, rowBottom) :
 			empty;
 		const bool selected = fontMenu &&
@@ -452,8 +457,8 @@ MenuBarLayout LayoutMenuBar(int frameWidth, int frameHeight,
 			indicator,
 			label,
 			shortcut,
-			ItemLabel(model, item),
-			ItemShortcut(item),
+			labelText,
+			shortcutText,
 		});
 		y = rowBottom;
 	}

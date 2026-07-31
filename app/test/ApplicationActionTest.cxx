@@ -76,7 +76,7 @@ void TypeChar(ApplicationEditor &editor, char ch, uint32_t time) {
 }
 
 TEST_CASE("application actions table lists File Edit and Font in menu order") {
-	REQUIRE(Scalpel::ApplicationActionCount() == 16);
+	REQUIRE(Scalpel::ApplicationActionCount() == 18);
 	const ApplicationActionInfo *table = Scalpel::ApplicationActionTable();
 	CHECK(table[0].action == ApplicationAction::NewTab);
 	CHECK(table[0].menu == ApplicationMenu::File);
@@ -84,9 +84,11 @@ TEST_CASE("application actions table lists File Edit and Font in menu order") {
 	CHECK(table[6].action == ApplicationAction::Undo);
 	CHECK(table[6].menu == ApplicationMenu::Edit);
 	CHECK(table[11].action == ApplicationAction::SelectAll);
-	CHECK(table[12].action == ApplicationAction::FontMonospace);
-	CHECK(table[12].menu == ApplicationMenu::Font);
-	CHECK(table[15].action == ApplicationAction::FontSystem);
+	CHECK(table[12].action == ApplicationAction::ConvertLineEndingsToLf);
+	CHECK(table[13].action == ApplicationAction::ConvertLineEndingsToCrLf);
+	CHECK(table[14].action == ApplicationAction::FontMonospace);
+	CHECK(table[14].menu == ApplicationMenu::Font);
+	CHECK(table[17].action == ApplicationAction::FontSystem);
 
 	CHECK(InfoFor(ApplicationAction::Open).label == "Open\u2026");
 	CHECK(InfoFor(ApplicationAction::SaveAs).shortcutLabel == "Ctrl+Shift+S");
@@ -95,6 +97,13 @@ TEST_CASE("application actions table lists File Edit and Font in menu order") {
 	CHECK(InfoFor(ApplicationAction::Quit).separatorBefore);
 	CHECK(InfoFor(ApplicationAction::Cut).separatorBefore);
 	CHECK(InfoFor(ApplicationAction::SelectAll).separatorBefore);
+	CHECK(InfoFor(ApplicationAction::ConvertLineEndingsToLf).separatorBefore);
+	CHECK_FALSE(InfoFor(ApplicationAction::ConvertLineEndingsToCrLf).separatorBefore);
+	CHECK(InfoFor(ApplicationAction::ConvertLineEndingsToLf).label ==
+		"Convert Line Endings to LF");
+	CHECK(InfoFor(ApplicationAction::ConvertLineEndingsToCrLf).label ==
+		"Convert Line Endings to CRLF");
+	CHECK(InfoFor(ApplicationAction::ConvertLineEndingsToLf).shortcutLabel.empty());
 	CHECK_FALSE(InfoFor(ApplicationAction::NewTab).separatorBefore);
 	CHECK_FALSE(InfoFor(ApplicationAction::Undo).separatorBefore);
 	CHECK(InfoFor(ApplicationAction::FontMonospace).label == "Monospace");
@@ -105,6 +114,37 @@ TEST_CASE("application actions table lists File Edit and Font in menu order") {
 	CHECK(InfoFor(ApplicationAction::FontSystem).key ==
 		static_cast<Scintilla::Keys>(0));
 	CHECK_FALSE(InfoFor(ApplicationAction::FontMonospace).separatorBefore);
+}
+
+TEST_CASE("application actions convert line endings explicitly and Enter remains LF") {
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("a\r\nb\rc\n");
+	DocumentWorkspace workspace(editor);
+
+	CHECK(ApplicationActionEnabled(
+		ApplicationAction::ConvertLineEndingsToLf, editor));
+	CHECK(ApplicationActionEnabled(
+		ApplicationAction::ConvertLineEndingsToCrLf, editor));
+	DispatchApplicationAction(
+		ApplicationAction::ConvertLineEndingsToLf, workspace, editor);
+	CHECK(editor.Text() == "a\nb\nc\n");
+	CHECK(editor.Modified());
+	CHECK(editor.CanUndoEdit());
+
+	DispatchApplicationAction(ApplicationAction::Undo, workspace, editor);
+	CHECK(editor.Text() == "a\r\nb\rc\n");
+	CHECK_FALSE(editor.Modified());
+
+	DispatchApplicationAction(
+		ApplicationAction::ConvertLineEndingsToCrLf, workspace, editor);
+	CHECK(editor.Text() == "a\r\nb\r\nc\r\n");
+	CHECK(editor.Modified());
+
+	editor.HandleKeyboardInput(
+		Press(Scintilla::Keys::End, Scintilla::KeyMod::Ctrl));
+	editor.HandleKeyboardInput(
+		Press(Scintilla::Keys::Return, Scintilla::KeyMod::Norm));
+	CHECK(editor.Text() == "a\r\nb\r\nc\r\n\n");
 }
 
 TEST_CASE("application actions match listed shortcuts and ignore releases") {

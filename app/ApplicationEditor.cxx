@@ -822,6 +822,15 @@ void ApplicationEditor::RequestSelectAll() {
 	ExecuteApplicationEdit(Scintilla::Internal::EditorCommand::SelectAll);
 }
 
+void ApplicationEditor::ConvertLineEndings(Scintilla::EndOfLine lineEnding) {
+	if (pdoc->TentativeActive()) {
+		CancelTextInput();
+	}
+	ConvertEOLs(lineEnding);
+	textInputStateDirty = true;
+	textInputChangeCause = ApplicationTextChangeCause::Other;
+}
+
 void ApplicationEditor::RequestClipboardCopy() {
 	ExecuteApplicationEdit(Scintilla::Internal::EditorCommand::Copy);
 }

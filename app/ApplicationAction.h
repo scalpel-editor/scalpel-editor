@@ -33,6 +33,8 @@ enum class ApplicationAction {
 	Copy,
 	Paste,
 	SelectAll,
+	ConvertLineEndingsToLf,
+	ConvertLineEndingsToCrLf,
 	FontMonospace,
 	FontSerif,
 	FontSans,
