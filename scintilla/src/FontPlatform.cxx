@@ -151,13 +151,16 @@ public:
 class FontFace::Impl {
 public:
 	Impl(std::shared_ptr<void> libraryOwner_, FcPattern *pattern_, FT_Face face_, std::filesystem::path path_,
-		std::string requestedFamily_, double size_, FontWeight weight_, bool italic_, FontStretch stretch_) :
+		std::string requestedFamily_, double size_, FontWeight weight_, bool italic_, FontStretch stretch_,
+		double metricsScale_, double strikePpem_, bool usesBitmapStrike_) :
 		libraryOwner(std::move(libraryOwner_)), pattern(pattern_, FcPatternDestroy), face(face_),
 		path(std::move(path_)), requestedFamily(std::move(requestedFamily_)), size(size_), weight(weight_),
-		italic(italic_), stretch(stretch_) {
+		italic(italic_), stretch(stretch_), metricsScale(metricsScale_), strikePpem(strikePpem_),
+		usesBitmapStrike(usesBitmapStrike_) {
 		// Size must be set on the FT_Face before hb_ft_font_create_referenced.
 		hbFont = hb_ft_font_create_referenced(face);
-		hb_ft_font_set_load_flags(hbFont, FT_LOAD_DEFAULT);
+		// Match RasterizeGlyph so advances and colour bitmaps share load flags.
+		hb_ft_font_set_load_flags(hbFont, FT_LOAD_COLOR | FT_LOAD_DEFAULT);
 	}
 
 	~Impl() noexcept {
@@ -183,14 +186,17 @@ public:
 	FontWeight weight;
 	bool italic;
 	FontStretch stretch;
+	double metricsScale = 1.0;
+	double strikePpem = 0.0;
+	bool usesBitmapStrike = false;
 };
 
 FontFace::FontFace(std::shared_ptr<void> libraryOwner, void *pattern, void *face,
 	std::filesystem::path path, std::string requestedFamily, double size, FontWeight weight,
-	bool italic, FontStretch stretch) :
+	bool italic, FontStretch stretch, double metricsScale, double strikePpem, bool usesBitmapStrike) :
 	impl(std::make_unique<Impl>(std::move(libraryOwner), static_cast<FcPattern *>(pattern),
 		static_cast<FT_Face>(face), std::move(path), std::move(requestedFamily), size, weight, italic,
-		stretch)) {
+		stretch, metricsScale, strikePpem, usesBitmapStrike)) {
 }
 
 FontFace::~FontFace() noexcept = default;
@@ -225,10 +231,23 @@ FontStretch FontFace::RequestedStretch() const noexcept {
 
 FontMetrics FontFace::Metrics() const noexcept {
 	const FT_Size_Metrics &metrics = impl->face->size->metrics;
-	const double ascent = metrics.ascender / 64.0;
-	const double descent = -metrics.descender / 64.0;
-	const double height = metrics.height / 64.0;
+	const double scale = impl->metricsScale;
+	const double ascent = (metrics.ascender / 64.0) * scale;
+	const double descent = (-metrics.descender / 64.0) * scale;
+	const double height = (metrics.height / 64.0) * scale;
 	return {ascent, descent, height, std::max(0.0, height - ascent - descent)};
+}
+
+double FontFace::MetricsScale() const noexcept {
+	return impl->metricsScale;
+}
+
+bool FontFace::UsesBitmapStrike() const noexcept {
+	return impl->usesBitmapStrike;
+}
+
+double FontFace::StrikePpem() const noexcept {
+	return impl->strikePpem;
 }
 
 bool FontFace::HasGlyph(char32_t character) const noexcept {
@@ -277,38 +296,74 @@ bool FontFace::ShapesSequence(const char32_t *codePoints, size_t count) const {
 
 GlyphImage FontFace::RasterizeGlyph(uint32_t glyphId) const {
 	GlyphImage image;
-	if (FT_Load_Glyph(impl->face, static_cast<FT_UInt>(glyphId), FT_LOAD_DEFAULT) != 0) {
+	if (FT_Load_Glyph(impl->face, static_cast<FT_UInt>(glyphId),
+			FT_LOAD_COLOR | FT_LOAD_DEFAULT) != 0) {
 		return image;
 	}
-	if (FT_Render_Glyph(impl->face->glyph, FT_RENDER_MODE_NORMAL) != 0) {
-		return image;
+	// CBDT loads may already be bitmaps; outlines still need FT_Render_Glyph.
+	if (impl->face->glyph->format != FT_GLYPH_FORMAT_BITMAP) {
+		if (FT_Render_Glyph(impl->face->glyph, FT_RENDER_MODE_NORMAL) != 0) {
+			return image;
+		}
 	}
 	const FT_Bitmap &bitmap = impl->face->glyph->bitmap;
-	image.left = impl->face->glyph->bitmap_left;
-	image.top = impl->face->glyph->bitmap_top;
 	image.width = static_cast<int>(bitmap.width);
 	image.height = static_cast<int>(bitmap.rows);
+	image.scale = impl->metricsScale;
+	// Bearings are converted to logical units so DrawGlyph can place without
+	// re-reading the face's strike scale.
+	image.left = static_cast<int>(std::lround(impl->face->glyph->bitmap_left * impl->metricsScale));
+	image.top = static_cast<int>(std::lround(impl->face->glyph->bitmap_top * impl->metricsScale));
 	if (image.width <= 0 || image.height <= 0 || !bitmap.buffer) {
 		image.width = 0;
 		image.height = 0;
 		return image;
 	}
-	image.gray.resize(static_cast<size_t>(image.width) * static_cast<size_t>(image.height));
+
 	const int pitch = bitmap.pitch;
-	const uint8_t *src = bitmap.buffer;
-	// FreeType pitch may be negative (bottom-up). Copy into top-down rows.
-	if (pitch >= 0) {
+	const int absPitch = pitch >= 0 ? pitch : -pitch;
+	const auto rowSource = [&](int y) -> const uint8_t * {
+		if (pitch >= 0) {
+			return bitmap.buffer + y * pitch;
+		}
+		return bitmap.buffer + (image.height - 1 - y) * absPitch;
+	};
+
+	if (bitmap.pixel_mode == FT_PIXEL_MODE_GRAY) {
+		image.kind = GlyphImageKind::Gray;
+		image.gray.resize(static_cast<size_t>(image.width) * static_cast<size_t>(image.height));
 		for (int y = 0; y < image.height; y++) {
 			std::memcpy(image.gray.data() + static_cast<size_t>(y) * static_cast<size_t>(image.width),
-				src + y * pitch, static_cast<size_t>(image.width));
+				rowSource(y), static_cast<size_t>(image.width));
 		}
-	} else {
-		const int absPitch = -pitch;
-		for (int y = 0; y < image.height; y++) {
-			std::memcpy(image.gray.data() + static_cast<size_t>(y) * static_cast<size_t>(image.width),
-				src + (image.height - 1 - y) * absPitch, static_cast<size_t>(image.width));
-		}
+		return image;
 	}
+	if (bitmap.pixel_mode == FT_PIXEL_MODE_BGRA) {
+		// FreeType BGRA is premultiplied; convert to premultiplied RGBA for GL.
+		image.kind = GlyphImageKind::Colour;
+		image.rgba.resize(static_cast<size_t>(image.width) * static_cast<size_t>(image.height) * 4u);
+		for (int y = 0; y < image.height; y++) {
+			const uint8_t *src = rowSource(y);
+			uint8_t *dst = image.rgba.data() +
+				static_cast<size_t>(y) * static_cast<size_t>(image.width) * 4u;
+			for (int x = 0; x < image.width; x++) {
+				const uint8_t b = src[x * 4 + 0];
+				const uint8_t g = src[x * 4 + 1];
+				const uint8_t r = src[x * 4 + 2];
+				const uint8_t a = src[x * 4 + 3];
+				dst[x * 4 + 0] = r;
+				dst[x * 4 + 1] = g;
+				dst[x * 4 + 2] = b;
+				dst[x * 4 + 3] = a;
+			}
+		}
+		return image;
+	}
+	// Unsupported pixel mode: leave empty rather than mis-read the buffer.
+	image.width = 0;
+	image.height = 0;
+	image.left = 0;
+	image.top = 0;
 	return image;
 }
 
@@ -343,6 +398,9 @@ public:
 		}
 		const double requestedPixels = std::max(1.0, parameters.size);
 		const FT_F26Dot6 height = static_cast<FT_F26Dot6>(std::lround(requestedPixels * 64.0));
+		double metricsScale = 1.0;
+		double strikePpem = 0.0;
+		bool usesBitmapStrike = false;
 		// Outline faces use the requested pixel size. CBDT/CBLC and other
 		// bitmap-only faces expose fixed strikes; pick the closest y_ppem and
 		// keep parameters.size as the logical request for drawing scale.
@@ -371,11 +429,24 @@ public:
 				}
 				throw std::runtime_error("FreeType could not select bitmap strike: " + path.string());
 			}
+			strikePpem = face->available_sizes[bestStrike].y_ppem / 64.0;
+			if (strikePpem <= 0.0) {
+				strikePpem = static_cast<double>(face->available_sizes[bestStrike].height);
+			}
+			if (strikePpem <= 0.0) {
+				FT_Done_Face(face);
+				if (pattern) {
+					FcPatternDestroy(pattern);
+				}
+				throw std::runtime_error("FreeType bitmap strike has no usable ppem: " + path.string());
+			}
+			metricsScale = requestedPixels / strikePpem;
+			usesBitmapStrike = true;
 		}
 
 		auto selected = std::make_shared<FontFace>(library, pattern, face, path,
 			RequestedFamilyFromParameters(parameters), parameters.size, parameters.weight,
-			parameters.italic, parameters.stretch);
+			parameters.italic, parameters.stretch, metricsScale, strikePpem, usesBitmapStrike);
 		faces.emplace(key, selected);
 		return selected;
 	}

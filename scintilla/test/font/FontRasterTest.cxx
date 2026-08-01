@@ -9,6 +9,8 @@ TEST_CASE("RasterizeGlyph returns coverage for a shaped ASCII glyph") {
 	const GlyphImage image = face->RasterizeGlyph(run.glyphs[0].glyphId);
 	REQUIRE(image.width > 0);
 	REQUIRE(image.height > 0);
+	CHECK(image.kind == GlyphImageKind::Gray);
+	CHECK(image.scale == 1.0);
 	REQUIRE(image.gray.size() == static_cast<size_t>(image.width) * static_cast<size_t>(image.height));
 	const bool hasCoverage = std::any_of(image.gray.begin(), image.gray.end(),
 		[](uint8_t c) { return c > 0; });
@@ -56,6 +58,86 @@ TEST_CASE("RasterizeGlyph covers the shaped snowman fallback glyph") {
 	const bool hasCoverage = std::any_of(image.gray.begin(), image.gray.end(),
 		[](uint8_t c) { return c > 0; });
 	CHECK(hasCoverage);
+}
+
+TEST_CASE("color emoji face selects the fixed strike and scales metrics") {
+	FontCache cache;
+	const auto emoji = cache.LoadPath(emojiPath, FontParameters("fixture-emoji", 16.0));
+	REQUIRE(emoji->UsesBitmapStrike());
+	CHECK(emoji->StrikePpem() > 0.0);
+	CHECK(emoji->RequestedSize() == 16.0);
+	const double expectedScale = 16.0 / emoji->StrikePpem();
+	CHECK(std::abs(emoji->MetricsScale() - expectedScale) < 1e-9);
+	const FontMetrics metrics = emoji->Metrics();
+	CHECK(metrics.height > 0.0);
+	// Logical height is far smaller than the raw 109ppem strike height.
+	CHECK(metrics.height < emoji->StrikePpem());
+}
+
+TEST_CASE("color emoji RasterizeGlyph returns premultiplied RGBA") {
+	FontCache cache;
+	const auto emoji = cache.LoadPath(emojiPath, FontParameters("fixture-emoji", 16.0));
+	const std::string grinning = "\xF0\x9F\x98\x80";
+	const ShapedRun run = ShapeText(grinning, emoji);
+	REQUIRE_FALSE(run.glyphs.empty());
+
+	const GlyphImage image = emoji->RasterizeGlyph(run.glyphs[0].glyphId);
+	REQUIRE(image.kind == GlyphImageKind::Colour);
+	REQUIRE(image.width > 0);
+	REQUIRE(image.height > 0);
+	REQUIRE(image.rgba.size() ==
+		static_cast<size_t>(image.width) * static_cast<size_t>(image.height) * 4u);
+	CHECK(image.gray.empty());
+	CHECK(std::abs(image.scale - emoji->MetricsScale()) < 1e-9);
+	// Bearings are logical (scaled); pixel buffer stays at strike resolution.
+	CHECK(image.width > static_cast<int>(std::lround(16.0)));
+
+	bool sawOpaqueColour = false;
+	bool channelsPremultiplied = true;
+	for (size_t i = 0; i + 3 < image.rgba.size(); i += 4) {
+		const uint8_t r = image.rgba[i];
+		const uint8_t g = image.rgba[i + 1];
+		const uint8_t b = image.rgba[i + 2];
+		const uint8_t a = image.rgba[i + 3];
+		if (a > 0 && (r > 0 || g > 0 || b > 0)) {
+			sawOpaqueColour = true;
+		}
+		// Premultiplied: each colour channel must be <= alpha.
+		if (r > a || g > a || b > a) {
+			channelsPremultiplied = false;
+			break;
+		}
+	}
+	CHECK(sawOpaqueColour);
+	CHECK(channelsPremultiplied);
+}
+
+TEST_CASE("color emoji RasterizeGlyph is stable for the same glyph id") {
+	FontCache cache;
+	const auto emoji = cache.LoadPath(emojiPath, FontParameters("fixture-emoji", 16.0));
+	const ShapedRun run = ShapeText("\xF0\x9F\x98\x80", emoji);
+	REQUIRE_FALSE(run.glyphs.empty());
+	const uint32_t glyphId = run.glyphs[0].glyphId;
+	const GlyphImage first = emoji->RasterizeGlyph(glyphId);
+	const GlyphImage second = emoji->RasterizeGlyph(glyphId);
+	CHECK(first.kind == second.kind);
+	CHECK(first.width == second.width);
+	CHECK(first.height == second.height);
+	CHECK(first.left == second.left);
+	CHECK(first.top == second.top);
+	CHECK(first.scale == second.scale);
+	CHECK(first.rgba == second.rgba);
+}
+
+TEST_CASE("color emoji shaped advance matches requested size scale") {
+	FontCache cache;
+	const auto emoji = cache.LoadPath(emojiPath, FontParameters("fixture-emoji", 16.0));
+	const ShapedRun run = ShapeText("\xF0\x9F\x98\x80", emoji);
+	REQUIRE_FALSE(run.glyphs.empty());
+	// Strike is ~109ppem; logical advance at 16px is well below the raw bitmap width.
+	CHECK(run.Width() > 0.0);
+	CHECK(run.Width() < emoji->StrikePpem());
+	CHECK(run.glyphs[0].xAdvance == run.Width());
 }
 
 TEST_CASE("ShapeText keeps multi-byte clusters and caret stops") {

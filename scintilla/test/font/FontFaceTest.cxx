@@ -216,7 +216,8 @@ TEST_CASE("HarfBuzz font uses the rasterizer load flags") {
 	hb_font_t *hbFont = static_cast<hb_font_t *>(face->HarfBuzzFont());
 
 	REQUIRE(hbFont != nullptr);
-	CHECK(hb_ft_font_get_load_flags(hbFont) == FT_LOAD_DEFAULT);
+	CHECK(hb_ft_font_get_load_flags(hbFont) == (FT_LOAD_COLOR | FT_LOAD_DEFAULT));
+	CHECK(hb_ft_font_get_load_flags(hbFont) & FT_LOAD_COLOR);
 	CHECK_FALSE(hb_ft_font_get_load_flags(hbFont) & FT_LOAD_NO_HINTING);
 }
 

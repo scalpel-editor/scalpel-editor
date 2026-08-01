@@ -1060,20 +1060,33 @@ const Renderer::CachedGlyph &Renderer::GetOrCreateGlyph(
 	cached.top = image.top;
 	cached.width = image.width;
 	cached.height = image.height;
-	if (image.width > 0 && image.height > 0 && !image.gray.empty()) {
-		// White RGB + coverage alpha (straight). DrawGlyph multiplies by fore.
-		std::vector<uint8_t> rgba(static_cast<size_t>(image.width) * static_cast<size_t>(image.height) * 4u);
-		for (size_t i = 0; i < image.gray.size(); i++) {
-			rgba[i * 4u + 0u] = 255;
-			rgba[i * 4u + 1u] = 255;
-			rgba[i * 4u + 2u] = 255;
-			rgba[i * 4u + 3u] = image.gray[i];
+	cached.scale = image.scale > 0.0 ? image.scale : 1.0;
+	cached.colour = image.kind == GlyphImageKind::Colour;
+	const bool hasGray = image.kind == GlyphImageKind::Gray && !image.gray.empty();
+	const bool hasColour = image.kind == GlyphImageKind::Colour && !image.rgba.empty();
+	if (image.width > 0 && image.height > 0 && (hasGray || hasColour)) {
+		std::vector<uint8_t> rgba;
+		if (hasGray) {
+			// White RGB + coverage alpha (straight). DrawGlyph multiplies by fore.
+			rgba.resize(static_cast<size_t>(image.width) * static_cast<size_t>(image.height) * 4u);
+			for (size_t i = 0; i < image.gray.size(); i++) {
+				rgba[i * 4u + 0u] = 255;
+				rgba[i * 4u + 1u] = 255;
+				rgba[i * 4u + 2u] = 255;
+				rgba[i * 4u + 3u] = image.gray[i];
+			}
+		} else {
+			// Already premultiplied RGBA from FreeType BGRA conversion.
+			rgba = image.rgba;
 		}
 		GLuint tex = 0;
 		glGenTextures(1, &tex);
 		glBindTexture(GL_TEXTURE_2D, tex);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		// Colour bitmap strikes are often downscaled; linear filter reduces blockiness.
+		// Ordinary gray glyphs keep nearest so existing pixel tests stay stable.
+		const GLint filter = hasColour ? GL_LINEAR : GL_NEAREST;
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -1100,14 +1113,22 @@ void Renderer::DrawGlyph(XYPOSITION penX, XYPOSITION penY,
 	if (glyph.texture == 0 || glyph.width <= 0 || glyph.height <= 0) {
 		return;
 	}
+	const float scale = static_cast<float>(glyph.scale > 0.0 ? glyph.scale : 1.0);
 	const float x0 = static_cast<float>(penX) + static_cast<float>(glyph.left);
 	const float y0 = static_cast<float>(penY) - static_cast<float>(glyph.top);
-	const float x1 = x0 + static_cast<float>(glyph.width);
-	const float y1 = y0 + static_cast<float>(glyph.height);
+	const float x1 = x0 + static_cast<float>(glyph.width) * scale;
+	const float y1 = y0 + static_cast<float>(glyph.height) * scale;
 	glEnable(GL_BLEND);
-	// Same top-down upload convention as DrawRGBAImage (no flipV).
-	DrawTexturedQuad(x0, y0, x1, y1, 0.0f, 0.0f, 1.0f, 1.0f, glyph.texture,
-		false, true, fore);
+	if (glyph.colour) {
+		// Premultiplied colour RGB; apply only overall text alpha.
+		const ColourRGBA modulate(255, 255, 255, fore.GetAlpha());
+		DrawTexturedQuad(x0, y0, x1, y1, 0.0f, 0.0f, 1.0f, 1.0f, glyph.texture,
+			false, false, modulate);
+	} else {
+		// Same top-down upload convention as DrawRGBAImage (no flipV).
+		DrawTexturedQuad(x0, y0, x1, y1, 0.0f, 0.0f, 1.0f, 1.0f, glyph.texture,
+			false, true, fore);
+	}
 	glDisable(GL_BLEND);
 }
 

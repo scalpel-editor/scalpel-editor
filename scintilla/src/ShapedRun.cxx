@@ -135,14 +135,16 @@ void ShapeSpan(
 	const hb_glyph_info_t *infos = hb_buffer_get_glyph_infos(buffer, nullptr);
 	const hb_glyph_position_t *positions = hb_buffer_get_glyph_positions(buffer, nullptr);
 
+	// Bitmap strikes shape at strike ppem; scale into the requested logical size.
+	const XYPOSITION metricsScale = static_cast<XYPOSITION>(face->MetricsScale());
 	outGlyphs.reserve(outGlyphs.size() + glyphCount);
 	for (unsigned int g = 0; g < glyphCount; g++) {
 		ShapedGlyph glyph;
 		glyph.glyphId = infos[g].codepoint;
-		glyph.xAdvance = FromHarfBuzz(positions[g].x_advance);
-		glyph.yAdvance = FromHarfBuzz(positions[g].y_advance);
-		glyph.xOffset = FromHarfBuzz(positions[g].x_offset);
-		glyph.yOffset = FromHarfBuzz(positions[g].y_offset);
+		glyph.xAdvance = FromHarfBuzz(positions[g].x_advance) * metricsScale;
+		glyph.yAdvance = FromHarfBuzz(positions[g].y_advance) * metricsScale;
+		glyph.xOffset = FromHarfBuzz(positions[g].x_offset) * metricsScale;
+		glyph.yOffset = FromHarfBuzz(positions[g].y_offset) * metricsScale;
 		// Supported multi-code-point emoji units expose one caret stop even when
 		// the font emits several glyphs with distinct HarfBuzz clusters.
 		glyph.cluster = collapseClustersToUnit ? unitByteBegin : infos[g].cluster;

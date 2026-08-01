@@ -21,20 +21,33 @@ struct FontMetrics {
 	double internalLeading = 0.0;
 };
 
+/** Pixel layout produced by FontFace::RasterizeGlyph. */
+enum class GlyphImageKind {
+	Empty = 0,
+	/** 8-bit coverage mask; renderer tints with the text foreground. */
+	Gray = 1,
+	/** Premultiplied RGBA; renderer draws colour without RGB tint. */
+	Colour = 2,
+};
+
 /**
- * FreeType-rasterized glyph coverage (FT_RENDER_MODE_NORMAL).
+ * FreeType-rasterized glyph image for the renderer glyph cache.
  *
- * gray is 8-bit coverage, row-major, top-down. left/top are FreeType bearings:
- * left is the horizontal distance from the pen origin to the left of the
- * bitmap; top is the vertical distance from the baseline up to the top of the
- * bitmap (positive above the baseline). Empty width/height means no ink.
+ * width/height are the pixel buffer size. left/top are logical bearings after
+ * any bitmap-strike scale (pen origin to left/top of the drawn image). scale
+ * maps pixel size to logical draw size (1 for outline faces; requested/strike
+ * for CBDT/CBLC faces). gray is row-major top-down coverage when kind is Gray.
+ * rgba is row-major top-down premultiplied RGBA when kind is Colour.
  */
 struct GlyphImage {
+	GlyphImageKind kind = GlyphImageKind::Empty;
 	int width = 0;
 	int height = 0;
 	int left = 0;
 	int top = 0;
+	double scale = 1.0;
 	std::vector<uint8_t> gray;
+	std::vector<uint8_t> rgba;
 };
 
 class FontFace {
@@ -44,7 +57,8 @@ class FontFace {
 public:
 	FontFace(std::shared_ptr<void> libraryOwner, void *pattern, void *face,
 		std::filesystem::path path, std::string requestedFamily, double size,
-		FontWeight weight, bool italic, FontStretch stretch);
+		FontWeight weight, bool italic, FontStretch stretch,
+		double metricsScale = 1.0, double strikePpem = 0.0, bool usesBitmapStrike = false);
 	~FontFace() noexcept;
 
 	FontFace(const FontFace &) = delete;
@@ -60,7 +74,20 @@ public:
 	FontWeight RequestedWeight() const noexcept;
 	bool RequestedItalic() const noexcept;
 	FontStretch RequestedStretch() const noexcept;
+	/**
+	 * Logical metrics at the requested size. For fixed bitmap strikes this is
+	 * the strike metrics multiplied by MetricsScale().
+	 */
 	FontMetrics Metrics() const noexcept;
+	/**
+	 * requestedSize / strike ppem for bitmap-only faces; 1 for scalable faces.
+	 * Shaping advances and glyph bearings are expressed in logical units.
+	 */
+	double MetricsScale() const noexcept;
+	/** True when FreeType selected a fixed bitmap strike instead of scaling. */
+	bool UsesBitmapStrike() const noexcept;
+	/** Selected strike y_ppem, or 0 when the face is scalable. */
+	double StrikePpem() const noexcept;
 	bool HasGlyph(char32_t character) const noexcept;
 
 	/**
@@ -73,18 +100,19 @@ public:
 	/**
 	 * Rasterize one glyph by FreeType glyph index (not a character code).
 	 *
-	 * Uses FT_LOAD_DEFAULT and FT_RENDER_MODE_NORMAL (no LCD subpixel). Missing
-	 * or unloadable glyphs return an empty image. Callers that share this face
-	 * with HarfBuzz must not change FT_Face size after construction; load and
-	 * render only replace the slot.
+	 * Loads with FT_LOAD_COLOR | FT_LOAD_DEFAULT so CBDT/CBLC colour bitmaps
+	 * stay BGRA and ordinary outlines still rasterize to gray coverage. Missing
+	 * or unloadable glyphs return an empty image. Unsupported pixel modes are
+	 * rejected without reading them as gray. Callers that share this face with
+	 * HarfBuzz must not change FT_Face size after construction.
 	 */
 	GlyphImage RasterizeGlyph(uint32_t glyphId) const;
 
 	/**
 	 * HarfBuzz font for this face. Owned by FontFace and destroyed before the
 	 * FreeType face. Typed as void* so this header does not include HarfBuzz.
-	 * Callers cast to hb_font_t *. Shaping and RasterizeGlyph both use
-	 * FT_LOAD_DEFAULT so advances and bitmap shapes share hinted metrics.
+	 * Callers cast to hb_font_t *. Load flags match RasterizeGlyph
+	 * (FT_LOAD_COLOR | FT_LOAD_DEFAULT).
 	 */
 	void *HarfBuzzFont() const noexcept;
 };

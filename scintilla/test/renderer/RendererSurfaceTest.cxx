@@ -243,3 +243,96 @@ TEST_CASE("DrawText fallback span paints primary and snowman faces") {
 	const ShapedRun run = ShapeText(text, primary, {snowman});
 	CHECK(surface->WidthText(font.get(), text) == run.Width());
 }
+
+TEST_CASE("color emoji DrawText paints non-monochrome pixels without RGB tint") {
+	FontCache fonts;
+	const std::filesystem::path emojiPath =
+		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "EmojiFixture.ttf";
+	std::shared_ptr<FontFace> emoji = fonts.LoadPath(emojiPath, FontParameters("fixture-emoji", 16.0));
+	std::shared_ptr<Font> font = FontFromFace(emoji);
+
+	GlContext context;
+	Renderer renderer(context);
+	// Tall enough for baseline + downscaled colour glyph.
+	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(renderer, 64, 48);
+	const ColourRGBA bg(0, 0, 0, 255);
+	// Magenta foreground: colour emoji must not become magenta-tinted.
+	const ColourRGBA fg(255, 0, 255, 255);
+	surface->BindDrawTarget();
+	renderer.Clear(bg);
+
+	const std::string grinning = "\xF0\x9F\x98\x80";
+	const XYPOSITION ybase = surface->Ascent(font.get());
+	surface->DrawTextTransparent(PRectangle::FromInts(2, 0, 64, 48), font.get(), ybase,
+		grinning, fg);
+	REQUIRE(HasNonBackgroundInk(surface->Buffer(), bg));
+
+	bool sawNonMagenta = false;
+	bool sawTransparency = false;
+	for (int y = 0; y < surface->Buffer().Height(); y++) {
+		for (int x = 0; x < surface->Buffer().Width(); x++) {
+			const ColourRGBA px = surface->Buffer().ReadPixel(x, y);
+			if (ExactColour(px, bg)) {
+				continue;
+			}
+			// Blended on black: any non-zero G or unequal R/B shows colour, not magenta mask.
+			if (px.GetGreen() > 8 || std::abs(static_cast<int>(px.GetRed()) -
+					static_cast<int>(px.GetBlue())) > 8) {
+				sawNonMagenta = true;
+			}
+			if (px.GetAlpha() > 0 && px.GetAlpha() < 255) {
+				sawTransparency = true;
+			}
+		}
+	}
+	CHECK(sawNonMagenta);
+
+	const ShapedRun run = ShapeText(grinning, emoji);
+	CHECK(surface->WidthText(font.get(), grinning) == run.Width());
+	CHECK(run.Width() > 0.0);
+	// Logical ink width stays near the scaled advance, not the 136px strike.
+	const InkBounds ink = FindInkBounds(surface->Buffer(), bg);
+	REQUIRE_FALSE(ink.Empty());
+	CHECK(ink.right - ink.left < 40);
+	CHECK(ink.bottom - ink.top < 40);
+	(void)sawTransparency;
+
+	// Cache reuses the same face+glyph entry.
+	const size_t cacheBefore = renderer.GlyphCacheSize();
+	surface->DrawTextTransparent(PRectangle::FromInts(2, 0, 64, 48), font.get(), ybase,
+		grinning, fg);
+	CHECK(renderer.GlyphCacheSize() == cacheBefore);
+}
+
+TEST_CASE("color emoji DrawText respects clip and overall text alpha") {
+	FontCache fonts;
+	const std::filesystem::path emojiPath =
+		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "EmojiFixture.ttf";
+	std::shared_ptr<FontFace> emoji = fonts.LoadPath(emojiPath, FontParameters("fixture-emoji", 16.0));
+	std::shared_ptr<Font> font = FontFromFace(emoji);
+
+	GlContext context;
+	Renderer renderer(context);
+	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(renderer, 48, 48);
+	const ColourRGBA bg(32, 32, 32, 255);
+	surface->BindDrawTarget();
+	renderer.Clear(bg);
+
+	const std::string grinning = "\xF0\x9F\x98\x80";
+	const XYPOSITION ybase = surface->Ascent(font.get());
+	// Clip to a thin left strip so most of the glyph is discarded.
+	surface->SetClip(PRectangle::FromInts(0, 0, 4, 48));
+	surface->DrawTextTransparent(PRectangle::FromInts(0, 0, 48, 48), font.get(), ybase,
+		grinning, ColourRGBA(255, 255, 255, 255));
+	surface->PopClip();
+
+	const InkBounds clipped = FindInkBounds(surface->Buffer(), bg);
+	if (!clipped.Empty()) {
+		CHECK(clipped.right <= 4);
+	}
+
+	renderer.Clear(bg);
+	surface->DrawTextTransparent(PRectangle::FromInts(2, 0, 48, 48), font.get(), ybase,
+		grinning, ColourRGBA(255, 255, 255, 128));
+	REQUIRE(HasNonBackgroundInk(surface->Buffer(), bg));
+}

@@ -254,6 +254,10 @@ private:
 		int height = 0;
 		int left = 0;
 		int top = 0;
+		/** Logical size = pixel size * scale (bitmap strikes downscale). */
+		double scale = 1.0;
+		/** True for premultiplied colour glyphs; false for gray coverage masks. */
+		bool colour = false;
 	};
 
 	void DestroyGl() noexcept;
