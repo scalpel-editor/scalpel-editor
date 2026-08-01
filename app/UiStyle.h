@@ -77,6 +77,25 @@ struct UiStyle {
 	const int tabLabelPadRight = 4;
 	const int tabDefaultScrollStep = 40;
 
+	// Find bar (third permanent chrome band below the tab strip).
+	const Scintilla::Internal::ColourRGBA findBarFill{0xec, 0xec, 0xec, 0xff};
+	const Scintilla::Internal::ColourRGBA findFieldFill{0xff, 0xff, 0xff, 0xff};
+	const Scintilla::Internal::ColourRGBA findFieldBorder{0xb0, 0xb0, 0xb0, 0xff};
+	const Scintilla::Internal::ColourRGBA findSelectionFill{0xc0, 0xd8, 0xf0, 0xff};
+	const Scintilla::Internal::ColourRGBA findCaretInk{0x20, 0x20, 0x20, 0xff};
+	const Scintilla::Internal::ColourRGBA findButtonFill{0xe0, 0xe0, 0xe0, 0xff};
+	const Scintilla::Internal::ColourRGBA findButtonPressedFill{0xd0, 0xd0, 0xd0, 0xff};
+	const int findBarHeight = 28;
+	const int findBarPadX = 8;
+	const int findBarPadY = 4;
+	const int findFieldMinWidth = 64;
+	const int findFieldPadX = 6;
+	const int findStatusMinWidth = 72;
+	const int findStatusPadX = 8;
+	const int findButtonWidth = 56;
+	const int findCloseWidth = 28;
+	const int findButtonGap = 6;
+
 	// Scrollbars.
 	const Scintilla::Internal::ColourRGBA scrollTrackFill{0xff, 0xff, 0xff, 0xff};
 	const Scintilla::Internal::ColourRGBA scrollThumbFill{0xc8, 0xc8, 0xc8, 0xff};

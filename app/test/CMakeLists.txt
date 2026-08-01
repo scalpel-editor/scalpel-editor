@@ -128,6 +128,19 @@ target_compile_options(tabStripTest PRIVATE -Wall -Wextra)
 
 add_test(NAME tab-strip COMMAND tabStripTest)
 
+add_executable(findBarTest
+  FindBarTest.cxx
+  ApplicationTestMain.cxx
+)
+target_include_directories(findBarTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(findBarTest PRIVATE scalpel_application)
+target_compile_options(findBarTest PRIVATE -Wall -Wextra)
+
+add_test(NAME find-bar COMMAND findBarTest)
+
 add_executable(menuBarTest
   MenuBarTest.cxx
   ApplicationTestMain.cxx
