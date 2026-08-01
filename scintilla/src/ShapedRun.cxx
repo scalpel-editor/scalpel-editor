@@ -12,6 +12,7 @@
 
 #include <hb.h>
 
+#include "EmojiSequence.h"
 #include "FontPlatform.h"
 #include "Geometry.h"
 #include "ShapedRun.h"
@@ -93,6 +94,8 @@ const hb_feature_t *LigatureFeatures(unsigned int &count) noexcept {
 void ShapeSpan(
 	const std::vector<InputCharacter> &spanCharacters,
 	const std::shared_ptr<FontFace> &face,
+	size_t unitByteBegin,
+	bool collapseClustersToUnit,
 	std::vector<ShapedGlyph> &outGlyphs) {
 	if (!face || spanCharacters.empty()) {
 		return;
@@ -108,16 +111,20 @@ void ShapeSpan(
 	}
 	// hb_buffer_add requires UNICODE content type; it does not set it itself.
 	hb_buffer_set_content_type(buffer, HB_BUFFER_CONTENT_TYPE_UNICODE);
-	// The editor currently supports English shaping only.
 	hb_buffer_set_direction(buffer, HB_DIRECTION_LTR);
-	hb_buffer_set_script(buffer, HB_SCRIPT_LATIN);
-	hb_buffer_set_language(buffer, hb_language_from_string("en", -1));
 	hb_buffer_set_cluster_level(buffer, HB_BUFFER_CLUSTER_LEVEL_MONOTONE_CHARACTERS);
 
 	for (const InputCharacter &ch : spanCharacters) {
 		// cluster is the original byte offset so fallback splits keep one address space.
 		hb_buffer_add(buffer, static_cast<hb_codepoint_t>(ch.codePoint),
 			static_cast<unsigned int>(ch.byteOffset));
+	}
+	// Script from the buffer contents; direction stays LTR for editor lines.
+	hb_buffer_guess_segment_properties(buffer);
+	hb_buffer_set_direction(buffer, HB_DIRECTION_LTR);
+	// English language remains the editor default when HarfBuzz leaves it unset.
+	if (hb_buffer_get_language(buffer) == HB_LANGUAGE_INVALID) {
+		hb_buffer_set_language(buffer, hb_language_from_string("en", -1));
 	}
 
 	unsigned int featureCount = 0;
@@ -136,7 +143,9 @@ void ShapeSpan(
 		glyph.yAdvance = FromHarfBuzz(positions[g].y_advance);
 		glyph.xOffset = FromHarfBuzz(positions[g].x_offset);
 		glyph.yOffset = FromHarfBuzz(positions[g].y_offset);
-		glyph.cluster = infos[g].cluster;
+		// Supported multi-code-point emoji units expose one caret stop even when
+		// the font emits several glyphs with distinct HarfBuzz clusters.
+		glyph.cluster = collapseClustersToUnit ? unitByteBegin : infos[g].cluster;
 		glyph.face = face;
 		outGlyphs.push_back(glyph);
 	}
@@ -145,7 +154,11 @@ void ShapeSpan(
 }
 
 // Map glyph advances onto per-byte end positions and caret stops.
-void FinishRun(ShapedRun &run, const std::vector<InputCharacter> &characters) {
+// units list character-index ranges that form caret-atomic segments.
+void FinishRun(
+	ShapedRun &run,
+	const std::vector<InputCharacter> &characters,
+	const std::vector<EmojiUnit> &units) {
 	run.byteEndPositions.assign(run.text.size(), 0.0);
 	run.caretStops = {0};
 
@@ -153,24 +166,37 @@ void FinishRun(ShapedRun &run, const std::vector<InputCharacter> &characters) {
 		return;
 	}
 
-	// Total advance per input cluster (byte offset of character start).
-	std::unordered_map<size_t, XYPOSITION> advanceByCluster;
+	// Total advance per unit (sum of glyphs whose cluster falls in the unit).
+	std::vector<XYPOSITION> advanceByUnit(units.size(), 0.0);
 	for (const ShapedGlyph &glyph : run.glyphs) {
-		advanceByCluster[glyph.cluster] += glyph.xAdvance;
-		if (glyph.cluster != 0 && glyph.cluster < run.text.size()) {
-			run.caretStops.push_back(glyph.cluster);
+		for (size_t u = 0; u < units.size(); u++) {
+			const InputCharacter &first = characters[units[u].charBegin];
+			const InputCharacter &last = characters[units[u].charEnd - 1];
+			const size_t unitBegin = first.byteOffset;
+			const size_t unitEnd = last.byteOffset + last.byteLength;
+			if (glyph.cluster >= unitBegin && glyph.cluster < unitEnd) {
+				advanceByUnit[u] += glyph.xAdvance;
+				break;
+			}
+		}
+	}
+
+	XYPOSITION cumulative = 0.0;
+	for (size_t u = 0; u < units.size(); u++) {
+		cumulative += advanceByUnit[u];
+		const InputCharacter &first = characters[units[u].charBegin];
+		const InputCharacter &last = characters[units[u].charEnd - 1];
+		const size_t unitBegin = first.byteOffset;
+		const size_t unitEnd = last.byteOffset + last.byteLength;
+		for (size_t b = unitBegin; b < unitEnd; b++) {
+			run.byteEndPositions[b] = cumulative;
+		}
+		if (unitBegin != 0) {
+			run.caretStops.push_back(unitBegin);
 		}
 	}
 	std::sort(run.caretStops.begin(), run.caretStops.end());
 	run.caretStops.erase(std::unique(run.caretStops.begin(), run.caretStops.end()), run.caretStops.end());
-
-	XYPOSITION cumulative = 0.0;
-	for (const InputCharacter &ch : characters) {
-		cumulative += advanceByCluster[ch.byteOffset];
-		for (size_t b = 0; b < ch.byteLength; b++) {
-			run.byteEndPositions[ch.byteOffset + b] = cumulative;
-		}
-	}
 	if (run.caretStops.back() != run.text.size()) {
 		run.caretStops.push_back(run.text.size());
 	}
@@ -195,29 +221,53 @@ ShapedRun ShapeText(
 	}
 
 	const std::vector<InputCharacter> characters = SplitCharacters(text);
+	std::vector<char32_t> codePoints;
+	codePoints.reserve(characters.size());
+	for (const InputCharacter &ch : characters) {
+		codePoints.push_back(ch.codePoint);
+	}
+	const std::vector<EmojiUnit> units = SegmentEmojiUnits(codePoints.data(), codePoints.size());
 
-	// Group consecutive characters that share a face into spans for shaping.
-	size_t spanStart = 0;
-	while (spanStart < characters.size()) {
-		const std::shared_ptr<FontFace> spanFace =
-			fallback.Select(primary, characters[spanStart].codePoint);
-		size_t spanEnd = spanStart + 1;
-		while (spanEnd < characters.size()) {
-			const std::shared_ptr<FontFace> nextFace =
-				fallback.Select(primary, characters[spanEnd].codePoint);
-			if (nextFace != spanFace) {
-				break;
+	// Group consecutive units that share a face into shaping spans so ordinary
+	// Latin runs still shape together, while emoji units stay unsplit.
+	size_t unitIndex = 0;
+	while (unitIndex < units.size()) {
+		const EmojiUnit &unit = units[unitIndex];
+		const size_t unitLen = unit.charEnd - unit.charBegin;
+		std::vector<char32_t> unitPoints(
+			codePoints.begin() + static_cast<std::ptrdiff_t>(unit.charBegin),
+			codePoints.begin() + static_cast<std::ptrdiff_t>(unit.charEnd));
+		const std::shared_ptr<FontFace> unitFace =
+			fallback.Select(primary, unitPoints.data(), unitPoints.size());
+
+		// Extend the span with following single-character units on the same face
+		// so "AB" still shapes as one HarfBuzz run. Multi-code-point emoji units
+		// always shape alone so their sequence is not merged with neighbours.
+		size_t spanUnitEnd = unitIndex + 1;
+		if (unitLen == 1) {
+			while (spanUnitEnd < units.size()) {
+				const EmojiUnit &next = units[spanUnitEnd];
+				if (next.charEnd - next.charBegin != 1) {
+					break;
+				}
+				const char32_t nextCp = codePoints[next.charBegin];
+				if (fallback.Select(primary, &nextCp, 1) != unitFace) {
+					break;
+				}
+				spanUnitEnd++;
 			}
-			spanEnd++;
 		}
+
 		std::vector<InputCharacter> span(
-			characters.begin() + static_cast<std::ptrdiff_t>(spanStart),
-			characters.begin() + static_cast<std::ptrdiff_t>(spanEnd));
-		ShapeSpan(span, spanFace, run.glyphs);
-		spanStart = spanEnd;
+			characters.begin() + static_cast<std::ptrdiff_t>(unit.charBegin),
+			characters.begin() + static_cast<std::ptrdiff_t>(units[spanUnitEnd - 1].charEnd));
+		const bool multiCodePointEmoji = unitLen > 1 && spanUnitEnd == unitIndex + 1;
+		ShapeSpan(span, unitFace, characters[unit.charBegin].byteOffset,
+			multiCodePointEmoji, run.glyphs);
+		unitIndex = spanUnitEnd;
 	}
 
-	FinishRun(run, characters);
+	FinishRun(run, characters, units);
 	return run;
 }
 

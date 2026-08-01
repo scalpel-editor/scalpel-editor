@@ -64,6 +64,13 @@ public:
 	bool HasGlyph(char32_t character) const noexcept;
 
 	/**
+	 * True when shaping the complete sequence yields at least one non-.notdef
+	 * glyph and no positive-advance .notdef. Default-ignorable joiners and
+	 * selectors may map to zero-advance placeholders. Empty sequences are false.
+	 */
+	bool ShapesSequence(const char32_t *codePoints, size_t count) const;
+
+	/**
 	 * Rasterize one glyph by FreeType glyph index (not a character code).
 	 *
 	 * Uses FT_LOAD_DEFAULT and FT_RENDER_MODE_NORMAL (no LCD subpixel). Missing
@@ -131,6 +138,15 @@ public:
 	 */
 	std::shared_ptr<FontFace> ResolveFallback(const FontFace &primary, char32_t character);
 	std::shared_ptr<FontFace> ResolveFallback(const FontParameters &parameters, char32_t character);
+	/**
+	 * Resolve a face that shapes the complete sequence (ordered Fontconfig
+	 * candidates, FreeType coverage of non-ignorable code points, then
+	 * ShapesSequence). Empty when nothing covers the request.
+	 */
+	std::shared_ptr<FontFace> ResolveFallback(
+		const FontFace &primary, const char32_t *codePoints, size_t count);
+	std::shared_ptr<FontFace> ResolveFallback(
+		const FontParameters &parameters, const char32_t *codePoints, size_t count);
 	std::shared_ptr<FontFace> LoadPath(const std::filesystem::path &path, const FontParameters &parameters);
 	std::vector<std::shared_ptr<FontFace>> LoadPaths(
 		const std::vector<std::filesystem::path> &paths, const FontParameters &parameters);
@@ -172,6 +188,14 @@ public:
 	std::shared_ptr<FontFace> Select(
 		const std::shared_ptr<FontFace> &primary,
 		char32_t character) const;
+
+	/**
+	 * Select one face for a whole supported sequence (or a single code point).
+	 * Acceptance uses ShapesSequence so ligating emoji forms stay unsplit.
+	 */
+	std::shared_ptr<FontFace> Select(
+		const std::shared_ptr<FontFace> &primary,
+		const char32_t *codePoints, size_t count) const;
 
 	[[nodiscard]] bool Empty() const noexcept;
 	[[nodiscard]] bool UsesProductionResolver() const noexcept;

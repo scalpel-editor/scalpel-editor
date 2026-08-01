@@ -118,12 +118,14 @@ XYPOSITION WidthTextShaped(
  * Shape UTF-8 text as left-to-right English.
  *
  * Walks the input by UTF-8 character (each invalid byte is one character, same
- * policy as the document). Splits into maximal same-face spans using primary
- * when it has the glyph, else FontFallback::Select, else primary (HarfBuzz
- * emits .notdef). Each span uses fixed Latin script and English language
- * properties with discretionary ligatures (liga, dlig) disabled. Cluster
- * values stay as original byte offsets across fallback splits. Correct shaping
- * for other scripts is outside the current editor scope.
+ * policy as the document). Groups supported emoji sequences (see
+ * SegmentEmojiUnits) onto one face via FontFallback::Select, then shapes
+ * maximal same-face ordinary runs. HarfBuzz chooses script from the span;
+ * direction stays LTR, discretionary ligatures (liga, dlig) stay off, and
+ * English remains the language when HarfBuzz leaves it unset. Multi-code-point
+ * emoji units expose one caret boundary and shared byte-end positions even when
+ * the font emits several glyphs. Correct shaping for other scripts and full
+ * UAX #29 editing behaviour are outside the current editor scope.
  */
 ShapedRun ShapeText(
 	std::string_view text,

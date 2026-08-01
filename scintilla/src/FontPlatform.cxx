@@ -18,6 +18,7 @@
 #include <hb-ft.h>
 
 #include "EditorStyleTypes.h"
+#include "EmojiSequence.h"
 #include "FontPlatform.h"
 #include "Platform.h"
 
@@ -92,6 +93,37 @@ std::string FallbackDecisionKey(const FontParameters &parameters, char32_t chara
 		(parameters.italic ? '1' : '0') + '|' +
 		std::to_string(static_cast<int>(parameters.stretch)) + '|' +
 		std::to_string(static_cast<uint32_t>(character));
+}
+
+std::string FallbackDecisionKey(
+	const FontParameters &parameters, const char32_t *codePoints, size_t count) {
+	std::string key = RequestedFamilyFromParameters(parameters) + '|' +
+		std::to_string(parameters.size) + '|' +
+		std::to_string(static_cast<int>(parameters.weight)) + '|' +
+		(parameters.italic ? '1' : '0') + '|' +
+		std::to_string(static_cast<int>(parameters.stretch)) + "|seq:";
+	for (size_t i = 0; i < count; i++) {
+		if (i > 0) {
+			key.push_back(',');
+		}
+		key.append(std::to_string(static_cast<uint32_t>(codePoints[i])));
+	}
+	return key;
+}
+
+bool SequenceHasRequiredCoverage(const FontFace &face, const char32_t *codePoints, size_t count) {
+	if (!codePoints || count == 0) {
+		return false;
+	}
+	for (size_t i = 0; i < count; i++) {
+		if (IsEmojiCoverageIgnorable(codePoints[i])) {
+			continue;
+		}
+		if (!face.HasGlyph(codePoints[i])) {
+			return false;
+		}
+	}
+	return true;
 }
 
 FontParameters ParametersFromFace(const FontFace &face) {
@@ -203,6 +235,46 @@ bool FontFace::HasGlyph(char32_t character) const noexcept {
 	return FT_Get_Char_Index(impl->face, static_cast<FT_ULong>(character)) != 0;
 }
 
+bool FontFace::ShapesSequence(const char32_t *codePoints, size_t count) const {
+	if (!codePoints || count == 0 || !impl->hbFont) {
+		return false;
+	}
+	hb_buffer_t *buffer = hb_buffer_create();
+	if (!buffer) {
+		return false;
+	}
+	hb_buffer_set_content_type(buffer, HB_BUFFER_CONTENT_TYPE_UNICODE);
+	hb_buffer_set_direction(buffer, HB_DIRECTION_LTR);
+	hb_buffer_set_cluster_level(buffer, HB_BUFFER_CLUSTER_LEVEL_MONOTONE_CHARACTERS);
+	for (size_t i = 0; i < count; i++) {
+		hb_buffer_add(buffer, static_cast<hb_codepoint_t>(codePoints[i]),
+			static_cast<unsigned int>(i));
+	}
+	hb_buffer_guess_segment_properties(buffer);
+	// Keep editor line ordering left-to-right even when script detection differs.
+	hb_buffer_set_direction(buffer, HB_DIRECTION_LTR);
+	hb_shape(impl->hbFont, buffer, nullptr, 0);
+
+	const unsigned int glyphCount = hb_buffer_get_length(buffer);
+	const hb_glyph_info_t *infos = hb_buffer_get_glyph_infos(buffer, nullptr);
+	const hb_glyph_position_t *positions = hb_buffer_get_glyph_positions(buffer, nullptr);
+	bool sawInk = false;
+	bool clean = true;
+	for (unsigned int g = 0; g < glyphCount; g++) {
+		const bool missing = infos[g].codepoint == 0;
+		const bool hasAdvance = positions[g].x_advance != 0 || positions[g].y_advance != 0;
+		if (missing && hasAdvance) {
+			clean = false;
+			break;
+		}
+		if (!missing) {
+			sawInk = true;
+		}
+	}
+	hb_buffer_destroy(buffer);
+	return clean && sawInk;
+}
+
 GlyphImage FontFace::RasterizeGlyph(uint32_t glyphId) const {
 	GlyphImage image;
 	if (FT_Load_Glyph(impl->face, static_cast<FT_UInt>(glyphId), FT_LOAD_DEFAULT) != 0) {
@@ -269,13 +341,36 @@ public:
 			}
 			throw std::runtime_error("FreeType could not open font: " + path.string());
 		}
-		const FT_F26Dot6 height = static_cast<FT_F26Dot6>(std::lround(std::max(1.0, parameters.size) * 64.0));
-		if (FT_Set_Char_Size(face, 0, height, 72, 72)) {
-			FT_Done_Face(face);
-			if (pattern) {
-				FcPatternDestroy(pattern);
+		const double requestedPixels = std::max(1.0, parameters.size);
+		const FT_F26Dot6 height = static_cast<FT_F26Dot6>(std::lround(requestedPixels * 64.0));
+		// Outline faces use the requested pixel size. CBDT/CBLC and other
+		// bitmap-only faces expose fixed strikes; pick the closest y_ppem and
+		// keep parameters.size as the logical request for drawing scale.
+		if (FT_Set_Char_Size(face, 0, height, 72, 72) != 0) {
+			if (face->num_fixed_sizes <= 0) {
+				FT_Done_Face(face);
+				if (pattern) {
+					FcPatternDestroy(pattern);
+				}
+				throw std::runtime_error("FreeType could not size font: " + path.string());
 			}
-			throw std::runtime_error("FreeType could not size font: " + path.string());
+			int bestStrike = 0;
+			double bestDiff = 1e300;
+			for (int strike = 0; strike < face->num_fixed_sizes; strike++) {
+				const double ppem = face->available_sizes[strike].y_ppem / 64.0;
+				const double diff = std::abs(ppem - requestedPixels);
+				if (diff < bestDiff) {
+					bestDiff = diff;
+					bestStrike = strike;
+				}
+			}
+			if (FT_Select_Size(face, bestStrike) != 0) {
+				FT_Done_Face(face);
+				if (pattern) {
+					FcPatternDestroy(pattern);
+				}
+				throw std::runtime_error("FreeType could not select bitmap strike: " + path.string());
+			}
 		}
 
 		auto selected = std::make_shared<FontFace>(library, pattern, face, path,
@@ -286,12 +381,16 @@ public:
 	}
 
 	/**
-	 * Walk Fontconfig's ordered candidates for the request plus character.
-	 * Returns the first loaded face that FreeType reports as covering the
-	 * character, or an empty pointer when none do. Never throws for a miss.
+	 * Walk Fontconfig's ordered candidates for the request plus charset.
+	 * accept() chooses the first usable loaded face. Never throws for a miss.
 	 */
-	std::shared_ptr<FontFace> ResolveForRequest(const FontParameters &parameters, char32_t character) {
-		const std::string decisionKey = FallbackDecisionKey(parameters, character);
+	template <typename Accept>
+	std::shared_ptr<FontFace> ResolveForRequest(
+		const FontParameters &parameters,
+		const std::string &decisionKey,
+		const char32_t *codePoints,
+		size_t count,
+		Accept accept) {
 		if (const auto found = fallbackDecisions.find(decisionKey); found != fallbackDecisions.end()) {
 			return found->second;
 		}
@@ -299,9 +398,18 @@ public:
 		std::shared_ptr<FontFace> resolved;
 		PatternPtr request(FcPatternCreate(), FcPatternDestroy);
 		std::unique_ptr<FcCharSet, decltype(&FcCharSetDestroy)> characters(FcCharSetCreate(), FcCharSetDestroy);
-		if (!request || !characters || !FcCharSetAddChar(characters.get(), static_cast<FcChar32>(character))) {
+		if (!request || !characters || !codePoints || count == 0) {
 			fallbackDecisions.emplace(decisionKey, resolved);
 			return resolved;
+		}
+		for (size_t i = 0; i < count; i++) {
+			if (IsEmojiCoverageIgnorable(codePoints[i])) {
+				continue;
+			}
+			if (!FcCharSetAddChar(characters.get(), static_cast<FcChar32>(codePoints[i]))) {
+				fallbackDecisions.emplace(decisionKey, resolved);
+				return resolved;
+			}
 		}
 		AddRequest(request.get(), parameters);
 		FcPatternAddCharSet(request.get(), FC_CHARSET, characters.get());
@@ -332,7 +440,7 @@ public:
 			try {
 				// Load always takes ownership of prepared (cache hit, face, or throw).
 				auto candidate = Load(reinterpret_cast<const char *>(file), index, prepared, parameters);
-				if (candidate && candidate->HasGlyph(character)) {
+				if (candidate && accept(*candidate)) {
 					resolved = std::move(candidate);
 					break;
 				}
@@ -343,6 +451,29 @@ public:
 		FcFontSetDestroy(sorted);
 		fallbackDecisions.emplace(decisionKey, resolved);
 		return resolved;
+	}
+
+	std::shared_ptr<FontFace> ResolveForRequest(const FontParameters &parameters, char32_t character) {
+		const char32_t codePoints[1] = {character};
+		return ResolveForRequest(
+			parameters,
+			FallbackDecisionKey(parameters, character),
+			codePoints,
+			1,
+			[character](const FontFace &face) { return face.HasGlyph(character); });
+	}
+
+	std::shared_ptr<FontFace> ResolveForRequest(
+		const FontParameters &parameters, const char32_t *codePoints, size_t count) {
+		return ResolveForRequest(
+			parameters,
+			FallbackDecisionKey(parameters, codePoints, count),
+			codePoints,
+			count,
+			[codePoints, count](const FontFace &face) {
+				return SequenceHasRequiredCoverage(face, codePoints, count) &&
+					face.ShapesSequence(codePoints, count);
+			});
 	}
 
 	std::shared_ptr<FreeTypeLibrary> library;
@@ -391,6 +522,16 @@ std::shared_ptr<FontFace> FontCache::ResolveFallback(const FontFace &primary, ch
 	// ParametersFromFace borrows RequestedFamily().c_str(); the string is owned
 	// by the face and stays alive for this call and for AddRequest's copy.
 	return ResolveFallback(ParametersFromFace(primary), character);
+}
+
+std::shared_ptr<FontFace> FontCache::ResolveFallback(
+	const FontParameters &parameters, const char32_t *codePoints, size_t count) {
+	return impl->ResolveForRequest(parameters, codePoints, count);
+}
+
+std::shared_ptr<FontFace> FontCache::ResolveFallback(
+	const FontFace &primary, const char32_t *codePoints, size_t count) {
+	return ResolveFallback(ParametersFromFace(primary), codePoints, count);
 }
 
 std::shared_ptr<FontFace> FontCache::MatchFallback(const FontParameters &parameters, char32_t character) {
@@ -466,6 +607,31 @@ std::shared_ptr<FontFace> FontFallback::Select(
 	}
 	if (cache && primary) {
 		if (std::shared_ptr<FontFace> resolved = cache->ResolveFallback(*primary, character)) {
+			return resolved;
+		}
+	}
+	return primary;
+}
+
+std::shared_ptr<FontFace> FontFallback::Select(
+	const std::shared_ptr<FontFace> &primary,
+	const char32_t *codePoints, size_t count) const {
+	if (!codePoints || count == 0) {
+		return primary;
+	}
+	if (count == 1) {
+		return Select(primary, codePoints[0]);
+	}
+	if (primary && primary->ShapesSequence(codePoints, count)) {
+		return primary;
+	}
+	for (const std::shared_ptr<FontFace> &face : fixedFaces) {
+		if (face && face->ShapesSequence(codePoints, count)) {
+			return face;
+		}
+	}
+	if (cache && primary) {
+		if (std::shared_ptr<FontFace> resolved = cache->ResolveFallback(*primary, codePoints, count)) {
 			return resolved;
 		}
 	}

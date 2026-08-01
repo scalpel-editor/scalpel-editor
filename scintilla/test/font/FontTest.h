@@ -15,12 +15,14 @@
 #include <hb-ft.h>
 
 #include "EditorStyleTypes.h"
+#include "EmojiSequence.h"
 #include "FontPlatform.h"
 #include "Geometry.h"
 #include "MeasureSurface.h"
 #include "Platform.h"
 #include "ShapedLayout.h"
 #include "ShapedRun.h"
+#include "UniConversion.h"
 
 #include "catch.hpp"
 
@@ -34,6 +36,8 @@ inline const std::filesystem::path primaryPath =
 	fontDirectory / "FallbackPrimary.ttf";
 inline const std::filesystem::path snowmanPath =
 	fontDirectory / "FallbackSnowman.ttf";
+inline const std::filesystem::path emojiPath =
+	fontDirectory / "EmojiFixture.ttf";
 
 inline std::shared_ptr<FontFace> LoadPrimary(
 	FontCache &cache, double size = 16.0) {

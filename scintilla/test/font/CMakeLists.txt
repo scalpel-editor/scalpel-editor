@@ -1,4 +1,5 @@
 add_executable(fontTest
+  FontEmojiTest.cxx
   FontFaceTest.cxx
   FontLayoutTest.cxx
   FontMeasureTest.cxx

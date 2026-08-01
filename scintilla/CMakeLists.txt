@@ -26,6 +26,7 @@ pkg_check_modules(EGL REQUIRED IMPORTED_TARGET egl)
 # shaped-run model. UniConversion lives here so shaping can walk invalid UTF-8
 # without a circular link on scintilla_core.
 add_library(scintilla_font STATIC
+  src/EmojiSequence.cxx
   src/FontPlatform.cxx
   src/MeasureSurface.cxx
   src/ShapedLayout.cxx
