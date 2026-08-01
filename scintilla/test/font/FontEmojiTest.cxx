@@ -47,6 +47,25 @@ bool AllGlyphsUseFace(const ShapedRun &run, const std::shared_ptr<FontFace> &fac
 
 }
 
+TEST_CASE("HasEmojiPresentation matches Unicode 16.0 boundaries") {
+	// Default-emoji face (grinning) is in Emoji_Presentation.
+	CHECK(HasEmojiPresentation(U'\U0001F600'));
+	// Range start/end samples from the checked-in table.
+	CHECK(HasEmojiPresentation(U'\u231A'));
+	CHECK(HasEmojiPresentation(U'\u231B'));
+	CHECK_FALSE(HasEmojiPresentation(U'\u2319'));
+	CHECK_FALSE(HasEmojiPresentation(U'\u231C'));
+	// White smiling face is Emoji but default text presentation.
+	CHECK_FALSE(HasEmojiPresentation(U'\u263A'));
+	// Ordinary ASCII and unpaired high surrogates stay out of the table.
+	CHECK_FALSE(HasEmojiPresentation(U'A'));
+	CHECK_FALSE(HasEmojiPresentation(U'\0'));
+	CHECK_FALSE(HasEmojiPresentation(static_cast<char32_t>(0x110000)));
+	// Late-range sample still covered.
+	CHECK(HasEmojiPresentation(U'\U0001FAF8'));
+	CHECK_FALSE(HasEmojiPresentation(U'\U0001FAF9'));
+}
+
 TEST_CASE("SegmentEmojiUnits keeps supported multi-code-point forms together") {
 	const std::string text = std::string("A") + grinning + thumbsUp + toneLight +
 		woman + zwj + rocket + regionalU + regionalS + "1" + vs16 + keycap + "B";
@@ -56,12 +75,19 @@ TEST_CASE("SegmentEmojiUnits keeps supported multi-code-point forms together") {
 	// A | grinning | thumb+tone | woman+zwj+rocket | flag | keycap | B
 	REQUIRE(units.size() == 7);
 	CHECK(units[0].charEnd - units[0].charBegin == 1);
+	CHECK(units[0].presentation == EmojiPresentation::Unspecified);
 	CHECK(units[1].charEnd - units[1].charBegin == 1);
+	CHECK(units[1].presentation == EmojiPresentation::Emoji);
 	CHECK(units[2].charEnd - units[2].charBegin == 2);
+	CHECK(units[2].presentation == EmojiPresentation::Emoji);
 	CHECK(units[3].charEnd - units[3].charBegin == 3);
+	CHECK(units[3].presentation == EmojiPresentation::Emoji);
 	CHECK(units[4].charEnd - units[4].charBegin == 2);
+	CHECK(units[4].presentation == EmojiPresentation::Emoji);
 	CHECK(units[5].charEnd - units[5].charBegin == 3);
+	CHECK(units[5].presentation == EmojiPresentation::Emoji);
 	CHECK(units[6].charEnd - units[6].charBegin == 1);
+	CHECK(units[6].presentation == EmojiPresentation::Unspecified);
 }
 
 TEST_CASE("SegmentEmojiUnits keeps text and emoji variation selectors with the base") {
@@ -72,7 +98,25 @@ TEST_CASE("SegmentEmojiUnits keeps text and emoji variation selectors with the b
 	REQUIRE(emojiUnits.size() == 1);
 	REQUIRE(textUnits.size() == 1);
 	CHECK(emojiUnits[0].charEnd == 2);
+	CHECK(emojiUnits[0].presentation == EmojiPresentation::Emoji);
 	CHECK(textUnits[0].charEnd == 2);
+	CHECK(textUnits[0].presentation == EmojiPresentation::Text);
+}
+
+TEST_CASE("SegmentEmojiUnits classifies default emoji and default-text symbols") {
+	const auto grin = CodePointsOf(grinning);
+	const auto smile = CodePointsOf(whiteSmile);
+	const auto letter = CodePointsOf("A");
+	const auto grinUnits = SegmentEmojiUnits(grin.data(), grin.size());
+	const auto smileUnits = SegmentEmojiUnits(smile.data(), smile.size());
+	const auto letterUnits = SegmentEmojiUnits(letter.data(), letter.size());
+	REQUIRE(grinUnits.size() == 1);
+	REQUIRE(smileUnits.size() == 1);
+	REQUIRE(letterUnits.size() == 1);
+	CHECK(grinUnits[0].presentation == EmojiPresentation::Emoji);
+	// Default-text emoji-capable symbol stays Unspecified without a selector.
+	CHECK(smileUnits[0].presentation == EmojiPresentation::Unspecified);
+	CHECK(letterUnits[0].presentation == EmojiPresentation::Unspecified);
 }
 
 TEST_CASE("Emoji fixture shapes a plain emoji") {
