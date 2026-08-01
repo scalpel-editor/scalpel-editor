@@ -30,6 +30,30 @@ python3.13 scintilla/test/fonts/generate.py /path/to/NotoSansSymbols2-v2.008.zip
 
 Both subsets have project-specific family, full, unique, PostScript, and typographic family names so Fontconfig does not merge them with the upstream family or each other. The upstream copyright, version, and OFL metadata remain embedded in each font. The complete license is in [OFL.txt](OFL.txt).
 
+## Monochrome emoji-overlap fixture
+
+`FallbackEmojiMono.ttf` is a monochrome subset of DejaVu Sans used when presentation-aware fallback must see a primary face that already covers emoji code points. Noto Sans Symbols 2 does not include `U+1F600` or `U+263A`, so those glyphs cannot come from the Noto-based fixtures above.
+
+Upstream: DejaVu Sans (Bitstream Vera / DejaVu)
+
+Source version: `Version 2.37`
+
+Source file: `DejaVuSans.ttf` (openSUSE package `dejavu-fonts` on the development host)
+
+Source file SHA-256: `7da195a74c55bef988d0d48f9508bd5d849425c1770dba5d7bfc6ce9ed848954`
+
+Generator: fontTools 4.53.1 from openSUSE package `python313-FontTools`
+
+Generate the fixture with:
+
+```sh
+python3.13 scintilla/test/fonts/generate_emoji_mono.py /path/to/DejaVuSans.ttf
+```
+
+Coverage is printable ASCII (`U+0020-007E`), white smiling face (`U+263A`), and grinning face (`U+1F600`). The family is renamed to `Scalpel Fallback Emoji Mono` so Fontconfig does not merge it with installed DejaVu. Upstream copyright remains embedded; the complete license text is in [DejaVuLicense.txt](DejaVuLicense.txt).
+
+`FallbackEmojiMono.ttf` SHA-256: `1674a9274f5e1f546bec838b3c664b288cf59eb529f6ad8b193992f5b1b23eff`
+
 ## Colour emoji fixture
 
 `EmojiFixture.ttf` is a minimal CBDT/CBLC subset of Noto Color Emoji used for deterministic emoji shaping and colour-raster tests. Rendering tests must use this file rather than the host's installed emoji font.

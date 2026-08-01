@@ -87,17 +87,20 @@ std::string FaceKey(const std::filesystem::path &path, int index, const FontPara
 		std::to_string(static_cast<int>(parameters.stretch));
 }
 
-std::string FallbackDecisionKey(const FontParameters &parameters, char32_t character) {
+std::string FallbackDecisionKey(const FontParameters &parameters, char32_t character,
+	EmojiPresentation presentation) {
 	return RequestedFamilyFromParameters(parameters) + '|' +
 		std::to_string(parameters.size) + '|' +
 		std::to_string(static_cast<int>(parameters.weight)) + '|' +
 		(parameters.italic ? '1' : '0') + '|' +
 		std::to_string(static_cast<int>(parameters.stretch)) + '|' +
-		std::to_string(static_cast<uint32_t>(character));
+		std::to_string(static_cast<uint32_t>(character)) + "|p:" +
+		std::to_string(static_cast<int>(presentation));
 }
 
 std::string FallbackDecisionKey(
-	const FontParameters &parameters, const char32_t *codePoints, size_t count) {
+	const FontParameters &parameters, const char32_t *codePoints, size_t count,
+	EmojiPresentation presentation) {
 	std::string key = RequestedFamilyFromParameters(parameters) + '|' +
 		std::to_string(parameters.size) + '|' +
 		std::to_string(static_cast<int>(parameters.weight)) + '|' +
@@ -109,7 +112,22 @@ std::string FallbackDecisionKey(
 		}
 		key.append(std::to_string(static_cast<uint32_t>(codePoints[i])));
 	}
+	key.append("|p:");
+	key.append(std::to_string(static_cast<int>(presentation)));
 	return key;
+}
+
+/** True when face satisfies a presentation colour preference. */
+bool FaceMatchesPresentation(const FontFace &face, EmojiPresentation presentation) noexcept {
+	switch (presentation) {
+	case EmojiPresentation::Emoji:
+		return face.HasColor();
+	case EmojiPresentation::Text:
+		return !face.HasColor();
+	case EmojiPresentation::Unspecified:
+		return true;
+	}
+	return true;
 }
 
 bool SequenceHasRequiredCoverage(const FontFace &face, const char32_t *codePoints, size_t count) {
@@ -249,6 +267,13 @@ bool FontFace::UsesBitmapStrike() const noexcept {
 
 double FontFace::StrikePpem() const noexcept {
 	return impl->strikePpem;
+}
+
+bool FontFace::HasColor() const noexcept {
+	// FT_HAS_COLOR is true when face_flags includes FT_FACE_FLAG_COLOR, set for
+	// faces with colour glyph tables (for example CBDT/CBLC). FreeType documents
+	// this since 2.5.1; it does not require loading a glyph first.
+	return FT_HAS_COLOR(impl->face) != 0;
 }
 
 bool FontFace::HasGlyph(char32_t character) const noexcept {
@@ -525,25 +550,30 @@ public:
 		return resolved;
 	}
 
-	std::shared_ptr<FontFace> ResolveForRequest(const FontParameters &parameters, char32_t character) {
+	std::shared_ptr<FontFace> ResolveForRequest(const FontParameters &parameters, char32_t character,
+		EmojiPresentation presentation) {
 		const char32_t codePoints[1] = {character};
 		return ResolveForRequest(
 			parameters,
-			FallbackDecisionKey(parameters, character),
+			FallbackDecisionKey(parameters, character, presentation),
 			codePoints,
 			1,
-			[character](const FontFace &face) { return face.HasGlyph(character); });
+			[character, presentation](const FontFace &face) {
+				return FaceMatchesPresentation(face, presentation) && face.HasGlyph(character);
+			});
 	}
 
 	std::shared_ptr<FontFace> ResolveForRequest(
-		const FontParameters &parameters, const char32_t *codePoints, size_t count) {
+		const FontParameters &parameters, const char32_t *codePoints, size_t count,
+		EmojiPresentation presentation) {
 		return ResolveForRequest(
 			parameters,
-			FallbackDecisionKey(parameters, codePoints, count),
+			FallbackDecisionKey(parameters, codePoints, count, presentation),
 			codePoints,
 			count,
-			[codePoints, count](const FontFace &face) {
-				return SequenceHasRequiredCoverage(face, codePoints, count) &&
+			[codePoints, count, presentation](const FontFace &face) {
+				return FaceMatchesPresentation(face, presentation) &&
+					SequenceHasRequiredCoverage(face, codePoints, count) &&
 					face.ShapesSequence(codePoints, count);
 			});
 	}
@@ -586,24 +616,28 @@ std::shared_ptr<FontFace> FontCache::Match(const FontParameters &parameters) {
 	return impl->Load(reinterpret_cast<const char *>(file), index, match, parameters);
 }
 
-std::shared_ptr<FontFace> FontCache::ResolveFallback(const FontParameters &parameters, char32_t character) {
-	return impl->ResolveForRequest(parameters, character);
+std::shared_ptr<FontFace> FontCache::ResolveFallback(const FontParameters &parameters, char32_t character,
+	EmojiPresentation presentation) {
+	return impl->ResolveForRequest(parameters, character, presentation);
 }
 
-std::shared_ptr<FontFace> FontCache::ResolveFallback(const FontFace &primary, char32_t character) {
+std::shared_ptr<FontFace> FontCache::ResolveFallback(const FontFace &primary, char32_t character,
+	EmojiPresentation presentation) {
 	// ParametersFromFace borrows RequestedFamily().c_str(); the string is owned
 	// by the face and stays alive for this call and for AddRequest's copy.
-	return ResolveFallback(ParametersFromFace(primary), character);
+	return ResolveFallback(ParametersFromFace(primary), character, presentation);
 }
 
 std::shared_ptr<FontFace> FontCache::ResolveFallback(
-	const FontParameters &parameters, const char32_t *codePoints, size_t count) {
-	return impl->ResolveForRequest(parameters, codePoints, count);
+	const FontParameters &parameters, const char32_t *codePoints, size_t count,
+	EmojiPresentation presentation) {
+	return impl->ResolveForRequest(parameters, codePoints, count, presentation);
 }
 
 std::shared_ptr<FontFace> FontCache::ResolveFallback(
-	const FontFace &primary, const char32_t *codePoints, size_t count) {
-	return ResolveFallback(ParametersFromFace(primary), codePoints, count);
+	const FontFace &primary, const char32_t *codePoints, size_t count,
+	EmojiPresentation presentation) {
+	return ResolveFallback(ParametersFromFace(primary), codePoints, count, presentation);
 }
 
 std::shared_ptr<FontFace> FontCache::MatchFallback(const FontParameters &parameters, char32_t character) {
@@ -668,17 +702,40 @@ FontFallback FontFallback::Production(FontCache &cache) {
 
 std::shared_ptr<FontFace> FontFallback::Select(
 	const std::shared_ptr<FontFace> &primary,
-	char32_t character) const {
-	if (primary && primary->HasGlyph(character)) {
+	char32_t character,
+	EmojiPresentation presentation) const {
+	const auto covers = [character](const std::shared_ptr<FontFace> &face) {
+		return face && face->HasGlyph(character);
+	};
+	// Preferred colour class first for emoji/text presentation.
+	if (presentation != EmojiPresentation::Unspecified) {
+		if (covers(primary) && FaceMatchesPresentation(*primary, presentation)) {
+			return primary;
+		}
+		for (const std::shared_ptr<FontFace> &face : fixedFaces) {
+			if (covers(face) && FaceMatchesPresentation(*face, presentation)) {
+				return face;
+			}
+		}
+		if (cache && primary) {
+			if (std::shared_ptr<FontFace> resolved =
+				cache->ResolveFallback(*primary, character, presentation)) {
+				return resolved;
+			}
+		}
+	}
+	// Unrestricted order: preserve usable monochrome/colour coverage.
+	if (covers(primary)) {
 		return primary;
 	}
 	for (const std::shared_ptr<FontFace> &face : fixedFaces) {
-		if (face && face->HasGlyph(character)) {
+		if (covers(face)) {
 			return face;
 		}
 	}
 	if (cache && primary) {
-		if (std::shared_ptr<FontFace> resolved = cache->ResolveFallback(*primary, character)) {
+		if (std::shared_ptr<FontFace> resolved =
+			cache->ResolveFallback(*primary, character, EmojiPresentation::Unspecified)) {
 			return resolved;
 		}
 	}
@@ -687,23 +744,44 @@ std::shared_ptr<FontFace> FontFallback::Select(
 
 std::shared_ptr<FontFace> FontFallback::Select(
 	const std::shared_ptr<FontFace> &primary,
-	const char32_t *codePoints, size_t count) const {
+	const char32_t *codePoints, size_t count,
+	EmojiPresentation presentation) const {
 	if (!codePoints || count == 0) {
 		return primary;
 	}
 	if (count == 1) {
-		return Select(primary, codePoints[0]);
+		return Select(primary, codePoints[0], presentation);
 	}
-	if (primary && primary->ShapesSequence(codePoints, count)) {
+	const auto shapes = [codePoints, count](const std::shared_ptr<FontFace> &face) {
+		return face && face->ShapesSequence(codePoints, count);
+	};
+	if (presentation != EmojiPresentation::Unspecified) {
+		if (shapes(primary) && FaceMatchesPresentation(*primary, presentation)) {
+			return primary;
+		}
+		for (const std::shared_ptr<FontFace> &face : fixedFaces) {
+			if (shapes(face) && FaceMatchesPresentation(*face, presentation)) {
+				return face;
+			}
+		}
+		if (cache && primary) {
+			if (std::shared_ptr<FontFace> resolved =
+				cache->ResolveFallback(*primary, codePoints, count, presentation)) {
+				return resolved;
+			}
+		}
+	}
+	if (shapes(primary)) {
 		return primary;
 	}
 	for (const std::shared_ptr<FontFace> &face : fixedFaces) {
-		if (face && face->ShapesSequence(codePoints, count)) {
+		if (shapes(face)) {
 			return face;
 		}
 	}
 	if (cache && primary) {
-		if (std::shared_ptr<FontFace> resolved = cache->ResolveFallback(*primary, codePoints, count)) {
+		if (std::shared_ptr<FontFace> resolved =
+			cache->ResolveFallback(*primary, codePoints, count, EmojiPresentation::Unspecified)) {
 			return resolved;
 		}
 	}

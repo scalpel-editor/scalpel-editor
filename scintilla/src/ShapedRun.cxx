@@ -240,7 +240,7 @@ ShapedRun ShapeText(
 			codePoints.begin() + static_cast<std::ptrdiff_t>(unit.charBegin),
 			codePoints.begin() + static_cast<std::ptrdiff_t>(unit.charEnd));
 		const std::shared_ptr<FontFace> unitFace =
-			fallback.Select(primary, unitPoints.data(), unitPoints.size());
+			fallback.Select(primary, unitPoints.data(), unitPoints.size(), unit.presentation);
 
 		// Extend the span with following single-character units on the same face
 		// so "AB" still shapes as one HarfBuzz run. Multi-code-point emoji units
@@ -253,7 +253,7 @@ ShapedRun ShapeText(
 					break;
 				}
 				const char32_t nextCp = codePoints[next.charBegin];
-				if (fallback.Select(primary, &nextCp, 1) != unitFace) {
+				if (fallback.Select(primary, &nextCp, 1, next.presentation) != unitFace) {
 					break;
 				}
 				spanUnitEnd++;

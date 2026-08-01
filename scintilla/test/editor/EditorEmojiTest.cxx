@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -210,6 +211,28 @@ TEST_CASE("Editor paints colour emoji ink with selection and caret") {
 
 	// Caret at the end of the emoji is to the right of its start.
 	CHECK(editor.PointXFromPosition(emojiEnd) > editor.PointXFromPosition(emojiStart));
+	surface->Release();
+}
+
+TEST_CASE("Editor paints colour for default emoji covered by monochrome primary") {
+	// Primary fixture includes a monochrome U+1F600; presentation preference must
+	// still choose the colour emoji fixture through the real measure/draw path.
+	const std::filesystem::path fontDir = SCALPEL_TEST_FONT_DIR;
+	TestHost host;
+	UseTestFontPaths(fontDir / "FallbackEmojiMono.ttf", {
+		fontDir / "EmojiFixture.ttf",
+	});
+	TestEditor editor(host);
+	editor.SetClientRectangle(PRectangle(0, 0, 400, 120));
+	const std::string text = "A" + grinning + "B";
+	editor.SetText(text);
+
+	std::unique_ptr<DrawSurface> surface = editor.PaintToSurface();
+	REQUIRE(surface);
+	REQUIRE(surface->Buffer().Valid());
+	const ColourRGBA corner = surface->Buffer().ReadPixel(0, 0);
+	REQUIRE(HasNonBackgroundInk(surface->Buffer(), corner));
+	CHECK(HasNonMonochromeInk(surface->Buffer(), corner));
 	surface->Release();
 }
 

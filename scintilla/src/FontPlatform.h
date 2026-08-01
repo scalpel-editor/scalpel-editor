@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "EmojiSequence.h"
 #include "Platform.h"
 
 namespace Scintilla::Internal {
@@ -88,6 +89,12 @@ public:
 	bool UsesBitmapStrike() const noexcept;
 	/** Selected strike y_ppem, or 0 when the face is scalable. */
 	double StrikePpem() const noexcept;
+	/**
+	 * True when FreeType reports colour glyph tables on this face
+	 * (FT_HAS_COLOR / FT_FACE_FLAG_COLOR). Used to prefer colour or
+	 * monochrome candidates for emoji presentation fallback.
+	 */
+	bool HasColor() const noexcept;
 	bool HasGlyph(char32_t character) const noexcept;
 
 	/**
@@ -161,20 +168,28 @@ public:
 	/**
 	 * Ordered Fontconfig candidates for the primary request plus character,
 	 * validated with FreeType coverage and the face cache. Empty when nothing
-	 * covers the character. Decisions are cached per request characteristics
-	 * and code point. Does not throw for a missing covering face.
+	 * covers the character. Decisions are cached per request characteristics,
+	 * code point, and presentation preference. Does not throw for a missing
+	 * covering face. When presentation is Emoji or Text, only colour-capable
+	 * or non-colour faces are accepted; callers that need unrestricted
+	 * resolution pass Unspecified.
 	 */
-	std::shared_ptr<FontFace> ResolveFallback(const FontFace &primary, char32_t character);
-	std::shared_ptr<FontFace> ResolveFallback(const FontParameters &parameters, char32_t character);
+	std::shared_ptr<FontFace> ResolveFallback(const FontFace &primary, char32_t character,
+		EmojiPresentation presentation = EmojiPresentation::Unspecified);
+	std::shared_ptr<FontFace> ResolveFallback(const FontParameters &parameters, char32_t character,
+		EmojiPresentation presentation = EmojiPresentation::Unspecified);
 	/**
 	 * Resolve a face that shapes the complete sequence (ordered Fontconfig
 	 * candidates, FreeType coverage of non-ignorable code points, then
-	 * ShapesSequence). Empty when nothing covers the request.
+	 * ShapesSequence). Empty when nothing covers the request. Presentation
+	 * filters candidates the same way as the single-character overload.
 	 */
 	std::shared_ptr<FontFace> ResolveFallback(
-		const FontFace &primary, const char32_t *codePoints, size_t count);
+		const FontFace &primary, const char32_t *codePoints, size_t count,
+		EmojiPresentation presentation = EmojiPresentation::Unspecified);
 	std::shared_ptr<FontFace> ResolveFallback(
-		const FontParameters &parameters, const char32_t *codePoints, size_t count);
+		const FontParameters &parameters, const char32_t *codePoints, size_t count,
+		EmojiPresentation presentation = EmojiPresentation::Unspecified);
 	std::shared_ptr<FontFace> LoadPath(const std::filesystem::path &path, const FontParameters &parameters);
 	std::vector<std::shared_ptr<FontFace>> LoadPaths(
 		const std::vector<std::filesystem::path> &paths, const FontParameters &parameters);
@@ -212,18 +227,25 @@ public:
 	/**
 	 * Primary when it covers the character; otherwise the first fixed face that
 	 * covers it; otherwise a production ResolveFallback hit; otherwise primary.
+	 * When presentation is Emoji, colour-capable faces are tried first; when
+	 * Text, non-colour faces are tried first. If the preferred class has no
+	 * usable face, the unrestricted order runs so monochrome coverage is not
+	 * abandoned for .notdef.
 	 */
 	std::shared_ptr<FontFace> Select(
 		const std::shared_ptr<FontFace> &primary,
-		char32_t character) const;
+		char32_t character,
+		EmojiPresentation presentation = EmojiPresentation::Unspecified) const;
 
 	/**
 	 * Select one face for a whole supported sequence (or a single code point).
 	 * Acceptance uses ShapesSequence so ligating emoji forms stay unsplit.
+	 * Presentation preference matches the single-character overload.
 	 */
 	std::shared_ptr<FontFace> Select(
 		const std::shared_ptr<FontFace> &primary,
-		const char32_t *codePoints, size_t count) const;
+		const char32_t *codePoints, size_t count,
+		EmojiPresentation presentation = EmojiPresentation::Unspecified) const;
 
 	[[nodiscard]] bool Empty() const noexcept;
 	[[nodiscard]] bool UsesProductionResolver() const noexcept;

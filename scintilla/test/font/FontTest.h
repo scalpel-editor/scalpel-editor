@@ -36,6 +36,8 @@ inline const std::filesystem::path primaryPath =
 	fontDirectory / "FallbackPrimary.ttf";
 inline const std::filesystem::path snowmanPath =
 	fontDirectory / "FallbackSnowman.ttf";
+inline const std::filesystem::path emojiMonoPath =
+	fontDirectory / "FallbackEmojiMono.ttf";
 inline const std::filesystem::path emojiPath =
 	fontDirectory / "EmojiFixture.ttf";
 
@@ -47,6 +49,11 @@ inline std::shared_ptr<FontFace> LoadPrimary(
 inline std::shared_ptr<FontFace> LoadSnowman(
 	FontCache &cache, double size = 16.0) {
 	return cache.LoadPath(snowmanPath, FontParameters("fixture", size));
+}
+
+inline std::shared_ptr<FontFace> LoadEmojiMono(
+	FontCache &cache, double size = 16.0) {
+	return cache.LoadPath(emojiMonoPath, FontParameters("fixture-emoji-mono", size));
 }
 
 inline bool MonotonicEnds(const std::vector<XYPOSITION> &ends) {
