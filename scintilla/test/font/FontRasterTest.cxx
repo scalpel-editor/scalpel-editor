@@ -1,5 +1,31 @@
 #include "FontTest.h"
 
+#include <fontconfig/fontconfig.h>
+
+namespace {
+
+FontRasterPolicy Policy(FontHintStyle style, bool antialias = true) {
+	FontRasterPolicy policy;
+	policy.hintStyle = style;
+	policy.antialias = antialias;
+	return policy;
+}
+
+std::shared_ptr<FontFace> LoadPrimaryWithPolicy(
+	FontCache &cache, FontHintStyle style, double size = 16.0) {
+	return cache.LoadPath(primaryPath, FontParameters("fixture", size), Policy(style));
+}
+
+long CoverageSum(const GlyphImage &image) {
+	long sum = 0;
+	for (const uint8_t c : image.gray) {
+		sum += c;
+	}
+	return sum;
+}
+
+}
+
 TEST_CASE("RasterizeGlyph returns coverage for a shaped ASCII glyph") {
 	FontCache cache;
 	const auto face = LoadPrimary(cache);
@@ -217,4 +243,166 @@ TEST_CASE("ShapeText splits fallback spans without losing byte offsets") {
 	}
 	CHECK(sawPrimaryA);
 	CHECK(sawPrimaryB);
+}
+
+TEST_CASE("hint policy extraction uses Fontconfig defaults for a null pattern") {
+	const FontRasterPolicy policy = RasterPolicyFromFontconfigPattern(nullptr);
+	CHECK(policy.antialias);
+	CHECK(policy.hintStyle == FontHintStyle::Normal);
+	CHECK(policy.FreeTypeLoadFlags() == (FT_LOAD_COLOR | FT_LOAD_TARGET_NORMAL));
+}
+
+TEST_CASE("hint policy extraction maps Fontconfig antialias and hint styles") {
+	FcPattern *pattern = FcPatternCreate();
+	REQUIRE(pattern != nullptr);
+
+	// Absent properties → documented defaults.
+	{
+		const FontRasterPolicy policy = RasterPolicyFromFontconfigPattern(pattern);
+		CHECK(policy.antialias);
+		CHECK(policy.hintStyle == FontHintStyle::Normal);
+	}
+
+	FcPatternAddBool(pattern, FC_ANTIALIAS, FcFalse);
+	FcPatternAddBool(pattern, FC_HINTING, FcFalse);
+	{
+		const FontRasterPolicy policy = RasterPolicyFromFontconfigPattern(pattern);
+		CHECK_FALSE(policy.antialias);
+		CHECK(policy.hintStyle == FontHintStyle::None);
+		CHECK(policy.FreeTypeLoadFlags() == (FT_LOAD_COLOR | FT_LOAD_NO_HINTING));
+	}
+
+	// Clear and rebuild for slight hinting with antialias on.
+	FcPatternDestroy(pattern);
+	pattern = FcPatternCreate();
+	REQUIRE(pattern != nullptr);
+	FcPatternAddBool(pattern, FC_ANTIALIAS, FcTrue);
+	FcPatternAddBool(pattern, FC_HINTING, FcTrue);
+	FcPatternAddInteger(pattern, FC_HINT_STYLE, FC_HINT_SLIGHT);
+	{
+		const FontRasterPolicy policy = RasterPolicyFromFontconfigPattern(pattern);
+		CHECK(policy.antialias);
+		CHECK(policy.hintStyle == FontHintStyle::Slight);
+		CHECK(policy.FreeTypeLoadFlags() == (FT_LOAD_COLOR | FT_LOAD_TARGET_LIGHT));
+	}
+
+	FcPatternDel(pattern, FC_HINT_STYLE);
+	FcPatternAddInteger(pattern, FC_HINT_STYLE, FC_HINT_NONE);
+	{
+		const FontRasterPolicy policy = RasterPolicyFromFontconfigPattern(pattern);
+		CHECK(policy.hintStyle == FontHintStyle::None);
+	}
+
+	FcPatternDel(pattern, FC_HINT_STYLE);
+	FcPatternAddInteger(pattern, FC_HINT_STYLE, FC_HINT_MEDIUM);
+	{
+		const FontRasterPolicy policy = RasterPolicyFromFontconfigPattern(pattern);
+		CHECK(policy.hintStyle == FontHintStyle::Normal);
+	}
+
+	FcPatternDel(pattern, FC_HINT_STYLE);
+	FcPatternAddInteger(pattern, FC_HINT_STYLE, FC_HINT_FULL);
+	{
+		const FontRasterPolicy policy = RasterPolicyFromFontconfigPattern(pattern);
+		CHECK(policy.hintStyle == FontHintStyle::Normal);
+	}
+
+	// Invalid style collapses to Normal.
+	FcPatternDel(pattern, FC_HINT_STYLE);
+	FcPatternAddInteger(pattern, FC_HINT_STYLE, 99);
+	{
+		const FontRasterPolicy policy = RasterPolicyFromFontconfigPattern(pattern);
+		CHECK(policy.hintStyle == FontHintStyle::Normal);
+	}
+
+	FcPatternDestroy(pattern);
+}
+
+TEST_CASE("hint policy FreeType load flags select none slight and normal targets") {
+	CHECK(Policy(FontHintStyle::None).FreeTypeLoadFlags() ==
+		(FT_LOAD_COLOR | FT_LOAD_NO_HINTING));
+	CHECK(Policy(FontHintStyle::Slight).FreeTypeLoadFlags() ==
+		(FT_LOAD_COLOR | FT_LOAD_TARGET_LIGHT));
+	CHECK(Policy(FontHintStyle::Normal).FreeTypeLoadFlags() ==
+		(FT_LOAD_COLOR | FT_LOAD_TARGET_NORMAL));
+	// antialias false does not switch to monochrome load flags.
+	CHECK(Policy(FontHintStyle::Slight, false).FreeTypeLoadFlags() ==
+		(FT_LOAD_COLOR | FT_LOAD_TARGET_LIGHT));
+}
+
+TEST_CASE("hinted fixture faces share load flags between HarfBuzz and RasterizeGlyph") {
+	FontCache cache;
+	const auto normal = LoadPrimaryWithPolicy(cache, FontHintStyle::Normal);
+	const auto light = LoadPrimaryWithPolicy(cache, FontHintStyle::Slight);
+	const auto unhinted = LoadPrimaryWithPolicy(cache, FontHintStyle::None);
+
+	CHECK(normal->RasterPolicy().hintStyle == FontHintStyle::Normal);
+	CHECK(light->RasterPolicy().hintStyle == FontHintStyle::Slight);
+	CHECK(unhinted->RasterPolicy().hintStyle == FontHintStyle::None);
+
+	// Distinct face identities so cache keys include the raster policy.
+	CHECK(normal.get() != light.get());
+	CHECK(normal.get() != unhinted.get());
+	CHECK(light.get() != unhinted.get());
+
+	for (const auto &face : {normal, light, unhinted}) {
+		hb_font_t *hbFont = static_cast<hb_font_t *>(face->HarfBuzzFont());
+		REQUIRE(hbFont != nullptr);
+		CHECK(hb_ft_font_get_load_flags(hbFont) == face->FreeTypeLoadFlags());
+		CHECK(hb_ft_font_get_load_flags(hbFont) == face->RasterPolicy().FreeTypeLoadFlags());
+		CHECK(hb_ft_font_get_load_flags(hbFont) & FT_LOAD_COLOR);
+	}
+	CHECK(hb_ft_font_get_load_flags(static_cast<hb_font_t *>(light->HarfBuzzFont())) &
+		FT_LOAD_TARGET_LIGHT);
+	CHECK(hb_ft_font_get_load_flags(static_cast<hb_font_t *>(unhinted->HarfBuzzFont())) &
+		FT_LOAD_NO_HINTING);
+}
+
+TEST_CASE("hinted RasterizeGlyph coverage differs for normal light and unhinted policies") {
+	// Editor body size is 16pt at 96 DPI → ~21.33 logical pixels.
+	const double editorPixels = 16.0 * 96.0 / 72.0;
+	FontCache cache;
+	const auto normal = LoadPrimaryWithPolicy(cache, FontHintStyle::Normal, editorPixels);
+	const auto light = LoadPrimaryWithPolicy(cache, FontHintStyle::Slight, editorPixels);
+	const auto unhinted = LoadPrimaryWithPolicy(cache, FontHintStyle::None, editorPixels);
+
+	const ShapedRun shaped = ShapeText("H", normal);
+	REQUIRE_FALSE(shaped.glyphs.empty());
+	const uint32_t glyphId = shaped.glyphs[0].glyphId;
+
+	const GlyphImage normalImage = normal->RasterizeGlyph(glyphId);
+	const GlyphImage lightImage = light->RasterizeGlyph(glyphId);
+	const GlyphImage unhintedImage = unhinted->RasterizeGlyph(glyphId);
+
+	REQUIRE(normalImage.kind == GlyphImageKind::Gray);
+	REQUIRE(lightImage.kind == GlyphImageKind::Gray);
+	REQUIRE(unhintedImage.kind == GlyphImageKind::Gray);
+	REQUIRE(normalImage.width > 0);
+	REQUIRE(lightImage.width > 0);
+	REQUIRE(unhintedImage.width > 0);
+
+	// Light and normal targets must not produce identical coverage on this fixture.
+	CHECK(normalImage.gray != lightImage.gray);
+	CHECK(normalImage.gray != unhintedImage.gray);
+	CHECK(lightImage.gray != unhintedImage.gray);
+	CHECK(CoverageSum(normalImage) != CoverageSum(lightImage));
+}
+
+TEST_CASE("light-hinted RasterizeGlyph is stable for the same glyph id") {
+	const double editorPixels = 16.0 * 96.0 / 72.0;
+	FontCache cache;
+	const auto face = LoadPrimaryWithPolicy(cache, FontHintStyle::Slight, editorPixels);
+	const ShapedRun run = ShapeText("standards", face);
+	REQUIRE_FALSE(run.glyphs.empty());
+	const uint32_t glyphId = run.glyphs[0].glyphId;
+
+	const GlyphImage first = face->RasterizeGlyph(glyphId);
+	const GlyphImage second = face->RasterizeGlyph(glyphId);
+	REQUIRE(first.kind == GlyphImageKind::Gray);
+	CHECK(first.width == second.width);
+	CHECK(first.height == second.height);
+	CHECK(first.left == second.left);
+	CHECK(first.top == second.top);
+	CHECK(first.gray == second.gray);
+	CHECK(CoverageSum(first) > 0);
 }

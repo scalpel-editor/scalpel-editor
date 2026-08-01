@@ -80,11 +80,32 @@ void AddRequest(FcPattern *pattern, const FontParameters &parameters) {
 	FcPatternAddDouble(pattern, FC_PIXEL_SIZE, std::max(1.0, parameters.size));
 }
 
-std::string FaceKey(const std::filesystem::path &path, int index, const FontParameters &parameters) {
+std::string FaceKey(const std::filesystem::path &path, int index, const FontParameters &parameters,
+	const FontRasterPolicy &rasterPolicy) {
 	return path.string() + ':' + std::to_string(index) + ':' +
 		RequestedFamilyFromParameters(parameters) + ':' + std::to_string(parameters.size) + ':' +
 		std::to_string(static_cast<int>(parameters.weight)) + ':' + (parameters.italic ? "1" : "0") + ':' +
-		std::to_string(static_cast<int>(parameters.stretch));
+		std::to_string(static_cast<int>(parameters.stretch)) + ':' +
+		(rasterPolicy.antialias ? "1" : "0") + ':' +
+		std::to_string(static_cast<int>(rasterPolicy.hintStyle));
+}
+
+int FreeTypeLoadFlagsForPolicy(const FontRasterPolicy &policy) noexcept {
+	// FT_LOAD_COLOR keeps CBDT/CBLC colour bitmaps. Hint target is mutually
+	// exclusive among None / Slight / Normal; TARGET_NORMAL is zero bits.
+	int flags = static_cast<int>(FT_LOAD_COLOR);
+	switch (policy.hintStyle) {
+	case FontHintStyle::None:
+		flags |= static_cast<int>(FT_LOAD_NO_HINTING);
+		break;
+	case FontHintStyle::Slight:
+		flags |= static_cast<int>(FT_LOAD_TARGET_LIGHT);
+		break;
+	case FontHintStyle::Normal:
+		flags |= static_cast<int>(FT_LOAD_TARGET_NORMAL);
+		break;
+	}
+	return flags;
 }
 
 std::string FallbackDecisionKey(const FontParameters &parameters, char32_t character,
@@ -167,19 +188,69 @@ public:
 
 }
 
+int FontRasterPolicy::FreeTypeLoadFlags() const noexcept {
+	return FreeTypeLoadFlagsForPolicy(*this);
+}
+
+FontRasterPolicy RasterPolicyFromFontconfigPattern(const void *pattern) noexcept {
+	// Documented defaults when properties are missing or invalid.
+	FontRasterPolicy policy;
+	if (!pattern) {
+		return policy;
+	}
+	const FcPattern *fc = static_cast<const FcPattern *>(pattern);
+
+	FcBool antialias = FcTrue;
+	if (FcPatternGetBool(fc, FC_ANTIALIAS, 0, &antialias) == FcResultMatch) {
+		policy.antialias = antialias != FcFalse;
+	}
+
+	FcBool hinting = FcTrue;
+	const bool haveHinting = FcPatternGetBool(fc, FC_HINTING, 0, &hinting) == FcResultMatch;
+	if (haveHinting && hinting == FcFalse) {
+		policy.hintStyle = FontHintStyle::None;
+		return policy;
+	}
+
+	int hintStyle = FC_HINT_FULL;
+	if (FcPatternGetInteger(fc, FC_HINT_STYLE, 0, &hintStyle) != FcResultMatch) {
+		// Hinting on (or unspecified) without a style → FreeType normal target.
+		policy.hintStyle = FontHintStyle::Normal;
+		return policy;
+	}
+	switch (hintStyle) {
+	case FC_HINT_NONE:
+		policy.hintStyle = FontHintStyle::None;
+		break;
+	case FC_HINT_SLIGHT:
+		policy.hintStyle = FontHintStyle::Slight;
+		break;
+	case FC_HINT_MEDIUM:
+	case FC_HINT_FULL:
+		policy.hintStyle = FontHintStyle::Normal;
+		break;
+	default:
+		policy.hintStyle = FontHintStyle::Normal;
+		break;
+	}
+	return policy;
+}
+
 class FontFace::Impl {
 public:
 	Impl(std::shared_ptr<void> libraryOwner_, FcPattern *pattern_, FT_Face face_, std::filesystem::path path_,
 		std::string requestedFamily_, double size_, FontWeight weight_, bool italic_, FontStretch stretch_,
-		double metricsScale_, double strikePpem_, bool usesBitmapStrike_) :
+		FontRasterPolicy rasterPolicy_, double metricsScale_, double strikePpem_, bool usesBitmapStrike_) :
 		libraryOwner(std::move(libraryOwner_)), pattern(pattern_, FcPatternDestroy), face(face_),
 		path(std::move(path_)), requestedFamily(std::move(requestedFamily_)), size(size_), weight(weight_),
-		italic(italic_), stretch(stretch_), metricsScale(metricsScale_), strikePpem(strikePpem_),
+		italic(italic_), stretch(stretch_), rasterPolicy(rasterPolicy_),
+		loadFlags(static_cast<FT_Int32>(FreeTypeLoadFlagsForPolicy(rasterPolicy_))),
+		metricsScale(metricsScale_), strikePpem(strikePpem_),
 		usesBitmapStrike(usesBitmapStrike_) {
 		// Size must be set on the FT_Face before hb_ft_font_create_referenced.
 		hbFont = hb_ft_font_create_referenced(face);
 		// Match RasterizeGlyph so advances and colour bitmaps share load flags.
-		hb_ft_font_set_load_flags(hbFont, FT_LOAD_COLOR | FT_LOAD_DEFAULT);
+		hb_ft_font_set_load_flags(hbFont, loadFlags);
 	}
 
 	~Impl() noexcept {
@@ -205,6 +276,8 @@ public:
 	FontWeight weight;
 	bool italic;
 	FontStretch stretch;
+	FontRasterPolicy rasterPolicy;
+	FT_Int32 loadFlags = FT_LOAD_COLOR | FT_LOAD_TARGET_NORMAL;
 	double metricsScale = 1.0;
 	double strikePpem = 0.0;
 	bool usesBitmapStrike = false;
@@ -212,10 +285,11 @@ public:
 
 FontFace::FontFace(std::shared_ptr<void> libraryOwner, void *pattern, void *face,
 	std::filesystem::path path, std::string requestedFamily, double size, FontWeight weight,
-	bool italic, FontStretch stretch, double metricsScale, double strikePpem, bool usesBitmapStrike) :
+	bool italic, FontStretch stretch, FontRasterPolicy rasterPolicy,
+	double metricsScale, double strikePpem, bool usesBitmapStrike) :
 	impl(std::make_unique<Impl>(std::move(libraryOwner), static_cast<FcPattern *>(pattern),
 		static_cast<FT_Face>(face), std::move(path), std::move(requestedFamily), size, weight, italic,
-		stretch, metricsScale, strikePpem, usesBitmapStrike)) {
+		stretch, rasterPolicy, metricsScale, strikePpem, usesBitmapStrike)) {
 }
 
 FontFace::~FontFace() noexcept = default;
@@ -246,6 +320,14 @@ bool FontFace::RequestedItalic() const noexcept {
 
 FontStretch FontFace::RequestedStretch() const noexcept {
 	return impl->stretch;
+}
+
+const FontRasterPolicy &FontFace::RasterPolicy() const noexcept {
+	return impl->rasterPolicy;
+}
+
+int FontFace::FreeTypeLoadFlags() const noexcept {
+	return static_cast<int>(impl->loadFlags);
 }
 
 FontMetrics FontFace::Metrics() const noexcept {
@@ -322,11 +404,12 @@ bool FontFace::ShapesSequence(const char32_t *codePoints, size_t count) const {
 
 GlyphImage FontFace::RasterizeGlyph(uint32_t glyphId) const {
 	GlyphImage image;
-	if (FT_Load_Glyph(impl->face, static_cast<FT_UInt>(glyphId),
-			FT_LOAD_COLOR | FT_LOAD_DEFAULT) != 0) {
+	if (FT_Load_Glyph(impl->face, static_cast<FT_UInt>(glyphId), impl->loadFlags) != 0) {
 		return image;
 	}
 	// CBDT loads may already be bitmaps; outlines still need FT_Render_Glyph.
+	// Always NORMAL for 8-bit gray: light hinting is the load target, not the
+	// render mode (FT_RENDER_MODE_LIGHT produces the same coverage format).
 	if (impl->face->glyph->format != FT_GLYPH_FORMAT_BITMAP) {
 		if (FT_Render_Glyph(impl->face->glyph, FT_RENDER_MODE_NORMAL) != 0) {
 			return image;
@@ -406,8 +489,13 @@ public:
 	}
 
 	std::shared_ptr<FontFace> Load(const std::filesystem::path &path, int index,
-		FcPattern *pattern, const FontParameters &parameters) {
-		const std::string key = FaceKey(path, index, parameters);
+		FcPattern *pattern, const FontParameters &parameters, FontRasterPolicy rasterPolicy) {
+		// Prepared Fontconfig matches supply the raster policy; explicit paths
+		// keep the caller-provided policy (Normal by default).
+		if (pattern) {
+			rasterPolicy = RasterPolicyFromFontconfigPattern(pattern);
+		}
+		const std::string key = FaceKey(path, index, parameters, rasterPolicy);
 		if (const auto found = faces.find(key); found != faces.end()) {
 			if (pattern) {
 				FcPatternDestroy(pattern);
@@ -472,7 +560,8 @@ public:
 
 		auto selected = std::make_shared<FontFace>(library, pattern, face, path,
 			RequestedFamilyFromParameters(parameters), parameters.size, parameters.weight,
-			parameters.italic, parameters.stretch, metricsScale, strikePpem, usesBitmapStrike);
+			parameters.italic, parameters.stretch, rasterPolicy, metricsScale, strikePpem,
+			usesBitmapStrike);
 		faces.emplace(key, selected);
 		return selected;
 	}
@@ -536,7 +625,9 @@ public:
 			}
 			try {
 				// Load always takes ownership of prepared (cache hit, face, or throw).
-				auto candidate = Load(reinterpret_cast<const char *>(file), index, prepared, parameters);
+				// Raster policy comes from the prepared match inside Load.
+				auto candidate = Load(reinterpret_cast<const char *>(file), index, prepared, parameters,
+					FontRasterPolicy{});
 				if (candidate && accept(*candidate)) {
 					resolved = std::move(candidate);
 					break;
@@ -613,7 +704,9 @@ std::shared_ptr<FontFace> FontCache::Match(const FontParameters &parameters) {
 		FcPatternDestroy(match);
 		throw std::runtime_error("Fontconfig match has no font file");
 	}
-	return impl->Load(reinterpret_cast<const char *>(file), index, match, parameters);
+	// Raster policy comes from the Fontconfig match inside Load.
+	return impl->Load(reinterpret_cast<const char *>(file), index, match, parameters,
+		FontRasterPolicy{});
 }
 
 std::shared_ptr<FontFace> FontCache::ResolveFallback(const FontParameters &parameters, char32_t character,
@@ -649,19 +742,21 @@ std::shared_ptr<FontFace> FontCache::MatchFallback(const FontParameters &paramet
 }
 
 std::shared_ptr<FontFace> FontCache::LoadPath(
-	const std::filesystem::path &path, const FontParameters &parameters) {
+	const std::filesystem::path &path, const FontParameters &parameters,
+	FontRasterPolicy rasterPolicy) {
 	if (!path.is_absolute()) {
 		throw std::invalid_argument("test font path must be absolute");
 	}
-	return impl->Load(path, 0, nullptr, parameters);
+	return impl->Load(path, 0, nullptr, parameters, rasterPolicy);
 }
 
 std::vector<std::shared_ptr<FontFace>> FontCache::LoadPaths(
-	const std::vector<std::filesystem::path> &paths, const FontParameters &parameters) {
+	const std::vector<std::filesystem::path> &paths, const FontParameters &parameters,
+	FontRasterPolicy rasterPolicy) {
 	std::vector<std::shared_ptr<FontFace>> loaded;
 	loaded.reserve(paths.size());
 	for (const std::filesystem::path &path : paths) {
-		loaded.push_back(LoadPath(path, parameters));
+		loaded.push_back(LoadPath(path, parameters, rasterPolicy));
 	}
 	return loaded;
 }

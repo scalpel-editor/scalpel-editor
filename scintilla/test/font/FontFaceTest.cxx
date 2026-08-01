@@ -226,9 +226,13 @@ TEST_CASE("HarfBuzz font uses the rasterizer load flags") {
 	hb_font_t *hbFont = static_cast<hb_font_t *>(face->HarfBuzzFont());
 
 	REQUIRE(hbFont != nullptr);
-	CHECK(hb_ft_font_get_load_flags(hbFont) == (FT_LOAD_COLOR | FT_LOAD_DEFAULT));
+	// Explicit-path faces default to normal hinting (TARGET_NORMAL is zero bits).
+	CHECK(face->RasterPolicy().hintStyle == FontHintStyle::Normal);
+	CHECK(hb_ft_font_get_load_flags(hbFont) == face->FreeTypeLoadFlags());
+	CHECK(hb_ft_font_get_load_flags(hbFont) == (FT_LOAD_COLOR | FT_LOAD_TARGET_NORMAL));
 	CHECK(hb_ft_font_get_load_flags(hbFont) & FT_LOAD_COLOR);
 	CHECK_FALSE(hb_ft_font_get_load_flags(hbFont) & FT_LOAD_NO_HINTING);
+	CHECK_FALSE(hb_ft_font_get_load_flags(hbFont) & FT_LOAD_TARGET_LIGHT);
 }
 
 TEST_CASE("HarfBuzz narrow glyph uses a hinted advance at 11 pixels") {

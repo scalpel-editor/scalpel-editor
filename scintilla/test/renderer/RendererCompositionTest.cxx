@@ -449,3 +449,63 @@ TEST_CASE("DrawGlyph applies synthetic xOffset and yOffset placement") {
 	REQUIRE_FALSE(right.Empty());
 	CHECK(right.left >= baseInk.left + 6);
 }
+
+TEST_CASE("light-hinted fixture text draws stable gray ink at editor size") {
+	// 16pt body at 96 DPI → ~21.33 logical pixels (matches ViewStyle sizing).
+	const double editorPixels = 16.0 * 96.0 / 72.0;
+	FontCache fonts;
+	const std::filesystem::path primary =
+		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "FallbackPrimary.ttf";
+	FontRasterPolicy lightPolicy;
+	lightPolicy.hintStyle = FontHintStyle::Slight;
+	FontRasterPolicy normalPolicy;
+	normalPolicy.hintStyle = FontHintStyle::Normal;
+	std::shared_ptr<FontFace> lightFace =
+		fonts.LoadPath(primary, FontParameters("fixture", editorPixels), lightPolicy);
+	std::shared_ptr<FontFace> normalFace =
+		fonts.LoadPath(primary, FontParameters("fixture", editorPixels), normalPolicy);
+	REQUIRE(lightFace->RasterPolicy().hintStyle == FontHintStyle::Slight);
+	REQUIRE(normalFace->RasterPolicy().hintStyle == FontHintStyle::Normal);
+
+	const std::string text = "high standards";
+	std::shared_ptr<Font> lightFont = FontFromFace(lightFace);
+	std::shared_ptr<Font> normalFont = FontFromFace(normalFace);
+
+	GlContext context;
+	Renderer renderer(context);
+	ColourBuffer buffer;
+	buffer.Resize(220, 40);
+	const ColourRGBA bg(255, 255, 255, 255);
+	const ColourRGBA fg(0, 0, 0, 255);
+
+	auto paint = [&](const std::shared_ptr<Font> &font) {
+		std::unique_ptr<DrawSurface> surface = CreateExternalDrawSurface(
+			renderer, buffer.FramebufferName(), buffer.Width(), buffer.Height());
+		renderer.Clear(bg);
+		const FontMetrics metrics = FaceFromFont(font.get())->Metrics();
+		const XYPOSITION ybase = metrics.ascent + 2.0;
+		surface->DrawTextTransparent(
+			PRectangle::FromInts(2, 0, buffer.Width(), buffer.Height()),
+			font.get(), ybase, text, fg);
+		return buffer.ReadPixelsTopDown();
+	};
+
+	const std::vector<uint8_t> first = paint(lightFont);
+	const std::vector<uint8_t> second = paint(lightFont);
+	const std::vector<uint8_t> normalPixels = paint(normalFont);
+
+	REQUIRE(first.size() == second.size());
+	CHECK(first == second);
+	// Light and normal hint targets must not paint identical ink on this fixture.
+	CHECK(first != normalPixels);
+
+	// Confirm some black text ink was drawn under light hinting.
+	bool sawInk = false;
+	for (size_t i = 0; i + 3 < first.size(); i += 4) {
+		if (first[i] < 250 || first[i + 1] < 250 || first[i + 2] < 250) {
+			sawInk = true;
+			break;
+		}
+	}
+	CHECK(sawInk);
+}

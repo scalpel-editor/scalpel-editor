@@ -51,6 +51,59 @@ struct GlyphImage {
 	std::vector<uint8_t> rgba;
 };
 
+/**
+ * FreeType hint strength for antialiased grayscale outlines.
+ *
+ * Mapped from Fontconfig FC_HINTING / FC_HINT_STYLE. Stronger styles
+ * (medium, full) collapse to Normal because the renderer only consumes
+ * FT_PIXEL_MODE_GRAY.
+ */
+enum class FontHintStyle {
+	None = 0,
+	Slight = 1,
+	Normal = 2,
+};
+
+/**
+ * Grayscale raster choices retained with a FontFace.
+ *
+ * Production faces extract these from the prepared Fontconfig match.
+ * Explicit-path loads use Normal unless a test supplies another policy.
+ * antialias is recorded for identity and documentation; false still
+ * rasterizes as 8-bit gray coverage because packed monochrome is not
+ * supported by the renderer.
+ */
+struct FontRasterPolicy {
+	bool antialias = true;
+	FontHintStyle hintStyle = FontHintStyle::Normal;
+
+	/**
+	 * FreeType load flags for HarfBuzz and RasterizeGlyph. Always includes
+	 * FT_LOAD_COLOR. Hint none uses FT_LOAD_NO_HINTING; slight uses
+	 * FT_LOAD_TARGET_LIGHT; normal uses FT_LOAD_TARGET_NORMAL.
+	 */
+	[[nodiscard]] int FreeTypeLoadFlags() const noexcept;
+};
+
+[[nodiscard]] inline bool operator==(const FontRasterPolicy &a, const FontRasterPolicy &b) noexcept {
+	return a.antialias == b.antialias && a.hintStyle == b.hintStyle;
+}
+
+[[nodiscard]] inline bool operator!=(const FontRasterPolicy &a, const FontRasterPolicy &b) noexcept {
+	return !(a == b);
+}
+
+/**
+ * Read grayscale raster policy from a prepared Fontconfig match (FcPattern *).
+ * Typed as void * so this header does not include Fontconfig.
+ *
+ * Defaults when a property is absent or invalid: antialias true, hinting on,
+ * hint style Normal. FC_HINTING false or FC_HINT_NONE yields None;
+ * FC_HINT_SLIGHT yields Slight; medium, full, and unknown styles yield Normal.
+ * FC_ANTIALIAS false is recorded but does not select monochrome load flags.
+ */
+[[nodiscard]] FontRasterPolicy RasterPolicyFromFontconfigPattern(const void *pattern) noexcept;
+
 class FontFace {
 	class Impl;
 	std::unique_ptr<Impl> impl;
@@ -59,6 +112,7 @@ public:
 	FontFace(std::shared_ptr<void> libraryOwner, void *pattern, void *face,
 		std::filesystem::path path, std::string requestedFamily, double size,
 		FontWeight weight, bool italic, FontStretch stretch,
+		FontRasterPolicy rasterPolicy = {},
 		double metricsScale = 1.0, double strikePpem = 0.0, bool usesBitmapStrike = false);
 	~FontFace() noexcept;
 
@@ -75,6 +129,13 @@ public:
 	FontWeight RequestedWeight() const noexcept;
 	bool RequestedItalic() const noexcept;
 	FontStretch RequestedStretch() const noexcept;
+	/** Grayscale raster policy used for HarfBuzz and FreeType load flags. */
+	const FontRasterPolicy &RasterPolicy() const noexcept;
+	/**
+	 * FreeType load flags shared by HarfBuzz and RasterizeGlyph
+	 * (FT_LOAD_COLOR plus the policy hint target).
+	 */
+	[[nodiscard]] int FreeTypeLoadFlags() const noexcept;
 	/**
 	 * Logical metrics at the requested size. For fixed bitmap strikes this is
 	 * the strike metrics multiplied by MetricsScale().
@@ -107,11 +168,14 @@ public:
 	/**
 	 * Rasterize one glyph by FreeType glyph index (not a character code).
 	 *
-	 * Loads with FT_LOAD_COLOR | FT_LOAD_DEFAULT so CBDT/CBLC colour bitmaps
-	 * stay BGRA and ordinary outlines still rasterize to gray coverage. Missing
-	 * or unloadable glyphs return an empty image. Unsupported pixel modes are
-	 * rejected without reading them as gray. Callers that share this face with
-	 * HarfBuzz must not change FT_Face size after construction.
+	 * Loads with the face FreeTypeLoadFlags() so CBDT/CBLC colour bitmaps
+	 * stay BGRA, ordinary outlines rasterize to gray coverage, and the hint
+	 * target matches HarfBuzz. Outlines always use FT_RENDER_MODE_NORMAL
+	 * (8-bit gray); light hinting is selected by the load target, not by
+	 * FT_RENDER_MODE_LIGHT. Missing or unloadable glyphs return an empty
+	 * image. Unsupported pixel modes are rejected without reading them as
+	 * gray. Callers that share this face with HarfBuzz must not change
+	 * FT_Face size after construction.
 	 */
 	GlyphImage RasterizeGlyph(uint32_t glyphId) const;
 
@@ -119,7 +183,7 @@ public:
 	 * HarfBuzz font for this face. Owned by FontFace and destroyed before the
 	 * FreeType face. Typed as void* so this header does not include HarfBuzz.
 	 * Callers cast to hb_font_t *. Load flags match RasterizeGlyph
-	 * (FT_LOAD_COLOR | FT_LOAD_DEFAULT).
+	 * (FreeTypeLoadFlags()).
 	 */
 	void *HarfBuzzFont() const noexcept;
 };
@@ -190,9 +254,16 @@ public:
 	std::shared_ptr<FontFace> ResolveFallback(
 		const FontParameters &parameters, const char32_t *codePoints, size_t count,
 		EmojiPresentation presentation = EmojiPresentation::Unspecified);
-	std::shared_ptr<FontFace> LoadPath(const std::filesystem::path &path, const FontParameters &parameters);
+	/**
+	 * Load an explicit font file without Fontconfig matching. Uses the given
+	 * raster policy (Normal by default) so deterministic tests can inject
+	 * light or unhinted grayscale rasterization without host config.
+	 */
+	std::shared_ptr<FontFace> LoadPath(const std::filesystem::path &path,
+		const FontParameters &parameters, FontRasterPolicy rasterPolicy = {});
 	std::vector<std::shared_ptr<FontFace>> LoadPaths(
-		const std::vector<std::filesystem::path> &paths, const FontParameters &parameters);
+		const std::vector<std::filesystem::path> &paths, const FontParameters &parameters,
+		FontRasterPolicy rasterPolicy = {});
 };
 
 /**
