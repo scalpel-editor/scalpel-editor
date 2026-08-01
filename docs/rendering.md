@@ -18,13 +18,25 @@ Pixmap surfaces and offscreen targets own texture-backed colour buffers. OpenGL 
 
 Application chrome (`UiStyle::fontName`) stays on `system-ui` independently of the editor body face. The line-number gutter stays on `monospace` when the body face changes.
 
+Each loaded `FontFace` keeps a stable copy of the requested family, size, weight, italic state, and stretch. Production surfaces do not preload a fixed fallback-face list. When a primary face lacks a character or supported emoji sequence, `FontFallback::Production` asks the shared `FontCache` for ordered Fontconfig candidates for that primary request, checks FreeType coverage, shapes the sequence when needed, and caches the decision. Deterministic tests inject fixed fixture faces instead. Missing coverage keeps the primary face so HarfBuzz can emit `.notdef` without crashing paint. Chrome and body primaries resolve fallback independently, so they do not share incorrectly sized fallback faces.
+
 ## Text shaping
 
 A `ShapedRun` stores the input UTF-8 bytes, HarfBuzz glyphs, per-byte end positions, valid caret stops, direction, and the font face used by each glyph. Measurement, wrapping, hit testing, selection, caret placement, and drawing consume the same cached run.
 
 The per-byte positions satisfy Scintilla's `Surface::MeasureWidths` contract. Bytes in one UTF-8 character share its end position, and positions inside a merged shaping cluster are not caret stops. Invalid UTF-8 bytes follow the editor's byte-preserving policy.
 
-The current shaper uses fixed Latin and English properties and supports left-to-right text only. Font fallback is selected per span. Discretionary ligatures are disabled so editor movement and display remain predictable. Other scripts and mixed-direction line ordering require extending this one shaped-run model rather than introducing a parallel layout path.
+Shaping walks the input as UTF-8 characters and groups supported multi-code-point emoji sequences before face selection: presentation selectors (`U+FE0E` / `U+FE0F`), skin-tone modifiers (`U+1F3FB`..`U+1F3FF`), ZWJ-linked emoji, regional-indicator flag pairs, and keycap sequences. One face shapes each whole sequence; default-ignorable joiners and selectors may be ignored in coverage checks, but the complete sequence is passed to HarfBuzz. Byte-end positions and caret stops expose only the boundaries of that unit, even when the font emits more than one glyph. This is not a complete UAX #29 grapheme-boundary implementation: document cursor movement, deletion, selection expansion, and `SafeSegment` still use the broader unfinished grapheme rules and may not treat every emoji sequence as an editing atom.
+
+HarfBuzz chooses script from the span contents. Direction stays left-to-right, discretionary ligatures (`liga`, `dlig`) stay off, and English remains the language when HarfBuzz leaves it unset. Other scripts and mixed-direction line ordering require extending this one shaped-run model rather than introducing a parallel layout path.
+
+## Colour emoji glyphs
+
+CBDT/CBLC colour fonts (and other fixed bitmap strikes) cannot use `FT_Set_Char_Size`. The face loader selects the closest fixed strike and stores `metricsScale = requestedSize / strikePpem`. HarfBuzz advances, face metrics, and glyph bearings are converted into that logical size so measurement and drawing stay aligned.
+
+`FontFace::RasterizeGlyph` loads with `FT_LOAD_COLOR | FT_LOAD_DEFAULT`. Gray coverage glyphs stay 8-bit masks and are tinted with the text foreground. `FT_PIXEL_MODE_BGRA` bitmaps are converted from FreeType's premultiplied BGRA into premultiplied RGBA (pitch may be negative). Unsupported pixel modes yield an empty image. The renderer caches colour glyphs as premultiplied textures, draws their RGB without foreground tint while applying overall text alpha, and uses linear filtering when a large colour strike is downscaled. Ordinary gray glyphs keep nearest filtering so existing pixel tests stay stable.
+
+COLRv1 paint graphs and SVG-in-font rendering are out of scope. FreeType does not provide general COLRv1 rendering; this path stops at colour formats FreeType can rasterize into a bitmap.
 
 ## Coordinates and pixels
 

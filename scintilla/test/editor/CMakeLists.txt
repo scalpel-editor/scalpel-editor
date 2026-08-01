@@ -8,6 +8,7 @@ add_executable(editorTest
   EditorCommandTest.cxx
   EditorDecorationsTest.cxx
   EditorDocumentTest.cxx
+  EditorEmojiTest.cxx
   EditorFoldingTest.cxx
   EditorHistoryTest.cxx
   EditorHostTest.cxx

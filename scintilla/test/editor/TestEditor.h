@@ -8,7 +8,11 @@
 
 #include "EditorRecording.h"
 
+#include <memory>
+
 namespace Scintilla::Internal {
+
+class DrawSurface;
 
 struct TestNotification {
 	Scintilla::Notification code = Scintilla::Notification::StyleNeeded;
@@ -103,10 +107,17 @@ public:
 	unsigned int CurrentTime() const noexcept;
 	void FlushUpdateNotifications();
 	void PaintAll();
+	/**
+	 * Paint the full client into a new DrawSurface and return it with pixels
+	 * still readable. Caller owns the surface.
+	 */
+	std::unique_ptr<DrawSurface> PaintToSurface();
 	void ClearObservations();
 	TestEditorSnapshot Snapshot() const;
 	// Drive fine tickers the host would fire (dwell, caret, …).
 	using Editor::TickFor;
+	using Editor::PointXFromPosition;
+	using Editor::PointYFromPosition;
 	// TickReason is protected on Editor; expose the dwell case for host tests.
 	void FireDwellTick() { TickFor(TickReason::dwell); }
 

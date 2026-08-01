@@ -330,7 +330,10 @@ TestHost::TestHost() {
 #error "editorTest must define SCALPEL_TEST_FONT_DIR to the checked-in fonts directory"
 #endif
 	const std::filesystem::path fontDir = SCALPEL_TEST_FONT_DIR;
-	UseTestFontPaths(fontDir / "FallbackPrimary.ttf", {fontDir / "FallbackSnowman.ttf"});
+	UseTestFontPaths(fontDir / "FallbackPrimary.ttf", {
+		fontDir / "FallbackSnowman.ttf",
+		fontDir / "EmojiFixture.ttf",
+	});
 }
 
 TestHost::~TestHost() {

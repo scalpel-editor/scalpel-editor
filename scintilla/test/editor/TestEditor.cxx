@@ -164,6 +164,13 @@ void TestEditor::FlushUpdateNotifications() {
 }
 
 void TestEditor::PaintAll() {
+	std::unique_ptr<DrawSurface> surface = PaintToSurface();
+	if (surface) {
+		surface->Release();
+	}
+}
+
+std::unique_ptr<DrawSurface> TestEditor::PaintToSurface() {
 	paintState = PaintState::painting;
 	rcPaint = GetClientRectangle();
 	paintingAllText = true;
@@ -174,9 +181,9 @@ void TestEditor::PaintAll() {
 	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(
 		*host.GetRenderer(), width, height, FontFallback::Fixed(TestFontFallbackFaces(fontSize)));
 	Paint(surface.get(), rcPaint);
-	surface->Release();
 	paintState = PaintState::notPainting;
 	paintingAllText = false;
+	return surface;
 }
 
 void TestEditor::ClearObservations() {
