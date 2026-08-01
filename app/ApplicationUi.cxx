@@ -10,6 +10,7 @@
 #include "ApplicationEditor.h"
 #include "DocumentFile.h"
 #include "RecentFiles.h"
+#include "UniConversion.h"
 
 namespace Scalpel {
 
@@ -50,10 +51,15 @@ void SyncRecentMenu(const RecentFiles &recent, MenuBarModel &menuModel,
 
 void ActivateMenuBarItem(MenuBarItemId item, MenuBarModel &menuModel,
 	RecentFiles &recent, const std::string &recentStatePath,
-	DocumentWorkspace &workspace, ApplicationEditor &editor) {
+	DocumentWorkspace &workspace, ApplicationEditor &editor,
+	ApplicationUi *ui) {
 	switch (item.kind) {
 	case MenuBarItemKind::ApplicationAction:
-		DispatchApplicationAction(item.action, workspace, editor);
+		if (item.action == ApplicationAction::Find && ui) {
+			ui->OpenFindBar();
+		} else {
+			DispatchApplicationAction(item.action, workspace, editor);
+		}
 		break;
 	case MenuBarItemKind::RecentFile:
 		if (item.recentIndex < recent.Paths().size()) {
@@ -262,7 +268,7 @@ ApplicationPointerResult HandleChromePointer(const PointerInput &input,
 	TabStripModel &stripModel, ScrollBarInteraction &scrollBarInteraction,
 	RecentFiles &recent, const std::string &recentStatePath,
 	DocumentWorkspace &workspace, ApplicationEditor &editor,
-	bool &pointerOverChrome) {
+	bool &pointerOverChrome, ApplicationUi &ui) {
 	ApplicationPointerResult result;
 	const bool captured = editor.WindowState().mouseCaptured;
 
@@ -285,6 +291,10 @@ ApplicationPointerResult HandleChromePointer(const PointerInput &input,
 	if (!menuWasOpen && menuModel.openMenu.has_value()) {
 		// Opening a menu cancels tentative IME; batches stay dropped while open.
 		editor.CancelActiveTextInput();
+		if (ui.FindBarFocused()) {
+			ui.FindModel().SetFocused(false);
+			editor.InvalidateTopChrome();
+		}
 		CancelScrollBarShellInteraction(scrollBarInteraction, editor);
 	}
 	if (menuResult.barDirty) {
@@ -298,7 +308,7 @@ ApplicationPointerResult HandleChromePointer(const PointerInput &input,
 	if (menuResult.activated) {
 		// Dropdown is already closed before document or persistent state changes.
 		ActivateMenuBarItem(*menuResult.activated, menuModel, recent,
-			recentStatePath, workspace, editor);
+			recentStatePath, workspace, editor, &ui);
 	}
 
 	// A selection drag that began in the editor still owns motion and release
@@ -356,6 +366,12 @@ ApplicationPointerResult HandleChromePointer(const PointerInput &input,
 		return result;
 	}
 
+	// Find-bar pointer routing is applied by ApplicationUi::HandlePointer after
+	// this chrome helper returns an unconsumed event over the find band, or
+	// via a dedicated branch when the bar is visible. The free function only
+	// needs the ui reference for menu Find activation.
+	(void)ui;
+
 	const TabStripHitResult stripHit = UpdateTabStripPointerState(input, layout,
 		stripModel, editor, pointerOverChrome);
 	if (menuResult.pointerOverMenu) {
@@ -368,6 +384,7 @@ ApplicationPointerResult HandleChromePointer(const PointerInput &input,
 		result.owner = ApplicationPointerOwner::PermanentChrome;
 		if (!inStrip) {
 			// Menu bar band already handled above when it owns the hit.
+			// Empty band between controls (or find band miss) still chrome.
 			result.consumed = true;
 			result.cursor = CursorFromChrome(pointerOverChrome);
 			return result;
@@ -448,13 +465,17 @@ ApplicationPointerResult HandleChromePointer(const PointerInput &input,
 ApplicationLayout BuildApplicationLayout(int frameWidth, int frameHeight,
 	int topChromeInset, const MenuBarModel &menuModel,
 	const TabStripModel &stripModel, const ScrollMetrics &scrollMetrics,
-	Scintilla::Internal::PRectangle client) noexcept {
+	Scintilla::Internal::PRectangle client, bool findVisible) noexcept {
 	ApplicationLayout layout;
 	layout.frameWidth = frameWidth;
 	layout.frameHeight = frameHeight;
 	layout.topChromeInset = topChromeInset;
 	layout.menu = LayoutMenuBar(frameWidth, frameHeight, menuModel);
 	layout.tabs = LayoutTabStrip(frameWidth, stripModel, MenuBarHeight());
+	if (findVisible) {
+		layout.find = LayoutFindBar(frameWidth,
+			MenuBarHeight() + TabStripHeight());
+	}
 	layout.scrollBars = LayoutScrollBars(frameWidth, frameHeight, topChromeInset,
 		scrollMetrics.vertical, scrollMetrics.horizontal);
 	layout.client = client;
@@ -473,6 +494,7 @@ ApplicationUi::ApplicationUi(ApplicationEditor &editor_,
 	recentStatePath(std::move(recentStatePath_)),
 	lastActiveDocument(editor_.ActiveDocument()) {
 	menuModel.recentFiles = recent_.Paths();
+	ApplyTopChromeInset();
 }
 
 ApplicationUi::~ApplicationUi() {
@@ -486,7 +508,7 @@ ApplicationUi::~ApplicationUi() {
 ApplicationLayout ApplicationUi::Layout() const {
 	return BuildApplicationLayout(editor->FrameWidth(), editor->FrameHeight(),
 		editor->TopChromeInset(), menuModel, stripModel, editor->Scrollbars(),
-		editor->EditorClientRectangle());
+		editor->EditorClientRectangle(), findBarVisible);
 }
 
 void ApplicationUi::BeginFrameLayout() {
@@ -564,6 +586,9 @@ void ApplicationUi::PaintPermanentChrome(
 	const ApplicationLayout &layout = FrameLayout();
 	menuPainter.PaintBar(surface, layout.menu, menuModel);
 	stripPainter.Paint(surface, layout.tabs, stripModel);
+	if (findBarVisible) {
+		findBarPainter.Paint(surface, layout.find, findBarModel);
+	}
 	PaintScrollBars(surface, layout.scrollBars,
 		ScrollBarPaintFromInteraction(scrollBarInteraction));
 }
@@ -605,6 +630,7 @@ ApplicationPointerResult ApplicationUi::HandlePointer(
 		result.owner = ApplicationPointerOwner::FileError;
 		result.consumed = true;
 		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
+		BlurFindField();
 		HandleFileErrorPointer(input, layout.fileErrorCard, fileErrors, *editor,
 			fileErrorPressHit);
 		pointerCursor = CursorBelowModal(input, layout);
@@ -612,16 +638,58 @@ ApplicationPointerResult ApplicationUi::HandlePointer(
 		result.owner = ApplicationPointerOwner::UnsavedPrompt;
 		result.consumed = true;
 		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
+		BlurFindField();
 		(void)UpdateTabStripPointerState(input, layout, stripModel, *editor,
 			pointerOverChrome);
 		HandlePromptPointer(input, layout.unsavedCard, promptPressHit,
 			*workspace, *editor, cardFocus);
 		pointerCursor = CursorBelowModal(input, layout);
 	} else {
+		const bool captured = editor->WindowState().mouseCaptured;
+		// After modals and editor selection capture, a visible find bar owns
+		// hits in its band before other permanent chrome and the editor.
+		if (!captured && findBarVisible) {
+			const FindBarHitResult findHit = HitTestFindBar(layout.find,
+				Scintilla::Internal::Point(input.x, input.y));
+			if (findHit.kind != FindBarHit::None) {
+				const FindBarPointerResult findResult =
+					HandleFindBarPointer(findBarModel, layout.find, input);
+				if (findResult.fieldFocused) {
+					CaptureFindOrigin();
+				}
+				if (findResult.dirty) {
+					editor->InvalidateTopChrome();
+				}
+				ApplyFindBarRequests(findResult.requests);
+				pointerOverChrome = true;
+				pointerCursor = ApplicationPointerCursor::Arrow;
+				result.owner = ApplicationPointerOwner::PermanentChrome;
+				result.consumed = findResult.consumed;
+				result.cursor = ApplicationPointerCursor::Arrow;
+				// Leave still needs editor delivery for hover clear.
+				if (input.action == PointerAction::Leave) {
+					result.consumed = false;
+					result.owner = ApplicationPointerOwner::Editor;
+				}
+				SynchronizeInteraction();
+				result.cursor = CurrentPointerCursor();
+				return result;
+			}
+			// Press in the editor client blurs the field but leaves the bar open.
+			if (input.action == PointerAction::Press && input.button == 0 &&
+				findBarModel.focused) {
+				const bool inClient =
+					layout.client.Contains(
+						Scintilla::Internal::Point(input.x, input.y));
+				if (inClient) {
+					BlurFindField();
+				}
+			}
+		}
 		result = HandleChromePointer(
 			input, layout, menuModel, stripModel,
 			scrollBarInteraction, *recent, recentStatePath, *workspace, *editor,
-			pointerOverChrome);
+			pointerOverChrome, *this);
 		pointerCursor = result.cursor;
 	}
 
@@ -748,7 +816,8 @@ void HandlePromptKeyboard(const KeyboardInput &input,
 bool HandleMenuBarKeyboardInput(const KeyboardInput &input,
 	MenuBarModel &menuModel, RecentFiles &recent,
 	const std::string &recentStatePath, DocumentWorkspace &workspace,
-	ApplicationEditor &editor, ScrollBarInteraction &scrollBarInteraction) {
+	ApplicationEditor &editor, ScrollBarInteraction &scrollBarInteraction,
+	ApplicationUi &ui) {
 	const bool menuWasOpen = menuModel.openMenu.has_value();
 	// Refresh before open accelerators so FirstEnabledItem uses live state.
 	(void)UpdateMenuBarActionState(menuModel, editor);
@@ -757,6 +826,10 @@ bool HandleMenuBarKeyboardInput(const KeyboardInput &input,
 	if (!menuWasOpen && menuModel.openMenu.has_value()) {
 		// Opening a menu cancels tentative IME; batches stay dropped while open.
 		editor.CancelActiveTextInput();
+		if (ui.FindBarFocused()) {
+			ui.FindModel().SetFocused(false);
+			editor.InvalidateTopChrome();
+		}
 		CancelScrollBarShellInteraction(scrollBarInteraction, editor);
 	}
 	if (menuResult.barDirty) {
@@ -767,32 +840,9 @@ bool HandleMenuBarKeyboardInput(const KeyboardInput &input,
 	}
 	if (menuResult.activated) {
 		ActivateMenuBarItem(*menuResult.activated, menuModel, recent,
-			recentStatePath, workspace, editor);
+			recentStatePath, workspace, editor, &ui);
 	}
 	return menuResult.consumed;
-}
-
-/**
- * Application File/Edit shortcuts and tab cycling, then editor typing.
- * Returns ApplicationShortcut when a shortcut or cycle ran; Editor otherwise.
- */
-ApplicationKeyboardOwner HandleEditorKeyboard(const KeyboardInput &input,
-	DocumentWorkspace &workspace, ApplicationEditor &editor) {
-	if (const std::optional<ApplicationAction> action =
-		MatchApplicationAction(input)) {
-		DispatchApplicationAction(*action, workspace, editor);
-		return ApplicationKeyboardOwner::ApplicationShortcut;
-	}
-	if (IsPrevTabShortcut(input)) {
-		workspace.CycleTab(-1);
-		return ApplicationKeyboardOwner::ApplicationShortcut;
-	}
-	if (IsNextTabShortcut(input)) {
-		workspace.CycleTab(1);
-		return ApplicationKeyboardOwner::ApplicationShortcut;
-	}
-	editor.HandleKeyboardInput(input);
-	return ApplicationKeyboardOwner::Editor;
 }
 
 }
@@ -804,18 +854,48 @@ ApplicationKeyboardResult ApplicationUi::HandleKeyboard(
 	if (!fileErrors.empty()) {
 		result.owner = ApplicationKeyboardOwner::FileError;
 		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
+		BlurFindField();
 		HandleFileErrorKeyboard(input, fileErrors, *editor, fileErrorPressHit);
 	} else if (workspace->PromptActive()) {
 		result.owner = ApplicationKeyboardOwner::UnsavedPrompt;
 		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
+		BlurFindField();
 		HandlePromptKeyboard(input, *workspace, *editor, cardFocus);
 	} else if (HandleMenuBarKeyboardInput(input, menuModel, *recent,
-		recentStatePath, *workspace, *editor, scrollBarInteraction)) {
+		recentStatePath, *workspace, *editor, scrollBarInteraction, *this)) {
 		// Menu accelerators and open-menu navigation run before application
 		// shortcuts and editor typing.
 		result.owner = ApplicationKeyboardOwner::Menu;
+	} else if (const std::optional<ApplicationAction> action =
+		MatchApplicationAction(input);
+		action && *action == ApplicationAction::Find) {
+		// Global Ctrl+F outranks a focused find field so it reselects the query.
+		OpenFindBar();
+		result.owner = ApplicationKeyboardOwner::ApplicationShortcut;
+	} else if (findBarVisible && findBarModel.focused) {
+		const FindBarKeyboardResult findResult =
+			HandleFindBarKeyboard(findBarModel, input);
+		if (findResult.dirty) {
+			editor->InvalidateTopChrome();
+		}
+		if (findResult.queryChanged) {
+			RunIncrementalFind();
+		}
+		ApplyFindBarRequests(findResult.requests);
+		result.owner = ApplicationKeyboardOwner::FindBar;
+	} else if (const std::optional<ApplicationAction> action =
+		MatchApplicationAction(input)) {
+		ActivateAction(*action);
+		result.owner = ApplicationKeyboardOwner::ApplicationShortcut;
+	} else if (IsPrevTabShortcut(input)) {
+		workspace->CycleTab(-1);
+		result.owner = ApplicationKeyboardOwner::ApplicationShortcut;
+	} else if (IsNextTabShortcut(input)) {
+		workspace->CycleTab(1);
+		result.owner = ApplicationKeyboardOwner::ApplicationShortcut;
 	} else {
-		result.owner = HandleEditorKeyboard(input, *workspace, *editor);
+		editor->HandleKeyboardInput(input);
+		result.owner = ApplicationKeyboardOwner::Editor;
 	}
 
 	SynchronizeInteraction();
@@ -833,6 +913,8 @@ void ApplicationUi::HandleFocus(bool focused) {
 	CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
 	fileErrorPressHit = false;
 	promptPressHit.reset();
+	// Keep the bar and query; only drop field focus and presses.
+	BlurFindField();
 }
 
 bool ApplicationUi::ChromeOwnsInput() const noexcept {
@@ -845,6 +927,7 @@ void ApplicationUi::NotifyPromptBegan() {
 	// Opening a modal card cancels tentative IME; batches stay dropped while
 	// the card is active.
 	editor->CancelActiveTextInput();
+	BlurFindField();
 	CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
 	cardFocus = 0;
 	promptPressHit.reset();
@@ -865,6 +948,7 @@ void ApplicationUi::AppendFileErrors(std::vector<DocumentFileError> errors) {
 	// Opening a modal card cancels tentative IME; batches stay dropped while
 	// any error remains in the queue.
 	editor->CancelActiveTextInput();
+	BlurFindField();
 	CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
 	fileErrorPressHit = false;
 	// The higher-priority card must not leave a press armed on the prompt
@@ -960,7 +1044,163 @@ void ApplicationUi::SynchronizeInteraction() {
 		menuModel.openMenu.has_value()) {
 		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
 	}
+	if (documentChanged && findBarVisible) {
+		// Never reuse a byte origin from another retained document.
+		CaptureFindOrigin();
+		if (findBarModel.focused && !findBarModel.query.empty()) {
+			RunIncrementalFind();
+		}
+	}
 	lastActiveDocument = activeDocument;
+}
+
+int ApplicationUi::BaseTopChromeInset() const noexcept {
+	return MenuBarHeight() + TabStripHeight();
+}
+
+int ApplicationUi::CurrentTopChromeInset() const noexcept {
+	return BaseTopChromeInset() + (findBarVisible ? FindBarHeight() : 0);
+}
+
+void ApplicationUi::ApplyTopChromeInset() {
+	const int inset = CurrentTopChromeInset();
+	if (editor->TopChromeInset() != inset) {
+		editor->SetTopChromeInset(inset);
+	}
+}
+
+void ApplicationUi::CaptureFindOrigin() {
+	findOrigin = FindOrigin{
+		editor->ActiveDocument(),
+		editor->GetSelectionStart(),
+	};
+}
+
+void ApplicationUi::ApplyFindOutcome(ApplicationFindOutcome outcome) {
+	switch (outcome) {
+	case ApplicationFindOutcome::Found:
+		findBarModel.SetStatus(FindBarStatus::None);
+		break;
+	case ApplicationFindOutcome::Wrapped:
+		findBarModel.SetStatus(FindBarStatus::Wrapped);
+		break;
+	case ApplicationFindOutcome::NotFound:
+		findBarModel.SetStatus(FindBarStatus::NoMatches);
+		break;
+	}
+	editor->InvalidateTopChrome();
+}
+
+void ApplicationUi::ApplyFindBarRequests(
+	const std::vector<FindBarRequest> &requests) {
+	for (const FindBarRequest &request : requests) {
+		switch (request.kind) {
+		case FindBarRequestKind::SearchForward:
+			RunFindForward();
+			break;
+		case FindBarRequestKind::SearchBackward:
+			RunFindBackward();
+			break;
+		case FindBarRequestKind::Close:
+			CloseFindBar();
+			break;
+		case FindBarRequestKind::ClipboardCopy:
+		case FindBarRequestKind::ClipboardPaste:
+			// Clipboard mediation is wired in the IME/transfer routing commit.
+			break;
+		}
+	}
+}
+
+void ApplicationUi::RunIncrementalFind() {
+	if (!findBarVisible || findBarModel.query.empty()) {
+		findBarModel.SetStatus(FindBarStatus::None);
+		editor->InvalidateTopChrome();
+		return;
+	}
+	if (!findOrigin || findOrigin->document != editor->ActiveDocument()) {
+		CaptureFindOrigin();
+	}
+	ApplyFindOutcome(
+		editor->FindTextForward(findBarModel.query, findOrigin->position));
+}
+
+void ApplicationUi::RunFindForward() {
+	if (!findBarVisible || findBarModel.query.empty()) {
+		findBarModel.SetStatus(FindBarStatus::None);
+		editor->InvalidateTopChrome();
+		return;
+	}
+	ApplyFindOutcome(editor->FindTextForwardFromSelection(findBarModel.query));
+}
+
+void ApplicationUi::RunFindBackward() {
+	if (!findBarVisible || findBarModel.query.empty()) {
+		findBarModel.SetStatus(FindBarStatus::None);
+		editor->InvalidateTopChrome();
+		return;
+	}
+	ApplyFindOutcome(editor->FindTextBackwardFromSelection(findBarModel.query));
+}
+
+void ApplicationUi::BlurFindField() {
+	if (!findBarModel.focused && !findBarModel.pressOrigin &&
+		!findBarModel.preedit) {
+		return;
+	}
+	findBarModel.SetFocused(false);
+	editor->InvalidateTopChrome();
+}
+
+void ApplicationUi::ActivateAction(ApplicationAction action) {
+	if (action == ApplicationAction::Find) {
+		OpenFindBar();
+		return;
+	}
+	DispatchApplicationAction(action, *workspace, *editor);
+}
+
+void ApplicationUi::OpenFindBar() {
+	// Seed an empty query from a single-line selection of valid UTF-8.
+	if (findBarModel.query.empty() && editor->HasSelection()) {
+		const std::string selected = editor->GetSelText();
+		if (!selected.empty() &&
+			selected.find('\n') == std::string::npos &&
+			selected.find('\r') == std::string::npos &&
+			Scintilla::Internal::UTF8IsValid(selected)) {
+			(void)findBarModel.SetQuery(selected);
+		}
+	}
+
+	const bool wasVisible = findBarVisible;
+	findBarVisible = true;
+	findBarModel.SetFocused(true);
+	CaptureFindOrigin();
+	ApplyTopChromeInset();
+	if (!wasVisible) {
+		// Client and scrollbars move when the band appears.
+		editor->InvalidateFrame();
+	} else {
+		editor->InvalidateTopChrome();
+	}
+	// Reselect the retained query for replacement typing.
+	findBarModel.SelectAll();
+	if (!findBarModel.query.empty()) {
+		RunIncrementalFind();
+	}
+}
+
+void ApplicationUi::CloseFindBar() {
+	if (!findBarVisible) {
+		return;
+	}
+	findBarModel.CancelPreedit();
+	findBarModel.SetFocused(false);
+	findBarModel.pressOrigin.reset();
+	findBarVisible = false;
+	findOrigin.reset();
+	ApplyTopChromeInset();
+	editor->InvalidateFrame();
 }
 
 void ApplicationUi::HandleFrameSizeChange() {

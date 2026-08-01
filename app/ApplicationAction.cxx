@@ -42,6 +42,8 @@ constexpr ApplicationActionInfo kActions[] = {
 		Key('V'), Ctrl, false},
 	{ApplicationAction::SelectAll, ApplicationMenu::Edit, "Select All", "Ctrl+A",
 		Key('A'), Ctrl, true},
+	{ApplicationAction::Find, ApplicationMenu::Edit, "Find", "Ctrl+F",
+		Key('F'), Ctrl, false},
 	{ApplicationAction::ConvertLineEndingsToLf, ApplicationMenu::Edit,
 		"Convert Line Endings to LF", "", static_cast<Scintilla::Keys>(0),
 		Scintilla::KeyMod::Norm, true},
@@ -107,6 +109,7 @@ bool ApplicationActionEnabled(ApplicationAction action,
 	case ApplicationAction::SaveAs:
 	case ApplicationAction::CloseTab:
 	case ApplicationAction::Quit:
+	case ApplicationAction::Find:
 	case ApplicationAction::ConvertLineEndingsToLf:
 	case ApplicationAction::ConvertLineEndingsToCrLf:
 	case ApplicationAction::FontMonospace:
@@ -141,6 +144,7 @@ void DispatchApplicationAction(ApplicationAction action,
 	case ApplicationAction::SaveAs:
 	case ApplicationAction::CloseTab:
 	case ApplicationAction::Quit:
+	case ApplicationAction::Find:
 	case ApplicationAction::FontMonospace:
 	case ApplicationAction::FontSerif:
 	case ApplicationAction::FontSans:
@@ -196,6 +200,9 @@ void DispatchApplicationAction(ApplicationAction action,
 		break;
 	case ApplicationAction::SelectAll:
 		editor.RequestSelectAll();
+		break;
+	case ApplicationAction::Find:
+		// UI-local: ApplicationUi opens the find bar before this dispatcher.
 		break;
 	case ApplicationAction::ConvertLineEndingsToLf:
 		editor.ConvertLineEndings(Scintilla::EndOfLine::Lf);

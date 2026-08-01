@@ -71,6 +71,23 @@ KeyboardInput MakeLetter(char upper, KeyMod modifiers = KeyMod::Norm) {
 	return MakeKey(static_cast<Keys>(upper), modifiers);
 }
 
+KeyboardInput MakeText(std::string text, KeyMod modifiers = KeyMod::Norm) {
+	KeyboardInput input;
+	input.key = static_cast<Keys>(0);
+	input.modifiers = modifiers;
+	input.text = std::move(text);
+	input.pressed = true;
+	return input;
+}
+
+bool NonEmpty(const PRectangle &rc) {
+	return rc.right > rc.left && rc.bottom > rc.top;
+}
+
+Point Center(const PRectangle &rc) {
+	return Point((rc.left + rc.right) / 2.0, (rc.top + rc.bottom) / 2.0);
+}
+
 void PrepareChromeEditor(ApplicationEditor &editor) {
 	editor.LoadInitialBuffer("line one\nline two\nline three\nline four\n");
 	editor.SetWrapMode(Scintilla::Wrap::None);
@@ -1611,4 +1628,213 @@ TEST_CASE("application UI workflow frame size and exit cleanup") {
 		pasteBefore);
 	CHECK(HasDamage(editor.TakeFrameDamage(), PRectangle::FromInts(
 		0, 0, editor.FrameWidth(), editor.FrameHeight())));
+}
+
+TEST_CASE("application UI find bar opens focuses and closes with inset") {
+	ApplicationEditor editor(400, 240);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	const int baseInset = Scalpel::MenuBarHeight() + Scalpel::TabStripHeight();
+	CHECK(editor.TopChromeInset() == baseInset);
+	CHECK_FALSE(ui.FindBarVisible());
+
+	const ApplicationKeyboardResult open = ui.HandleKeyboard(
+		MakeLetter('F', KeyMod::Ctrl));
+	CHECK(open.owner == ApplicationKeyboardOwner::ApplicationShortcut);
+	CHECK(ui.FindBarVisible());
+	CHECK(ui.FindBarFocused());
+	CHECK(editor.TopChromeInset() == baseInset + Scalpel::FindBarHeight());
+	const ApplicationLayout openLayout = ui.Layout();
+	CHECK(NonEmpty(openLayout.find.band));
+	CHECK(openLayout.find.band.top ==
+		Scalpel::MenuBarHeight() + Scalpel::TabStripHeight());
+	CHECK(openLayout.client.top == editor.TopChromeInset());
+
+	// Escape closes the bar and restores the base inset.
+	const ApplicationKeyboardResult close = ui.HandleKeyboard(
+		MakeKey(Keys::Escape));
+	CHECK(close.owner == ApplicationKeyboardOwner::FindBar);
+	CHECK_FALSE(ui.FindBarVisible());
+	CHECK(editor.TopChromeInset() == baseInset);
+}
+
+TEST_CASE("application UI find bar seeds query and searches incrementally") {
+	ApplicationEditor editor(400, 240);
+	PrepareChromeEditor(editor);
+	editor.LoadInitialBuffer("alpha beta alpha");
+	editor.SetSel(0, 5); // "alpha"
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+
+	ui.OpenFindBar();
+	CHECK(ui.FindModel().query == "alpha");
+	CHECK(editor.GetSelectionStart() == 0);
+	CHECK(editor.GetSelectionEnd() == 5);
+
+	// Type to replace the selected query.
+	(void)ui.HandleKeyboard(MakeText("beta"));
+	CHECK(ui.FindModel().query == "beta");
+	CHECK(editor.GetSelectionStart() ==
+		static_cast<Scintilla::Position>(editor.Text().find("beta")));
+	CHECK(ui.FindModel().status == Scalpel::FindBarStatus::None);
+
+	// Next wraps from the only match.
+	(void)ui.HandleKeyboard(MakeKey(Keys::Return));
+	CHECK(ui.FindModel().status == Scalpel::FindBarStatus::Wrapped);
+	CHECK(editor.GetSelectionStart() ==
+		static_cast<Scintilla::Position>(editor.Text().find("beta")));
+}
+
+TEST_CASE("application UI find bar next previous and not-found status") {
+	ApplicationEditor editor(400, 240);
+	PrepareChromeEditor(editor);
+	editor.LoadInitialBuffer("one two one");
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	ui.OpenFindBar();
+	// Clear seeded empty selection; type the query.
+	(void)ui.HandleKeyboard(MakeText("one"));
+	CHECK(editor.GetSelectionStart() == 0);
+
+	(void)ui.HandleKeyboard(MakeKey(Keys::Return));
+	CHECK(editor.GetSelectionStart() == 8);
+	CHECK(ui.FindModel().status == Scalpel::FindBarStatus::None);
+
+	(void)ui.HandleKeyboard(MakeKey(Keys::Return));
+	CHECK(editor.GetSelectionStart() == 0);
+	CHECK(ui.FindModel().status == Scalpel::FindBarStatus::Wrapped);
+
+	(void)ui.HandleKeyboard(MakeKey(Keys::Return, KeyMod::Shift));
+	CHECK(editor.GetSelectionStart() == 8);
+	CHECK(ui.FindModel().status == Scalpel::FindBarStatus::Wrapped);
+
+	// Replace query with a missing needle.
+	ui.FindModel().SelectAll();
+	(void)ui.HandleKeyboard(MakeText("zzz"));
+	CHECK(ui.FindModel().status == Scalpel::FindBarStatus::NoMatches);
+}
+
+TEST_CASE("application UI find bar pointer close and editor focus transfer") {
+	ApplicationEditor editor(400, 240);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	ui.OpenFindBar();
+	const ApplicationLayout layout = ui.Layout();
+	const Point close = Center(layout.find.closeButton);
+
+	const ApplicationPointerResult press = ui.HandlePointer(
+		MakePointer(PointerAction::Press, close.x, close.y, 0));
+	CHECK(press.consumed);
+	CHECK(press.owner == ApplicationPointerOwner::PermanentChrome);
+	const ApplicationPointerResult release = ui.HandlePointer(
+		MakePointer(PointerAction::Release, close.x, close.y, 0));
+	CHECK(release.consumed);
+	CHECK_FALSE(ui.FindBarVisible());
+
+	ui.OpenFindBar();
+	CHECK(ui.FindBarFocused());
+	const ApplicationLayout openLayout = ui.Layout();
+	const Point client = Center(openLayout.client);
+	const ApplicationPointerResult editorPress = ui.HandlePointer(
+		MakePointer(PointerAction::Press, client.x, client.y, 0));
+	CHECK_FALSE(editorPress.consumed);
+	CHECK(ui.FindBarVisible());
+	CHECK_FALSE(ui.FindBarFocused());
+	// Ctrl+F focuses again without closing.
+	(void)ui.HandleKeyboard(MakeLetter('F', KeyMod::Ctrl));
+	CHECK(ui.FindBarFocused());
+}
+
+TEST_CASE("application UI find bar defers to menu and modal priority") {
+	ApplicationEditor editor(400, 240);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	ui.OpenFindBar();
+	CHECK(ui.FindBarFocused());
+
+	// Open the File menu; find field loses focus but stays visible.
+	(void)ui.HandleKeyboard(MakeLetter('F', KeyMod::Alt));
+	CHECK(ui.MenuModel().openMenu.has_value());
+	CHECK(*ui.MenuModel().openMenu == Scalpel::ApplicationMenu::File);
+	CHECK(ui.FindBarVisible());
+	CHECK_FALSE(ui.FindBarFocused());
+
+	// Dismiss menu with Escape.
+	(void)ui.HandleKeyboard(MakeKey(Keys::Escape));
+	CHECK_FALSE(ui.MenuModel().openMenu.has_value());
+
+	ui.FindModel().SetFocused(true);
+	// File error owns keyboard over the find field.
+	ui.AppendFileErrors({DocumentFileError{
+		DocumentFileOperation::Open, "/tmp/x"}});
+	const ApplicationKeyboardResult err = ui.HandleKeyboard(
+		MakeKey(Keys::Escape));
+	CHECK(err.owner == ApplicationKeyboardOwner::FileError);
+	CHECK_FALSE(ui.FindBarFocused());
+	CHECK(ui.FindBarVisible());
+}
+
+TEST_CASE("application UI find bar keeps query across tab switches") {
+	ApplicationEditor editor(400, 240);
+	PrepareChromeEditor(editor);
+	editor.LoadInitialBuffer("first document has needle");
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	(void)ui.SynchronizeTabs(true);
+	ui.OpenFindBar();
+	(void)ui.HandleKeyboard(MakeText("needle"));
+	CHECK(ui.FindModel().query == "needle");
+
+	workspace.NewTab();
+	(void)ui.TakeShellEffects();
+	(void)ui.SynchronizeTabs(true);
+	editor.LoadInitialBuffer("second document has needle too");
+	// Query is process-lifetime; reopening focuses and searches the new buffer.
+	CHECK(ui.FindBarVisible());
+	CHECK(ui.FindModel().query == "needle");
+	ui.OpenFindBar();
+	CHECK(editor.Text().find("needle") != std::string::npos);
+	CHECK(editor.GetSelectionStart() ==
+		static_cast<Scintilla::Position>(editor.Text().find("needle")));
+}
+
+TEST_CASE("application UI find bar paints in permanent chrome") {
+	ApplicationEditor editor(400, 200);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	ui.BindPainters();
+	ui.OpenFindBar();
+	ui.FindModel().SetStatus(Scalpel::FindBarStatus::NoMatches);
+	ui.BeginFrameLayout();
+	editor.RenderFrame();
+	ui.EndFrameLayout();
+	const auto pixels = editor.FramePixels();
+	REQUIRE_FALSE(pixels.empty());
+	const ApplicationLayout layout = ui.Layout();
+	const int midY = static_cast<int>(
+		(layout.find.band.top + layout.find.band.bottom) / 2);
+	const size_t offset =
+		(static_cast<size_t>(midY) * static_cast<size_t>(editor.FrameWidth()) +
+			4U) *
+		4U;
+	REQUIRE(offset + 3 < pixels.size());
+	// Opaque chrome (non-zero alpha).
+	CHECK(pixels[offset + 3] == 255);
 }

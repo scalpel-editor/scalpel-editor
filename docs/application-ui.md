@@ -1,18 +1,18 @@
 # Application UI
 
-The application UI is a fixed composition of the Scintilla editor, a menu bar, a tab strip, scrollbars, modal cards, and one active overlay. `ApplicationUi` coordinates those concrete parts without depending on Wayland and without introducing a general control framework.
+The application UI is a fixed composition of the Scintilla editor, a menu bar, a tab strip, an optional find bar, scrollbars, modal cards, and one active overlay. `ApplicationUi` coordinates those concrete parts without depending on Wayland and without introducing a general control framework.
 
 ## Ownership
 
 | Owner | Responsibility |
 | --- | --- |
 | `WaylandWindow` | Display connection, Wayland and EGL objects, external services, input transport, scaling, frame submission, and waiting. |
-| `ApplicationEditor` | Scintilla documents, editor input, rendering, damage, editor work deadlines, editor client geometry, scrollbar visibility and ranges, clipboard values, text-input state, and the process-wide generic editor text face. |
+| `ApplicationEditor` | Scintilla documents, editor input, rendering, damage, editor work deadlines, editor client geometry, scrollbar visibility and ranges, clipboard values, text-input state, wrapped plain-text find, and the process-wide generic editor text face. |
 | `DocumentWorkspace` | Tabs, paths, file operations, application dialog intents, recent-path outcomes, and dirty-close policy. |
-| `ApplicationUi` | Chrome models and painters, modal-card and error state, hover and press state, scrollbar interaction, input priority, cursor choice, overlay selection, application layout snapshots, recent-file updates, and conversion of workspace work into host effects. |
+| `ApplicationUi` | Chrome models and painters (including the find bar), top-chrome inset, modal-card and error state, hover and press state, scrollbar interaction, input priority, cursor choice, overlay selection, application layout snapshots, recent-file updates, and conversion of workspace work into host effects. |
 | `main.cxx` | Construction and the platform pump. It moves copied events and external-service results across the boundary, performs host effects, submits frames, and waits. |
 
-`ApplicationUi` receives references to `ApplicationEditor`, `DocumentWorkspace`, and `RecentFiles`; it does not replace their ownership. `main.cxx` keeps those objects alive in dependency order and contains no application input-priority or overlay-selection policy.
+`ApplicationUi` receives references to `ApplicationEditor`, `DocumentWorkspace`, and `RecentFiles`; it does not replace their ownership. `main.cxx` keeps those objects alive in dependency order and contains no application input-priority or overlay-selection policy. The top-chrome inset (menu plus tab strip, plus the find bar when visible) is established by `ApplicationUi`, not by `main.cxx`.
 
 ## Event flow
 
@@ -26,7 +26,7 @@ One platform-loop iteration has this application order:
 6. After editor work and application synchronization, `ApplicationUi` selects the overlay and cursor. `main.cxx` transfers editor damage to `WaylandWindow`.
 7. When the compositor permits a frame, `ApplicationUi` retains one frame layout while `ApplicationEditor` paints the editor, permanent chrome, and active overlay. `main.cxx` then submits the frame and returns to the shared event wait.
 
-Focus loss is one `ApplicationUi` transition: it cancels editor focus and tentative IME, closes the menu, cancels scrollbar interaction, and clears modal press state. Opening a menu or modal card also cancels tentative IME. While a modal card or menu owns input, `ChromeOwnsInput` tells the platform adapter to discard compositor IME batches; protocol conversion remains outside the UI.
+Focus loss is one `ApplicationUi` transition: it cancels editor focus and tentative IME, closes the menu, cancels scrollbar interaction, clears modal press state, and blurs the find field without closing the bar or discarding its query. Opening a menu or modal card also cancels tentative IME and blurs the find field. While a modal card or menu owns input, `ChromeOwnsInput` tells the platform adapter to discard compositor IME batches; protocol conversion remains outside the UI.
 
 ## Interaction and overlay priority
 
@@ -37,20 +37,29 @@ Focus loss is one `ApplicationUi` transition: it cancels editor focus and tentat
 3. Active scrollbar drag.
 4. Editor selection capture.
 5. Open menu, including an outside click that dismisses it.
-6. Permanent chrome: menu bar, tab strip, or a scrollbar hit.
-7. Editor client.
+6. Visible find bar band (field, Previous, Next, Close, or empty chrome).
+7. Permanent chrome: menu bar, tab strip, or a scrollbar hit.
+8. Editor client.
 
-Modal owners consume pointer input. Editor selection capture and surface leave remain deliverable to `ApplicationEditor` so Scintilla can finish its interaction. A click that dismisses a menu does not also activate the control underneath it. Each routing entry point applies actions, invalidation, and interaction cleanup before returning.
+Modal owners consume pointer input. Editor selection capture and surface leave remain deliverable to `ApplicationEditor` so Scintilla can finish its interaction. A click that dismisses a menu does not also activate the control underneath it. A pointer press in the editor client while the find bar is visible leaves the bar open but transfers keyboard focus back to the editor. Each routing entry point applies actions, invalidation, and interaction cleanup before returning.
 
 The same coordinator chooses the pointer cursor. Chrome and modal interaction select the arrow; editor interaction defers to the Scintilla cursor. `CurrentPointerCursor` also forces the arrow when a modal appears without a pointer event, so `main.cxx` only applies the resolved choice.
 
-Keyboard priority is file-error card, unsaved-changes prompt, menu navigation or accelerator, application shortcut or tab cycle, then editor input. Overlay paint priority is file-error card, unsaved-changes prompt, open menu, then no overlay. A higher-priority modal closes an open menu, and every overlay change invalidates the full frame.
+Keyboard priority is file-error card, unsaved-changes prompt, menu navigation or accelerator, the global Find action (`Ctrl+F` / Edit > Find), a focused find field, other application shortcuts or tab cycle, then editor input. Overlay paint priority is file-error card, unsaved-changes prompt, open menu, then no overlay. A higher-priority modal closes an open menu, and every overlay change invalidates the full frame.
 
 ## Layout and paint authority
 
-`ApplicationEditor` remains the authority for the Scintilla client rectangle and scrollbar visibility, ranges, and positions. Individual concrete components calculate their own rectangles from their models. `ApplicationUi` combines those values with the logical frame size into `ApplicationLayout`, which contains menu, tab, scrollbar, client, and modal-card layouts.
+`ApplicationEditor` remains the authority for the Scintilla client rectangle and scrollbar visibility, ranges, and positions. Individual concrete components calculate their own rectangles from their models. `ApplicationUi` combines those values with the logical frame size into `ApplicationLayout`, which contains menu, tab, find-bar, scrollbar, client, and modal-card layouts. The top-chrome inset is `MenuBarHeight + TabStripHeight`, plus `FindBarHeight` while the find bar is visible; `ApplicationUi` applies that inset through `ApplicationEditor::SetTopChromeInset`.
 
 Every pointer event builds one immutable layout value after refreshing model values used by hit testing. All owners considered for that event read that value. Painting uses a separate frame snapshot: `BeginFrameLayout` refreshes menu enablement and the selected Font radio, clamps tab scrolling, and retains one `ApplicationLayout`; both permanent-chrome and overlay painters read it until `EndFrameLayout`. Hit testing and painting therefore never run separate component layout calculations within the same event or frame.
+
+## Find bar
+
+The find bar is a third opaque top-chrome band below the tab strip. `FindBar` is one concrete model/layout/input/painter component; `ApplicationUi` owns visibility, the process-lifetime query, incremental origin, and translation of typed requests into searches and close. There is no control base class, focus manager, or registration system.
+
+`Ctrl+F` and Edit > Find share `OpenFindBar`: they show the bar when hidden, focus the field, select the retained query, and capture an incremental origin in the active document. When the query is empty and the editor has a non-empty, single-line selection of valid UTF-8, that selection seeds the field. Closing (Escape or the Close control) cancels preedit, restores the base inset, and leaves the last document match selected.
+
+Search is case-insensitive plain text. Committed query changes run an incremental forward search from the captured origin so extending the query does not skip past the match for the shorter query. Enter and Next search forward from the end of the current editor selection; Shift+Enter and Previous search backward from its start. Both directions wrap once. Empty queries do not search. Status is clear after a first-range match, `Wrapped` after a wrap match, and `No matches` after a failed search. Search changes only the editor selection and scroll position, not document bytes, undo, or save state. The origin is document-qualified and is reset on focus gain and active-document change.
 
 ## Editor font menu
 
@@ -89,7 +98,7 @@ Invalid UTF-8 in file contents is separate from path encoding, I/O failures, lin
 
 | Workspace work or outcome | `ApplicationUi` action |
 | --- | --- |
-| Prompt began | Activates modal input state, closes the menu, cancels IME and scrollbar interaction, and resets card focus. |
+| Prompt began | Activates modal input state, closes the menu, cancels IME and scrollbar interaction, blurs the find field, and resets card focus. |
 | Refresh tabs | Rebuilds the tab-strip model and invalidates top chrome. |
 | Recent path | Records and persists the recent-file list, then refreshes the menu model. |
 | File error | Queues and activates the file-error card. |
@@ -107,7 +116,6 @@ The boundary is intentionally application-specific:
 - It does not recompute Scintilla client geometry or scrollbar metrics.
 - Fixed `UiStyle` values are immutable painter-owned snapshots; runtime theme discovery is outside the current product.
 - Scintilla autocomplete, call-tip, and context-menu popup surfaces remain explicit unsupported production paths.
-
-A new find bar should add one concrete model/layout/painter component and one rule at the `ApplicationUi` composition boundary. It should not require new priority checks in `main.cxx`, `ApplicationEditor`, or several existing controls.
+- Find is the one UI-local application action: menu activation and `Ctrl+F` share `OpenFindBar` before the existing dispatcher. Other actions still dispatch through `DocumentWorkspace` and `ApplicationEditor`.
 
 Production composition is exercised through `applicationUiTest` with an offscreen `ApplicationEditor`, so input, layout, overlays, portal workflows, and rendering can be tested without opening a Wayland connection. Live Wayland runs check the platform integration rather than replacing those deterministic cases.

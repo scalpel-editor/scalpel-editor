@@ -76,7 +76,7 @@ void TypeChar(ApplicationEditor &editor, char ch, uint32_t time) {
 }
 
 TEST_CASE("application actions table lists File Edit and Font in menu order") {
-	REQUIRE(Scalpel::ApplicationActionCount() == 18);
+	REQUIRE(Scalpel::ApplicationActionCount() == 19);
 	const ApplicationActionInfo *table = Scalpel::ApplicationActionTable();
 	CHECK(table[0].action == ApplicationAction::NewTab);
 	CHECK(table[0].menu == ApplicationMenu::File);
@@ -84,11 +84,13 @@ TEST_CASE("application actions table lists File Edit and Font in menu order") {
 	CHECK(table[6].action == ApplicationAction::Undo);
 	CHECK(table[6].menu == ApplicationMenu::Edit);
 	CHECK(table[11].action == ApplicationAction::SelectAll);
-	CHECK(table[12].action == ApplicationAction::ConvertLineEndingsToLf);
-	CHECK(table[13].action == ApplicationAction::ConvertLineEndingsToCrLf);
-	CHECK(table[14].action == ApplicationAction::FontMonospace);
-	CHECK(table[14].menu == ApplicationMenu::Font);
-	CHECK(table[17].action == ApplicationAction::FontSystem);
+	CHECK(table[12].action == ApplicationAction::Find);
+	CHECK(table[12].shortcutLabel == "Ctrl+F");
+	CHECK(table[13].action == ApplicationAction::ConvertLineEndingsToLf);
+	CHECK(table[14].action == ApplicationAction::ConvertLineEndingsToCrLf);
+	CHECK(table[15].action == ApplicationAction::FontMonospace);
+	CHECK(table[15].menu == ApplicationMenu::Font);
+	CHECK(table[18].action == ApplicationAction::FontSystem);
 
 	CHECK(InfoFor(ApplicationAction::Open).label == "Open\u2026");
 	CHECK(InfoFor(ApplicationAction::SaveAs).shortcutLabel == "Ctrl+Shift+S");
@@ -165,6 +167,7 @@ TEST_CASE("application actions match listed shortcuts and ignore releases") {
 	CHECK(MatchApplicationAction(Press('C', ctrl)) == ApplicationAction::Copy);
 	CHECK(MatchApplicationAction(Press('V', ctrl)) == ApplicationAction::Paste);
 	CHECK(MatchApplicationAction(Press('A', ctrl)) == ApplicationAction::SelectAll);
+	CHECK(MatchApplicationAction(Press('F', ctrl)) == ApplicationAction::Find);
 
 	KeyboardInput release = Press('N', ctrl);
 	release.pressed = false;
@@ -594,4 +597,17 @@ TEST_CASE("application actions font zero-key text events do not match font rows"
 	// Bound shortcuts still match after the zero-key guard.
 	CHECK(MatchApplicationAction(Press('N', Scintilla::KeyMod::Ctrl)) ==
 		ApplicationAction::NewTab);
+}
+
+TEST_CASE("application action Find is always enabled and matches Ctrl+F") {
+	ApplicationEditor editor(200, 100);
+	DocumentWorkspace workspace(editor);
+	CHECK(ApplicationActionEnabled(ApplicationAction::Find, editor));
+	CHECK(MatchApplicationAction(Press('F', Scintilla::KeyMod::Ctrl)) ==
+		ApplicationAction::Find);
+	CHECK(InfoFor(ApplicationAction::Find).label == "Find");
+	CHECK(InfoFor(ApplicationAction::Find).menu == ApplicationMenu::Edit);
+	// Dispatch is a no-op; ApplicationUi opens the bar.
+	DispatchApplicationAction(ApplicationAction::Find, workspace, editor);
+	CHECK_FALSE(editor.Modified());
 }

@@ -352,9 +352,8 @@ int main() {
 			"Ctrl+N new tab, Ctrl+W close tab, Ctrl+Tab cycle tabs.\n"
 			"Ctrl+O open, Ctrl+S save, Ctrl+Shift+S save as, Ctrl+Q quit.\n";
 		editor.LoadInitialBuffer(initialText);
-		const int topChromeInset =
-			Scalpel::MenuBarHeight() + Scalpel::TabStripHeight();
-		editor.SetTopChromeInset(topChromeInset);
+		// ApplicationUi owns the base menu-plus-tab inset and expands it when
+		// the find bar is visible.
 		Scalpel::DocumentWorkspace workspace(editor);
 		const std::string recentStatePath = Scalpel::RecentFilesStatePath();
 		Scalpel::RecentFiles recent =

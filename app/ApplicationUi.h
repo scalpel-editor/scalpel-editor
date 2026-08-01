@@ -23,10 +23,12 @@
 #include <string>
 #include <vector>
 
+#include "ApplicationEditor.h"
 #include "ApplicationInput.h"
 #include "DocumentId.h"
 #include "DocumentWorkspace.h"
 #include "FileErrorCard.h"
+#include "FindBar.h"
 #include "Geometry.h"
 #include "MenuBar.h"
 #include "ScrollBar.h"
@@ -36,7 +38,6 @@
 
 namespace Scalpel {
 
-class ApplicationEditor;
 class RecentFiles;
 
 /** Which post-paint overlay painter is currently bound to the editor host. */
@@ -53,7 +54,7 @@ enum class BoundOverlay {
  * editor-owned client rectangle. Hit testing and painting during the same
  * event or paint pass must share this snapshot rather than re-laying out
  * independently. Card layouts depend only on frame size; which card is shown
- * remains overlay selection policy.
+ * remains overlay selection policy. find is empty when the bar is hidden.
  */
 struct ApplicationLayout {
 	int frameWidth = 0;
@@ -61,6 +62,7 @@ struct ApplicationLayout {
 	int topChromeInset = 0;
 	MenuBarLayout menu;
 	TabStripLayout tabs;
+	FindBarLayout find;
 	ScrollBarLayout scrollBars;
 	/** Scintilla client from ApplicationEditor; not recomputed here. */
 	Scintilla::Internal::PRectangle client;
@@ -70,15 +72,16 @@ struct ApplicationLayout {
 
 /**
  * Build the frame layout from explicit size, models, and editor metrics.
- * topChromeInset is MenuBarHeight + TabStripHeight in production. client must
- * be ApplicationEditor::EditorClientRectangle() (or a test double) so client
- * geometry stays the editor's responsibility. scroll metrics come from
- * ApplicationEditor::Scrollbars(); visibility and ranges are not re-derived.
+ * topChromeInset is MenuBarHeight + TabStripHeight, plus FindBarHeight when
+ * findVisible. client must be ApplicationEditor::EditorClientRectangle() (or a
+ * test double) so client geometry stays the editor's responsibility. scroll
+ * metrics come from ApplicationEditor::Scrollbars(); visibility and ranges are
+ * not re-derived.
  */
 [[nodiscard]] ApplicationLayout BuildApplicationLayout(int frameWidth,
 	int frameHeight, int topChromeInset, const MenuBarModel &menuModel,
 	const TabStripModel &stripModel, const ScrollMetrics &scrollMetrics,
-	Scintilla::Internal::PRectangle client) noexcept;
+	Scintilla::Internal::PRectangle client, bool findVisible = false) noexcept;
 
 /**
  * Who owns the pointer for one event after priority resolution.
@@ -125,6 +128,7 @@ enum class ApplicationKeyboardOwner {
 	UnsavedPrompt,
 	Menu,
 	ApplicationShortcut,
+	FindBar,
 	Editor,
 };
 
@@ -258,10 +262,11 @@ public:
 
 	/**
 	 * Route one keyboard event through modal cards, menu navigation, open
-	 * accelerators, application shortcuts, tab cycling, and editor delivery.
-	 * Modal owners and an open menu consume every key; shortcuts and editor
-	 * typing apply inside this method. Any document or modal change leaves
-	 * scrollbar interaction consistent before this method returns.
+	 * accelerators, the global Find action, a focused find field, application
+	 * shortcuts, tab cycling, and editor delivery. Modal owners and an open menu
+	 * consume every key; shortcuts and editor typing apply inside this method.
+	 * Any document or modal change leaves scrollbar interaction consistent
+	 * before this method returns.
 	 */
 	[[nodiscard]] ApplicationKeyboardResult HandleKeyboard(
 		const KeyboardInput &input);
@@ -269,7 +274,8 @@ public:
 	/**
 	 * Apply keyboard focus gain or loss. Loss is one transition: editor focus
 	 * cancel (including tentative IME), close any open menu, cancel scrollbar
-	 * interaction, and clear modal press state.
+	 * interaction, clear modal press state, and blur the find field without
+	 * closing the bar or discarding its query.
 	 */
 	void HandleFocus(bool focused);
 
@@ -279,6 +285,25 @@ public:
 	 * conversion stays in the adapter.
 	 */
 	[[nodiscard]] bool ChromeOwnsInput() const noexcept;
+
+	/**
+	 * Open the find bar (or refocus it), seed an empty query from a single-line
+	 * editor selection when valid, capture the incremental origin, and expand
+	 * the top chrome inset. Shared by Ctrl+F and Edit > Find.
+	 */
+	void OpenFindBar();
+
+	/** Hide the find bar, restore the base inset, and leave the last match selected. */
+	void CloseFindBar();
+
+	[[nodiscard]] bool FindBarVisible() const noexcept { return findBarVisible; }
+	[[nodiscard]] bool FindBarFocused() const noexcept {
+		return findBarVisible && findBarModel.focused;
+	}
+	[[nodiscard]] FindBarModel &FindModel() noexcept { return findBarModel; }
+	[[nodiscard]] const FindBarModel &FindModel() const noexcept {
+		return findBarModel;
+	}
 
 	/**
 	 * Unsaved-prompt card became active. Closes the menu, cancels tentative
@@ -410,6 +435,18 @@ public:
 private:
 	[[nodiscard]] BoundOverlay DesiredOverlay() const noexcept;
 	void SynchronizeInteraction();
+	[[nodiscard]] int BaseTopChromeInset() const noexcept;
+	[[nodiscard]] int CurrentTopChromeInset() const noexcept;
+	void ApplyTopChromeInset();
+	void CaptureFindOrigin();
+	void ApplyFindOutcome(ApplicationFindOutcome outcome);
+	void ApplyFindBarRequests(const std::vector<FindBarRequest> &requests);
+	void RunIncrementalFind();
+	void RunFindForward();
+	void RunFindBackward();
+	void BlurFindField();
+	/** Activate a matched action; Find is UI-local, everything else dispatches. */
+	void ActivateAction(ApplicationAction action);
 
 	ApplicationEditor *editor = nullptr;
 	DocumentWorkspace *workspace = nullptr;
@@ -417,9 +454,17 @@ private:
 	std::string recentStatePath;
 	MenuBarModel menuModel;
 	TabStripModel stripModel;
+	FindBarModel findBarModel;
+	bool findBarVisible = false;
+	struct FindOrigin {
+		DocumentId document = 0;
+		Scintilla::Position position = 0;
+	};
+	std::optional<FindOrigin> findOrigin;
 	ScrollBarInteraction scrollBarInteraction;
 	MenuBarPainter menuPainter;
 	TabStripPainter stripPainter;
+	FindBarPainter findBarPainter;
 	UnsavedChangesCardPainter cardPainter;
 	FileErrorCardPainter fileErrorPainter;
 	int cardFocus = 0;
