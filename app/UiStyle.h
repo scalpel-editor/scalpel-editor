@@ -4,6 +4,7 @@
 #ifndef UISTYLE_H
 #define UISTYLE_H
 
+#include <string>
 #include <string_view>
 
 #include "Geometry.h"
@@ -122,6 +123,15 @@ private:
 [[nodiscard]] constexpr float UiPixelSizeFromPoints(float points) noexcept {
 	return points * 96.0f / 72.0f;
 }
+
+/**
+ * Truncate label to maxWidth logical pixels using ellipsis when needed.
+ * Cuts on UTF-8 character boundaries. Empty maxWidth or missing font yields {}.
+ */
+[[nodiscard]] std::string TruncateLabel(Scintilla::Internal::Surface &surface,
+	const Scintilla::Internal::Font *font,
+	std::string_view label,
+	Scintilla::Internal::XYPOSITION maxWidth);
 
 /** Axis-aligned border drawn inside rc (integer-friendly, no poly-line miters). */
 void DrawInsideFrame(Scintilla::Internal::Surface &surface,

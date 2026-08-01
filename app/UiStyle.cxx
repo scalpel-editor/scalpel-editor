@@ -18,6 +18,67 @@ using Scintilla::Internal::PRectangle;
 using Scintilla::Internal::Surface;
 using Scintilla::Internal::XYPOSITION;
 
+/** Walk back so cut is not mid UTF-8 sequence. */
+std::size_t Utf8Floor(std::string_view text, std::size_t index) noexcept {
+	if (index >= text.size()) {
+		return text.size();
+	}
+	while (index > 0 &&
+		(static_cast<unsigned char>(text[index]) & 0xC0) == 0x80) {
+		--index;
+	}
+	return index;
+}
+
+}
+
+std::string TruncateLabel(Surface &surface, const Font *font,
+	std::string_view label, XYPOSITION maxWidth) {
+	if (!font || maxWidth <= 0.0 || label.empty()) {
+		return {};
+	}
+	if (surface.WidthText(font, label) <= maxWidth) {
+		return std::string(label);
+	}
+	constexpr std::string_view kEllipsis = "\xE2\x80\xA6"; // …
+	const XYPOSITION ellipsisWidth = surface.WidthText(font, kEllipsis);
+	if (ellipsisWidth > maxWidth) {
+		return {};
+	}
+	const XYPOSITION budget = maxWidth - ellipsisWidth;
+	std::size_t lo = 0;
+	std::size_t hi = label.size();
+	std::size_t best = 0;
+	while (lo <= hi) {
+		const std::size_t mid = lo + (hi - lo) / 2;
+		const std::size_t cut = Utf8Floor(label, mid);
+		if (cut == 0) {
+			if (mid == 0) {
+				break;
+			}
+			hi = mid - 1;
+			continue;
+		}
+		const std::string_view prefix = label.substr(0, cut);
+		if (surface.WidthText(font, prefix) <= budget) {
+			best = cut;
+			if (mid >= label.size()) {
+				break;
+			}
+			lo = mid + 1;
+		} else {
+			if (mid == 0) {
+				break;
+			}
+			hi = mid - 1;
+		}
+	}
+	if (best == 0) {
+		return std::string(kEllipsis);
+	}
+	std::string out(label.substr(0, best));
+	out.append(kEllipsis);
+	return out;
 }
 
 void DrawInsideFrame(Surface &surface, const PRectangle &rc, ColourRGBA colour,

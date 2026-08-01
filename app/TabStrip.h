@@ -134,15 +134,6 @@ struct TabStripHitResult {
 	Scintilla::Internal::Point point) noexcept;
 
 /**
- * Truncate label to maxWidth logical pixels using ellipsis when needed.
- * Cuts on UTF-8 character boundaries. Empty maxWidth or missing font yields {}.
- */
-[[nodiscard]] std::string TruncateTabLabel(Scintilla::Internal::Surface &surface,
-	const Scintilla::Internal::Font *font,
-	std::string_view label,
-	Scintilla::Internal::XYPOSITION maxWidth);
-
-/**
  * Owns the strip font. Construct once beside the shell and reuse across frames.
  * Paints opaque strip chrome; does not dim the client or use the modal overlay path.
  */

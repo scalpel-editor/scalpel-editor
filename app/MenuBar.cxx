@@ -188,7 +188,7 @@ std::string ItemLabel(const MenuBarModel &model, MenuBarItemId item) {
 			if (directory.empty() || name.empty()) {
 				return path;
 			}
-			return name + " \xe2\x80\x94 " + directory;
+			return name + " (" + directory + ")";
 		}
 	case MenuBarItemKind::ClearRecentFiles:
 		return "Clear Recent Files";
@@ -1010,7 +1010,11 @@ void MenuBarPainter::PaintDropdown(Surface &surface, const MenuBarLayout &layout
 		}
 		const ColourRGBA shortcutInk =
 			item.enabled ? style.mutedText : style.disabledText;
-		DrawLeftAlignedLabel(surface, item.label, font, item.labelText, ink);
+		const std::string labelText = TruncateLabel(
+			surface, font, item.labelText, item.label.Width());
+		surface.SetClip(item.label);
+		DrawLeftAlignedLabel(surface, item.label, font, labelText, ink);
+		surface.PopClip();
 		if (NonEmpty(item.shortcut) && !item.shortcutText.empty()) {
 			DrawRightAlignedLabel(surface, item.shortcut, font, item.shortcutText,
 				shortcutInk);
