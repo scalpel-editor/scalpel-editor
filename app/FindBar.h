@@ -84,6 +84,8 @@ struct FindBarModel {
 	std::size_t caret = 0;
 	std::size_t anchor = 0;
 	bool focused = false;
+	/** Changes on each focus transition so asynchronous work cannot cross one. */
+	uint64_t focusGeneration = 0;
 	FindBarStatus status = FindBarStatus::None;
 	/** Uncommitted IME text; not part of query until committed. */
 	std::optional<ApplicationTextInputPreedit> preedit;

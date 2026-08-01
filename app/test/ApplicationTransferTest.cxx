@@ -340,3 +340,43 @@ TEST_CASE("find bar clipboard paste is superseded after focus loss") {
 	CHECK(ui.FindModel().query != "late");
 	CHECK(editor.Text() == "x");
 }
+
+TEST_CASE("find bar clipboard paste is superseded after menu focus cycle") {
+	Scalpel::ApplicationEditor editor(400, 200);
+	editor.LoadInitialBuffer("body");
+	Scalpel::DocumentWorkspace workspace(editor);
+	Scalpel::RecentFiles recent;
+	Scalpel::ApplicationUi ui(editor, workspace, recent, "");
+	ui.OpenFindBar();
+	ui.SetClipboardPasteAvailable(true);
+	(void)ui.HandleKeyboard({static_cast<Scintilla::Keys>('V'),
+		Scintilla::KeyMod::Ctrl, {}, 1, true});
+	auto requests = ui.TakeClipboardRequests();
+	REQUIRE(requests.size() == 1);
+	const uint64_t pasteId = requests.front().id;
+
+	// Opening the menu blurs the field. Dismiss it, then refocus by pointer.
+	(void)ui.HandleKeyboard({static_cast<Scintilla::Keys>('F'),
+		Scintilla::KeyMod::Alt, {}, 2, true});
+	REQUIRE_FALSE(ui.FindBarFocused());
+	(void)ui.HandleKeyboard({Scintilla::Keys::Escape,
+		Scintilla::KeyMod::Norm, {}, 3, true});
+	const auto field = ui.Layout().find.field;
+	Scalpel::PointerInput pointer;
+	pointer.action = Scalpel::PointerAction::Press;
+	pointer.x = (field.left + field.right) / 2.0;
+	pointer.y = (field.top + field.bottom) / 2.0;
+	pointer.button = 0;
+	(void)ui.HandlePointer(pointer);
+	REQUIRE(ui.FindBarFocused());
+
+	ui.HandleClipboardResult(pasteId,
+		Scalpel::ApplicationClipboardOperation::Paste,
+		Scalpel::ApplicationClipboardStatus::Complete, "late");
+	const auto results = ui.TakeClipboardResults();
+	REQUIRE_FALSE(results.empty());
+	CHECK(results.back().status ==
+		Scalpel::ApplicationClipboardStatus::Superseded);
+	CHECK(ui.FindModel().query != "late");
+	CHECK(editor.Text() == "body");
+}

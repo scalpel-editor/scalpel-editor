@@ -366,12 +366,6 @@ ApplicationPointerResult HandleChromePointer(const PointerInput &input,
 		return result;
 	}
 
-	// Find-bar pointer routing is applied by ApplicationUi::HandlePointer after
-	// this chrome helper returns an unconsumed event over the find band, or
-	// via a dedicated branch when the bar is visible. The free function only
-	// needs the ui reference for menu Find activation.
-	(void)ui;
-
 	const TabStripHitResult stripHit = UpdateTabStripPointerState(input, layout,
 		stripModel, editor, pointerOverChrome);
 	if (menuResult.pointerOverMenu) {
@@ -646,15 +640,22 @@ ApplicationPointerResult ApplicationUi::HandlePointer(
 		pointerCursor = CursorBelowModal(input, layout);
 	} else {
 		const bool captured = editor->WindowState().mouseCaptured;
-		// After modals and editor selection capture, a visible find bar owns
-		// hits in its band before other permanent chrome and the editor.
-		if (!captured && findBarVisible) {
+		// After modals, an active scrollbar drag, editor selection capture, and
+		// an open menu, a visible find bar owns its band before other chrome.
+		if (!captured && !scrollBarInteraction.dragging &&
+			!menuModel.openMenu.has_value() && findBarVisible) {
 			const FindBarHitResult findHit = HitTestFindBar(layout.find,
 				Scintilla::Internal::Point(input.x, input.y));
-			if (findHit.kind != FindBarHit::None) {
+			// Once a button is pressed, the find bar owns motion, release, and
+			// leave even when the pointer moves outside its band.
+			if (findHit.kind != FindBarHit::None ||
+				findBarModel.pressOrigin.has_value()) {
 				const FindBarPointerResult findResult =
 					HandleFindBarPointer(findBarModel, layout.find, input);
 				if (findResult.fieldFocused) {
+					// Focus moved away from the editor; tentative document text
+					// must not survive behind the find field.
+					editor->CancelActiveTextInput();
 					CaptureFindOrigin();
 				}
 				if (findResult.dirty) {
@@ -1109,7 +1110,7 @@ void ApplicationUi::ApplyFindBarRequests(
 			shellClipboardMap[shellId] = {
 				ClipboardRequestOwner::FindBar,
 				request.clipboardId,
-				findFocusGeneration,
+				findBarModel.focusGeneration,
 				ApplicationClipboardOperation::Copy,
 			};
 			shellClipboardRequests.push_back({
@@ -1124,7 +1125,7 @@ void ApplicationUi::ApplyFindBarRequests(
 			shellClipboardMap[shellId] = {
 				ClipboardRequestOwner::FindBar,
 				request.clipboardId,
-				findFocusGeneration,
+				findBarModel.focusGeneration,
 				ApplicationClipboardOperation::Paste,
 			};
 			shellClipboardRequests.push_back({
@@ -1174,11 +1175,7 @@ void ApplicationUi::BlurFindField() {
 		!findBarModel.preedit) {
 		return;
 	}
-	const bool wasFocused = findBarModel.focused;
 	findBarModel.SetFocused(false);
-	if (wasFocused) {
-		++findFocusGeneration;
-	}
 	editor->InvalidateTopChrome();
 }
 
@@ -1191,6 +1188,10 @@ void ApplicationUi::ActivateAction(ApplicationAction action) {
 }
 
 void ApplicationUi::OpenFindBar() {
+	// Focus is moving away from the editor. Undo tentative document text before
+	// reading the selection for query seeding or capturing the search origin.
+	editor->CancelActiveTextInput();
+
 	// Seed an empty query from a single-line selection of valid UTF-8.
 	if (findBarModel.query.empty() && editor->HasSelection()) {
 		const std::string selected = editor->GetSelText();
@@ -1203,12 +1204,8 @@ void ApplicationUi::OpenFindBar() {
 	}
 
 	const bool wasVisible = findBarVisible;
-	const bool wasFocused = findBarModel.focused;
 	findBarVisible = true;
 	findBarModel.SetFocused(true);
-	if (!wasFocused) {
-		++findFocusGeneration;
-	}
 	CaptureFindOrigin();
 	ApplyTopChromeInset();
 	if (!wasVisible) {
@@ -1229,13 +1226,9 @@ void ApplicationUi::CloseFindBar() {
 	if (!findBarVisible) {
 		return;
 	}
-	const bool wasFocused = findBarModel.focused;
 	findBarModel.CancelPreedit();
 	findBarModel.SetFocused(false);
 	findBarModel.pressOrigin.reset();
-	if (wasFocused) {
-		++findFocusGeneration;
-	}
 	findBarVisible = false;
 	findOrigin.reset();
 	ApplyTopChromeInset();
@@ -1339,7 +1332,7 @@ void ApplicationUi::HandleClipboardResult(uint64_t shellId,
 	if (operation == ApplicationClipboardOperation::Paste &&
 		status == ApplicationClipboardStatus::Complete) {
 		if (!FindBarFocused() ||
-			mapping.findGeneration != findFocusGeneration) {
+			mapping.findGeneration != findBarModel.focusGeneration) {
 			reported = ApplicationClipboardStatus::Superseded;
 		} else if (!text.empty()) {
 			if (ApplyFindBarPaste(findBarModel, text)) {

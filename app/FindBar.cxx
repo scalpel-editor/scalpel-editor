@@ -189,9 +189,16 @@ bool DeleteSurrounding(FindBarModel &model,
 		!IsUtf8Boundary(model.query, deleteEnd)) {
 		return false;
 	}
-	model.query.erase(deleteStart, deleteEnd - deleteStart);
-	model.caret = deleteStart;
-	model.anchor = deleteStart;
+	// Wayland lengths exclude the selection. Delete after it first so the
+	// positions used for the deletion before it remain valid.
+	if (deletion.afterLength != 0) {
+		model.query.erase(selectionEnd, deletion.afterLength);
+	}
+	if (deletion.beforeLength != 0) {
+		model.query.erase(deleteStart, deletion.beforeLength);
+		model.caret -= deletion.beforeLength;
+		model.anchor -= deletion.beforeLength;
+	}
 	model.ClampCaretAndAnchor();
 	return true;
 }
@@ -337,6 +344,7 @@ void FindBarModel::SetFocused(bool nowFocused) noexcept {
 		}
 		return;
 	}
+	++focusGeneration;
 	focused = nowFocused;
 	if (focused) {
 		SelectAll();

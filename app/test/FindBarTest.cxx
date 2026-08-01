@@ -484,6 +484,31 @@ TEST_CASE("Find bar delete-surrounding respects UTF-8 boundaries") {
 	CHECK(model.caret == 1);
 }
 
+TEST_CASE("Find bar delete-surrounding excludes the selection") {
+	FindBarModel model;
+	REQUIRE(model.SetQuery("abcd"));
+	model.focused = true;
+	model.anchor = 1;
+	model.caret = 3; // Select "bc".
+
+	ApplicationTextInputBatch zero;
+	zero.deletion = ApplicationTextInputDelete{0, 0};
+	const auto unchanged = HandleFindBarTextInputBatch(model, zero);
+	CHECK_FALSE(unchanged.queryChanged);
+	CHECK(model.query == "abcd");
+	CHECK(model.anchor == 1);
+	CHECK(model.caret == 3);
+
+	ApplicationTextInputBatch around;
+	around.deletion = ApplicationTextInputDelete{1, 1};
+	const auto deleted = HandleFindBarTextInputBatch(model, around);
+	CHECK(deleted.queryChanged);
+	CHECK(model.query == "bc");
+	CHECK(model.anchor == 0);
+	CHECK(model.caret == 2);
+	CHECK(model.SelectedText() == "bc");
+}
+
 TEST_CASE("Find bar status labels and model status") {
 	CHECK(FindBarStatusLabel(FindBarStatus::None).empty());
 	CHECK(FindBarStatusLabel(FindBarStatus::NoMatches) == "No matches");

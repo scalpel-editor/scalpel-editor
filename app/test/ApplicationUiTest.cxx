@@ -1755,6 +1755,98 @@ TEST_CASE("application UI find bar pointer close and editor focus transfer") {
 	CHECK(ui.FindBarFocused());
 }
 
+TEST_CASE("application UI find bar owns an armed pointer sequence") {
+	ApplicationEditor editor(400, 240);
+	PrepareChromeEditor(editor);
+	editor.LoadInitialBuffer("one one");
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	ui.OpenFindBar();
+	(void)ui.HandleKeyboard(MakeText("one"));
+	const ApplicationLayout layout = ui.Layout();
+	const Point next = Center(layout.find.nextButton);
+	const Point client = Center(layout.client);
+
+	const ApplicationPointerResult press = ui.HandlePointer(
+		MakePointer(PointerAction::Press, next.x, next.y, 0));
+	CHECK(press.consumed);
+	REQUIRE(ui.FindModel().pressOrigin.has_value());
+
+	const ApplicationPointerResult move = ui.HandlePointer(
+		MakePointer(PointerAction::Move, client.x, client.y));
+	CHECK(move.consumed);
+	CHECK(move.owner == ApplicationPointerOwner::PermanentChrome);
+
+	const ApplicationPointerResult release = ui.HandlePointer(
+		MakePointer(PointerAction::Release, client.x, client.y, 0));
+	CHECK(release.consumed);
+	CHECK_FALSE(ui.FindModel().pressOrigin.has_value());
+	// Releasing away from Next must not advance to the second match.
+	CHECK(editor.GetSelectionStart() == 0);
+}
+
+TEST_CASE("application UI menu and scrollbar drag outrank find bar pointer") {
+	ApplicationEditor editor(400, 240);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	ui.OpenFindBar();
+	const Point close = Center(ui.Layout().find.closeButton);
+
+	// An outside click dismisses an open menu without activating Close beneath it.
+	(void)ui.HandleKeyboard(MakeLetter('F', KeyMod::Alt));
+	REQUIRE(ui.MenuModel().openMenu.has_value());
+	const ApplicationPointerResult menuPress = ui.HandlePointer(
+		MakePointer(PointerAction::Press, close.x, close.y, 0));
+	CHECK(menuPress.consumed);
+	CHECK(menuPress.owner == ApplicationPointerOwner::Menu);
+	CHECK_FALSE(ui.MenuModel().openMenu.has_value());
+	CHECK(ui.FindBarVisible());
+
+	// An active scrollbar drag keeps its sequence when crossing the find band.
+	ui.ScrollBars().dragging = true;
+	const ApplicationPointerResult dragMove = ui.HandlePointer(
+		MakePointer(PointerAction::Move, close.x, close.y));
+	CHECK(dragMove.consumed);
+	CHECK(dragMove.owner == ApplicationPointerOwner::ScrollBarDrag);
+	CHECK(ui.ScrollBars().dragging);
+}
+
+TEST_CASE("application UI find focus cancels editor preedit") {
+	ApplicationEditor editor(400, 240);
+	PrepareChromeEditor(editor);
+	editor.LoadInitialBuffer("body");
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+
+	ApplicationTextInputBatch preedit;
+	preedit.preedit = ApplicationTextInputPreedit{"x", 1, 1};
+	ui.HandleTextInputBatch(preedit);
+	REQUIRE(editor.Text() != "body");
+	ui.OpenFindBar();
+	CHECK(editor.Text() == "body");
+
+	const ApplicationLayout openLayout = ui.Layout();
+	const Point client = Center(openLayout.client);
+	(void)ui.HandlePointer(MakePointer(PointerAction::Press,
+		client.x, client.y, 0));
+	REQUIRE_FALSE(ui.FindBarFocused());
+	ui.HandleTextInputBatch(preedit);
+	REQUIRE(editor.Text() != "body");
+
+	const Point field = Center(ui.Layout().find.field);
+	(void)ui.HandlePointer(MakePointer(PointerAction::Press,
+		field.x, field.y, 0));
+	CHECK(ui.FindBarFocused());
+	CHECK(editor.Text() == "body");
+}
+
 TEST_CASE("application UI find bar defers to menu and modal priority") {
 	ApplicationEditor editor(400, 240);
 	PrepareChromeEditor(editor);

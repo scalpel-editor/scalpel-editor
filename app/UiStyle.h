@@ -77,7 +77,7 @@ struct UiStyle {
 	const int tabLabelPadRight = 4;
 	const int tabDefaultScrollStep = 40;
 
-	// Find bar (third permanent chrome band below the tab strip).
+	// Find bar (optional chrome band below the tab strip).
 	const Scintilla::Internal::ColourRGBA findBarFill{0xec, 0xec, 0xec, 0xff};
 	const Scintilla::Internal::ColourRGBA findFieldFill{0xff, 0xff, 0xff, 0xff};
 	const Scintilla::Internal::ColourRGBA findFieldBorder{0xb0, 0xb0, 0xb0, 0xff};

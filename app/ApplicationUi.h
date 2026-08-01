@@ -496,8 +496,6 @@ private:
 		Scintilla::Position position = 0;
 	};
 	std::optional<FindOrigin> findOrigin;
-	/** Bumped when find field focus changes; invalidates pending find paste. */
-	uint64_t findFocusGeneration = 0;
 	enum class ClipboardRequestOwner {
 		Editor,
 		FindBar,
