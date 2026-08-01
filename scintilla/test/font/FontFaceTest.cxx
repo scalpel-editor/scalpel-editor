@@ -39,6 +39,16 @@ TEST_CASE("Explicit faces retain requested style and weight") {
 	CHECK(face->RequestedStretch() == FontStretch::Normal);
 }
 
+TEST_CASE("Face cache keeps requested families distinct") {
+	FontCache cache;
+	const auto sans = cache.LoadPath(primaryPath, FontParameters("sans-serif", 16.0));
+	const auto mono = cache.LoadPath(primaryPath, FontParameters("monospace", 16.0));
+
+	REQUIRE(sans != mono);
+	CHECK(sans->RequestedFamily() == "sans-serif");
+	CHECK(mono->RequestedFamily() == "monospace");
+}
+
 TEST_CASE("Faces retain requested family and stretch independently of concrete face") {
 	FontCache cache;
 	const FontParameters parameters("sans-serif", 14.0, FontWeight::SemiBold, true,

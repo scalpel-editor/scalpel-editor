@@ -331,8 +331,27 @@ TEST_CASE("color emoji DrawText respects clip and overall text alpha") {
 		CHECK(clipped.right <= 4);
 	}
 
-	renderer.Clear(bg);
+	const ColourRGBA alphaBg(0, 0, 0, 255);
+	renderer.Clear(alphaBg);
 	surface->DrawTextTransparent(PRectangle::FromInts(2, 0, 48, 48), font.get(), ybase,
 		grinning, ColourRGBA(255, 255, 255, 128));
-	REQUIRE(HasNonBackgroundInk(surface->Buffer(), bg));
+	REQUIRE(HasNonBackgroundInk(surface->Buffer(), alphaBg));
+
+	const auto brightestChannel = [&]() {
+		uint8_t brightest = 0;
+		for (int y = 0; y < surface->Buffer().Height(); y++) {
+			for (int x = 0; x < surface->Buffer().Width(); x++) {
+				const ColourRGBA pixel = surface->Buffer().ReadPixel(x, y);
+				brightest = std::max({brightest, pixel.GetRed(), pixel.GetGreen(), pixel.GetBlue()});
+			}
+		}
+		return brightest;
+	};
+	const uint8_t halfAlphaBrightness = brightestChannel();
+
+	renderer.Clear(alphaBg);
+	surface->DrawTextTransparent(PRectangle::FromInts(2, 0, 48, 48), font.get(), ybase,
+		grinning, ColourRGBA(255, 255, 255, 255));
+	const uint8_t opaqueBrightness = brightestChannel();
+	CHECK(halfAlphaBrightness < opaqueBrightness);
 }

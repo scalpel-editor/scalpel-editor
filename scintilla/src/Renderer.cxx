@@ -1120,8 +1120,9 @@ void Renderer::DrawGlyph(XYPOSITION penX, XYPOSITION penY,
 	const float y1 = y0 + static_cast<float>(glyph.height) * scale;
 	glEnable(GL_BLEND);
 	if (glyph.colour) {
-		// Premultiplied colour RGB; apply only overall text alpha.
-		const ColourRGBA modulate(255, 255, 255, fore.GetAlpha());
+		// Premultiplied colour must scale RGB and alpha by overall text alpha.
+		const unsigned int alpha = fore.GetAlpha();
+		const ColourRGBA modulate(alpha, alpha, alpha, alpha);
 		DrawTexturedQuad(x0, y0, x1, y1, 0.0f, 0.0f, 1.0f, 1.0f, glyph.texture,
 			false, false, modulate);
 	} else {

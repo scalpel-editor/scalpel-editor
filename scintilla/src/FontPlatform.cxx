@@ -81,7 +81,8 @@ void AddRequest(FcPattern *pattern, const FontParameters &parameters) {
 }
 
 std::string FaceKey(const std::filesystem::path &path, int index, const FontParameters &parameters) {
-	return path.string() + ':' + std::to_string(index) + ':' + std::to_string(parameters.size) + ':' +
+	return path.string() + ':' + std::to_string(index) + ':' +
+		RequestedFamilyFromParameters(parameters) + ':' + std::to_string(parameters.size) + ':' +
 		std::to_string(static_cast<int>(parameters.weight)) + ':' + (parameters.italic ? "1" : "0") + ':' +
 		std::to_string(static_cast<int>(parameters.stretch));
 }
