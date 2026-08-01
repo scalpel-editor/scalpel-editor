@@ -259,3 +259,84 @@ TEST_CASE("production editor rejects stale primary paste results") {
 	CHECK(editor.PrimarySelectionResults().back().status ==
 		Scalpel::ApplicationPrimarySelectionStatus::Superseded);
 }
+
+#include "ApplicationUi.h"
+#include "DocumentWorkspace.h"
+#include "RecentFiles.h"
+#include "MenuBar.h"
+#include "TabStrip.h"
+
+TEST_CASE("find bar clipboard copy and paste route through ApplicationUi") {
+	Scalpel::ApplicationEditor editor(400, 240);
+	editor.LoadInitialBuffer("body");
+	const int inset =
+		Scalpel::MenuBarHeight() + Scalpel::TabStripHeight();
+	editor.SetTopChromeInset(inset);
+	Scalpel::DocumentWorkspace workspace(editor);
+	Scalpel::RecentFiles recent;
+	Scalpel::ApplicationUi ui(editor, workspace, recent, "");
+	ui.OpenFindBar();
+	// Replace query with "needle".
+	ui.FindModel().SelectAll();
+	(void)ui.HandleKeyboard({static_cast<Scintilla::Keys>(0),
+		Scintilla::KeyMod::Norm, "needle", 1, true});
+	ui.FindModel().SelectAll();
+
+	// Ctrl+C emits a shell-facing copy request with the query text.
+	(void)ui.HandleKeyboard({static_cast<Scintilla::Keys>('C'),
+		Scintilla::KeyMod::Ctrl, {}, 2, true});
+	auto requests = ui.TakeClipboardRequests();
+	REQUIRE(requests.size() == 1);
+	CHECK(requests.front().operation ==
+		Scalpel::ApplicationClipboardOperation::Copy);
+	CHECK(requests.front().text == "needle");
+	const uint64_t copyId = requests.front().id;
+
+	ui.HandleClipboardResult(copyId, Scalpel::ApplicationClipboardOperation::Copy,
+		Scalpel::ApplicationClipboardStatus::Complete);
+	auto results = ui.TakeClipboardResults();
+	REQUIRE_FALSE(results.empty());
+	CHECK(results.back().status == Scalpel::ApplicationClipboardStatus::Complete);
+
+	// Paste into the field.
+	ui.SetClipboardPasteAvailable(true);
+	ui.FindModel().SelectAll();
+	(void)ui.HandleKeyboard({static_cast<Scintilla::Keys>('V'),
+		Scintilla::KeyMod::Ctrl, {}, 3, true});
+	requests = ui.TakeClipboardRequests();
+	REQUIRE(requests.size() == 1);
+	CHECK(requests.front().operation ==
+		Scalpel::ApplicationClipboardOperation::Paste);
+	const uint64_t pasteId = requests.front().id;
+	ui.HandleClipboardResult(pasteId, Scalpel::ApplicationClipboardOperation::Paste,
+		Scalpel::ApplicationClipboardStatus::Complete, "pasted");
+	CHECK(ui.FindModel().query == "pasted");
+	// Document body is unchanged.
+	CHECK(editor.Text() == "body");
+}
+
+TEST_CASE("find bar clipboard paste is superseded after focus loss") {
+	Scalpel::ApplicationEditor editor(400, 200);
+	editor.LoadInitialBuffer("x");
+	editor.SetTopChromeInset(
+		Scalpel::MenuBarHeight() + Scalpel::TabStripHeight());
+	Scalpel::DocumentWorkspace workspace(editor);
+	Scalpel::RecentFiles recent;
+	Scalpel::ApplicationUi ui(editor, workspace, recent, "");
+	ui.OpenFindBar();
+	ui.SetClipboardPasteAvailable(true);
+	(void)ui.HandleKeyboard({static_cast<Scintilla::Keys>('V'),
+		Scintilla::KeyMod::Ctrl, {}, 1, true});
+	auto requests = ui.TakeClipboardRequests();
+	REQUIRE(requests.size() == 1);
+	const uint64_t pasteId = requests.front().id;
+
+	ui.CloseFindBar();
+	ui.HandleClipboardResult(pasteId, Scalpel::ApplicationClipboardOperation::Paste,
+		Scalpel::ApplicationClipboardStatus::Complete, "late");
+	auto results = ui.TakeClipboardResults();
+	REQUIRE_FALSE(results.empty());
+	CHECK(results.back().status == Scalpel::ApplicationClipboardStatus::Superseded);
+	CHECK(ui.FindModel().query != "late");
+	CHECK(editor.Text() == "x");
+}

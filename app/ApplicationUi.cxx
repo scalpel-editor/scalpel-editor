@@ -1104,10 +1104,36 @@ void ApplicationUi::ApplyFindBarRequests(
 		case FindBarRequestKind::Close:
 			CloseFindBar();
 			break;
-		case FindBarRequestKind::ClipboardCopy:
-		case FindBarRequestKind::ClipboardPaste:
-			// Clipboard mediation is wired in the IME/transfer routing commit.
+		case FindBarRequestKind::ClipboardCopy: {
+			const uint64_t shellId = nextShellClipboardId++;
+			shellClipboardMap[shellId] = {
+				ClipboardRequestOwner::FindBar,
+				request.clipboardId,
+				findFocusGeneration,
+				ApplicationClipboardOperation::Copy,
+			};
+			shellClipboardRequests.push_back({
+				shellId,
+				ApplicationClipboardOperation::Copy,
+				request.clipboardText,
+			});
 			break;
+		}
+		case FindBarRequestKind::ClipboardPaste: {
+			const uint64_t shellId = nextShellClipboardId++;
+			shellClipboardMap[shellId] = {
+				ClipboardRequestOwner::FindBar,
+				request.clipboardId,
+				findFocusGeneration,
+				ApplicationClipboardOperation::Paste,
+			};
+			shellClipboardRequests.push_back({
+				shellId,
+				ApplicationClipboardOperation::Paste,
+				{},
+			});
+			break;
+		}
 		}
 	}
 }
@@ -1148,7 +1174,11 @@ void ApplicationUi::BlurFindField() {
 		!findBarModel.preedit) {
 		return;
 	}
+	const bool wasFocused = findBarModel.focused;
 	findBarModel.SetFocused(false);
+	if (wasFocused) {
+		++findFocusGeneration;
+	}
 	editor->InvalidateTopChrome();
 }
 
@@ -1173,8 +1203,12 @@ void ApplicationUi::OpenFindBar() {
 	}
 
 	const bool wasVisible = findBarVisible;
+	const bool wasFocused = findBarModel.focused;
 	findBarVisible = true;
 	findBarModel.SetFocused(true);
+	if (!wasFocused) {
+		++findFocusGeneration;
+	}
 	CaptureFindOrigin();
 	ApplyTopChromeInset();
 	if (!wasVisible) {
@@ -1185,6 +1219,7 @@ void ApplicationUi::OpenFindBar() {
 	}
 	// Reselect the retained query for replacement typing.
 	findBarModel.SelectAll();
+	findBarModel.textInputStateDirty = true;
 	if (!findBarModel.query.empty()) {
 		RunIncrementalFind();
 	}
@@ -1194,13 +1229,131 @@ void ApplicationUi::CloseFindBar() {
 	if (!findBarVisible) {
 		return;
 	}
+	const bool wasFocused = findBarModel.focused;
 	findBarModel.CancelPreedit();
 	findBarModel.SetFocused(false);
 	findBarModel.pressOrigin.reset();
+	if (wasFocused) {
+		++findFocusGeneration;
+	}
 	findBarVisible = false;
 	findOrigin.reset();
 	ApplyTopChromeInset();
+	// Editor text-input geometry must refresh after the inset shrinks.
+	editor->CancelActiveTextInput();
 	editor->InvalidateFrame();
+}
+
+void ApplicationUi::HandleTextInputBatch(const ApplicationTextInputBatch &batch) {
+	if (ChromeOwnsInput()) {
+		// Modal or menu owns input; cancel any find preedit and drop the batch.
+		if (findBarModel.preedit) {
+			findBarModel.CancelPreedit();
+			editor->InvalidateTopChrome();
+		}
+		if (batch.cancel) {
+			editor->CancelActiveTextInput();
+		}
+		return;
+	}
+	if (FindBarFocused()) {
+		const FindBarTextInputResult result =
+			HandleFindBarTextInputBatch(findBarModel, batch);
+		if (result.dirty) {
+			editor->InvalidateTopChrome();
+		}
+		if (result.queryChanged) {
+			RunIncrementalFind();
+		}
+		return;
+	}
+	editor->HandleTextInputBatch(batch);
+}
+
+std::optional<ApplicationTextInputState> ApplicationUi::TakeTextInputState() {
+	if (FindBarFocused()) {
+		if (!findBarModel.textInputStateDirty) {
+			return std::nullopt;
+		}
+		const ApplicationLayout layout = Layout();
+		std::unique_ptr<Scintilla::Internal::Surface> surface =
+			Scintilla::Internal::Surface::Allocate();
+		surface->Init(Scintilla::Internal::WindowID{});
+		ApplicationTextInputState state = BuildFindBarTextInputState(
+			findBarModel, layout.find, *surface, findBarPainter.LabelFont());
+		state.changeCause = findBarModel.textInputChangeCause;
+		findBarModel.textInputStateDirty = false;
+		findBarModel.textInputChangeCause = ApplicationTextChangeCause::Other;
+		return state;
+	}
+	return editor->TakeTextInputState();
+}
+
+void ApplicationUi::SetClipboardPasteAvailable(bool available) noexcept {
+	editor->SetClipboardPasteAvailable(available);
+	findBarModel.pasteAvailable = available;
+}
+
+std::vector<ApplicationClipboardRequest> ApplicationUi::TakeClipboardRequests() {
+	// Editor requests first; remap local IDs to shell-facing IDs.
+	for (ApplicationClipboardRequest &request : editor->TakeClipboardRequests()) {
+		const uint64_t shellId = nextShellClipboardId++;
+		shellClipboardMap[shellId] = {
+			ClipboardRequestOwner::Editor,
+			request.id,
+			0,
+			request.operation,
+		};
+		request.id = shellId;
+		shellClipboardRequests.push_back(std::move(request));
+	}
+	return std::exchange(shellClipboardRequests, {});
+}
+
+void ApplicationUi::HandleClipboardResult(uint64_t shellId,
+	ApplicationClipboardOperation operation, ApplicationClipboardStatus status,
+	std::string text) {
+	const auto mapped = shellClipboardMap.find(shellId);
+	if (mapped == shellClipboardMap.end()) {
+		shellClipboardResults.push_back({shellId, operation, status});
+		return;
+	}
+	const ShellClipboardMapping mapping = mapped->second;
+	if (status != ApplicationClipboardStatus::Published) {
+		shellClipboardMap.erase(mapped);
+	}
+
+	if (mapping.owner == ClipboardRequestOwner::Editor) {
+		editor->HandleClipboardResult(
+			mapping.localId, operation, status, std::move(text));
+		for (ApplicationClipboardResult &result : editor->TakeClipboardResults()) {
+			// Report shell IDs outward so the host can correlate if needed.
+			result.id = shellId;
+			shellClipboardResults.push_back(std::move(result));
+		}
+		return;
+	}
+
+	// Find-bar owner.
+	ApplicationClipboardStatus reported = status;
+	if (operation == ApplicationClipboardOperation::Paste &&
+		status == ApplicationClipboardStatus::Complete) {
+		if (!FindBarFocused() ||
+			mapping.findGeneration != findFocusGeneration) {
+			reported = ApplicationClipboardStatus::Superseded;
+		} else if (!text.empty()) {
+			if (ApplyFindBarPaste(findBarModel, text)) {
+				editor->InvalidateTopChrome();
+				RunIncrementalFind();
+				findBarModel.textInputStateDirty = true;
+			}
+		}
+	}
+	shellClipboardResults.push_back({shellId, operation, reported});
+}
+
+std::vector<ApplicationClipboardResult> ApplicationUi::TakeClipboardResults() {
+	return std::exchange(shellClipboardResults, {});
 }
 
 void ApplicationUi::HandleFrameSizeChange() {

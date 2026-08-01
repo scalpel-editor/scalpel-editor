@@ -21,10 +21,13 @@
 #include <deque>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
+#include "ApplicationClipboard.h"
 #include "ApplicationEditor.h"
 #include "ApplicationInput.h"
+#include "ApplicationTextInput.h"
 #include "DocumentId.h"
 #include "DocumentWorkspace.h"
 #include "FileErrorCard.h"
@@ -306,6 +309,38 @@ public:
 	}
 
 	/**
+	 * Deliver a platform text-input batch. Modal or open-menu ownership drops
+	 * batches (and cancels find preedit). A focused find field receives the
+	 * batch; otherwise the editor does.
+	 */
+	void HandleTextInputBatch(const ApplicationTextInputBatch &batch);
+	/**
+	 * Drain dirty text-input client state for the current owner (find field or
+	 * editor). Returns nullopt when neither has a pending update.
+	 */
+	[[nodiscard]] std::optional<ApplicationTextInputState> TakeTextInputState();
+
+	/**
+	 * Mirror platform clipboard offer availability into the editor and find field.
+	 */
+	void SetClipboardPasteAvailable(bool available) noexcept;
+	/**
+	 * Drain shell-facing clipboard requests from the editor and find field.
+	 * Local owner request IDs are remapped to unique shell IDs.
+	 */
+	[[nodiscard]] std::vector<ApplicationClipboardRequest> TakeClipboardRequests();
+	/**
+	 * Deliver a clipboard result by shell-facing request ID. Editor pastes map
+	 * back to the editor local ID; find pastes apply only while the field is
+	 * still focused for the same request generation.
+	 */
+	void HandleClipboardResult(uint64_t shellId,
+		ApplicationClipboardOperation operation,
+		ApplicationClipboardStatus status, std::string text = {});
+	/** Drain reported clipboard statuses for host logging. */
+	[[nodiscard]] std::vector<ApplicationClipboardResult> TakeClipboardResults();
+
+	/**
 	 * Unsaved-prompt card became active. Closes the menu, cancels tentative
 	 * IME and scrollbar interaction, and resets card focus and press state.
 	 * Also applied automatically when TakeShellEffects consumes PromptBegan.
@@ -461,6 +496,23 @@ private:
 		Scintilla::Position position = 0;
 	};
 	std::optional<FindOrigin> findOrigin;
+	/** Bumped when find field focus changes; invalidates pending find paste. */
+	uint64_t findFocusGeneration = 0;
+	enum class ClipboardRequestOwner {
+		Editor,
+		FindBar,
+	};
+	struct ShellClipboardMapping {
+		ClipboardRequestOwner owner = ClipboardRequestOwner::Editor;
+		uint64_t localId = 0;
+		uint64_t findGeneration = 0;
+		ApplicationClipboardOperation operation =
+			ApplicationClipboardOperation::Copy;
+	};
+	uint64_t nextShellClipboardId = 1;
+	std::vector<ApplicationClipboardRequest> shellClipboardRequests;
+	std::vector<ApplicationClipboardResult> shellClipboardResults;
+	std::unordered_map<uint64_t, ShellClipboardMapping> shellClipboardMap;
 	ScrollBarInteraction scrollBarInteraction;
 	MenuBarPainter menuPainter;
 	TabStripPainter stripPainter;

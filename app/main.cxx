@@ -100,25 +100,25 @@ Scalpel::ApplicationPrimarySelectionStatus ApplicationStatus(
 }
 
 void DeliverClipboardResults(Scalpel::WaylandWindow &window,
-	Scalpel::ApplicationEditor &editor) {
+	Scalpel::ApplicationUi &ui) {
 	for (Scalpel::ClipboardResult &result : window.TakeClipboardResults()) {
-		editor.HandleClipboardResult(result.request, ApplicationOperation(result.operation),
+		ui.HandleClipboardResult(result.request, ApplicationOperation(result.operation),
 			ApplicationStatus(result.status), std::move(result.text));
 	}
-	(void)editor.TakeClipboardResults();
-	editor.SetClipboardPasteAvailable(window.ClipboardPasteAvailable());
+	(void)ui.TakeClipboardResults();
+	ui.SetClipboardPasteAvailable(window.ClipboardPasteAvailable());
 }
 
-void DispatchClipboardRequests(Scalpel::ApplicationEditor &editor,
+void DispatchClipboardRequests(Scalpel::ApplicationUi &ui,
 	Scalpel::WaylandWindow &window) {
-	for (Scalpel::ApplicationClipboardRequest &request : editor.TakeClipboardRequests()) {
+	for (Scalpel::ApplicationClipboardRequest &request : ui.TakeClipboardRequests()) {
 		if (request.operation == Scalpel::ApplicationClipboardOperation::Copy) {
 			window.CopyToClipboard(request.id, std::move(request.text));
 		} else {
 			window.PasteFromClipboard(request.id);
 		}
 	}
-	DeliverClipboardResults(window, editor);
+	DeliverClipboardResults(window, ui);
 }
 
 void DeliverPrimarySelectionResults(Scalpel::WaylandWindow &window,
@@ -188,20 +188,18 @@ Scalpel::WaylandTextInputClientState WaylandState(
 }
 
 void DeliverTextInputBatches(Scalpel::WaylandWindow &window,
-	Scalpel::ApplicationEditor &editor, bool chromeOwnsInput) {
+	Scalpel::ApplicationUi &ui) {
 	for (Scalpel::WaylandTextInputBatch &batch : window.TakeTextInputBatches()) {
-		if (chromeOwnsInput) {
-			// Modal card or open menu owns input; drop IME until it closes.
-			continue;
-		}
-		editor.HandleTextInputBatch(ApplicationBatch(std::move(batch)));
+		// ApplicationUi drops batches while a modal or menu owns input and
+		// routes the rest to the find field or editor.
+		ui.HandleTextInputBatch(ApplicationBatch(std::move(batch)));
 	}
 }
 
-void SynchronizeTextInput(Scalpel::ApplicationEditor &editor,
+void SynchronizeTextInput(Scalpel::ApplicationUi &ui,
 	Scalpel::WaylandWindow &window) {
 	if (std::optional<Scalpel::ApplicationTextInputState> state =
-		editor.TakeTextInputState()) {
+		ui.TakeTextInputState()) {
 		window.UpdateTextInputState(WaylandState(std::move(*state)));
 	}
 }
@@ -377,12 +375,12 @@ int main() {
 
 		while (!quitAccepted && !window.ForceCloseRequested()) {
 			(void)window.TakePresentationResults();
-			DeliverClipboardResults(window, editor);
+			DeliverClipboardResults(window, ui);
 			DeliverPrimarySelectionResults(window, editor);
-			DeliverTextInputBatches(window, editor, ui.ChromeOwnsInput());
+			DeliverTextInputBatches(window, ui);
 			ApplyFileDialogResults(window, ui, activeFileDialogs);
 			ApplyShellEffects(ui, window, activeFileDialogs, quitAccepted);
-			SynchronizeTextInput(editor, window);
+			SynchronizeTextInput(ui, window);
 			ui.RefreshOpenMenuActionState();
 
 			if (window.ForceCloseRequested()) {
@@ -439,11 +437,11 @@ int main() {
 				break;
 			}
 
-			DispatchClipboardRequests(editor, window);
+			DispatchClipboardRequests(ui, window);
 			DispatchPrimarySelectionRequests(editor, window);
 			editor.RunPendingWork();
 			ui.SynchronizeDirtyTabs();
-			SynchronizeTextInput(editor, window);
+			SynchronizeTextInput(ui, window);
 			(void)ui.SynchronizeComposition();
 			applyPointerCursor();
 			QueueFrameDamage(editor, window);

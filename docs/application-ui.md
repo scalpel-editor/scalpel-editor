@@ -19,7 +19,7 @@ The application UI is a fixed composition of the Scintilla editor, a menu bar, a
 One platform-loop iteration has this application order:
 
 1. `main.cxx` takes copied presentation, clipboard, primary-selection, text-input, and portal results from `WaylandWindow`.
-2. Portal results are translated from platform request IDs to application dialog IDs and delivered through `ApplicationUi`. Clipboard, primary-selection, and permitted text-input batches go to `ApplicationEditor`.
+2. Portal results are translated from platform request IDs to application dialog IDs and delivered through `ApplicationUi`. Clipboard results and text-input batches also enter through `ApplicationUi`, which chooses the editor or find field as owner. Primary-selection traffic still targets `ApplicationEditor` directly.
 3. Window-close, size, focus, pointer, and keyboard changes enter `ApplicationUi`. It applies application transitions immediately. Only an unconsumed pointer event crosses from `ApplicationUi` to `ApplicationEditor`; keyboard delivery is completed inside `ApplicationUi`.
 4. `ApplicationUi::TakeShellEffects` drains workspace requests and outcomes. UI-local work is completed there, while portal-dialog and accepted-close work is returned to `main.cxx`.
 5. `main.cxx` starts requested portal dialogs, records the platform-to-application dialog ID mapping, and feeds startup failure back through `ApplicationUi`.
@@ -60,6 +60,8 @@ The find bar is a third opaque top-chrome band below the tab strip. `FindBar` is
 `Ctrl+F` and Edit > Find share `OpenFindBar`: they show the bar when hidden, focus the field, select the retained query, and capture an incremental origin in the active document. When the query is empty and the editor has a non-empty, single-line selection of valid UTF-8, that selection seeds the field. Closing (Escape or the Close control) cancels preedit, restores the base inset, and leaves the last document match selected.
 
 Search is case-insensitive plain text. Committed query changes run an incremental forward search from the captured origin so extending the query does not skip past the match for the shorter query. Enter and Next search forward from the end of the current editor selection; Shift+Enter and Previous search backward from its start. Both directions wrap once. Empty queries do not search. Status is clear after a first-range match, `Wrapped` after a wrap match, and `No matches` after a failed search. Search changes only the editor selection and scroll position, not document bytes, undo, or save state. The origin is document-qualified and is reset on focus gain and active-document change.
+
+While the find field is focused, direct keyboard text, text-input batches (commit, preedit, delete-surrounding), and clipboard cut/copy/paste operate on the query. `ApplicationUi` assigns shell-facing clipboard request IDs, maps editor-local IDs for document paste, and ignores a late find paste after focus loss or close so it cannot mutate the document or a superseded query. When the bar is visible but unfocused, text-input and editor clipboard paths still target the editor. Opening, closing, focus transfer, and query edits dirty the text-input client state so the compositor receives updated surrounding text and caret geometry (including the dynamic top-chrome inset).
 
 ## Editor font menu
 

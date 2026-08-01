@@ -1838,3 +1838,84 @@ TEST_CASE("application UI find bar paints in permanent chrome") {
 	// Opaque chrome (non-zero alpha).
 	CHECK(pixels[offset + 3] == 255);
 }
+
+TEST_CASE("application UI find bar text input commits preedit and cancels") {
+	ApplicationEditor editor(400, 240);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	ui.OpenFindBar();
+	// Clear the seeded empty selection by typing nothing; replace with IME.
+	ui.FindModel().SelectAll();
+
+	ApplicationTextInputBatch preedit;
+	preedit.preedit = ApplicationTextInputPreedit{"\xC3\xA9", 2, 2};
+	ui.HandleTextInputBatch(preedit);
+	REQUIRE(ui.FindModel().preedit.has_value());
+
+	ApplicationTextInputBatch commit;
+	commit.commit = "ok";
+	ui.HandleTextInputBatch(commit);
+	CHECK(ui.FindModel().query == "ok");
+	CHECK_FALSE(ui.FindModel().preedit.has_value());
+
+	ApplicationTextInputBatch again;
+	again.preedit = ApplicationTextInputPreedit{"x", 1, 1};
+	ui.HandleTextInputBatch(again);
+	REQUIRE(ui.FindModel().preedit.has_value());
+
+	// Menu open cancels find preedit via ChromeOwnsInput path.
+	(void)ui.HandleKeyboard(MakeLetter('F', KeyMod::Alt));
+	ApplicationTextInputBatch dropped;
+	dropped.preedit = ApplicationTextInputPreedit{"y", 1, 1};
+	ui.HandleTextInputBatch(dropped);
+	CHECK_FALSE(ui.FindModel().preedit.has_value());
+	CHECK(ui.FindModel().query == "ok");
+}
+
+TEST_CASE("application UI find bar text input state reports field caret") {
+	ApplicationEditor editor(400, 240);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	ui.OpenFindBar();
+	(void)ui.HandleKeyboard(MakeText("abc"));
+	auto state = ui.TakeTextInputState();
+	REQUIRE(state.has_value());
+	REQUIRE(state->surroundingText.has_value());
+	CHECK(*state->surroundingText == "abc");
+	CHECK(state->cursor == 3);
+	CHECK(state->cursorRectangle.height > 0);
+	CHECK(state->cursorRectangle.y >=
+		Scalpel::MenuBarHeight() + Scalpel::TabStripHeight());
+	CHECK_FALSE(ui.TakeTextInputState().has_value());
+}
+
+TEST_CASE("application UI find bar text input uses editor when unfocused") {
+	ApplicationEditor editor(400, 240);
+	PrepareChromeEditor(editor);
+	editor.LoadInitialBuffer("doc");
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	ui.OpenFindBar();
+	// Blur field by pressing in the client.
+	const ApplicationLayout layout = ui.Layout();
+	const Point client = Center(layout.client);
+	(void)ui.HandlePointer(MakePointer(PointerAction::Press, client.x, client.y, 0));
+	CHECK(ui.FindBarVisible());
+	CHECK_FALSE(ui.FindBarFocused());
+
+	ApplicationTextInputBatch commit;
+	commit.commit = "Z";
+	ui.HandleTextInputBatch(commit);
+	const bool editorHasZ = editor.Text().find('Z') != std::string::npos;
+	const bool queryHasZ = ui.FindModel().query.find('Z') != std::string::npos;
+	CHECK(editorHasZ);
+	CHECK_FALSE(queryHasZ);
+}
