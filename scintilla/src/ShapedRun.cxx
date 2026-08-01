@@ -61,21 +61,6 @@ std::vector<InputCharacter> SplitCharacters(std::string_view text) {
 	return characters;
 }
 
-std::shared_ptr<FontFace> FaceForCharacter(
-	char32_t codePoint,
-	const std::shared_ptr<FontFace> &primary,
-	const std::vector<std::shared_ptr<FontFace>> &fallbacks) {
-	if (primary && primary->HasGlyph(codePoint)) {
-		return primary;
-	}
-	for (const std::shared_ptr<FontFace> &fallback : fallbacks) {
-		if (fallback && fallback->HasGlyph(codePoint)) {
-			return fallback;
-		}
-	}
-	return primary;
-}
-
 std::string FaceIdentity(const FontFace *face) {
 	return std::to_string(reinterpret_cast<std::uintptr_t>(face));
 }
@@ -83,14 +68,11 @@ std::string FaceIdentity(const FontFace *face) {
 std::string CacheKey(
 	std::string_view text,
 	const std::shared_ptr<FontFace> &primary,
-	const std::vector<std::shared_ptr<FontFace>> &fallbacks,
+	const FontFallback &fallback,
 	TextDirection direction) {
 	std::string key = FaceIdentity(primary.get());
 	key.push_back('|');
-	for (const std::shared_ptr<FontFace> &fallback : fallbacks) {
-		key.append(FaceIdentity(fallback.get()));
-		key.push_back(';');
-	}
+	key.append(fallback.CacheIdentity());
 	key.push_back('|');
 	key.push_back(static_cast<char>('0' + static_cast<int>(direction)));
 	key.push_back('|');
@@ -199,7 +181,7 @@ void FinishRun(ShapedRun &run, const std::vector<InputCharacter> &characters) {
 ShapedRun ShapeText(
 	std::string_view text,
 	const std::shared_ptr<FontFace> &primary,
-	const std::vector<std::shared_ptr<FontFace>> &fallbacks) {
+	const FontFallback &fallback) {
 	ShapedRun run;
 	run.text = std::string(text);
 	run.direction = TextDirection::LeftToRight;
@@ -218,11 +200,11 @@ ShapedRun ShapeText(
 	size_t spanStart = 0;
 	while (spanStart < characters.size()) {
 		const std::shared_ptr<FontFace> spanFace =
-			FaceForCharacter(characters[spanStart].codePoint, primary, fallbacks);
+			fallback.Select(primary, characters[spanStart].codePoint);
 		size_t spanEnd = spanStart + 1;
 		while (spanEnd < characters.size()) {
 			const std::shared_ptr<FontFace> nextFace =
-				FaceForCharacter(characters[spanEnd].codePoint, primary, fallbacks);
+				fallback.Select(primary, characters[spanEnd].codePoint);
 			if (nextFace != spanFace) {
 				break;
 			}
@@ -251,12 +233,12 @@ namespace {
 std::shared_ptr<const ShapedRun> ShapeOrCache(
 	std::string_view text,
 	const std::shared_ptr<FontFace> &primary,
-	const std::vector<std::shared_ptr<FontFace>> &fallbacks,
+	const FontFallback &fallback,
 	ShapedRunCache *cache) {
 	if (cache) {
-		return cache->Get(text, primary, fallbacks);
+		return cache->Get(text, primary, fallback);
 	}
-	return std::make_shared<const ShapedRun>(ShapeText(text, primary, fallbacks));
+	return std::make_shared<const ShapedRun>(ShapeText(text, primary, fallback));
 }
 
 }
@@ -264,25 +246,25 @@ std::shared_ptr<const ShapedRun> ShapeOrCache(
 void MeasureWidthsShaped(
 	std::string_view text,
 	const std::shared_ptr<FontFace> &primary,
-	const std::vector<std::shared_ptr<FontFace>> &fallbacks,
+	const FontFallback &fallback,
 	XYPOSITION *positions,
 	ShapedRunCache *cache) {
 	if (!positions || text.empty()) {
 		return;
 	}
-	const auto run = ShapeOrCache(text, primary, fallbacks, cache);
+	const auto run = ShapeOrCache(text, primary, fallback, cache);
 	FillMeasureWidths(*run, positions);
 }
 
 XYPOSITION WidthTextShaped(
 	std::string_view text,
 	const std::shared_ptr<FontFace> &primary,
-	const std::vector<std::shared_ptr<FontFace>> &fallbacks,
+	const FontFallback &fallback,
 	ShapedRunCache *cache) {
 	if (text.empty()) {
 		return 0.0;
 	}
-	return ShapeOrCache(text, primary, fallbacks, cache)->Width();
+	return ShapeOrCache(text, primary, fallback, cache)->Width();
 }
 
 class ShapedRunCache::Impl {
@@ -293,16 +275,16 @@ public:
 	std::shared_ptr<const ShapedRun> Get(
 		std::string_view text,
 		const std::shared_ptr<FontFace> &primary,
-		const std::vector<std::shared_ptr<FontFace>> &fallbacks) {
-		const std::string key = CacheKey(text, primary, fallbacks, TextDirection::LeftToRight);
+		const FontFallback &fallback) {
+		const std::string key = CacheKey(text, primary, fallback, TextDirection::LeftToRight);
 		if (const auto found = map.find(key); found != map.end()) {
 			// Move hit to the front of the LRU list.
 			order.splice(order.begin(), order, found->second);
 			return found->second->run;
 		}
 
-		auto shaped = std::make_shared<ShapedRun>(ShapeText(text, primary, fallbacks));
-		order.push_front(Entry{key, std::move(shaped), primary, fallbacks});
+		auto shaped = std::make_shared<ShapedRun>(ShapeText(text, primary, fallback));
+		order.push_front(Entry{key, std::move(shaped), primary, fallback});
 		map[key] = order.begin();
 
 		while (order.size() > capacity) {
@@ -330,7 +312,7 @@ private:
 		std::string key;
 		std::shared_ptr<const ShapedRun> run;
 		std::shared_ptr<FontFace> primary;
-		std::vector<std::shared_ptr<FontFace>> fallbacks;
+		FontFallback fallback;
 	};
 
 	size_t capacity;
@@ -346,8 +328,8 @@ ShapedRunCache::~ShapedRunCache() = default;
 std::shared_ptr<const ShapedRun> ShapedRunCache::Get(
 	std::string_view text,
 	const std::shared_ptr<FontFace> &primary,
-	const std::vector<std::shared_ptr<FontFace>> &fallbacks) {
-	return impl->Get(text, primary, fallbacks);
+	const FontFallback &fallback) {
+	return impl->Get(text, primary, fallback);
 }
 
 void ShapedRunCache::Clear() noexcept {

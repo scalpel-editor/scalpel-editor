@@ -56,14 +56,22 @@ int FontconfigWidth(FontStretch stretch) noexcept {
 	return FC_WIDTH_NORMAL;
 }
 
-void AddRequest(FcPattern *pattern, const FontParameters &parameters) {
+std::string RequestedFamilyFromParameters(const FontParameters &parameters) {
 	// faceName is a literal family value for FC_FAMILY, not Fontconfig pattern
 	// text. Do not run it through FcNameParse. A leading '!' is stripped for
 	// compatibility with historical Scintilla face strings; the remaining bytes
-	// (including hyphens in system-ui) go to FcPatternAddString unchanged.
-	if (parameters.faceName && parameters.faceName[0]) {
-		const char *family = parameters.faceName[0] == '!' ? parameters.faceName + 1 : parameters.faceName;
-		FcPatternAddString(pattern, FC_FAMILY, reinterpret_cast<const FcChar8 *>(family));
+	// (including hyphens in system-ui) are stored and passed to Fontconfig.
+	if (!parameters.faceName || !parameters.faceName[0]) {
+		return {};
+	}
+	const char *family = parameters.faceName[0] == '!' ? parameters.faceName + 1 : parameters.faceName;
+	return family;
+}
+
+void AddRequest(FcPattern *pattern, const FontParameters &parameters) {
+	const std::string family = RequestedFamilyFromParameters(parameters);
+	if (!family.empty()) {
+		FcPatternAddString(pattern, FC_FAMILY, reinterpret_cast<const FcChar8 *>(family.c_str()));
 	}
 	FcPatternAddInteger(pattern, FC_WEIGHT, FcWeightFromOpenType(static_cast<int>(parameters.weight)));
 	FcPatternAddInteger(pattern, FC_SLANT, parameters.italic ? FC_SLANT_ITALIC : FC_SLANT_ROMAN);
@@ -75,6 +83,27 @@ std::string FaceKey(const std::filesystem::path &path, int index, const FontPara
 	return path.string() + ':' + std::to_string(index) + ':' + std::to_string(parameters.size) + ':' +
 		std::to_string(static_cast<int>(parameters.weight)) + ':' + (parameters.italic ? "1" : "0") + ':' +
 		std::to_string(static_cast<int>(parameters.stretch));
+}
+
+std::string FallbackDecisionKey(const FontParameters &parameters, char32_t character) {
+	return RequestedFamilyFromParameters(parameters) + '|' +
+		std::to_string(parameters.size) + '|' +
+		std::to_string(static_cast<int>(parameters.weight)) + '|' +
+		(parameters.italic ? '1' : '0') + '|' +
+		std::to_string(static_cast<int>(parameters.stretch)) + '|' +
+		std::to_string(static_cast<uint32_t>(character));
+}
+
+FontParameters ParametersFromFace(const FontFace &face) {
+	return FontParameters(
+		face.RequestedFamily().c_str(),
+		face.RequestedSize(),
+		face.RequestedWeight(),
+		face.RequestedItalic(),
+		FontQuality::QualityDefault,
+		CharacterSet::Ansi,
+		localeNameDefault,
+		face.RequestedStretch());
 }
 
 class FontImpl final : public Font {
@@ -90,9 +119,10 @@ public:
 class FontFace::Impl {
 public:
 	Impl(std::shared_ptr<void> libraryOwner_, FcPattern *pattern_, FT_Face face_, std::filesystem::path path_,
-		double size_, FontWeight weight_, bool italic_) :
+		std::string requestedFamily_, double size_, FontWeight weight_, bool italic_, FontStretch stretch_) :
 		libraryOwner(std::move(libraryOwner_)), pattern(pattern_, FcPatternDestroy), face(face_),
-		path(std::move(path_)), size(size_), weight(weight_), italic(italic_) {
+		path(std::move(path_)), requestedFamily(std::move(requestedFamily_)), size(size_), weight(weight_),
+		italic(italic_), stretch(stretch_) {
 		// Size must be set on the FT_Face before hb_ft_font_create_referenced.
 		hbFont = hb_ft_font_create_referenced(face);
 		hb_ft_font_set_load_flags(hbFont, FT_LOAD_DEFAULT);
@@ -116,15 +146,19 @@ public:
 	hb_font_t *hbFont = nullptr;
 	FT_Face face = nullptr;
 	std::filesystem::path path;
+	std::string requestedFamily;
 	double size;
 	FontWeight weight;
 	bool italic;
+	FontStretch stretch;
 };
 
 FontFace::FontFace(std::shared_ptr<void> libraryOwner, void *pattern, void *face,
-	std::filesystem::path path, double size, FontWeight weight, bool italic) :
+	std::filesystem::path path, std::string requestedFamily, double size, FontWeight weight,
+	bool italic, FontStretch stretch) :
 	impl(std::make_unique<Impl>(std::move(libraryOwner), static_cast<FcPattern *>(pattern),
-		static_cast<FT_Face>(face), std::move(path), size, weight, italic)) {
+		static_cast<FT_Face>(face), std::move(path), std::move(requestedFamily), size, weight, italic,
+		stretch)) {
 }
 
 FontFace::~FontFace() noexcept = default;
@@ -137,6 +171,10 @@ std::string FontFace::Family() const {
 	return impl->face->family_name ? impl->face->family_name : "";
 }
 
+const std::string &FontFace::RequestedFamily() const noexcept {
+	return impl->requestedFamily;
+}
+
 double FontFace::RequestedSize() const noexcept {
 	return impl->size;
 }
@@ -147,6 +185,10 @@ FontWeight FontFace::RequestedWeight() const noexcept {
 
 bool FontFace::RequestedItalic() const noexcept {
 	return impl->italic;
+}
+
+FontStretch FontFace::RequestedStretch() const noexcept {
+	return impl->stretch;
 }
 
 FontMetrics FontFace::Metrics() const noexcept {
@@ -236,15 +278,78 @@ public:
 			throw std::runtime_error("FreeType could not size font: " + path.string());
 		}
 
-		auto selected = std::make_shared<FontFace>(library, pattern, face, path, parameters.size,
-			parameters.weight, parameters.italic);
+		auto selected = std::make_shared<FontFace>(library, pattern, face, path,
+			RequestedFamilyFromParameters(parameters), parameters.size, parameters.weight,
+			parameters.italic, parameters.stretch);
 		faces.emplace(key, selected);
 		return selected;
+	}
+
+	/**
+	 * Walk Fontconfig's ordered candidates for the request plus character.
+	 * Returns the first loaded face that FreeType reports as covering the
+	 * character, or an empty pointer when none do. Never throws for a miss.
+	 */
+	std::shared_ptr<FontFace> ResolveForRequest(const FontParameters &parameters, char32_t character) {
+		const std::string decisionKey = FallbackDecisionKey(parameters, character);
+		if (const auto found = fallbackDecisions.find(decisionKey); found != fallbackDecisions.end()) {
+			return found->second;
+		}
+
+		std::shared_ptr<FontFace> resolved;
+		PatternPtr request(FcPatternCreate(), FcPatternDestroy);
+		std::unique_ptr<FcCharSet, decltype(&FcCharSetDestroy)> characters(FcCharSetCreate(), FcCharSetDestroy);
+		if (!request || !characters || !FcCharSetAddChar(characters.get(), static_cast<FcChar32>(character))) {
+			fallbackDecisions.emplace(decisionKey, resolved);
+			return resolved;
+		}
+		AddRequest(request.get(), parameters);
+		FcPatternAddCharSet(request.get(), FC_CHARSET, characters.get());
+		FcConfigSubstitute(config.get(), request.get(), FcMatchPattern);
+		FcDefaultSubstitute(request.get());
+
+		FcResult result = FcResultNoMatch;
+		// trim=true drops later fonts whose coverage is a subset of earlier ones.
+		FcFontSet *sorted = FcFontSort(config.get(), request.get(), FcTrue, nullptr, &result);
+		if (!sorted) {
+			fallbackDecisions.emplace(decisionKey, resolved);
+			return resolved;
+		}
+
+		for (int i = 0; i < sorted->nfont; i++) {
+			FcPattern *prepared = FcFontRenderPrepare(config.get(), request.get(), sorted->fonts[i]);
+			if (!prepared) {
+				continue;
+			}
+			FcChar8 *file = nullptr;
+			int index = 0;
+			if (FcPatternGetString(prepared, FC_FILE, 0, &file) != FcResultMatch ||
+				FcPatternGetInteger(prepared, FC_INDEX, 0, &index) != FcResultMatch ||
+				!file) {
+				FcPatternDestroy(prepared);
+				continue;
+			}
+			try {
+				// Load always takes ownership of prepared (cache hit, face, or throw).
+				auto candidate = Load(reinterpret_cast<const char *>(file), index, prepared, parameters);
+				if (candidate && candidate->HasGlyph(character)) {
+					resolved = std::move(candidate);
+					break;
+				}
+			} catch (const std::exception &) {
+				// Skip unloadable candidates; try the next Fontconfig result.
+			}
+		}
+		FcFontSetDestroy(sorted);
+		fallbackDecisions.emplace(decisionKey, resolved);
+		return resolved;
 	}
 
 	std::shared_ptr<FreeTypeLibrary> library;
 	std::unique_ptr<FcConfig, decltype(&FcConfigDestroy)> config;
 	std::unordered_map<std::string, std::shared_ptr<FontFace>> faces;
+	// Empty shared_ptr values mean "no covering face" for this request.
+	std::unordered_map<std::string, std::shared_ptr<FontFace>> fallbackDecisions;
 };
 
 FontCache::FontCache() : impl(std::make_unique<Impl>()) {
@@ -278,34 +383,20 @@ std::shared_ptr<FontFace> FontCache::Match(const FontParameters &parameters) {
 	return impl->Load(reinterpret_cast<const char *>(file), index, match, parameters);
 }
 
+std::shared_ptr<FontFace> FontCache::ResolveFallback(const FontParameters &parameters, char32_t character) {
+	return impl->ResolveForRequest(parameters, character);
+}
+
+std::shared_ptr<FontFace> FontCache::ResolveFallback(const FontFace &primary, char32_t character) {
+	// ParametersFromFace borrows RequestedFamily().c_str(); the string is owned
+	// by the face and stays alive for this call and for AddRequest's copy.
+	return ResolveFallback(ParametersFromFace(primary), character);
+}
+
 std::shared_ptr<FontFace> FontCache::MatchFallback(const FontParameters &parameters, char32_t character) {
-	PatternPtr request(FcPatternCreate(), FcPatternDestroy);
-	std::unique_ptr<FcCharSet, decltype(&FcCharSetDestroy)> characters(FcCharSetCreate(), FcCharSetDestroy);
-	if (!request || !characters || !FcCharSetAddChar(characters.get(), static_cast<FcChar32>(character))) {
-		throw std::runtime_error("Fontconfig fallback pattern allocation failed");
-	}
-	AddRequest(request.get(), parameters);
-	FcPatternAddCharSet(request.get(), FC_CHARSET, characters.get());
-	FcConfigSubstitute(impl->config.get(), request.get(), FcMatchPattern);
-	FcDefaultSubstitute(request.get());
-	FcResult result = FcResultNoMatch;
-	FcPattern *match = FcFontMatch(impl->config.get(), request.get(), &result);
-	if (!match || result == FcResultNoMatch) {
-		if (match) {
-			FcPatternDestroy(match);
-		}
-		throw std::runtime_error("Fontconfig found no fallback font");
-	}
-	FcChar8 *file = nullptr;
-	int index = 0;
-	if (FcPatternGetString(match, FC_FILE, 0, &file) != FcResultMatch ||
-		FcPatternGetInteger(match, FC_INDEX, 0, &index) != FcResultMatch) {
-		FcPatternDestroy(match);
-		throw std::runtime_error("Fontconfig fallback has no font file");
-	}
-	auto fallback = impl->Load(reinterpret_cast<const char *>(file), index, match, parameters);
-	if (!fallback->HasGlyph(character)) {
-		throw std::runtime_error("Fontconfig fallback lacks the requested glyph");
+	auto fallback = ResolveFallback(parameters, character);
+	if (!fallback) {
+		throw std::runtime_error("Fontconfig found no fallback font covering the character");
 	}
 	return fallback;
 }
@@ -340,6 +431,79 @@ std::vector<std::filesystem::path> testFallbackPaths;
 
 }
 
+FontFallback::FontFallback(std::initializer_list<std::shared_ptr<FontFace>> faces) :
+	fixedFaces(faces) {
+}
+
+FontFallback::FontFallback(std::vector<std::shared_ptr<FontFace>> faces) :
+	fixedFaces(std::move(faces)) {
+}
+
+FontFallback FontFallback::Fixed(std::vector<std::shared_ptr<FontFace>> faces) {
+	return FontFallback(std::move(faces));
+}
+
+FontFallback FontFallback::Production() {
+	return Production(SharedFontCache());
+}
+
+FontFallback FontFallback::Production(FontCache &cache) {
+	FontFallback fallback;
+	fallback.cache = &cache;
+	return fallback;
+}
+
+std::shared_ptr<FontFace> FontFallback::Select(
+	const std::shared_ptr<FontFace> &primary,
+	char32_t character) const {
+	if (primary && primary->HasGlyph(character)) {
+		return primary;
+	}
+	for (const std::shared_ptr<FontFace> &face : fixedFaces) {
+		if (face && face->HasGlyph(character)) {
+			return face;
+		}
+	}
+	if (cache && primary) {
+		if (std::shared_ptr<FontFace> resolved = cache->ResolveFallback(*primary, character)) {
+			return resolved;
+		}
+	}
+	return primary;
+}
+
+bool FontFallback::Empty() const noexcept {
+	return fixedFaces.empty() && cache == nullptr;
+}
+
+bool FontFallback::UsesProductionResolver() const noexcept {
+	return cache != nullptr;
+}
+
+const std::vector<std::shared_ptr<FontFace>> &FontFallback::FixedFaces() const noexcept {
+	return fixedFaces;
+}
+
+FontCache *FontFallback::ResolverCache() const noexcept {
+	return cache;
+}
+
+std::string FontFallback::CacheIdentity() const {
+	std::string identity;
+	if (cache) {
+		identity.append("P:");
+		identity.append(std::to_string(reinterpret_cast<std::uintptr_t>(cache)));
+	} else {
+		identity.push_back('F');
+	}
+	identity.push_back('|');
+	for (const std::shared_ptr<FontFace> &face : fixedFaces) {
+		identity.append(std::to_string(reinterpret_cast<std::uintptr_t>(face.get())));
+		identity.push_back(';');
+	}
+	return identity;
+}
+
 void UseTestFontPaths(const std::filesystem::path &primary,
 	const std::vector<std::filesystem::path> &fallbacks) {
 	testPrimaryPath = primary;
@@ -366,6 +530,13 @@ std::vector<std::shared_ptr<FontFace>> TestFontFallbackFaces(double size) {
 		faces.push_back(SharedFontCache().LoadPath(path, parameters));
 	}
 	return faces;
+}
+
+FontFallback DefaultSurfaceFallback(double size) {
+	if (TestFontPathsActive()) {
+		return FontFallback::Fixed(TestFontFallbackFaces(size));
+	}
+	return FontFallback::Production();
 }
 
 std::shared_ptr<Font> Font::Allocate(const FontParameters &parameters) {

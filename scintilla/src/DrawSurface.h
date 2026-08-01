@@ -35,11 +35,12 @@ public:
 	 *        measure-only surfaces that never draw or allocate pixmaps.
 	 */
 	explicit DrawSurface(Renderer *renderer_ = nullptr,
-		std::vector<std::shared_ptr<FontFace>> fallbacks = {});
+		FontFallback fallback = FontFallback::Production());
 
 	~DrawSurface() override;
 
-	void SetFallbacks(std::vector<std::shared_ptr<FontFace>> fallbacks);
+	void SetFallbacks(FontFallback fallback);
+	[[nodiscard]] const FontFallback &Fallbacks() const noexcept { return fallback; }
 	[[nodiscard]] ShapedRunCache &RunCache() noexcept { return runCache; }
 	[[nodiscard]] const ShapedRunCache &RunCache() const noexcept { return runCache; }
 	[[nodiscard]] Renderer *GetRenderer() const noexcept { return renderer; }
@@ -110,7 +111,7 @@ private:
 	bool initialised = false;
 	SurfaceMode mode{};
 	ShapedRunCache runCache;
-	std::vector<std::shared_ptr<FontFace>> fallbacks;
+	FontFallback fallback;
 	std::vector<PRectangle> clipStack;
 	unsigned externalFramebuffer = 0;
 	int externalWidth = 0;
@@ -122,18 +123,18 @@ private:
 
 /** Drawing surface with an offscreen colour buffer of the given size. */
 std::unique_ptr<DrawSurface> CreateDrawSurface(Renderer &renderer, int width, int height,
-	std::vector<std::shared_ptr<FontFace>> fallbacks = {});
+	FontFallback fallback = FontFallback::Production());
 
 /** Drawing surface for a framebuffer owned by EGL or another caller. */
 std::unique_ptr<DrawSurface> CreateExternalDrawSurface(Renderer &renderer, unsigned framebuffer,
-	int width, int height, std::vector<std::shared_ptr<FontFace>> fallbacks = {});
+	int width, int height, FontFallback fallback = FontFallback::Production());
 std::unique_ptr<DrawSurface> CreateExternalDrawSurface(Renderer &renderer, unsigned framebuffer,
 	int bufferWidth, int bufferHeight, int logicalWidth, int logicalHeight,
-	std::vector<std::shared_ptr<FontFace>> fallbacks = {});
+	FontFallback fallback = FontFallback::Production());
 
 /** Measure-only surface (no GL buffer). Same measure path as drawing surfaces. */
 std::unique_ptr<DrawSurface> CreateMeasureOnlySurface(
-	std::vector<std::shared_ptr<FontFace>> fallbacks = {});
+	FontFallback fallback = FontFallback::Production());
 
 }
 

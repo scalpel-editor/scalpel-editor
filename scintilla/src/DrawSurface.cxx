@@ -13,9 +13,9 @@
 
 namespace Scintilla::Internal {
 
-DrawSurface::DrawSurface(Renderer *renderer_, std::vector<std::shared_ptr<FontFace>> fallbacks_) :
+DrawSurface::DrawSurface(Renderer *renderer_, FontFallback fallback_) :
 	renderer(renderer_),
-	fallbacks(std::move(fallbacks_)) {
+	fallback(std::move(fallback_)) {
 }
 
 DrawSurface::~DrawSurface() {
@@ -25,8 +25,8 @@ DrawSurface::~DrawSurface() {
 	}
 }
 
-void DrawSurface::SetFallbacks(std::vector<std::shared_ptr<FontFace>> fallbacks_) {
-	fallbacks = std::move(fallbacks_);
+void DrawSurface::SetFallbacks(FontFallback fallback_) {
+	fallback = std::move(fallback_);
 	runCache.Clear();
 }
 
@@ -86,7 +86,7 @@ std::unique_ptr<Surface> DrawSurface::AllocatePixMap(int width, int height) {
 	// Step 5 later commits fill the pixmap buffer; for now allocate a sibling
 	// surface in the same context so call sites do not need a separate type.
 	EnsureRenderer();
-	auto pix = std::make_unique<DrawSurface>(renderer, fallbacks);
+	auto pix = std::make_unique<DrawSurface>(renderer, fallback);
 	pix->mode = mode;
 	pix->initialised = true;
 	if (width > 0 && height > 0) {
@@ -280,7 +280,7 @@ void DrawSurface::DrawTextCommon(PRectangle rc, const Font *font_, XYPOSITION yb
 	if (!primary) {
 		return;
 	}
-	const std::shared_ptr<const ShapedRun> run = runCache.Get(text, primary, fallbacks);
+	const std::shared_ptr<const ShapedRun> run = runCache.Get(text, primary, fallback);
 	if (!run || run->glyphs.empty()) {
 		return;
 	}
@@ -340,14 +340,14 @@ void DrawSurface::MeasureWidths(const Font *font_, std::string_view text, XYPOSI
 	if (!positions || text.empty()) {
 		return;
 	}
-	MeasureWidthsShaped(text, RequireFace(font_), fallbacks, positions, &runCache);
+	MeasureWidthsShaped(text, RequireFace(font_), fallback, positions, &runCache);
 }
 
 XYPOSITION DrawSurface::WidthText(const Font *font_, std::string_view text) {
 	if (text.empty()) {
 		return 0.0;
 	}
-	return WidthTextShaped(text, RequireFace(font_), fallbacks, &runCache);
+	return WidthTextShaped(text, RequireFace(font_), fallback, &runCache);
 }
 
 XYPOSITION DrawSurface::Ascent(const Font *font_) {
@@ -401,8 +401,8 @@ void DrawSurface::FlushDrawing() {
 }
 
 std::unique_ptr<DrawSurface> CreateDrawSurface(Renderer &renderer, int width, int height,
-	std::vector<std::shared_ptr<FontFace>> fallbacks) {
-	auto surface = std::make_unique<DrawSurface>(&renderer, std::move(fallbacks));
+	FontFallback fallback) {
+	auto surface = std::make_unique<DrawSurface>(&renderer, std::move(fallback));
 	surface->Init(WindowID{});
 	renderer.MakeCurrent();
 	surface->Buffer().Resize(width, height);
@@ -411,15 +411,15 @@ std::unique_ptr<DrawSurface> CreateDrawSurface(Renderer &renderer, int width, in
 }
 
 std::unique_ptr<DrawSurface> CreateExternalDrawSurface(Renderer &renderer, unsigned framebuffer,
-	int width, int height, std::vector<std::shared_ptr<FontFace>> fallbacks) {
+	int width, int height, FontFallback fallback) {
 	return CreateExternalDrawSurface(renderer, framebuffer, width, height,
-		width, height, std::move(fallbacks));
+		width, height, std::move(fallback));
 }
 
 std::unique_ptr<DrawSurface> CreateExternalDrawSurface(Renderer &renderer, unsigned framebuffer,
 	int bufferWidth, int bufferHeight, int logicalWidth, int logicalHeight,
-	std::vector<std::shared_ptr<FontFace>> fallbacks) {
-	auto surface = std::make_unique<DrawSurface>(&renderer, std::move(fallbacks));
+	FontFallback fallback) {
+	auto surface = std::make_unique<DrawSurface>(&renderer, std::move(fallback));
 	surface->Init(WindowID{});
 	surface->SetExternalDrawTarget(
 		framebuffer, bufferWidth, bufferHeight, logicalWidth, logicalHeight);
@@ -428,19 +428,17 @@ std::unique_ptr<DrawSurface> CreateExternalDrawSurface(Renderer &renderer, unsig
 	return surface;
 }
 
-std::unique_ptr<DrawSurface> CreateMeasureOnlySurface(
-	std::vector<std::shared_ptr<FontFace>> fallbacks) {
-	auto surface = std::make_unique<DrawSurface>(nullptr, std::move(fallbacks));
+std::unique_ptr<DrawSurface> CreateMeasureOnlySurface(FontFallback fallback) {
+	auto surface = std::make_unique<DrawSurface>(nullptr, std::move(fallback));
 	surface->Init(WindowID{});
 	return surface;
 }
 
 std::unique_ptr<Surface> Surface::Allocate() {
 	// Measure-only by default. Drawing surfaces need a Renderer and size from
-	// CreateDrawSurface or a host override of CreateDrawingSurface.
-	// Fallback face size 10 matches Platform::DefaultFontSize when tests set
-	// fixture paths; production Match does not use this list.
-	return CreateMeasureOnlySurface(TestFontFallbackFaces(10.0));
+	// CreateDrawSurface or a host override of CreateDrawingSurface. Production
+	// uses the shared FontCache resolver; editor tests inject fixture faces.
+	return CreateMeasureOnlySurface(DefaultSurfaceFallback(10.0));
 }
 
 }

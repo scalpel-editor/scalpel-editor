@@ -16,12 +16,12 @@
 
 namespace Scintilla::Internal {
 
-MeasureSurface::MeasureSurface(std::vector<std::shared_ptr<FontFace>> fallbacks_) :
-	fallbacks(std::move(fallbacks_)) {
+MeasureSurface::MeasureSurface(FontFallback fallback_) :
+	fallback(std::move(fallback_)) {
 }
 
-void MeasureSurface::SetFallbacks(std::vector<std::shared_ptr<FontFace>> fallbacks_) {
-	fallbacks = std::move(fallbacks_);
+void MeasureSurface::SetFallbacks(FontFallback fallback_) {
+	fallback = std::move(fallback_);
 	runCache.Clear();
 }
 
@@ -34,7 +34,7 @@ void MeasureSurface::Init(SurfaceID, WindowID) {
 }
 
 std::unique_ptr<Surface> MeasureSurface::AllocatePixMap(int, int) {
-	auto pix = std::make_unique<MeasureSurface>(fallbacks);
+	auto pix = std::make_unique<MeasureSurface>(fallback);
 	pix->initialised = true;
 	pix->mode = mode;
 	return pix;
@@ -110,14 +110,14 @@ void MeasureSurface::MeasureWidths(const Font *font_, std::string_view text, XYP
 	if (!positions || text.empty()) {
 		return;
 	}
-	MeasureWidthsShaped(text, RequireFace(font_), fallbacks, positions, &runCache);
+	MeasureWidthsShaped(text, RequireFace(font_), fallback, positions, &runCache);
 }
 
 XYPOSITION MeasureSurface::WidthText(const Font *font_, std::string_view text) {
 	if (text.empty()) {
 		return 0.0;
 	}
-	return WidthTextShaped(text, RequireFace(font_), fallbacks, &runCache);
+	return WidthTextShaped(text, RequireFace(font_), fallback, &runCache);
 }
 
 XYPOSITION MeasureSurface::Ascent(const Font *font_) {
@@ -146,9 +146,8 @@ void MeasureSurface::PopClip() {}
 void MeasureSurface::FlushCachedState() {}
 void MeasureSurface::FlushDrawing() {}
 
-std::unique_ptr<Surface> CreateMeasureSurface(
-	std::vector<std::shared_ptr<FontFace>> fallbacks) {
-	auto surface = std::make_unique<MeasureSurface>(std::move(fallbacks));
+std::unique_ptr<Surface> CreateMeasureSurface(FontFallback fallback) {
+	auto surface = std::make_unique<MeasureSurface>(std::move(fallback));
 	surface->Init(WindowID{});
 	return surface;
 }

@@ -26,9 +26,10 @@ namespace Scintilla::Internal {
  */
 class MeasureSurface final : public Surface {
 public:
-	explicit MeasureSurface(std::vector<std::shared_ptr<FontFace>> fallbacks = {});
+	explicit MeasureSurface(FontFallback fallback = FontFallback::Production());
 
-	void SetFallbacks(std::vector<std::shared_ptr<FontFace>> fallbacks);
+	void SetFallbacks(FontFallback fallback);
+	[[nodiscard]] const FontFallback &Fallbacks() const noexcept { return fallback; }
 	[[nodiscard]] ShapedRunCache &RunCache() noexcept { return runCache; }
 	[[nodiscard]] const ShapedRunCache &RunCache() const noexcept { return runCache; }
 
@@ -85,11 +86,11 @@ private:
 	bool initialised = false;
 	SurfaceMode mode{};
 	ShapedRunCache runCache;
-	std::vector<std::shared_ptr<FontFace>> fallbacks;
+	FontFallback fallback;
 };
 
 std::unique_ptr<Surface> CreateMeasureSurface(
-	std::vector<std::shared_ptr<FontFace>> fallbacks = {});
+	FontFallback fallback = FontFallback::Production());
 
 }
 

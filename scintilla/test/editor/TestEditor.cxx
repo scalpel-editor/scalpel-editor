@@ -172,7 +172,7 @@ void TestEditor::PaintAll() {
 	host.EnsureRenderer();
 	const double fontSize = static_cast<double>(Platform::DefaultFontSize());
 	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(
-		*host.GetRenderer(), width, height, TestFontFallbackFaces(fontSize));
+		*host.GetRenderer(), width, height, FontFallback::Fixed(TestFontFallbackFaces(fontSize)));
 	Paint(surface.get(), rcPaint);
 	surface->Release();
 	paintState = PaintState::notPainting;

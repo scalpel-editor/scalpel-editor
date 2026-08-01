@@ -35,6 +35,24 @@ TEST_CASE("Explicit faces retain requested style and weight") {
 	CHECK(face->RequestedWeight() == FontWeight::Bold);
 	CHECK(face->RequestedItalic());
 	CHECK(face->RequestedSize() == 13.0);
+	CHECK(face->RequestedFamily() == "fixture");
+	CHECK(face->RequestedStretch() == FontStretch::Normal);
+}
+
+TEST_CASE("Faces retain requested family and stretch independently of concrete face") {
+	FontCache cache;
+	const FontParameters parameters("sans-serif", 14.0, FontWeight::SemiBold, true,
+		FontQuality::QualityDefault, CharacterSet::Ansi, localeNameDefault,
+		FontStretch::SemiCondensed);
+	const auto face = cache.Match(parameters);
+
+	// Requested family is the stable caller string, not the concrete file family.
+	CHECK(face->RequestedFamily() == "sans-serif");
+	CHECK(face->RequestedStretch() == FontStretch::SemiCondensed);
+	CHECK(face->RequestedWeight() == FontWeight::SemiBold);
+	CHECK(face->RequestedItalic());
+	CHECK(face->RequestedSize() == 14.0);
+	CHECK_FALSE(face->Family().empty());
 }
 
 TEST_CASE("Missing production family falls back through Fontconfig") {
@@ -85,6 +103,97 @@ TEST_CASE("Production fallback covers the requested character") {
 
 	CHECK(fallback->HasGlyph(U'\u2603'));
 	CHECK_FALSE(fallback->Path().empty());
+}
+
+TEST_CASE("ResolveFallback reuses the decision and face cache") {
+	FontCache cache;
+	const FontParameters parameters("sans-serif", 14.0);
+	const auto first = cache.ResolveFallback(parameters, U'\u2603');
+	const auto again = cache.ResolveFallback(parameters, U'\u2603');
+
+	REQUIRE(first);
+	CHECK(first == again);
+	CHECK(first->HasGlyph(U'\u2603'));
+	// Face cache returns the same instance for the same path/size/style.
+	const auto reloaded = cache.LoadPath(first->Path(), parameters);
+	CHECK(reloaded == first);
+}
+
+TEST_CASE("ResolveFallback returns empty when no candidate covers the character") {
+	FontCache cache;
+	// U+FFFF is a noncharacter; FreeType coverage is absent on typical hosts.
+	const auto missing = cache.ResolveFallback(FontParameters("sans-serif", 14.0), U'\uFFFF');
+	CHECK_FALSE(missing);
+	// A second miss hits the negative decision cache without throwing.
+	CHECK_FALSE(cache.ResolveFallback(FontParameters("sans-serif", 14.0), U'\uFFFF'));
+}
+
+TEST_CASE("ResolveFallback uses the primary face request characteristics") {
+	FontCache cache;
+	const auto primary = cache.LoadPath(primaryPath,
+		FontParameters("fixture-primary", 18.0, FontWeight::Bold, true));
+	REQUIRE_FALSE(primary->HasGlyph(U'\u2603'));
+
+	const auto resolved = cache.ResolveFallback(*primary, U'\u2603');
+	if (resolved) {
+		CHECK(resolved->HasGlyph(U'\u2603'));
+		CHECK(resolved->RequestedSize() == 18.0);
+		CHECK(resolved->RequestedWeight() == FontWeight::Bold);
+		CHECK(resolved->RequestedItalic());
+		CHECK(resolved->RequestedFamily() == "fixture-primary");
+	}
+}
+
+TEST_CASE("FontFallback Select keeps primary for missing coverage") {
+	FontCache cache;
+	const auto primary = LoadPrimary(cache);
+	const FontFallback none;
+	const auto selected = none.Select(primary, U'\u2603');
+	CHECK(selected == primary);
+	CHECK_FALSE(selected->HasGlyph(U'\u2603'));
+}
+
+TEST_CASE("FontFallback fixed faces cover missing primary glyphs") {
+	FontCache cache;
+	const auto primary = LoadPrimary(cache);
+	const auto snowman = LoadSnowman(cache);
+	const FontFallback fallback = FontFallback::Fixed({snowman});
+	const auto selected = fallback.Select(primary, U'\u2603');
+	CHECK(selected == snowman);
+}
+
+TEST_CASE("Production measure and shape paths agree on fallback selection") {
+	FontCache cache;
+	const auto primary = cache.Match(FontParameters("sans-serif", 14.0));
+	const auto font = FontFromFace(primary);
+	const std::string text = std::string("A") + "\xE2\x98\x83" + "B";
+	const FontFallback production = FontFallback::Production(cache);
+
+	// MeasureSurface and ShapeText share FontFallback::Select so widths match.
+	auto measure = CreateMeasureSurface(production);
+	std::vector<XYPOSITION> measureEnds(text.size());
+	std::vector<XYPOSITION> shapedEnds(text.size());
+	measure->MeasureWidths(font.get(), text, measureEnds.data());
+	const ShapedRun run = ShapeText(text, primary, production);
+	FillMeasureWidths(run, shapedEnds.data());
+
+	REQUIRE(measureEnds.size() == shapedEnds.size());
+	for (size_t i = 0; i < measureEnds.size(); i++) {
+		CHECK(measureEnds[i] == shapedEnds[i]);
+	}
+	// A second measure surface with the same production resolver agrees too.
+	auto measureAgain = CreateMeasureSurface(production);
+	std::vector<XYPOSITION> againEnds(text.size());
+	measureAgain->MeasureWidths(font.get(), text, againEnds.data());
+	for (size_t i = 0; i < measureEnds.size(); i++) {
+		CHECK(againEnds[i] == measureEnds[i]);
+	}
+	// When a covering face exists, the snowman span is not the primary face.
+	for (const ShapedGlyph &glyph : run.glyphs) {
+		if (glyph.cluster == 1 && glyph.face != primary) {
+			CHECK(glyph.face->HasGlyph(U'\u2603'));
+		}
+	}
 }
 
 TEST_CASE("Face cache owns primary and fallback faces") {

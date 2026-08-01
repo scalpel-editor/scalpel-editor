@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <initializer_list>
 #include <memory>
 #include <string>
 #include <vector>
@@ -42,7 +43,8 @@ class FontFace {
 
 public:
 	FontFace(std::shared_ptr<void> libraryOwner, void *pattern, void *face,
-		std::filesystem::path path, double size, FontWeight weight, bool italic);
+		std::filesystem::path path, std::string requestedFamily, double size,
+		FontWeight weight, bool italic, FontStretch stretch);
 	~FontFace() noexcept;
 
 	FontFace(const FontFace &) = delete;
@@ -52,9 +54,12 @@ public:
 
 	const std::filesystem::path &Path() const noexcept;
 	std::string Family() const;
+	/** Requested FC_FAMILY string (stable copy; not the concrete face family). */
+	const std::string &RequestedFamily() const noexcept;
 	double RequestedSize() const noexcept;
 	FontWeight RequestedWeight() const noexcept;
 	bool RequestedItalic() const noexcept;
+	FontStretch RequestedStretch() const noexcept;
 	FontMetrics Metrics() const noexcept;
 	bool HasGlyph(char32_t character) const noexcept;
 
@@ -112,10 +117,72 @@ public:
 
 	/** Resolve parameters.faceName as a literal FC_FAMILY through Fontconfig. */
 	std::shared_ptr<FontFace> Match(const FontParameters &parameters);
+	/**
+	 * Resolve a face covering character for the request. Throws when no
+	 * Fontconfig candidate has FreeType coverage (for callers that require a
+	 * hit). Prefer ResolveFallback when absence must not throw.
+	 */
 	std::shared_ptr<FontFace> MatchFallback(const FontParameters &parameters, char32_t character);
+	/**
+	 * Ordered Fontconfig candidates for the primary request plus character,
+	 * validated with FreeType coverage and the face cache. Empty when nothing
+	 * covers the character. Decisions are cached per request characteristics
+	 * and code point. Does not throw for a missing covering face.
+	 */
+	std::shared_ptr<FontFace> ResolveFallback(const FontFace &primary, char32_t character);
+	std::shared_ptr<FontFace> ResolveFallback(const FontParameters &parameters, char32_t character);
 	std::shared_ptr<FontFace> LoadPath(const std::filesystem::path &path, const FontParameters &parameters);
 	std::vector<std::shared_ptr<FontFace>> LoadPaths(
 		const std::vector<std::filesystem::path> &paths, const FontParameters &parameters);
+};
+
+/**
+ * Selects a fallback face for a missing glyph relative to a primary face.
+ *
+ * Fixed faces are the deterministic test override. Production resolves through
+ * a FontCache using each primary face's retained request characteristics. When
+ * nothing covers the character, Select returns the primary so HarfBuzz can emit
+ * .notdef without crashing painting.
+ */
+class FontFallback {
+public:
+	/** No fallback faces and no production resolution. */
+	FontFallback() noexcept = default;
+
+	/**
+	 * Deterministic test faces only (no Fontconfig lookup).
+	 * Allows CreateDrawSurface(..., {face}) and ShapeText(..., {face}).
+	 */
+	FontFallback(std::initializer_list<std::shared_ptr<FontFace>> faces);
+	FontFallback(std::vector<std::shared_ptr<FontFace>> faces);
+
+	/** Deterministic test faces only (no Fontconfig lookup). */
+	static FontFallback Fixed(std::vector<std::shared_ptr<FontFace>> faces);
+
+	/** Resolve missing glyphs through the process-wide FontCache. */
+	static FontFallback Production();
+
+	/** Resolve missing glyphs through the given cache. */
+	static FontFallback Production(FontCache &cache);
+
+	/**
+	 * Primary when it covers the character; otherwise the first fixed face that
+	 * covers it; otherwise a production ResolveFallback hit; otherwise primary.
+	 */
+	std::shared_ptr<FontFace> Select(
+		const std::shared_ptr<FontFace> &primary,
+		char32_t character) const;
+
+	[[nodiscard]] bool Empty() const noexcept;
+	[[nodiscard]] bool UsesProductionResolver() const noexcept;
+	[[nodiscard]] const std::vector<std::shared_ptr<FontFace>> &FixedFaces() const noexcept;
+	[[nodiscard]] FontCache *ResolverCache() const noexcept;
+	/** Stable identity for shaped-run cache keys. */
+	[[nodiscard]] std::string CacheIdentity() const;
+
+private:
+	std::vector<std::shared_ptr<FontFace>> fixedFaces;
+	FontCache *cache = nullptr;
 };
 
 const FontFace *FaceFromFont(const Font *font) noexcept;
@@ -149,6 +216,9 @@ bool TestFontPathsActive() noexcept;
  * UseTestFontPaths. Empty when no test paths are active.
  */
 std::vector<std::shared_ptr<FontFace>> TestFontFallbackFaces(double size);
+
+/** Production FontFallback when test paths are inactive; else fixed fixtures. */
+FontFallback DefaultSurfaceFallback(double size = 10.0);
 
 }
 

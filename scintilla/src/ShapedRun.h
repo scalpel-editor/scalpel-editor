@@ -99,7 +99,7 @@ void FillMeasureWidths(const ShapedRun &run, XYPOSITION *positions) noexcept;
 void MeasureWidthsShaped(
 	std::string_view text,
 	const std::shared_ptr<FontFace> &primary,
-	const std::vector<std::shared_ptr<FontFace>> &fallbacks,
+	const FontFallback &fallback,
 	XYPOSITION *positions,
 	ShapedRunCache *cache = nullptr);
 
@@ -111,7 +111,7 @@ void MeasureWidthsShaped(
 XYPOSITION WidthTextShaped(
 	std::string_view text,
 	const std::shared_ptr<FontFace> &primary,
-	const std::vector<std::shared_ptr<FontFace>> &fallbacks = {},
+	const FontFallback &fallback = {},
 	ShapedRunCache *cache = nullptr);
 
 /**
@@ -119,16 +119,16 @@ XYPOSITION WidthTextShaped(
  *
  * Walks the input by UTF-8 character (each invalid byte is one character, same
  * policy as the document). Splits into maximal same-face spans using primary
- * when it has the glyph, else the first fallback that has it, else primary
- * (HarfBuzz emits .notdef). Each span uses fixed Latin script and English
- * language properties with discretionary ligatures (liga, dlig) disabled.
- * Cluster values stay as original byte offsets across fallback splits. Correct
- * shaping for other scripts is outside the current editor scope.
+ * when it has the glyph, else FontFallback::Select, else primary (HarfBuzz
+ * emits .notdef). Each span uses fixed Latin script and English language
+ * properties with discretionary ligatures (liga, dlig) disabled. Cluster
+ * values stay as original byte offsets across fallback splits. Correct shaping
+ * for other scripts is outside the current editor scope.
  */
 ShapedRun ShapeText(
 	std::string_view text,
 	const std::shared_ptr<FontFace> &primary,
-	const std::vector<std::shared_ptr<FontFace>> &fallbacks = {});
+	const FontFallback &fallback = {});
 
 /**
  * Bounded cache of shaped runs keyed by faces, text bytes, and direction.
@@ -151,7 +151,7 @@ public:
 	std::shared_ptr<const ShapedRun> Get(
 		std::string_view text,
 		const std::shared_ptr<FontFace> &primary,
-		const std::vector<std::shared_ptr<FontFace>> &fallbacks = {});
+		const FontFallback &fallback = {});
 
 	void Clear() noexcept;
 	[[nodiscard]] size_t Size() const noexcept;

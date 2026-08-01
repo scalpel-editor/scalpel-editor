@@ -17,6 +17,7 @@
 #include "EditorStyleTypes.h"
 #include "FontPlatform.h"
 #include "Geometry.h"
+#include "MeasureSurface.h"
 #include "Platform.h"
 #include "ShapedLayout.h"
 #include "ShapedRun.h"
