@@ -22,7 +22,7 @@ using Scalpel::TabStripModel;
 using Scalpel::TabStripPainter;
 using Scalpel::TabStripPreferredTabWidth;
 using Scalpel::TabStripTab;
-using Scalpel::TruncateTabLabel;
+using Scalpel::TruncateLabel;
 using Scintilla::Internal::PRectangle;
 using Scintilla::Internal::Point;
 
@@ -273,7 +273,7 @@ TEST_CASE("tab strip layout preserves wheel scrolling after active reveal") {
 	CHECK(layout.tabs.back().bounds.left >= layout.tabsViewport.right);
 }
 
-TEST_CASE("tab strip truncation shortens long labels with ellipsis") {
+TEST_CASE("UI label truncation shortens long labels with ellipsis") {
 	ApplicationEditor editor(320, 120);
 	editor.LoadInitialBuffer("x\n");
 	(void)editor.TakeFrameDamage();
@@ -283,15 +283,16 @@ TEST_CASE("tab strip truncation shortens long labels with ellipsis") {
 	editor.SetOverlayPainter(
 		[&](Scintilla::Internal::Surface &surface, int, int) {
 			const std::string longLabel(80, 'W');
-			truncated = TruncateTabLabel(surface, painter.LabelFont(),
+			truncated = TruncateLabel(surface, painter.LabelFont(),
 				longLabel, 60.0);
 			CHECK(truncated.size() < longLabel.size());
 			// Ends with UTF-8 ellipsis …
 			REQUIRE(truncated.size() >= 3);
 			CHECK(truncated[truncated.size() - 3] == '\xE2');
-			CHECK(TruncateTabLabel(surface, painter.LabelFont(), "short",
+			CHECK(surface.WidthText(painter.LabelFont(), truncated) <= 60.0);
+			CHECK(TruncateLabel(surface, painter.LabelFont(), "short",
 				200.0) == "short");
-			CHECK(TruncateTabLabel(surface, painter.LabelFont(), "x", 0.0)
+			CHECK(TruncateLabel(surface, painter.LabelFont(), "x", 0.0)
 				.empty());
 		});
 	editor.RenderFrame({PRectangle::FromInts(0, 0, 320, 120)});

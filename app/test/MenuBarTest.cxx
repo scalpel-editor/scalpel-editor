@@ -706,7 +706,7 @@ TEST_CASE("menu bar Recent dropdown shows paths clear and empty state") {
 		REQUIRE(layout.items.size() == 3);
 		CHECK(layout.dropdown.Width() == 440);
 		CHECK(layout.items[0].item == MenuBarItemId::RecentFile(0));
-		CHECK(layout.items[0].labelText == "notes.txt \xe2\x80\x94 /work/project");
+		CHECK(layout.items[0].labelText == "notes.txt (/work/project)");
 		CHECK(layout.items[1].item == MenuBarItemId::RecentFile(1));
 		const MenuBarItemLayout *clear =
 			FindMenuItem(layout, MenuBarItemKind::ClearRecentFiles);
@@ -1063,6 +1063,36 @@ TEST_CASE("menu bar paint closed open hovered focused and disabled") {
 		const int disabledLum = static_cast<int>(disabled.r) + disabled.g + disabled.b;
 		const int enabledLum = static_cast<int>(enabled.r) + enabled.g + enabled.b;
 		CHECK(disabledLum >= enabledLum);
+	}
+
+	SECTION("long Recent path does not paint beyond the dropdown") {
+		editor.Resize(700, 220);
+		MenuBarModel empty = OpenMenu(ApplicationMenu::Recent);
+		const MenuBarLayout emptyLayout = LayoutMenuBar(700, 220, empty);
+		const auto emptyPixels = PaintMenu(editor, painter, emptyLayout, empty);
+
+		MenuBarModel recent = OpenMenu(ApplicationMenu::Recent);
+		recent.recentFiles = {
+			"/" + std::string(100, 'W') + "/notes.md",
+		};
+		const MenuBarLayout recentLayout = LayoutMenuBar(700, 220, recent);
+		const MenuBarItemLayout *item =
+			FindMenuItem(recentLayout, MenuBarItemKind::RecentFile);
+		REQUIRE(item);
+		CHECK(item->labelText ==
+			"notes.md (/" + std::string(100, 'W') + ")");
+		const auto recentPixels = PaintMenu(
+			editor, painter, recentLayout, recent);
+
+		// The shadow reaches two pixels past the dropdown. Everything beyond it
+		// must match the same frame painted without the long path.
+		const int y = static_cast<int>(Center(item->row).y);
+		for (int x = static_cast<int>(recentLayout.dropdown.right) + 3;
+			x < editor.FrameWidth(); ++x) {
+			CHECK_FALSE(Differs(
+				Sample(recentPixels, editor.FrameWidth(), x, y),
+				Sample(emptyPixels, editor.FrameWidth(), x, y)));
+		}
 	}
 
 	SECTION("hover item fill differs from unhovered row") {
