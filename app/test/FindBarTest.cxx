@@ -142,6 +142,10 @@ TEST_CASE("Find bar layout places field status and buttons") {
 	CHECK(layout.band.Contains(layout.nextButton));
 	CHECK(layout.band.Contains(layout.closeButton));
 	CHECK(layout.field.Contains(layout.fieldText));
+	// Close is a square control (same side as findCloseSize when the band fits).
+	CHECK(layout.closeButton.Width() == layout.closeButton.Height());
+	CHECK(layout.closeButton.Width() ==
+		Scalpel::DefaultUiStyle().findCloseSize);
 	// Right-to-left: close, next, previous.
 	CHECK(layout.closeButton.right == layout.band.right -
 		Scalpel::DefaultUiStyle().findBarPadX);

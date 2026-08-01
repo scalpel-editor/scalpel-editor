@@ -93,7 +93,8 @@ struct UiStyle {
 	const int findStatusMinWidth = 72;
 	const int findStatusPadX = 8;
 	const int findButtonWidth = 56;
-	const int findCloseWidth = 28;
+	/** Square close control; side matches the find-bar control row height. */
+	const int findCloseSize = 20;
 	const int findButtonGap = 6;
 
 	// Scrollbars.

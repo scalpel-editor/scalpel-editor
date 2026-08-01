@@ -269,11 +269,17 @@ void DrawCloseGlyph(Surface &surface, const PRectangle &rc, ColourRGBA ink) {
 	if (rc.Empty()) {
 		return;
 	}
-	const XYPOSITION inset = 7.0;
-	const Point a(rc.left + inset, rc.top + inset);
-	const Point b(rc.right - inset, rc.bottom - inset);
-	const Point c(rc.right - inset, rc.top + inset);
-	const Point d(rc.left + inset, rc.bottom - inset);
+	// Square X centred in rc so a non-square hit target (narrow band) still
+	// draws like the tab-strip close glyph rather than a stretched cross.
+	const XYPOSITION side = std::min(rc.Width(), rc.Height());
+	const XYPOSITION cx = (rc.left + rc.right) * 0.5;
+	const XYPOSITION cy = (rc.top + rc.bottom) * 0.5;
+	const XYPOSITION half = side * 0.5;
+	const XYPOSITION inset = 3.0;
+	const Point a(cx - half + inset, cy - half + inset);
+	const Point b(cx + half - inset, cy + half - inset);
+	const Point c(cx + half - inset, cy - half + inset);
+	const Point d(cx - half + inset, cy + half - inset);
 	surface.LineDraw(a, b, Scintilla::Internal::Stroke(ink, 1.5));
 	surface.LineDraw(c, d, Scintilla::Internal::Stroke(ink, 1.5));
 }
@@ -443,6 +449,7 @@ FindBarLayout LayoutFindBar(int bandWidth, int bandTop) noexcept {
 	const int innerTop = SaturatingAdd(bandTop, style.findBarPadY);
 	const int innerBottom = std::max(innerTop,
 		SaturatingAdd(bandBottom, -style.findBarPadY));
+	const int controlHeight = std::max(0, innerBottom - innerTop);
 	const int pad = style.findBarPadX;
 	const int gap = style.findButtonGap;
 
@@ -462,7 +469,20 @@ FindBarLayout LayoutFindBar(int bandWidth, int bandTop) noexcept {
 		return PRectangle::FromInts(left, innerTop, left + width, innerBottom);
 	};
 
-	layout.closeButton = takeRight(style.findCloseWidth);
+	// Square close control, vertically centred in the control row (like tab close).
+	{
+		const int desired = std::min(style.findCloseSize, controlHeight);
+		if (right > pad && desired > 0) {
+			const int side = std::min(desired, right - pad);
+			if (side > 0) {
+				const int left = right - side;
+				const int top = innerTop + (controlHeight - side) / 2;
+				layout.closeButton = PRectangle::FromInts(
+					left, top, left + side, top + side);
+				right = left - gap;
+			}
+		}
+	}
 	layout.nextButton = takeRight(style.findButtonWidth);
 	layout.previousButton = takeRight(style.findButtonWidth);
 
