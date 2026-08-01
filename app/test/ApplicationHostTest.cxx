@@ -1189,3 +1189,191 @@ TEST_CASE("production editor menu overlay clear removes dropdown without stale p
 		cleared[offset + 1] != menuG || cleared[offset + 2] != menuB;
 	CHECK(changed);
 }
+
+TEST_CASE("production editor find selects the first match from an origin") {
+	Scalpel::ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("one two one two");
+	editor.SetSel(0, 0);
+
+	CHECK(editor.FindTextForward("one", 0) == Scalpel::ApplicationFindOutcome::Found);
+	CHECK(editor.GetSelectionStart() == 0);
+	CHECK(editor.GetSelectionEnd() == 3);
+
+	// Next from selection end finds the second occurrence without wrapping.
+	CHECK(editor.FindTextForwardFromSelection("one") ==
+		Scalpel::ApplicationFindOutcome::Found);
+	CHECK(editor.GetSelectionStart() == 8);
+	CHECK(editor.GetSelectionEnd() == 11);
+}
+
+TEST_CASE("production editor find wraps forward and backward once") {
+	Scalpel::ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("alpha beta alpha");
+	// Select the second alpha.
+	REQUIRE(editor.FindTextForward("alpha", 1) ==
+		Scalpel::ApplicationFindOutcome::Found);
+	CHECK(editor.GetSelectionStart() == 11);
+
+	// Forward from after the last match wraps to the first.
+	CHECK(editor.FindTextForwardFromSelection("alpha") ==
+		Scalpel::ApplicationFindOutcome::Wrapped);
+	CHECK(editor.GetSelectionStart() == 0);
+	CHECK(editor.GetSelectionEnd() == 5);
+
+	// Backward from the first match wraps to the last.
+	CHECK(editor.FindTextBackwardFromSelection("alpha") ==
+		Scalpel::ApplicationFindOutcome::Wrapped);
+	CHECK(editor.GetSelectionStart() == 11);
+	CHECK(editor.GetSelectionEnd() == 16);
+}
+
+TEST_CASE("production editor find previous moves past the current match") {
+	Scalpel::ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("xx needle xx needle xx");
+	REQUIRE(editor.FindTextForward("needle", 0) ==
+		Scalpel::ApplicationFindOutcome::Found);
+	const auto firstStart = editor.GetSelectionStart();
+	REQUIRE(editor.FindTextForwardFromSelection("needle") ==
+		Scalpel::ApplicationFindOutcome::Found);
+	const auto secondStart = editor.GetSelectionStart();
+	CHECK(secondStart > firstStart);
+
+	CHECK(editor.FindTextBackwardFromSelection("needle") ==
+		Scalpel::ApplicationFindOutcome::Found);
+	CHECK(editor.GetSelectionStart() == firstStart);
+	CHECK(editor.GetSelectionEnd() == firstStart + 6);
+}
+
+TEST_CASE("production editor find is case-insensitive for ASCII and Unicode") {
+	Scalpel::ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("Hello HELLO caf\xC3\x89 CAF\xC3\xA9");
+	// "cafÉ CAFÉ" with mixed case accents.
+
+	CHECK(editor.FindTextForward("hello", 0) ==
+		Scalpel::ApplicationFindOutcome::Found);
+	CHECK(editor.GetSelectionStart() == 0);
+	CHECK(editor.GetSelectionEnd() == 5);
+
+	CHECK(editor.FindTextForwardFromSelection("hello") ==
+		Scalpel::ApplicationFindOutcome::Found);
+	CHECK(editor.GetSelectionStart() == 6);
+	CHECK(editor.GetSelectionEnd() == 11);
+
+	// Case-fold accented E / e.
+	CHECK(editor.FindTextForward("caf\xC3\xA9", 0) ==
+		Scalpel::ApplicationFindOutcome::Found);
+	CHECK(editor.GetSelectionStart() == 12);
+	const auto firstCafeEnd = editor.GetSelectionEnd();
+	CHECK(editor.FindTextForwardFromSelection("CAF\xC3\x89") ==
+		Scalpel::ApplicationFindOutcome::Found);
+	CHECK(editor.GetSelectionStart() == firstCafeEnd + 1);
+}
+
+TEST_CASE("production editor find empty or missing query leaves selection") {
+	Scalpel::ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("abc def");
+	editor.SetSel(2, 5);
+	const auto start = editor.GetSelectionStart();
+	const auto end = editor.GetSelectionEnd();
+
+	CHECK(editor.FindTextForward("", 0) ==
+		Scalpel::ApplicationFindOutcome::NotFound);
+	CHECK(editor.GetSelectionStart() == start);
+	CHECK(editor.GetSelectionEnd() == end);
+
+	CHECK(editor.FindTextForward("zzz", 0) ==
+		Scalpel::ApplicationFindOutcome::NotFound);
+	CHECK(editor.GetSelectionStart() == start);
+	CHECK(editor.GetSelectionEnd() == end);
+
+	CHECK(editor.FindTextBackward("zzz", 7) ==
+		Scalpel::ApplicationFindOutcome::NotFound);
+	CHECK(editor.GetSelectionStart() == start);
+	CHECK(editor.GetSelectionEnd() == end);
+}
+
+TEST_CASE("production editor find matches exact document boundaries") {
+	Scalpel::ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("edge");
+	CHECK(editor.FindTextForward("edge", 0) ==
+		Scalpel::ApplicationFindOutcome::Found);
+	CHECK(editor.GetSelectionStart() == 0);
+	CHECK(editor.GetSelectionEnd() == 4);
+
+	editor.SetSel(4, 4);
+	CHECK(editor.FindTextBackward("edge", 4) ==
+		Scalpel::ApplicationFindOutcome::Found);
+	CHECK(editor.GetSelectionStart() == 0);
+	CHECK(editor.GetSelectionEnd() == 4);
+}
+
+TEST_CASE("production editor find does not edit document undo or save state") {
+	Scalpel::ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("keep me stable find-target");
+	CHECK_FALSE(editor.Modified());
+	CHECK_FALSE(editor.CanUndoEdit());
+	const std::string before = editor.Text();
+	editor.SetSel(0, 0);
+
+	CHECK(editor.FindTextForward("find-target", 0) ==
+		Scalpel::ApplicationFindOutcome::Found);
+	CHECK(editor.Text() == before);
+	CHECK_FALSE(editor.Modified());
+	CHECK_FALSE(editor.CanUndoEdit());
+	CHECK_FALSE(editor.CanRedoEdit());
+
+	CHECK(editor.FindTextForward("missing", 0) ==
+		Scalpel::ApplicationFindOutcome::NotFound);
+	CHECK(editor.Text() == before);
+	CHECK_FALSE(editor.Modified());
+	CHECK_FALSE(editor.CanUndoEdit());
+}
+
+TEST_CASE("production editor find uses the active document only") {
+	Scalpel::ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("document one has alpha");
+	const Scalpel::DocumentId first = editor.ActiveDocument();
+	const Scalpel::DocumentId second = editor.CreateDocument();
+	editor.ActivateDocument(second);
+	editor.LoadInitialBuffer("document two has beta");
+
+	CHECK(editor.FindTextForward("alpha", 0) ==
+		Scalpel::ApplicationFindOutcome::NotFound);
+	CHECK(editor.FindTextForward("beta", 0) ==
+		Scalpel::ApplicationFindOutcome::Found);
+	const Scintilla::Position betaAt =
+		static_cast<Scintilla::Position>(editor.Text().find("beta"));
+	CHECK(editor.GetSelectionStart() == betaAt);
+
+	editor.ActivateDocument(first);
+	CHECK(editor.FindTextForward("beta", 0) ==
+		Scalpel::ApplicationFindOutcome::NotFound);
+	CHECK(editor.FindTextForward("alpha", 0) ==
+		Scalpel::ApplicationFindOutcome::Found);
+	const Scintilla::Position alphaAt =
+		static_cast<Scintilla::Position>(editor.Text().find("alpha"));
+	CHECK(editor.GetSelectionStart() == alphaAt);
+}
+
+TEST_CASE("production editor find origin search supports incremental extension") {
+	Scalpel::ApplicationEditor editor(320, 180);
+	// Two candidates; origin stays at the first so extending the query does
+	// not jump to a later shorter match.
+	editor.LoadInitialBuffer("he help hero");
+	const Scintilla::Position origin = 0;
+	CHECK(editor.FindTextForward("he", origin) ==
+		Scalpel::ApplicationFindOutcome::Found);
+	CHECK(editor.GetSelectionStart() == 0);
+	CHECK(editor.GetSelectionEnd() == 2);
+
+	CHECK(editor.FindTextForward("hel", origin) ==
+		Scalpel::ApplicationFindOutcome::Found);
+	CHECK(editor.GetSelectionStart() == 3);
+	CHECK(editor.GetSelectionEnd() == 6);
+
+	CHECK(editor.FindTextForward("hero", origin) ==
+		Scalpel::ApplicationFindOutcome::Found);
+	// "he help hero" — hero starts after "he help ".
+	CHECK(editor.GetSelectionStart() == 8);
+	CHECK(editor.GetSelectionEnd() == 12);
+}

@@ -839,6 +839,117 @@ void ApplicationEditor::RequestClipboardPaste() {
 	ExecuteApplicationEdit(Scintilla::Internal::EditorCommand::Paste);
 }
 
+ApplicationFindOutcome ApplicationEditor::FindTextForward(
+	std::string_view query, Scintilla::Position origin) {
+	if (query.empty()) {
+		return ApplicationFindOutcome::NotFound;
+	}
+	// Drop tentative IME so target endpoints and selection stay committed.
+	if (pdoc->TentativeActive()) {
+		CancelTextInput();
+	}
+
+	const Scintilla::Position length = GetTextLength();
+	if (origin < 0) {
+		origin = 0;
+	}
+	if (origin > length) {
+		origin = length;
+	}
+
+	const Scintilla::Position selStart = GetSelectionStart();
+	const Scintilla::Position selEnd = GetSelectionEnd();
+	SetSearchFlags(Scintilla::FindOption::None);
+
+	const auto selectMatch = [this]() {
+		SetSel(GetTargetStart(), GetTargetEnd());
+		EnsureCaretVisible();
+		textInputStateDirty = true;
+		textInputChangeCause = ApplicationTextChangeCause::Other;
+	};
+
+	// First range: origin .. end.
+	SetTargetRange(origin, length);
+	if (SearchInTarget(query) >= 0) {
+		selectMatch();
+		return ApplicationFindOutcome::Found;
+	}
+	// Complementary wrap: start .. origin.
+	if (origin > 0) {
+		SetTargetRange(0, origin);
+		if (SearchInTarget(query) >= 0) {
+			selectMatch();
+			return ApplicationFindOutcome::Wrapped;
+		}
+	}
+
+	if (GetSelectionStart() != selStart || GetSelectionEnd() != selEnd) {
+		SetSel(selStart, selEnd);
+	}
+	return ApplicationFindOutcome::NotFound;
+}
+
+ApplicationFindOutcome ApplicationEditor::FindTextBackward(
+	std::string_view query, Scintilla::Position origin) {
+	if (query.empty()) {
+		return ApplicationFindOutcome::NotFound;
+	}
+	if (pdoc->TentativeActive()) {
+		CancelTextInput();
+	}
+
+	const Scintilla::Position length = GetTextLength();
+	if (origin < 0) {
+		origin = 0;
+	}
+	if (origin > length) {
+		origin = length;
+	}
+
+	const Scintilla::Position selStart = GetSelectionStart();
+	const Scintilla::Position selEnd = GetSelectionEnd();
+	SetSearchFlags(Scintilla::FindOption::None);
+
+	const auto selectMatch = [this]() {
+		SetSel(GetTargetStart(), GetTargetEnd());
+		EnsureCaretVisible();
+		textInputStateDirty = true;
+		textInputChangeCause = ApplicationTextChangeCause::Other;
+	};
+
+	// First range: origin .. start (backward target order).
+	if (origin > 0) {
+		SetTargetRange(origin, 0);
+		if (SearchInTarget(query) >= 0) {
+			selectMatch();
+			return ApplicationFindOutcome::Found;
+		}
+	}
+	// Complementary wrap: end .. origin.
+	if (origin < length) {
+		SetTargetRange(length, origin);
+		if (SearchInTarget(query) >= 0) {
+			selectMatch();
+			return ApplicationFindOutcome::Wrapped;
+		}
+	}
+
+	if (GetSelectionStart() != selStart || GetSelectionEnd() != selEnd) {
+		SetSel(selStart, selEnd);
+	}
+	return ApplicationFindOutcome::NotFound;
+}
+
+ApplicationFindOutcome ApplicationEditor::FindTextForwardFromSelection(
+	std::string_view query) {
+	return FindTextForward(query, GetSelectionEnd());
+}
+
+ApplicationFindOutcome ApplicationEditor::FindTextBackwardFromSelection(
+	std::string_view query) {
+	return FindTextBackward(query, GetSelectionStart());
+}
+
 void ApplicationEditor::SetClipboardPasteAvailable(bool available) noexcept {
 	clipboardPasteAvailable = available;
 }

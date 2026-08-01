@@ -48,6 +48,17 @@ enum class EditorFont {
 /** Canonical Fontconfig family string for a generic editor-font choice. */
 [[nodiscard]] const char *EditorFontFamilyName(EditorFont font) noexcept;
 
+/**
+ * Outcome of a plain-text find that may wrap once. Found is a match in the
+ * first directional range; Wrapped is a match only after the complementary
+ * range; NotFound leaves the selection unchanged.
+ */
+enum class ApplicationFindOutcome {
+	NotFound,
+	Found,
+	Wrapped,
+};
+
 struct TickerRequest {
 	int reason = 0;
 	int milliseconds = 0;
@@ -206,6 +217,27 @@ public:
 	void RequestClipboardPaste();
 	void SetClipboardPasteAvailable(bool available) noexcept;
 	[[nodiscard]] bool ClipboardPasteAvailable();
+	/**
+	 * Case-insensitive plain-text search of the active document. Searches from
+	 * origin to the document end, then once from the start to origin when the
+	 * first range misses. Empty query and failed search leave the selection
+	 * unchanged and do not edit document bytes, undo, or save state. A match
+	 * is selected and scrolled into view.
+	 */
+	[[nodiscard]] ApplicationFindOutcome FindTextForward(std::string_view query,
+		Scintilla::Position origin);
+	/**
+	 * Backward counterpart of FindTextForward: origin to the document start,
+	 * then once from the end to origin.
+	 */
+	[[nodiscard]] ApplicationFindOutcome FindTextBackward(std::string_view query,
+		Scintilla::Position origin);
+	/** Forward search from the end of the current selection. */
+	[[nodiscard]] ApplicationFindOutcome FindTextForwardFromSelection(
+		std::string_view query);
+	/** Backward search from the start of the current selection. */
+	[[nodiscard]] ApplicationFindOutcome FindTextBackwardFromSelection(
+		std::string_view query);
 	/** True when the active document has a non-empty selection. */
 	[[nodiscard]] bool HasSelection() const noexcept;
 	/** True when Select All would cover at least one byte. */
