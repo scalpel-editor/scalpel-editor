@@ -38,7 +38,7 @@ Scintilla paints the editor client. A permanent-chrome callback paints the menu 
 
 `ApplicationUi` owns the chrome models and painters, binds both application paint callbacks, selects the active overlay, and unbinds callbacks that capture it when it is destroyed. Individual controls own their layout, hit testing, interaction state, and paint operations without a widget hierarchy. The complete composition and input boundary is described in [application-ui.md](application-ui.md).
 
-`ApplicationEditor` supplies its client rectangle and scrollbar metrics. `ApplicationUi::BeginFrameLayout` refreshes the model values that affect geometry and retains one `ApplicationLayout` snapshot containing the menu, tabs, scrollbars, client, and modal cards. Permanent-chrome and overlay painters read that same snapshot until `EndFrameLayout`.
+`ApplicationEditor` supplies its client rectangle and scrollbar metrics. `ApplicationUi::BeginFrameLayout` refreshes the model values that affect geometry and retains one `ApplicationLayout` snapshot containing the menu, tabs, optional find bar, scrollbars, client, and modal cards. Permanent-chrome and overlay painters read that same snapshot until `EndFrameLayout`.
 
 Autocomplete lists, call tips, and the Scintilla context menu use explicit production stubs. Their core behavior remains compiled and testable, but real Wayland popup surfaces are not implemented.
 
