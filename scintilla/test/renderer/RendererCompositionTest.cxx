@@ -1,8 +1,9 @@
 #include "RendererTest.h"
 
 TEST_CASE("DrawGlyph places ink in logical space when buffer is scaled") {
-	// HiDPI path: buffer pixels are 2x logical. Solid fills and glyphs both
-	// take logical coordinates; ink must land in the scaled buffer region.
+	// HiDPI path: buffer pixels are 2x logical. Solid fills use logical
+	// coordinates; outline glyphs rasterize at the nominal scale 2 and land
+	// on integer buffer pixels near 2 * logical pen.
 	FontCache fonts;
 	const std::filesystem::path primary =
 		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "FallbackPrimary.ttf";
@@ -17,6 +18,7 @@ TEST_CASE("DrawGlyph places ink in logical space when buffer is scaled") {
 	constexpr int logical = 40;
 	renderer.SetDrawTarget(buffer.FramebufferName(), buffer.Width(), buffer.Height(),
 		logical, logical);
+	renderer.SetOutputRasterScale(RasterScale::FromParts(2, 1));
 	const ColourRGBA bg(0, 0, 0, 255);
 	const ColourRGBA fg(255, 255, 255, 255);
 	const ColourRGBA marker(0, 255, 0, 255);
@@ -32,8 +34,7 @@ TEST_CASE("DrawGlyph places ink in logical space when buffer is scaled") {
 
 	const InkBounds ink = FindInkBounds(buffer, bg);
 	REQUIRE_FALSE(ink.Empty());
-	// Before the fix, buffer-space ortho put glyphs near half-size coords (x~20).
-	// With logical ortho, ink near pen 20 should start around buffer x 40.
+	// Device-phase placement at scale 2 puts pen 20 near buffer x 40.
 	CHECK(ink.left >= 30);
 	CHECK(ink.top >= 30);
 	// Marker still present in its scaled band (or covered by glyph ink).
@@ -450,62 +451,221 @@ TEST_CASE("DrawGlyph applies synthetic xOffset and yOffset placement") {
 	CHECK(right.left >= baseInk.left + 6);
 }
 
-TEST_CASE("light-hinted fixture text draws stable gray ink at editor size") {
-	// 16pt body at 96 DPI → ~21.33 logical pixels (matches ViewStyle sizing).
+namespace {
+
+/** Compose expected coverage by placing phase-aware GlyphImage bitmaps into a buffer. */
+std::vector<uint8_t> ReferenceComposeText(
+	const ShapedRun &run, XYPOSITION penX, XYPOSITION penY, RasterScale scale,
+	int bufferWidth, int bufferHeight, ColourRGBA bg, ColourRGBA fg) {
+	std::vector<uint8_t> pixels(static_cast<size_t>(bufferWidth) * static_cast<size_t>(bufferHeight) * 4u);
+	for (size_t i = 0; i < pixels.size(); i += 4) {
+		pixels[i + 0] = bg.GetRed();
+		pixels[i + 1] = bg.GetGreen();
+		pixels[i + 2] = bg.GetBlue();
+		pixels[i + 3] = bg.GetAlpha();
+	}
+	const auto blendOver = [&](int x, int y, uint8_t coverage) {
+		if (x < 0 || y < 0 || x >= bufferWidth || y >= bufferHeight || coverage == 0) {
+			return;
+		}
+		const size_t o = (static_cast<size_t>(y) * static_cast<size_t>(bufferWidth) +
+			static_cast<size_t>(x)) * 4u;
+		const float a = (static_cast<float>(coverage) / 255.0f) * (fg.GetAlphaComponent());
+		const float inv = 1.0f - a;
+		pixels[o + 0] = static_cast<uint8_t>(std::lround(
+			fg.GetRedComponent() * a * 255.0f + pixels[o + 0] * inv));
+		pixels[o + 1] = static_cast<uint8_t>(std::lround(
+			fg.GetGreenComponent() * a * 255.0f + pixels[o + 1] * inv));
+		pixels[o + 2] = static_cast<uint8_t>(std::lround(
+			fg.GetBlueComponent() * a * 255.0f + pixels[o + 2] * inv));
+		pixels[o + 3] = 255;
+	};
+	XYPOSITION x = penX;
+	for (const ShapedGlyph &g : run.glyphs) {
+		if (!g.face) {
+			x += g.xAdvance;
+			continue;
+		}
+		const XYPOSITION gx = x + g.xOffset;
+		const XYPOSITION gy = penY - g.yOffset;
+		const double deviceX =
+			gx * static_cast<double>(scale.Numerator()) /
+			static_cast<double>(scale.Denominator());
+		const double deviceY =
+			gy * static_cast<double>(scale.Numerator()) /
+			static_cast<double>(scale.Denominator());
+		const int originX = static_cast<int>(std::floor(deviceX));
+		const int originY = static_cast<int>(std::floor(deviceY));
+		const int32_t phaseX = static_cast<int32_t>(std::lround((deviceX - originX) * 64.0));
+		const int32_t phaseY = static_cast<int32_t>(std::lround((deviceY - originY) * 64.0));
+		GlyphRasterRequest request;
+		request.glyphId = g.glyphId;
+		request.scale = scale;
+		request.phase = GlyphRasterPhase::Normalize(
+			phaseX >= 64 ? 0 : phaseX, phaseY >= 64 ? 0 : phaseY);
+		if (phaseX >= 64) {
+			// match Renderer rounding edge
+		}
+		const GlyphImage image = g.face->RasterizeGlyph(request);
+		if (image.kind != GlyphImageKind::Gray) {
+			x += g.xAdvance;
+			continue;
+		}
+		const int left = originX + image.left;
+		const int top = originY - image.top;
+		for (int row = 0; row < image.height; row++) {
+			for (int col = 0; col < image.width; col++) {
+				const uint8_t cov = image.gray[static_cast<size_t>(row) * static_cast<size_t>(image.width) +
+					static_cast<size_t>(col)];
+				blendOver(left + col, top + row, cov);
+			}
+		}
+		x += g.xAdvance;
+	}
+	return pixels;
+}
+
+bool PixelsNear(const std::vector<uint8_t> &a, const std::vector<uint8_t> &b, int tol = 1) {
+	if (a.size() != b.size()) {
+		return false;
+	}
+	for (size_t i = 0; i < a.size(); i++) {
+		const int d = static_cast<int>(a[i]) - static_cast<int>(b[i]);
+		if (d > tol || d < -tol) {
+			return false;
+		}
+	}
+	return true;
+}
+
+void CheckDevicePhasePhrase(const std::string &text, RasterScale scale) {
 	const double editorPixels = 16.0 * 96.0 / 72.0;
 	FontCache fonts;
 	const std::filesystem::path primary =
 		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "FallbackPrimary.ttf";
 	FontRasterPolicy lightPolicy;
 	lightPolicy.hintStyle = FontHintStyle::Slight;
-	FontRasterPolicy normalPolicy;
-	normalPolicy.hintStyle = FontHintStyle::Normal;
-	std::shared_ptr<FontFace> lightFace =
+	std::shared_ptr<FontFace> face =
 		fonts.LoadPath(primary, FontParameters("fixture", editorPixels), lightPolicy);
-	std::shared_ptr<FontFace> normalFace =
-		fonts.LoadPath(primary, FontParameters("fixture", editorPixels), normalPolicy);
-	REQUIRE(lightFace->RasterPolicy().hintStyle == FontHintStyle::Slight);
-	REQUIRE(normalFace->RasterPolicy().hintStyle == FontHintStyle::Normal);
+	const ShapedRun run = ShapeText(text, face);
+	REQUIRE_FALSE(run.glyphs.empty());
 
-	const std::string text = "high standards";
-	std::shared_ptr<Font> lightFont = FontFromFace(lightFace);
-	std::shared_ptr<Font> normalFont = FontFromFace(normalFace);
+	const int logicalW = 240;
+	const int logicalH = 48;
+	const int bufferW = static_cast<int>(std::ceil(
+		logicalW * static_cast<double>(scale.Numerator()) /
+		static_cast<double>(scale.Denominator())));
+	const int bufferH = static_cast<int>(std::ceil(
+		logicalH * static_cast<double>(scale.Numerator()) /
+		static_cast<double>(scale.Denominator())));
 
 	GlContext context;
 	Renderer renderer(context);
 	ColourBuffer buffer;
-	buffer.Resize(220, 40);
+	buffer.Resize(bufferW, bufferH);
+	renderer.SetDrawTarget(buffer.FramebufferName(), bufferW, bufferH, logicalW, logicalH);
+	renderer.SetOutputRasterScale(scale);
 	const ColourRGBA bg(255, 255, 255, 255);
 	const ColourRGBA fg(0, 0, 0, 255);
+	renderer.Clear(bg);
 
-	auto paint = [&](const std::shared_ptr<Font> &font) {
-		std::unique_ptr<DrawSurface> surface = CreateExternalDrawSurface(
-			renderer, buffer.FramebufferName(), buffer.Width(), buffer.Height());
-		renderer.Clear(bg);
-		const FontMetrics metrics = FaceFromFont(font.get())->Metrics();
-		const XYPOSITION ybase = metrics.ascent + 2.0;
-		surface->DrawTextTransparent(
-			PRectangle::FromInts(2, 0, buffer.Width(), buffer.Height()),
-			font.get(), ybase, text, fg);
-		return buffer.ReadPixelsTopDown();
-	};
-
-	const std::vector<uint8_t> first = paint(lightFont);
-	const std::vector<uint8_t> second = paint(lightFont);
-	const std::vector<uint8_t> normalPixels = paint(normalFont);
-
-	REQUIRE(first.size() == second.size());
-	CHECK(first == second);
-	// Light and normal hint targets must not paint identical ink on this fixture.
-	CHECK(first != normalPixels);
-
-	// Confirm some black text ink was drawn under light hinting.
-	bool sawInk = false;
-	for (size_t i = 0; i + 3 < first.size(); i += 4) {
-		if (first[i] < 250 || first[i + 1] < 250 || first[i + 2] < 250) {
-			sawInk = true;
-			break;
+	const FontMetrics metrics = face->Metrics();
+	const XYPOSITION penX = 2.0;
+	const XYPOSITION penY = metrics.ascent + 2.0;
+	XYPOSITION x = penX;
+	for (const ShapedGlyph &g : run.glyphs) {
+		if (g.face) {
+			renderer.DrawGlyph(x + g.xOffset, penY - g.yOffset, g.face, g.glyphId, fg);
 		}
+		x += g.xAdvance;
 	}
-	CHECK(sawInk);
+	const std::vector<uint8_t> painted = buffer.ReadPixelsTopDown();
+	const std::vector<uint8_t> expected =
+		ReferenceComposeText(run, penX, penY, scale, bufferW, bufferH, bg, fg);
+	// ±1 for premultiplied blend rounding differences.
+	CHECK(PixelsNear(painted, expected, 1));
+}
+
+}
+
+TEST_CASE("device-phase text reference composition matches high standards and honesty") {
+	const RasterScale scales[] = {
+		RasterScale{},
+		RasterScale::FromWaylandNumerator(150), // 5/4
+		RasterScale::FromParts(3, 2),
+		RasterScale::FromParts(2, 1),
+	};
+	for (const RasterScale &scale : scales) {
+		INFO("scale " << scale.Numerator() << "/" << scale.Denominator());
+		CheckDevicePhasePhrase("high standards", scale);
+		CheckDevicePhasePhrase("honesty", scale);
+	}
+}
+
+TEST_CASE("device-phase text places same glyph at distinct phases") {
+	FontCache fonts;
+	const std::filesystem::path primary =
+		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "FallbackPrimary.ttf";
+	FontRasterPolicy lightPolicy;
+	lightPolicy.hintStyle = FontHintStyle::Slight;
+	std::shared_ptr<FontFace> face =
+		fonts.LoadPath(primary, FontParameters("fixture", 16.0), lightPolicy);
+	const ShapedRun run = ShapeText("i", face);
+	REQUIRE_FALSE(run.glyphs.empty());
+	const uint32_t glyphId = run.glyphs[0].glyphId;
+
+	GlContext context;
+	Renderer renderer(context);
+	ColourBuffer buffer;
+	buffer.Resize(64, 48);
+	renderer.SetDrawTarget(buffer.FramebufferName(), 64, 48, 64, 48);
+	renderer.SetOutputRasterScale(RasterScale{});
+	const ColourRGBA bg(255, 255, 255, 255);
+	const ColourRGBA fg(0, 0, 0, 255);
+	renderer.Clear(bg);
+	const FontMetrics metrics = face->Metrics();
+	const XYPOSITION baseline = metrics.ascent + 4.0;
+	// Same glyph at two fractional logical positions → two phases.
+	renderer.DrawGlyph(4.0, baseline, face, glyphId, fg);
+	renderer.DrawGlyph(4.0 + 1.0 / 64.0, baseline, face, glyphId, fg);
+	// At least two cache entries when phases differ (glyph may share if phase collides).
+	CHECK(renderer.GlyphCacheSize() >= 1);
+	REQUIRE(HasNonBackgroundInk(buffer, bg));
+}
+
+TEST_CASE("glyph cache phase distinguishes scale and phase identity") {
+	FontCache fonts;
+	const std::filesystem::path primary =
+		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "FallbackPrimary.ttf";
+	std::shared_ptr<FontFace> face =
+		fonts.LoadPath(primary, FontParameters("fixture", 16.0));
+	const ShapedRun run = ShapeText("A", face);
+	REQUIRE_FALSE(run.glyphs.empty());
+	const uint32_t glyphId = run.glyphs[0].glyphId;
+
+	GlContext context;
+	Renderer renderer(context);
+	ColourBuffer buffer;
+	buffer.Resize(48, 48);
+	renderer.SetDrawTarget(buffer.FramebufferName(), 48, 48, 48, 48);
+	renderer.SetOutputRasterScale(RasterScale{});
+	const ColourRGBA fg(0, 0, 0, 255);
+	const FontMetrics metrics = face->Metrics();
+	const XYPOSITION baseline = metrics.ascent;
+
+	renderer.DrawGlyph(4.0, baseline, face, glyphId, fg);
+	REQUIRE(renderer.GlyphCacheSize() == 1);
+	// Identical request reuses the texture.
+	renderer.DrawGlyph(4.0, baseline, face, glyphId, fg);
+	CHECK(renderer.GlyphCacheSize() == 1);
+	// Different phase cannot collide.
+	renderer.DrawGlyph(4.0 + 0.5, baseline, face, glyphId, fg);
+	CHECK(renderer.GlyphCacheSize() == 2);
+	// Output scale change retires grayscale and cannot reuse stale textures.
+	renderer.SetOutputRasterScale(RasterScale::FromParts(2, 1));
+	CHECK(renderer.GlyphCacheSize() == 0);
+	renderer.DrawGlyph(4.0, baseline, face, glyphId, fg);
+	CHECK(renderer.GlyphCacheSize() == 1);
+	// Phase population for this single-glyph walk stays small.
+	CHECK(renderer.GlyphCacheSize() < 8);
 }

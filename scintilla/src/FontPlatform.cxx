@@ -638,8 +638,12 @@ GlyphImage FontFace::RasterizeGlyph(const GlyphRasterRequest &request) const {
 	// Device-sized outline masks are already in device pixels; scale stays 1.
 	// Colour bitmaps loaded from a device-sized face also report scale 1 here;
 	// strike scaling for fixed-only faces is handled above.
+	//
+	// phase stores y-down device fractions in [0, 63]. FreeType outline space
+	// is y-up, so the vertical transform delta is negated (ftobjs.c applies
+	// FT_Set_Transform after hinting via FT_Outline_Translate).
 	return RasterizeOnFace(rasterFace, request.glyphId, impl->loadFlags, 1.0,
-		phase.x, phase.y, true);
+		phase.x, -phase.y, true);
 }
 
 void *FontFace::HarfBuzzFont() const noexcept {

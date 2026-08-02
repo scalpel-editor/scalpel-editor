@@ -1022,18 +1022,38 @@ void Renderer::Stadium(PRectangle rc, FillStroke fillStroke, int ends) {
 	Polygon(outline.data(), outline.size(), fillStroke);
 }
 
-void Renderer::DrawTexturedQuad(float x0, float y0, float x1, float y1,
+namespace {
+
+/** Split a logical coordinate through exact scale into floor device pixel + 26.6 phase. */
+void LogicalToDeviceOriginAndPhase(XYPOSITION logical, RasterScale scale,
+	int &originOut, int32_t &phaseOut) noexcept {
+	const double device =
+		logical * static_cast<double>(scale.Numerator()) /
+		static_cast<double>(scale.Denominator());
+	const double floorDevice = std::floor(device);
+	originOut = static_cast<int>(floorDevice);
+	double frac = device - floorDevice;
+	if (frac < 0.0) {
+		frac = 0.0;
+	}
+	int32_t phase = static_cast<int32_t>(std::lround(frac * 64.0));
+	if (phase >= 64) {
+		phase = 0;
+		originOut += 1;
+	}
+	phaseOut = phase;
+}
+
+void DrawTexturedQuadCommon(float x0, float y0, float x1, float y1,
 	float u0, float v0, float u1, float v1, unsigned texture, bool flipV,
-	bool sourceStraightAlpha, ColourRGBA modulate) {
-	EnsureTextureProgram();
-	// Texture sampling uses top-down UVs by default (v=0 at top of image).
-	// OpenGL textures are bottom-up; ColourBuffer contents match that when
-	// rendered into an FBO. flipV selects whether to invert V for uploads that
-	// were given as top-down rows (DrawRGBAImage).
+	bool sourceStraightAlpha, ColourRGBA modulate,
+	int orthoWidth, int orthoHeight,
+	unsigned programTexture, int uniformTexTransform, int uniformTexSampler,
+	int uniformTexStraightAlpha, int uniformTexModulate,
+	unsigned vao, unsigned vbo) {
 	if (flipV) {
 		std::swap(v0, v1);
 	}
-	// Interleaved pos.xy, uv.xy — six vertices.
 	const float verts[24] = {
 		x0, y0, u0, v0,
 		x1, y0, u1, v0,
@@ -1044,12 +1064,7 @@ void Renderer::DrawTexturedQuad(float x0, float y0, float x1, float y1,
 	};
 	glUseProgram(programTexture);
 	float mat[16];
-	// Same logical surface space as solid fills. Buffer pixels are the viewport
-	// only; callers pass pen and destination rectangles in logical coordinates
-	// (including DrawGlyph, Copy, and DrawRGBAImage). Using buffer size here
-	// misplaces glyphs on HiDPI when bufferWidth != logicalWidth.
-	OrthoTopLeft(static_cast<float>(targetLogicalWidth),
-		static_cast<float>(targetLogicalHeight), mat);
+	OrthoTopLeft(static_cast<float>(orthoWidth), static_cast<float>(orthoHeight), mat);
 	glUniformMatrix4fv(uniformTexTransform, 1, GL_FALSE, mat);
 	glUniform1i(uniformTexSampler, 0);
 	glUniform1i(uniformTexStraightAlpha, sourceStraightAlpha ? 1 : 0);
@@ -1068,21 +1083,44 @@ void Renderer::DrawTexturedQuad(float x0, float y0, float x1, float y1,
 	glEnableVertexAttribArray(1);
 	glDrawArrays(GL_TRIANGLES, 0, 6);
 	glDisableVertexAttribArray(1);
-	// Restore solid-program layout (tight packed vec2).
 	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
 	glBindVertexArray(0);
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glUseProgram(0);
 }
 
+}
+
+void Renderer::DrawTexturedQuad(float x0, float y0, float x1, float y1,
+	float u0, float v0, float u1, float v1, unsigned texture, bool flipV,
+	bool sourceStraightAlpha, ColourRGBA modulate) {
+	EnsureTextureProgram();
+	// Logical surface space: same as solid fills. Buffer is the viewport only.
+	DrawTexturedQuadCommon(x0, y0, x1, y1, u0, v0, u1, v1, texture, flipV,
+		sourceStraightAlpha, modulate, targetLogicalWidth, targetLogicalHeight,
+		programTexture, uniformTexTransform, uniformTexSampler,
+		uniformTexStraightAlpha, uniformTexModulate, vao, vbo);
+}
+
+void Renderer::DrawTexturedQuadBuffer(float x0, float y0, float x1, float y1,
+	float u0, float v0, float u1, float v1, unsigned texture, bool flipV,
+	bool sourceStraightAlpha, ColourRGBA modulate) {
+	EnsureTextureProgram();
+	// Buffer-pixel space: one texture texel maps to one buffer pixel under NEAREST.
+	DrawTexturedQuadCommon(x0, y0, x1, y1, u0, v0, u1, v1, texture, flipV,
+		sourceStraightAlpha, modulate, targetWidth, targetHeight,
+		programTexture, uniformTexTransform, uniformTexSampler,
+		uniformTexStraightAlpha, uniformTexModulate, vao, vbo);
+}
+
 const Renderer::CachedGlyph &Renderer::GetOrCreateGlyph(
-	const std::shared_ptr<FontFace> &face, uint32_t glyphId) {
-	const GlyphKey key{face, glyphId};
+	const std::shared_ptr<FontFace> &face, const GlyphRasterRequest &request) {
+	const GlyphKey key{face, request.glyphId, request.scale, request.phase};
 	if (const auto found = glyphCache.find(key); found != glyphCache.end()) {
 		return found->second;
 	}
 	CachedGlyph cached;
-	const GlyphImage image = face->RasterizeGlyph(glyphId);
+	const GlyphImage image = face->RasterizeGlyph(request);
 	cached.left = image.left;
 	cached.top = image.top;
 	cached.width = image.width;
@@ -1110,7 +1148,7 @@ const Renderer::CachedGlyph &Renderer::GetOrCreateGlyph(
 		glGenTextures(1, &tex);
 		glBindTexture(GL_TEXTURE_2D, tex);
 		// Colour bitmap strikes are often downscaled; linear filter reduces blockiness.
-		// Ordinary gray glyphs keep nearest so existing pixel tests stay stable.
+		// Ordinary gray glyphs keep nearest so buffer placement is a 1:1 copy.
 		const GLint filter = hasColour ? GL_LINEAR : GL_NEAREST;
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
@@ -1136,25 +1174,63 @@ void Renderer::DrawGlyph(XYPOSITION penX, XYPOSITION penY,
 	if (CurrentClip().Empty()) {
 		return;
 	}
-	const CachedGlyph &glyph = GetOrCreateGlyph(face, glyphId);
+
+	// Fixed bitmap / colour strikes keep the logical strike path: no outline
+	// phase, linear filtering when downscaled, cache identity without phase.
+	if (face->UsesBitmapStrike()) {
+		const GlyphRasterRequest request = GlyphRasterRequest::Identity(glyphId);
+		const CachedGlyph &glyph = GetOrCreateGlyph(face, request);
+		if (glyph.texture == 0 || glyph.width <= 0 || glyph.height <= 0) {
+			return;
+		}
+		const float scale = static_cast<float>(glyph.scale > 0.0 ? glyph.scale : 1.0);
+		const float x0 = static_cast<float>(penX) + static_cast<float>(glyph.left);
+		const float y0 = static_cast<float>(penY) - static_cast<float>(glyph.top);
+		const float x1 = x0 + static_cast<float>(glyph.width) * scale;
+		const float y1 = y0 + static_cast<float>(glyph.height) * scale;
+		glEnable(GL_BLEND);
+		if (glyph.colour) {
+			const unsigned int alpha = fore.GetAlpha();
+			const ColourRGBA modulate(alpha, alpha, alpha, alpha);
+			DrawTexturedQuad(x0, y0, x1, y1, 0.0f, 0.0f, 1.0f, 1.0f, glyph.texture,
+				false, false, modulate);
+		} else {
+			DrawTexturedQuad(x0, y0, x1, y1, 0.0f, 0.0f, 1.0f, 1.0f, glyph.texture,
+				false, true, fore);
+		}
+		glDisable(GL_BLEND);
+		return;
+	}
+
+	// Outline path: device-size raster + integer buffer placement.
+	int originX = 0;
+	int originY = 0;
+	int32_t phaseX = 0;
+	int32_t phaseY = 0;
+	LogicalToDeviceOriginAndPhase(penX, targetRasterScale, originX, phaseX);
+	LogicalToDeviceOriginAndPhase(penY, targetRasterScale, originY, phaseY);
+	GlyphRasterRequest request;
+	request.glyphId = glyphId;
+	request.scale = targetRasterScale;
+	request.phase = GlyphRasterPhase::Normalize(phaseX, phaseY);
+	const CachedGlyph &glyph = GetOrCreateGlyph(face, request);
 	if (glyph.texture == 0 || glyph.width <= 0 || glyph.height <= 0) {
 		return;
 	}
-	const float scale = static_cast<float>(glyph.scale > 0.0 ? glyph.scale : 1.0);
-	const float x0 = static_cast<float>(penX) + static_cast<float>(glyph.left);
-	const float y0 = static_cast<float>(penY) - static_cast<float>(glyph.top);
-	const float x1 = x0 + static_cast<float>(glyph.width) * scale;
-	const float y1 = y0 + static_cast<float>(glyph.height) * scale;
+	// Device bearings from FreeType; place on integer buffer pixels.
+	const float x0 = static_cast<float>(originX + glyph.left);
+	const float y0 = static_cast<float>(originY - glyph.top);
+	const float x1 = x0 + static_cast<float>(glyph.width);
+	const float y1 = y0 + static_cast<float>(glyph.height);
 	glEnable(GL_BLEND);
 	if (glyph.colour) {
-		// Premultiplied colour must scale RGB and alpha by overall text alpha.
+		// Scalable colour outlines (rare): still 1:1 buffer copy, no RGB tint.
 		const unsigned int alpha = fore.GetAlpha();
 		const ColourRGBA modulate(alpha, alpha, alpha, alpha);
-		DrawTexturedQuad(x0, y0, x1, y1, 0.0f, 0.0f, 1.0f, 1.0f, glyph.texture,
+		DrawTexturedQuadBuffer(x0, y0, x1, y1, 0.0f, 0.0f, 1.0f, 1.0f, glyph.texture,
 			false, false, modulate);
 	} else {
-		// Same top-down upload convention as DrawRGBAImage (no flipV).
-		DrawTexturedQuad(x0, y0, x1, y1, 0.0f, 0.0f, 1.0f, 1.0f, glyph.texture,
+		DrawTexturedQuadBuffer(x0, y0, x1, y1, 0.0f, 0.0f, 1.0f, 1.0f, glyph.texture,
 			false, true, fore);
 	}
 	glDisable(GL_BLEND);

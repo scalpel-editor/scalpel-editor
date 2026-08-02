@@ -204,17 +204,18 @@ public:
 	/**
 	 * Rasterize (or reuse a cached texture for) one FreeType glyph and draw it.
 	 *
-	 * penX/penY is the baseline origin in surface coordinates (y down). FreeType
-	 * bearings place the bitmap: dest left = penX + left, dest top = penY - top.
-	 * fore modulates coverage as straight alpha. Empty bitmaps are a no-op after
-	 * the first miss is cached. Glyph textures stay alive until this Renderer is
-	 * destroyed. Cache entries retain their face, and face identity is part of
-	 * the key.
+	 * penX/penY is the baseline origin in logical surface coordinates (y down).
+	 * Outline glyphs are rasterized at TargetRasterScale with the destination's
+	 * normalized 26.6 device phase, then copied 1:1 onto integer buffer pixels
+	 * (GL_NEAREST). Fixed bitmap / colour strikes keep logical placement with
+	 * their strike scale and linear filtering. fore modulates gray coverage as
+	 * straight alpha. Cache identity for outlines includes face, glyph id,
+	 * raster scale, and phase.
 	 */
 	void DrawGlyph(XYPOSITION penX, XYPOSITION penY, const std::shared_ptr<FontFace> &face,
 		uint32_t glyphId, ColourRGBA fore);
 
-	/** Number of face+glyphId entries in the glyph texture cache. */
+	/** Number of entries in the glyph texture cache. */
 	[[nodiscard]] size_t GlyphCacheSize() const noexcept { return glyphCache.size(); }
 
 	/**
@@ -246,23 +247,35 @@ private:
 	struct GlyphKey {
 		std::shared_ptr<const FontFace> face;
 		uint32_t glyphId = 0;
+		/** Nominal output scale; identity for fixed-bitmap colour strikes. */
+		RasterScale scale{};
+		/** Y-down device 26.6 phase in [0, 63]; zero for colour/bitmap strikes. */
+		GlyphRasterPhase phase{};
 
 		bool operator==(const GlyphKey &other) const noexcept {
-			return face == other.face && glyphId == other.glyphId;
+			return face == other.face && glyphId == other.glyphId &&
+				scale == other.scale && phase == other.phase;
 		}
 	};
 
 	struct GlyphKeyHash {
 		size_t operator()(const GlyphKey &key) const noexcept {
-			return std::hash<std::shared_ptr<const FontFace>>{}(key.face) ^
-				(std::hash<uint32_t>{}(key.glyphId) * 0x9e3779b9u);
+			size_t h = std::hash<std::shared_ptr<const FontFace>>{}(key.face);
+			h ^= std::hash<uint32_t>{}(key.glyphId) * 0x9e3779b9u;
+			h ^= std::hash<uint32_t>{}(key.scale.Numerator()) + 0x9e3779b9u + (h << 6) + (h >> 2);
+			h ^= std::hash<uint32_t>{}(key.scale.Denominator()) + 0x9e3779b9u + (h << 6) + (h >> 2);
+			h ^= std::hash<int32_t>{}(key.phase.x) + 0x9e3779b9u + (h << 6) + (h >> 2);
+			h ^= std::hash<int32_t>{}(key.phase.y) + 0x9e3779b9u + (h << 6) + (h >> 2);
+			return h;
 		}
 	};
 
 	struct CachedGlyph {
 		unsigned texture = 0;
+		/** Bitmap size in raster units (device pixels for outlines). */
 		int width = 0;
 		int height = 0;
+		/** Integer bearings in the same units as width/height. */
 		int left = 0;
 		int top = 0;
 		/** Logical size = pixel size * scale (bitmap strikes downscale). */
@@ -275,7 +288,8 @@ private:
 	void ClearGlyphCache() noexcept;
 	/** Delete grayscale outline entries; leave colour bitmap entries in place. */
 	void RetireGrayscaleGlyphCache() noexcept;
-	const CachedGlyph &GetOrCreateGlyph(const std::shared_ptr<FontFace> &face, uint32_t glyphId);
+	const CachedGlyph &GetOrCreateGlyph(const std::shared_ptr<FontFace> &face,
+		const GlyphRasterRequest &request);
 	void EnsureSolidProgram();
 	void EnsureTextureProgram();
 	void EnsureGradientProgram();
@@ -285,7 +299,15 @@ private:
 	void DrawSolidTriangles(const float *xy, size_t vertexCount, ColourRGBA colour);
 	void DrawLineSegment(Point start, Point end, XYPOSITION width, ColourRGBA colour);
 	void DrawEllipse(PRectangle rc, ColourRGBA fill, ColourRGBA stroke, XYPOSITION strokeWidth, bool doFill, bool doStroke);
+	/** Textured quad in logical surface coordinates (images, colour glyphs, fills). */
 	void DrawTexturedQuad(float x0, float y0, float x1, float y1,
+		float u0, float v0, float u1, float v1, unsigned texture, bool flipV,
+		bool sourceStraightAlpha, ColourRGBA modulate = ColourRGBA(255, 255, 255, 255));
+	/**
+	 * Textured quad in integer buffer-pixel coordinates. Uses the buffer-sized
+	 * orthographic projection so GL_NEAREST is a 1:1 coverage copy.
+	 */
+	void DrawTexturedQuadBuffer(float x0, float y0, float x1, float y1,
 		float u0, float v0, float u1, float v1, unsigned texture, bool flipV,
 		bool sourceStraightAlpha, ColourRGBA modulate = ColourRGBA(255, 255, 255, 255));
 	[[nodiscard]] PixelRect CurrentClip() const noexcept;

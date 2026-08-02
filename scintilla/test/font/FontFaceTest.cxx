@@ -124,8 +124,10 @@ TEST_CASE("ResolveFallback reuses the decision and face cache") {
 	REQUIRE(first);
 	CHECK(first == again);
 	CHECK(first->HasGlyph(U'\u2603'));
-	// Face cache returns the same instance for the same path/size/style.
-	const auto reloaded = cache.LoadPath(first->Path(), parameters);
+	// Face cache returns the same instance for the same path/size/style/policy.
+	// Host Fontconfig may select slight hinting; LoadPath defaults to Normal.
+	const auto reloaded =
+		cache.LoadPath(first->Path(), parameters, first->RasterPolicy());
 	CHECK(reloaded == first);
 }
 

@@ -55,10 +55,11 @@ struct GlyphImage {
 };
 
 /**
- * Normalized FreeType 26.6 subpixel phase for outline rasterization.
+ * Normalized 26.6 subpixel phase for outline rasterization (y-down device space).
  *
- * Each component lies in [0, 63]. Equivalent device positions that differ by a
- * whole pixel share the same phase after floor-based normalization.
+ * Each component lies in [0, 63] and is the fractional device-pixel offset of
+ * the glyph origin after floor-based splitting. RasterizeGlyph converts the
+ * vertical component into FreeType's y-up transform delta.
  */
 struct GlyphRasterPhase {
 	int32_t x = 0;
