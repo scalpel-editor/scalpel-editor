@@ -1010,7 +1010,7 @@ bool ApplicationEditor::PrepareSelectionForContextMenu(
 	const Scintilla::Position caretBefore = sel.MainCaret();
 	const Scintilla::Position anchorBefore = sel.MainAnchor();
 	Scintilla::Internal::SelectionPosition position =
-		SPositionFromLocation(point);
+		SPositionFromLocation(point, false, false, false);
 	position = MovePositionOutsideChar(
 		position, sel.MainCaret() - position.Position());
 	SetEmptySelection(position);

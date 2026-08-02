@@ -1480,6 +1480,29 @@ TEST_CASE("production editor context menu selection placement and caret anchor")
 	CHECK(editor.PrepareSelectionForContextMenu(Point(inX, outY)));
 	CHECK(editor.GetSelectionStart() == editor.GetSelectionEnd());
 
+	// Right-clicking past the end of an empty line places the caret at the
+	// line start. A later paste must not materialize the horizontal gap as
+	// spaces.
+	editor.LoadInitialBuffer("first\n\nlast");
+	editor.SetSel(6, 6);
+	editor.RenderFrame();
+	const auto emptyLineCaret = editor.TakeTextInputState();
+	REQUIRE(emptyLineCaret.has_value());
+	const Point pastEmptyLine(
+		emptyLineCaret->cursorRectangle.x + 100,
+		emptyLineCaret->cursorRectangle.y +
+			emptyLineCaret->cursorRectangle.height / 2.0);
+	(void)editor.PrepareSelectionForContextMenu(pastEmptyLine);
+	CHECK(editor.GetSelectionStart() == 6);
+	CHECK(editor.GetSelectionEnd() == 6);
+	editor.RequestClipboardPaste();
+	const auto pasteRequests = editor.TakeClipboardRequests();
+	REQUIRE(pasteRequests.size() == 1);
+	editor.HandleClipboardResult(pasteRequests.front().id,
+		Scalpel::ApplicationClipboardOperation::Paste,
+		Scalpel::ApplicationClipboardStatus::Complete, "pasted");
+	CHECK(editor.Text() == "first\npasted\nlast");
+
 	// Margin is inside the client band but not eligible for the text menu.
 	const PRectangle client = editor.EditorClientRectangle();
 	const Point margin(client.left + 2, client.top + 8);
