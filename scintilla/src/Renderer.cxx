@@ -427,6 +427,21 @@ void Renderer::ClearGlyphCache() noexcept {
 	glyphCache.clear();
 }
 
+void Renderer::RetireGrayscaleGlyphCache() noexcept {
+	for (auto it = glyphCache.begin(); it != glyphCache.end();) {
+		if (it->second.colour) {
+			++it;
+			continue;
+		}
+		if (it->second.texture != 0) {
+			GLuint name = it->second.texture;
+			glDeleteTextures(1, &name);
+			it->second.texture = 0;
+		}
+		it = glyphCache.erase(it);
+	}
+}
+
 void Renderer::DestroyGl() noexcept {
 	ClearGlyphCache();
 	if (vbo != 0) {
@@ -549,6 +564,18 @@ void Renderer::SetDrawTarget(unsigned framebuffer, int bufferWidth, int bufferHe
 	targetLogicalWidth = logicalWidth;
 	targetLogicalHeight = logicalHeight;
 	BindCurrentTarget();
+}
+
+void Renderer::SetOutputRasterScale(RasterScale rasterScale) {
+	if (targetRasterScale == rasterScale) {
+		return;
+	}
+	MakeCurrent();
+	// Grayscale masks were rasterized for the previous nominal scale.
+	// Colour bitmap strikes are handled separately and stay until their
+	// own cache identity includes scale (later commits).
+	RetireGrayscaleGlyphCache();
+	targetRasterScale = rasterScale;
 }
 
 void Renderer::BindCurrentTarget() {

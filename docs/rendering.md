@@ -52,6 +52,8 @@ COLRv1 paint graphs and SVG-in-font rendering are out of scope. FreeType does no
 
 Drawing accepts logical, top-left coordinates with half-open rectangles. The renderer maps that space onto a buffer-sized OpenGL viewport. Window buffers may have more pixels than the logical surface when integer or fractional scaling is active.
 
+The active output scale is carried separately as an exact rational `RasterScale` (Wayland preferred scale numerator over 120, stored in lowest terms). `main` copies `WaylandScaleConfiguration::scaleNumerator` into `ApplicationEditor`. The window frame surface and offscreen frame path call `Renderer::SetOutputRasterScale`; `SetDrawTarget` only selects the FBO and sizes so pixmap binds cannot thrash scale identity mid-paint. Buffer and logical sizes can change without changing this identity; a real scale change retires grayscale glyph textures so masks from the previous scale cannot be reused. Device-size phase-aware glyph rasterization builds on this nominal scale; until that lands, the scale still owns cache retirement.
+
 Colour attachments are linear `GL_RGBA8`. Internal alpha is premultiplied and blended with premultiplied source-over. Public offscreen pixel buffers are converted to straight alpha and returned in top-to-bottom order.
 
 ## Application composition

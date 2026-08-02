@@ -344,6 +344,9 @@ int main() {
 		editor.SetFrameBufferSize(
 			window.ScaleConfiguration().bufferWidth,
 			window.ScaleConfiguration().bufferHeight);
+		editor.SetFrameRasterScale(
+			Scintilla::Internal::RasterScale::FromWaylandNumerator(
+				window.ScaleConfiguration().scaleNumerator));
 		constexpr std::string_view initialText =
 			"scalpel-editor\n\n"
 			"A direct Scintilla editor for Wayland.\n"
@@ -404,6 +407,9 @@ int main() {
 					editor.Resize(scale->logicalWidth, scale->logicalHeight);
 				}
 				editor.SetFrameBufferSize(scale->bufferWidth, scale->bufferHeight);
+				editor.SetFrameRasterScale(
+					Scintilla::Internal::RasterScale::FromWaylandNumerator(
+						scale->scaleNumerator));
 				ui.HandleFrameSizeChange();
 			}
 

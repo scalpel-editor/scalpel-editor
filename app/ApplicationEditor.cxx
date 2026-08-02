@@ -575,6 +575,22 @@ void ApplicationEditor::SetFrameBufferSize(int width, int height) {
 	wMain.InvalidateAll();
 }
 
+void ApplicationEditor::SetFrameRasterScale(Scintilla::Internal::RasterScale scale) {
+	if (frameRasterScale == scale) {
+		return;
+	}
+	frameRasterScale = scale;
+	frame.reset();
+	// Retire grayscale masks immediately so a later resize-only bind cannot
+	// leave textures from the previous output scale in the cache.
+	renderer->SetOutputRasterScale(frameRasterScale);
+	wMain.InvalidateAll();
+}
+
+size_t ApplicationEditor::GlyphTextureCacheSize() const noexcept {
+	return renderer->GlyphCacheSize();
+}
+
 void ApplicationEditor::SetKeyboardFocus(bool focused) {
 	SetFocus(focused);
 	if (!focused) {
@@ -1092,6 +1108,9 @@ void ApplicationEditor::RenderFrame() {
 void ApplicationEditor::RenderFrame(const std::vector<PRectangle> &damage) {
 	const int width = FrameWidth();
 	const int height = FrameHeight();
+	// Offscreen path keeps a one-to-one colour buffer for FramePixels. Output
+	// scale is set on the renderer explicitly so pixmap binds cannot thrash it.
+	renderer->SetOutputRasterScale(frameRasterScale);
 	frame = Scintilla::Internal::CreateDrawSurface(*renderer, width, height);
 	paintState = PaintState::painting;
 	const PRectangle client = GetClientRectangle();
@@ -1147,7 +1166,7 @@ void ApplicationEditor::PresentFrame(
 	const int width = FrameWidth();
 	const int height = FrameHeight();
 	frame = Scintilla::Internal::CreateExternalDrawSurface(
-		*renderer, 0, bufferWidth, bufferHeight, width, height);
+		*renderer, 0, bufferWidth, bufferHeight, width, height, frameRasterScale);
 	paintState = PaintState::painting;
 	const PRectangle client = GetClientRectangle();
 	const bool paintOverlay = static_cast<bool>(overlayPainter);

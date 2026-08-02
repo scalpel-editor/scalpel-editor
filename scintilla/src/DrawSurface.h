@@ -51,7 +51,10 @@ public:
 	void BindDrawTarget();
 	/** Use a non-owning framebuffer target, including window framebuffer 0. */
 	void SetExternalDrawTarget(unsigned framebuffer, int bufferWidth, int bufferHeight,
-		int logicalWidth, int logicalHeight);
+		int logicalWidth, int logicalHeight, RasterScale rasterScale = {});
+	/** Nominal device scale carried into the renderer with this surface. */
+	void SetSurfaceRasterScale(RasterScale scale) noexcept { rasterScale = scale; }
+	[[nodiscard]] RasterScale SurfaceRasterScale() const noexcept { return rasterScale; }
 
 	void Init(WindowID wid) override;
 	void Init(SurfaceID sid, WindowID wid) override;
@@ -119,9 +122,15 @@ private:
 	int externalLogicalWidth = 0;
 	int externalLogicalHeight = 0;
 	bool hasExternalTarget = false;
+	/** Nominal Wayland/output scale; independent of buffer vs logical size. */
+	RasterScale rasterScale{};
 };
 
-/** Drawing surface with an offscreen colour buffer of the given size. */
+/**
+ * Drawing surface with an offscreen colour buffer of the given size.
+ * Defaults to identity raster scale (1/1); callers that paint at a scaled
+ * output should SetSurfaceRasterScale and BindDrawTarget afterward.
+ */
 std::unique_ptr<DrawSurface> CreateDrawSurface(Renderer &renderer, int width, int height,
 	FontFallback fallback = FontFallback::Production());
 
@@ -131,6 +140,10 @@ std::unique_ptr<DrawSurface> CreateExternalDrawSurface(Renderer &renderer, unsig
 std::unique_ptr<DrawSurface> CreateExternalDrawSurface(Renderer &renderer, unsigned framebuffer,
 	int bufferWidth, int bufferHeight, int logicalWidth, int logicalHeight,
 	FontFallback fallback = FontFallback::Production());
+/** Window path: buffer size, logical size, and stable nominal raster scale. */
+std::unique_ptr<DrawSurface> CreateExternalDrawSurface(Renderer &renderer, unsigned framebuffer,
+	int bufferWidth, int bufferHeight, int logicalWidth, int logicalHeight,
+	RasterScale rasterScale, FontFallback fallback = FontFallback::Production());
 
 /** Measure-only surface (no GL buffer). Same measure path as drawing surfaces. */
 std::unique_ptr<DrawSurface> CreateMeasureOnlySurface(

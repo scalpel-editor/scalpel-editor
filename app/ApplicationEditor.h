@@ -176,6 +176,17 @@ public:
 	void Resize(int width, int height);
 	void SetFrameBufferSize(int width, int height);
 	/**
+	 * Stable nominal Wayland/output scale for glyph rasterization.
+	 * Independent of bufferWidth/logicalWidth; resizes at the same scale keep
+	 * the same identity. Derived from WaylandScaleConfiguration::scaleNumerator / 120.
+	 */
+	void SetFrameRasterScale(Scintilla::Internal::RasterScale scale);
+	[[nodiscard]] Scintilla::Internal::RasterScale FrameRasterScale() const noexcept {
+		return frameRasterScale;
+	}
+	/** Entries in the renderer's glyph texture cache (for focused scale tests). */
+	[[nodiscard]] size_t GlyphTextureCacheSize() const noexcept;
+	/**
 	 * Reserve a fixed logical-height band at the top of the frame for permanent
 	 * chrome (menu bar plus tab strip). Scintilla's client rectangle starts
 	 * below the inset and ends left of the vertical bar and above the horizontal
@@ -473,6 +484,7 @@ private:
 	double verticalWheelRemainder = 0;
 	int bufferWidth = 0;
 	int bufferHeight = 0;
+	Scintilla::Internal::RasterScale frameRasterScale{};
 };
 
 }

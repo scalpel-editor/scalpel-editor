@@ -50,6 +50,11 @@ void DrawSurface::BindDrawTarget() {
 		renderer->TargetWidth() != width || renderer->TargetHeight() != height ||
 		renderer->TargetLogicalWidth() != logicalWidth ||
 		renderer->TargetLogicalHeight() != logicalHeight;
+	// Only the frame/window surface (external target) pushes output scale.
+	// Owned colour buffers and pixmaps must not change it mid-paint.
+	if (hasExternalTarget) {
+		renderer->SetOutputRasterScale(rasterScale);
+	}
 	renderer->SetDrawTarget(
 		framebuffer, width, height, logicalWidth, logicalHeight);
 	if (targetChanged) {
@@ -61,7 +66,8 @@ void DrawSurface::BindDrawTarget() {
 }
 
 void DrawSurface::SetExternalDrawTarget(unsigned framebuffer,
-	int bufferWidth, int bufferHeight, int logicalWidth, int logicalHeight) {
+	int bufferWidth, int bufferHeight, int logicalWidth, int logicalHeight,
+	RasterScale surfaceRasterScale) {
 	if (bufferWidth <= 0 || bufferHeight <= 0 ||
 		logicalWidth <= 0 || logicalHeight <= 0) {
 		throw std::invalid_argument("external draw target requires a positive size");
@@ -72,6 +78,7 @@ void DrawSurface::SetExternalDrawTarget(unsigned framebuffer,
 	externalLogicalWidth = logicalWidth;
 	externalLogicalHeight = logicalHeight;
 	hasExternalTarget = true;
+	rasterScale = surfaceRasterScale;
 }
 
 void DrawSurface::Init(WindowID) {
@@ -89,6 +96,9 @@ std::unique_ptr<Surface> DrawSurface::AllocatePixMap(int width, int height) {
 	auto pix = std::make_unique<DrawSurface>(renderer, fallback);
 	pix->mode = mode;
 	pix->initialised = true;
+	// Pixmaps share the parent output scale so binding them does not look like
+	// a real scale change and retire grayscale glyph textures mid-paint.
+	pix->rasterScale = rasterScale;
 	if (width > 0 && height > 0) {
 		renderer->MakeCurrent();
 		pix->buffer.Resize(width, height);
@@ -117,6 +127,7 @@ void DrawSurface::Release() noexcept {
 	externalHeight = 0;
 	externalLogicalWidth = 0;
 	externalLogicalHeight = 0;
+	rasterScale = {};
 }
 
 int DrawSurface::SupportsFeature(Scintilla::Supports feature) noexcept {
@@ -413,16 +424,23 @@ std::unique_ptr<DrawSurface> CreateDrawSurface(Renderer &renderer, int width, in
 std::unique_ptr<DrawSurface> CreateExternalDrawSurface(Renderer &renderer, unsigned framebuffer,
 	int width, int height, FontFallback fallback) {
 	return CreateExternalDrawSurface(renderer, framebuffer, width, height,
-		width, height, std::move(fallback));
+		width, height, RasterScale{}, std::move(fallback));
 }
 
 std::unique_ptr<DrawSurface> CreateExternalDrawSurface(Renderer &renderer, unsigned framebuffer,
 	int bufferWidth, int bufferHeight, int logicalWidth, int logicalHeight,
 	FontFallback fallback) {
+	return CreateExternalDrawSurface(renderer, framebuffer, bufferWidth, bufferHeight,
+		logicalWidth, logicalHeight, RasterScale{}, std::move(fallback));
+}
+
+std::unique_ptr<DrawSurface> CreateExternalDrawSurface(Renderer &renderer, unsigned framebuffer,
+	int bufferWidth, int bufferHeight, int logicalWidth, int logicalHeight,
+	RasterScale rasterScale, FontFallback fallback) {
 	auto surface = std::make_unique<DrawSurface>(&renderer, std::move(fallback));
 	surface->Init(WindowID{});
 	surface->SetExternalDrawTarget(
-		framebuffer, bufferWidth, bufferHeight, logicalWidth, logicalHeight);
+		framebuffer, bufferWidth, bufferHeight, logicalWidth, logicalHeight, rasterScale);
 	renderer.MakeCurrent();
 	surface->BindDrawTarget();
 	return surface;

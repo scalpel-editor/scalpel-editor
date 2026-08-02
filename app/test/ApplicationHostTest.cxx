@@ -1020,6 +1020,76 @@ TEST_CASE("production editor top chrome respects framebuffer scale") {
 	CHECK(editor.BufferHeight() == 100);
 }
 
+TEST_CASE("production editor framebuffer scale identity survives buffer rounding") {
+	using Scintilla::Internal::RasterScale;
+
+	// Wayland preferred scale 150/120 reduces to 5/4. Buffer sizes use ceiling
+	// division and are not part of the scale identity.
+	const RasterScale fractional = RasterScale::FromWaylandNumerator(150);
+	CHECK(fractional == RasterScale::FromParts(5, 4));
+	CHECK(fractional == RasterScale::FromParts(150, 120));
+	CHECK(fractional != RasterScale{});
+	CHECK(RasterScale::FromWaylandNumerator(120) == RasterScale{});
+	CHECK(RasterScale::FromWaylandNumerator(240) == RasterScale::FromParts(2, 1));
+
+	Scalpel::ApplicationEditor editor(801, 601);
+	editor.SetFrameRasterScale(fractional);
+	// ceil(801 * 150 / 120) = 1002, ceil(601 * 150 / 120) = 752
+	editor.SetFrameBufferSize(1002, 752);
+	CHECK(editor.FrameRasterScale() == fractional);
+	CHECK(editor.FrameWidth() == 801);
+	CHECK(editor.BufferWidth() == 1002);
+
+	// Different buffer size at the same nominal scale keeps identity.
+	editor.SetFrameBufferSize(1200, 900);
+	CHECK(editor.FrameRasterScale() == RasterScale::FromParts(5, 4));
+
+	// Equal scales across different logical window sizes retain identity.
+	editor.Resize(640, 480);
+	editor.SetFrameBufferSize(800, 600);
+	CHECK(editor.FrameRasterScale() == fractional);
+
+	// A second editor at a different size with the same reduced scale matches.
+	Scalpel::ApplicationEditor other(200, 100);
+	other.SetFrameRasterScale(RasterScale::FromWaylandNumerator(150));
+	other.SetFrameBufferSize(251, 126);
+	CHECK(other.FrameRasterScale() == editor.FrameRasterScale());
+}
+
+TEST_CASE("production editor framebuffer scale change retires grayscale glyphs") {
+	using Scintilla::Internal::PRectangle;
+	using Scintilla::Internal::RasterScale;
+
+	Scalpel::ApplicationEditor editor(160, 90);
+	editor.LoadInitialBuffer("Ag scale cache\n");
+	(void)editor.TakeFrameDamage();
+	editor.RenderFrame({PRectangle::FromInts(0, 0, 160, 90)});
+	const size_t populated = editor.GlyphTextureCacheSize();
+	REQUIRE(populated > 0);
+
+	// Ordinary buffer resize at identity scale does not retire the cache.
+	// Empty damage means full paint (not "paint nothing").
+	editor.SetFrameBufferSize(320, 180);
+	editor.RenderFrame({});
+	CHECK(editor.GlyphTextureCacheSize() == populated);
+
+	// Real output-scale change retires grayscale entries immediately.
+	editor.SetFrameRasterScale(RasterScale::FromWaylandNumerator(180));
+	CHECK(editor.GlyphTextureCacheSize() == 0);
+
+	// Painting again under the new scale repopulates the cache.
+	editor.RenderFrame({PRectangle::FromInts(0, 0, 160, 90)});
+	CHECK(editor.GlyphTextureCacheSize() > 0);
+
+	// Same nominal scale after reduction (180/120 == 3/2) is not a change.
+	const size_t afterRepaint = editor.GlyphTextureCacheSize();
+	editor.SetFrameRasterScale(RasterScale::FromParts(3, 2));
+	CHECK(editor.GlyphTextureCacheSize() == afterRepaint);
+	editor.SetFrameBufferSize(240, 135);
+	editor.RenderFrame({});
+	CHECK(editor.GlyphTextureCacheSize() == afterRepaint);
+}
+
 TEST_CASE("production editor top chrome InvalidateTopChrome damages only the band") {
 	Scalpel::ApplicationEditor editor(160, 90);
 	const int inset = 24;

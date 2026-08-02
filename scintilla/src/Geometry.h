@@ -335,6 +335,57 @@ public:
 	}
 };
 
+/**
+ * Exact rational device scale for glyph rasterization and cache identity.
+ *
+ * Wayland preferred scale is carried as scaleNumerator / 120. Values are stored
+ * in lowest terms so equal ratios compare equal regardless of how they were
+ * constructed. Buffer dimensions are not part of this identity: ordinary window
+ * resizes at the same nominal scale keep the same RasterScale.
+ */
+class RasterScale {
+public:
+	/** Denominator used by wp_fractional_scale_v1 preferred scale. */
+	static constexpr uint32_t kWaylandDenominator = 120;
+
+	/** Identity scale 1/1 (one buffer pixel per logical pixel). */
+	constexpr RasterScale() noexcept = default;
+
+	/**
+	 * Build a validated positive scale and reduce to lowest terms.
+	 * Throws std::invalid_argument when either part is zero.
+	 */
+	[[nodiscard]] static RasterScale FromParts(uint32_t numerator, uint32_t denominator);
+
+	/**
+	 * Build from a Wayland scale numerator with denominator 120.
+	 * Throws std::invalid_argument when scaleNumerator is zero.
+	 */
+	[[nodiscard]] static RasterScale FromWaylandNumerator(uint32_t scaleNumerator);
+
+	[[nodiscard]] constexpr uint32_t Numerator() const noexcept { return numerator; }
+	[[nodiscard]] constexpr uint32_t Denominator() const noexcept { return denominator; }
+
+	[[nodiscard]] friend constexpr bool operator==(const RasterScale &left,
+		const RasterScale &right) noexcept {
+		return left.numerator == right.numerator &&
+			left.denominator == right.denominator;
+	}
+
+	[[nodiscard]] friend constexpr bool operator!=(const RasterScale &left,
+		const RasterScale &right) noexcept {
+		return !(left == right);
+	}
+
+private:
+	constexpr RasterScale(uint32_t numerator_, uint32_t denominator_) noexcept :
+		numerator(numerator_), denominator(denominator_) {
+	}
+
+	uint32_t numerator = 1;
+	uint32_t denominator = 1;
+};
+
 }
 
 #endif

@@ -118,14 +118,23 @@ public:
 	 * Select the draw target. Pass framebuffer 0 only for a window default
 	 * framebuffer (step 9+). Offscreen uses a ColourBuffer FBO name.
 	 * Resets the clip stack when the target identity or size changes.
+	 * Does not change the nominal output raster scale (see SetOutputRasterScale).
 	 */
 	void SetDrawTarget(unsigned framebuffer, int width, int height);
 	/**
 	 * Select a buffer-sized target whose drawing coordinates use a distinct
-	 * logical size.
+	 * logical size. Buffer/logical resize does not alter glyph-cache scale
+	 * identity; call SetOutputRasterScale for a real output-scale change.
 	 */
 	void SetDrawTarget(unsigned framebuffer, int bufferWidth, int bufferHeight,
 		int logicalWidth, int logicalHeight);
+	/**
+	 * Set the stable nominal output scale used for glyph rasterization and
+	 * cache identity (Wayland preferred scale as an exact rational). Changing
+	 * it retires grayscale glyph textures. Pixmap and other temporary target
+	 * binds must not call this — only the frame/window surface path does.
+	 */
+	void SetOutputRasterScale(RasterScale rasterScale);
 
 	/** Re-bind the current target FBO and viewport without clearing clips. */
 	void BindCurrentTarget();
@@ -224,6 +233,8 @@ public:
 	[[nodiscard]] int TargetHeight() const noexcept { return targetHeight; }
 	[[nodiscard]] int TargetLogicalWidth() const noexcept { return targetLogicalWidth; }
 	[[nodiscard]] int TargetLogicalHeight() const noexcept { return targetLogicalHeight; }
+	/** Nominal device scale for text rasterization (independent of buffer size). */
+	[[nodiscard]] RasterScale TargetRasterScale() const noexcept { return targetRasterScale; }
 	[[nodiscard]] unsigned TargetFramebuffer() const noexcept { return targetFbo; }
 	[[nodiscard]] size_t ClipDepth() const noexcept { return clipStack.size(); }
 
@@ -262,6 +273,8 @@ private:
 
 	void DestroyGl() noexcept;
 	void ClearGlyphCache() noexcept;
+	/** Delete grayscale outline entries; leave colour bitmap entries in place. */
+	void RetireGrayscaleGlyphCache() noexcept;
 	const CachedGlyph &GetOrCreateGlyph(const std::shared_ptr<FontFace> &face, uint32_t glyphId);
 	void EnsureSolidProgram();
 	void EnsureTextureProgram();
@@ -286,6 +299,7 @@ private:
 	int targetHeight = 0;
 	int targetLogicalWidth = 0;
 	int targetLogicalHeight = 0;
+	RasterScale targetRasterScale{};
 
 	std::vector<PixelRect> clipStack;
 	std::unordered_map<GlyphKey, CachedGlyph, GlyphKeyHash> glyphCache;

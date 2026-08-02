@@ -72,12 +72,13 @@ Buffer-age history expands repaint damage when preserved buffers are available. 
 | --- | --- |
 | Editor and Wayland surface | Logical pixels, top-left origin, half-open bounds. Pointer input, editor layout, caret rectangles, and text-input rectangles remain in this space. |
 | Buffer | Integer pixels, top-left origin. Its size is derived from the logical size and active integer or fractional scale, rounded to cover the complete surface. |
+| Nominal raster scale | Exact rational `scaleNumerator / 120` from the preferred Wayland scale (`WaylandScaleConfiguration::scaleNumerator`). Owned by `ApplicationEditor` as `RasterScale` and applied with `Renderer::SetOutputRasterScale` from the frame path (external window surface or offscreen frame bind). It is not `bufferWidth / logicalWidth`: buffer dimensions are rounded upward and can change on ordinary resizes without a real scale change. |
 | Renderer viewport | Buffer pixels. Drawing still accepts logical top-left coordinates; the renderer maps them onto the viewport. |
 | Wayland buffer damage | Buffer pixels, top-left origin. Logical damage is rounded outward and clipped before `wl_surface.damage_buffer`. |
 | EGL swap damage | Buffer pixels, bottom-left origin. Scaled damage is vertically converted immediately before the EGL swap request. |
 | Cursor image | Theme-buffer pixels with a scaled hotspot; the cursor surface destination remains logical. |
 
-A scale change updates the surface buffer scale or viewport destination, EGL window size, renderer target, damage history, cursor resources, and full-frame invalidation before the next paint. It does not change the editor's logical client rectangle or scale pointer coordinates twice.
+A scale change updates the surface buffer scale or viewport destination, EGL window size, renderer target, damage history, cursor resources, and full-frame invalidation before the next paint. It also replaces the editor's nominal raster scale and retires grayscale glyph textures that were rasterized for the previous scale. It does not change the editor's logical client rectangle or scale pointer coordinates twice. Resizing the logical or buffer size while the preferred scale is unchanged keeps the same `RasterScale` identity and leaves the glyph texture cache in place.
 
 ## Generated protocols
 
