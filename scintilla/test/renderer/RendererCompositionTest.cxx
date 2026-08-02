@@ -494,18 +494,22 @@ std::vector<uint8_t> ReferenceComposeText(
 		const double deviceY =
 			gy * static_cast<double>(scale.Numerator()) /
 			static_cast<double>(scale.Denominator());
-		const int originX = static_cast<int>(std::floor(deviceX));
-		const int originY = static_cast<int>(std::floor(deviceY));
-		const int32_t phaseX = static_cast<int32_t>(std::lround((deviceX - originX) * 64.0));
-		const int32_t phaseY = static_cast<int32_t>(std::lround((deviceY - originY) * 64.0));
+		int originX = static_cast<int>(std::floor(deviceX));
+		int originY = static_cast<int>(std::floor(deviceY));
+		int32_t phaseX = static_cast<int32_t>(std::lround((deviceX - originX) * 64.0));
+		int32_t phaseY = static_cast<int32_t>(std::lround((deviceY - originY) * 64.0));
+		if (phaseX >= 64) {
+			phaseX = 0;
+			originX++;
+		}
+		if (phaseY >= 64) {
+			phaseY = 0;
+			originY++;
+		}
 		GlyphRasterRequest request;
 		request.glyphId = g.glyphId;
 		request.scale = scale;
-		request.phase = GlyphRasterPhase::Normalize(
-			phaseX >= 64 ? 0 : phaseX, phaseY >= 64 ? 0 : phaseY);
-		if (phaseX >= 64) {
-			// match Renderer rounding edge
-		}
+		request.phase = GlyphRasterPhase::Normalize(phaseX, phaseY);
 		const GlyphImage image = g.face->RasterizeGlyph(request);
 		if (image.kind != GlyphImageKind::Gray) {
 			x += g.xAdvance;
@@ -538,7 +542,8 @@ bool PixelsNear(const std::vector<uint8_t> &a, const std::vector<uint8_t> &b, in
 	return true;
 }
 
-void CheckDevicePhasePhrase(const std::string &text, RasterScale scale) {
+void CheckDevicePhasePhrase(const std::string &text, RasterScale scale,
+	XYPOSITION penX = 2.0) {
 	const double editorPixels = 16.0 * 96.0 / 72.0;
 	FontCache fonts;
 	const std::filesystem::path primary =
@@ -570,7 +575,6 @@ void CheckDevicePhasePhrase(const std::string &text, RasterScale scale) {
 	renderer.Clear(bg);
 
 	const FontMetrics metrics = face->Metrics();
-	const XYPOSITION penX = 2.0;
 	const XYPOSITION penY = metrics.ascent + 2.0;
 	XYPOSITION x = penX;
 	for (const ShapedGlyph &g : run.glyphs) {
@@ -600,6 +604,8 @@ TEST_CASE("device-phase text reference composition matches high standards and ho
 		CheckDevicePhasePhrase("high standards", scale);
 		CheckDevicePhasePhrase("honesty", scale);
 	}
+	// Fractional origin rounds from phase 64 into the next integer pixel.
+	CheckDevicePhasePhrase("honesty", RasterScale{}, 2.0 + 63.75 / 64.0);
 }
 
 TEST_CASE("device-phase text places same glyph at distinct phases") {
@@ -628,8 +634,7 @@ TEST_CASE("device-phase text places same glyph at distinct phases") {
 	// Same glyph at two fractional logical positions → two phases.
 	renderer.DrawGlyph(4.0, baseline, face, glyphId, fg);
 	renderer.DrawGlyph(4.0 + 1.0 / 64.0, baseline, face, glyphId, fg);
-	// At least two cache entries when phases differ (glyph may share if phase collides).
-	CHECK(renderer.GlyphCacheSize() >= 1);
+	CHECK(renderer.GlyphCacheSize() == 2);
 	REQUIRE(HasNonBackgroundInk(buffer, bg));
 }
 
@@ -661,11 +666,37 @@ TEST_CASE("glyph cache phase distinguishes scale and phase identity") {
 	// Different phase cannot collide.
 	renderer.DrawGlyph(4.0 + 0.5, baseline, face, glyphId, fg);
 	CHECK(renderer.GlyphCacheSize() == 2);
-	// Output scale change retires grayscale and cannot reuse stale textures.
+	// Output scale change retires outline masks and cannot reuse stale textures.
 	renderer.SetOutputRasterScale(RasterScale::FromParts(2, 1));
 	CHECK(renderer.GlyphCacheSize() == 0);
 	renderer.DrawGlyph(4.0, baseline, face, glyphId, fg);
 	CHECK(renderer.GlyphCacheSize() == 1);
 	// Phase population for this single-glyph walk stays small.
 	CHECK(renderer.GlyphCacheSize() < 8);
+}
+
+TEST_CASE("glyph cache keeps fixed bitmap entries across output scale changes") {
+	FontCache fonts;
+	const std::filesystem::path emojiPath =
+		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "EmojiFixture.ttf";
+	std::shared_ptr<FontFace> face =
+		fonts.LoadPath(emojiPath, FontParameters("fixture-emoji", 16.0));
+	REQUIRE(face->UsesBitmapStrike());
+	const ShapedRun run = ShapeText("\xF0\x9F\x98\x80", face);
+	REQUIRE_FALSE(run.glyphs.empty());
+
+	GlContext context;
+	Renderer renderer(context);
+	ColourBuffer buffer;
+	buffer.Resize(48, 48);
+	renderer.SetDrawTarget(buffer.FramebufferName(), 48, 48, 48, 48);
+	const ColourRGBA fg(255, 255, 255, 255);
+	const XYPOSITION baseline = face->Metrics().ascent;
+	renderer.DrawGlyph(4.0, baseline, face, run.glyphs[0].glyphId, fg);
+	REQUIRE(renderer.GlyphCacheSize() == 1);
+
+	renderer.SetOutputRasterScale(RasterScale::FromParts(2, 1));
+	CHECK(renderer.GlyphCacheSize() == 1);
+	renderer.DrawGlyph(4.0, baseline, face, run.glyphs[0].glyphId, fg);
+	CHECK(renderer.GlyphCacheSize() == 1);
 }

@@ -427,9 +427,9 @@ void Renderer::ClearGlyphCache() noexcept {
 	glyphCache.clear();
 }
 
-void Renderer::RetireGrayscaleGlyphCache() noexcept {
+void Renderer::RetireScaleDependentGlyphCache() noexcept {
 	for (auto it = glyphCache.begin(); it != glyphCache.end();) {
-		if (it->second.colour) {
+		if (it->first.face->UsesBitmapStrike()) {
 			++it;
 			continue;
 		}
@@ -571,10 +571,9 @@ void Renderer::SetOutputRasterScale(RasterScale rasterScale) {
 		return;
 	}
 	MakeCurrent();
-	// Grayscale masks were rasterized for the previous nominal scale.
-	// Colour bitmap strikes are handled separately and stay until their
-	// own cache identity includes scale (later commits).
-	RetireGrayscaleGlyphCache();
+	// Outline masks were rasterized for the previous nominal scale. Fixed
+	// bitmap strikes use logical placement and remain valid across scales.
+	RetireScaleDependentGlyphCache();
 	targetRasterScale = rasterScale;
 }
 

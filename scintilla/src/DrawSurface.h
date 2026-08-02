@@ -52,9 +52,6 @@ public:
 	/** Use a non-owning framebuffer target, including window framebuffer 0. */
 	void SetExternalDrawTarget(unsigned framebuffer, int bufferWidth, int bufferHeight,
 		int logicalWidth, int logicalHeight, RasterScale rasterScale = {});
-	/** Nominal device scale carried into the renderer with this surface. */
-	void SetSurfaceRasterScale(RasterScale scale) noexcept { rasterScale = scale; }
-	[[nodiscard]] RasterScale SurfaceRasterScale() const noexcept { return rasterScale; }
 
 	void Init(WindowID wid) override;
 	void Init(SurfaceID sid, WindowID wid) override;
@@ -126,11 +123,7 @@ private:
 	RasterScale rasterScale{};
 };
 
-/**
- * Drawing surface with an offscreen colour buffer of the given size.
- * Defaults to identity raster scale (1/1); callers that paint at a scaled
- * output should SetSurfaceRasterScale and BindDrawTarget afterward.
- */
+/** Drawing surface with an offscreen colour buffer of the given size. */
 std::unique_ptr<DrawSurface> CreateDrawSurface(Renderer &renderer, int width, int height,
 	FontFallback fallback = FontFallback::Production());
 

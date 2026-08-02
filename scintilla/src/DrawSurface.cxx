@@ -96,9 +96,6 @@ std::unique_ptr<Surface> DrawSurface::AllocatePixMap(int width, int height) {
 	auto pix = std::make_unique<DrawSurface>(renderer, fallback);
 	pix->mode = mode;
 	pix->initialised = true;
-	// Pixmaps share the parent output scale so binding them does not look like
-	// a real scale change and retire grayscale glyph textures mid-paint.
-	pix->rasterScale = rasterScale;
 	if (width > 0 && height > 0) {
 		renderer->MakeCurrent();
 		pix->buffer.Resize(width, height);

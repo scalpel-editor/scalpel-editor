@@ -131,7 +131,7 @@ public:
 	/**
 	 * Set the stable nominal output scale used for glyph rasterization and
 	 * cache identity (Wayland preferred scale as an exact rational). Changing
-	 * it retires grayscale glyph textures. Pixmap and other temporary target
+	 * it retires scale-dependent outline glyph textures. Pixmap and other temporary target
 	 * binds must not call this — only the frame/window surface path does.
 	 */
 	void SetOutputRasterScale(RasterScale rasterScale);
@@ -286,8 +286,8 @@ private:
 
 	void DestroyGl() noexcept;
 	void ClearGlyphCache() noexcept;
-	/** Delete grayscale outline entries; leave colour bitmap entries in place. */
-	void RetireGrayscaleGlyphCache() noexcept;
+	/** Delete entries rasterized for the previous output scale. */
+	void RetireScaleDependentGlyphCache() noexcept;
 	const CachedGlyph &GetOrCreateGlyph(const std::shared_ptr<FontFace> &face,
 		const GlyphRasterRequest &request);
 	void EnsureSolidProgram();

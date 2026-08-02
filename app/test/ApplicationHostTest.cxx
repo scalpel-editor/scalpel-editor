@@ -1056,7 +1056,7 @@ TEST_CASE("production editor framebuffer scale identity survives buffer rounding
 	CHECK(other.FrameRasterScale() == editor.FrameRasterScale());
 }
 
-TEST_CASE("production editor framebuffer scale change retires grayscale glyphs") {
+TEST_CASE("production editor framebuffer scale change retires outline glyphs") {
 	using Scintilla::Internal::PRectangle;
 	using Scintilla::Internal::RasterScale;
 
@@ -1073,7 +1073,7 @@ TEST_CASE("production editor framebuffer scale change retires grayscale glyphs")
 	editor.RenderFrame({});
 	CHECK(editor.GlyphTextureCacheSize() == populated);
 
-	// Real output-scale change retires grayscale entries immediately.
+	// Real output-scale change retires outline entries immediately.
 	editor.SetFrameRasterScale(RasterScale::FromWaylandNumerator(180));
 	CHECK(editor.GlyphTextureCacheSize() == 0);
 
