@@ -343,8 +343,10 @@ TEST_CASE("Context menu pointer hover press release activation") {
 	const ContextMenuLayout layout = LayoutContextMenu(model);
 	const auto *copy = FindItem(layout, ApplicationAction::Copy);
 	const auto *paste = FindItem(layout, ApplicationAction::Paste);
+	const auto *selectAll = FindItem(layout, ApplicationAction::SelectAll);
 	REQUIRE(copy);
 	REQUIRE(paste);
+	REQUIRE(selectAll);
 	const Point copyPt = Center(copy->row);
 	const Point pastePt = Center(paste->row);
 
@@ -355,6 +357,19 @@ TEST_CASE("Context menu pointer hover press release activation") {
 		CHECK(hover.dirty);
 		REQUIRE(model.hoveredItem.has_value());
 		CHECK(*model.hoveredItem == ApplicationAction::Copy);
+		CHECK(model.pointerNavigation);
+	}
+
+	SECTION("move over a separator hides keyboard focus") {
+		const Point separatorPt = Center(selectAll->separator);
+		const ContextMenuPointerResult move = HandleContextMenuPointer(model,
+			layout,
+			MakePointer(PointerAction::Move, separatorPt.x, separatorPt.y));
+		CHECK(move.consumed);
+		CHECK(move.dirty);
+		CHECK(model.pointerNavigation);
+		CHECK_FALSE(model.hoveredItem.has_value());
+		REQUIRE(model.focusedItem.has_value());
 	}
 
 	SECTION("matching press and release activates and closes") {
@@ -488,6 +503,19 @@ TEST_CASE("Context menu keyboard navigates wraps Home End Enter Escape") {
 		CHECK(*model.focusedItem == ApplicationAction::Copy);
 	}
 
+	SECTION("keyboard navigation resumes after pointer navigation") {
+		model.pointerNavigation = true;
+		model.hoveredItem = ApplicationAction::Copy;
+		const ContextMenuKeyboardResult down = HandleContextMenuKeyboard(model,
+			MakeKey(Keys::Down));
+		CHECK(down.consumed);
+		CHECK(down.dirty);
+		CHECK_FALSE(model.pointerNavigation);
+		CHECK_FALSE(model.hoveredItem.has_value());
+		REQUIRE(model.focusedItem.has_value());
+		CHECK(*model.focusedItem == ApplicationAction::Redo);
+	}
+
 	SECTION("Home and End jump to first and last enabled") {
 		model.focusedItem = ApplicationAction::Paste;
 		const ContextMenuKeyboardResult home = HandleContextMenuKeyboard(model,
@@ -573,6 +601,7 @@ TEST_CASE("Context menu paint hovered focused disabled and panel fill") {
 	model.undoEnabled = false;
 	model.focusedItem = ApplicationAction::Copy;
 	model.hoveredItem = ApplicationAction::Paste;
+	model.pointerNavigation = true;
 	const ContextMenuLayout layout = LayoutContextMenu(model);
 	const std::vector<uint8_t> pixels = PaintMenu(editor, painter, layout, model);
 	REQUIRE(pixels.size() ==
@@ -602,14 +631,28 @@ TEST_CASE("Context menu paint hovered focused disabled and panel fill") {
 		static_cast<int>(copyPt.x), static_cast<int>(copyPt.y));
 	const Rgba hovered = Sample(pixels, editor.FrameWidth(),
 		static_cast<int>(pastePt.x), static_cast<int>(pastePt.y));
-	// Focus and hover fills differ from plain panel.
-	CHECK(Differs(focused, panel));
+	// Pointer hover visually replaces keyboard focus while retaining it in the
+	// model for later keyboard navigation.
+	CHECK_FALSE(Differs(focused, panel));
 	CHECK(Differs(hovered, panel));
-	// Focused row is cooler (blue-tinted) than a neutral panel gray.
-	CHECK(focused.b >= focused.r);
+
+	model.hoveredItem.reset();
+	const std::vector<uint8_t> separatorPixels =
+		PaintMenu(editor, painter, layout, model);
+	const Rgba separatorFocus = Sample(separatorPixels, editor.FrameWidth(),
+		static_cast<int>(copyPt.x), static_cast<int>(copyPt.y));
+	CHECK_FALSE(Differs(separatorFocus, panel));
+
+	model.pointerNavigation = false;
+	const std::vector<uint8_t> focusedPixels =
+		PaintMenu(editor, painter, layout, model);
+	const Rgba keyboardFocused = Sample(focusedPixels, editor.FrameWidth(),
+		static_cast<int>(copyPt.x), static_cast<int>(copyPt.y));
+	CHECK(Differs(keyboardFocused, panel));
+	CHECK(keyboardFocused.b >= keyboardFocused.r);
 
 	// Focus fill must not cover the panel's right border.
-	const Rgba edge = Sample(pixels, editor.FrameWidth(),
+	const Rgba edge = Sample(focusedPixels, editor.FrameWidth(),
 		static_cast<int>(layout.panel.right) - 1,
 		static_cast<int>(copyPt.y));
 	CHECK(edge.r == 0xa0);
@@ -640,9 +683,11 @@ TEST_CASE("Context menu open focuses first enabled item") {
 	REQUIRE(model.focusedItem.has_value());
 	CHECK(*model.focusedItem == ApplicationAction::Cut);
 	CHECK_FALSE(model.hoveredItem.has_value());
+	CHECK_FALSE(model.pointerNavigation);
 	CHECK_FALSE(model.pressOrigin.has_value());
 
 	CloseContextMenu(model);
 	CHECK_FALSE(model.open);
 	CHECK_FALSE(model.focusedItem.has_value());
+	CHECK_FALSE(model.pointerNavigation);
 }

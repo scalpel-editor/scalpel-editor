@@ -1425,10 +1425,15 @@ void WaylandWindow::PointerEnter(void *data, wl_pointer *, uint32_t serial,
 		window.input.RecordPointerMotion(0, wl_fixed_to_double(x),
 			wl_fixed_to_double(y));
 	} else if (surface_ == window.popupSurface) {
-		// Popup-local coordinates; do not move the toplevel cursor theme.
 		window.input.SetPointerSurface(PointerSurface::ContextPopup);
 		window.clipboard.RecordSerial(serial);
 		window.primarySelection.RecordSerial(serial);
+		window.ApplyCursorAction(window.cursorState.EnterContextPopup(serial));
+		if (!window.cursorTheme) {
+			window.LoadCursorTheme();
+			window.ApplyCursorAction(window.cursorState.SetThemeAvailable(
+				window.cursorTheme != nullptr));
+		}
 		window.input.RecordPointerMotion(0, wl_fixed_to_double(x),
 			wl_fixed_to_double(y));
 	}
@@ -1437,9 +1442,7 @@ void WaylandWindow::PointerEnter(void *data, wl_pointer *, uint32_t serial,
 void WaylandWindow::PointerLeave(void *data, wl_pointer *, uint32_t, wl_surface *surface_) {
 	auto &window = *static_cast<WaylandWindow *>(data);
 	if (surface_ == window.surface || surface_ == window.popupSurface) {
-		if (surface_ == window.surface) {
-			window.cursorState.Leave();
-		}
+		window.cursorState.Leave();
 		window.input.RecordPointerLeave();
 	}
 }

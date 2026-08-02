@@ -152,15 +152,25 @@ std::optional<WaylandCursorAction> WaylandCursorState::Request(Cursor cursor) no
 }
 
 std::optional<WaylandCursorAction> WaylandCursorState::Enter(uint32_t serial) noexcept {
+	enteredOverride.reset();
+	pointerSerial = serial;
+	return ApplyIfReady();
+}
+
+std::optional<WaylandCursorAction> WaylandCursorState::EnterContextPopup(
+	uint32_t serial) noexcept {
+	enteredOverride = Cursor::arrow;
 	pointerSerial = serial;
 	return ApplyIfReady();
 }
 
 void WaylandCursorState::Leave() noexcept {
+	enteredOverride.reset();
 	pointerSerial.reset();
 }
 
 void WaylandCursorState::ResetPointer() noexcept {
+	enteredOverride.reset();
 	pointerSerial.reset();
 }
 
@@ -188,7 +198,8 @@ std::optional<WaylandCursorAction> WaylandCursorState::ApplyIfReady() const noex
 	if (!pointerSerial || !themeAvailable) {
 		return std::nullopt;
 	}
-	return WaylandCursorAction{requested, *pointerSerial, scale};
+	return WaylandCursorAction{
+		enteredOverride.value_or(requested), *pointerSerial, scale};
 }
 
 int CursorThemePixelSize(int logicalSize, int scale) {

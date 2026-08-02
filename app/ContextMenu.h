@@ -53,6 +53,8 @@ struct ContextMenuModel {
 	std::optional<ApplicationAction> hoveredItem;
 	/** Keyboard-focused enabled item while open. */
 	std::optional<ApplicationAction> focusedItem;
+	/** True after pointer navigation until keyboard navigation resumes. */
+	bool pointerNavigation = false;
 	/** Left-button press origin for press/release matching. */
 	std::optional<ContextMenuPressOrigin> pressOrigin;
 

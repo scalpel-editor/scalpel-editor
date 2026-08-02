@@ -46,6 +46,8 @@ public:
 	[[nodiscard]] std::optional<WaylandCursorAction> Request(
 		Scintilla::Internal::Window::Cursor cursor) noexcept;
 	[[nodiscard]] std::optional<WaylandCursorAction> Enter(uint32_t serial) noexcept;
+	[[nodiscard]] std::optional<WaylandCursorAction> EnterContextPopup(
+		uint32_t serial) noexcept;
 	void Leave() noexcept;
 	void ResetPointer() noexcept;
 	[[nodiscard]] std::optional<WaylandCursorAction> SetThemeAvailable(bool available) noexcept;
@@ -63,6 +65,7 @@ private:
 
 	Scintilla::Internal::Window::Cursor requested =
 		Scintilla::Internal::Window::Cursor::invalid;
+	std::optional<Scintilla::Internal::Window::Cursor> enteredOverride;
 	std::optional<uint32_t> pointerSerial;
 	bool themeAvailable = false;
 	int scale = 1;

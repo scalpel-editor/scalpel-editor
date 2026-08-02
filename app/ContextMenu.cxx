@@ -291,6 +291,7 @@ ContextMenuHitResult HitTestContextMenu(const ContextMenuLayout &layout,
 void OpenContextMenu(ContextMenuModel &model) noexcept {
 	model.open = true;
 	model.hoveredItem.reset();
+	model.pointerNavigation = false;
 	model.pressOrigin.reset();
 	model.focusedItem = FirstEnabledItem(model);
 }
@@ -299,6 +300,7 @@ void CloseContextMenu(ContextMenuModel &model) noexcept {
 	model.open = false;
 	model.hoveredItem.reset();
 	model.focusedItem.reset();
+	model.pointerNavigation = false;
 	model.pressOrigin.reset();
 }
 
@@ -334,10 +336,15 @@ ContextMenuPointerResult HandleContextMenuPointer(ContextMenuModel &model,
 	const ContextMenuHitResult hit = HitTestContextMenu(layout, point);
 
 	if (input.action == PointerAction::Move) {
+		if (!model.pointerNavigation) {
+			model.pointerNavigation = true;
+			result.dirty = true;
+		}
 		if (hit.kind == ContextMenuHit::Item) {
-			result.dirty = SetOptional(model.hoveredItem, hit.action);
+			result.dirty = SetOptional(model.hoveredItem, hit.action) || result.dirty;
 		} else {
-			result.dirty = SetOptional(model.hoveredItem, std::nullopt);
+			result.dirty =
+				SetOptional(model.hoveredItem, std::nullopt) || result.dirty;
 		}
 		// Consume moves over the panel so the editor does not show text hover.
 		result.consumed = hit.kind != ContextMenuHit::None;
@@ -351,9 +358,14 @@ ContextMenuPointerResult HandleContextMenuPointer(ContextMenuModel &model,
 
 	if (input.action == PointerAction::Press && input.button == 0) {
 		if (hit.kind == ContextMenuHit::Item) {
+			if (!model.pointerNavigation) {
+				model.pointerNavigation = true;
+				result.dirty = true;
+			}
 			model.pressOrigin = ContextMenuPressOrigin{
 				ContextMenuPressKind::Item, hit.action};
-			result.dirty = SetOptional(model.hoveredItem, hit.action);
+			result.dirty =
+				SetOptional(model.hoveredItem, hit.action) || result.dirty;
 			result.consumed = true;
 			return result;
 		}
@@ -363,6 +375,7 @@ ContextMenuPointerResult HandleContextMenuPointer(ContextMenuModel &model,
 		// press origin so the matching release is also consumed.
 		model.hoveredItem.reset();
 		model.focusedItem.reset();
+		model.pointerNavigation = false;
 		model.open = false;
 		model.pressOrigin = ContextMenuPressOrigin{
 			ContextMenuPressKind::Dismissal, ApplicationAction::Undo};
@@ -436,6 +449,10 @@ ContextMenuKeyboardResult HandleContextMenuKeyboard(ContextMenuModel &model,
 
 	if (input.key == Scintilla::Keys::Down ||
 		input.key == Scintilla::Keys::Up) {
+		if (model.pointerNavigation) {
+			model.pointerNavigation = false;
+			result.dirty = true;
+		}
 		if (SetOptional(model.hoveredItem, std::nullopt)) {
 			result.dirty = true;
 		}
@@ -450,6 +467,10 @@ ContextMenuKeyboardResult HandleContextMenuKeyboard(ContextMenuModel &model,
 	}
 
 	if (input.key == Scintilla::Keys::Home) {
+		if (model.pointerNavigation) {
+			model.pointerNavigation = false;
+			result.dirty = true;
+		}
 		if (SetOptional(model.hoveredItem, std::nullopt)) {
 			result.dirty = true;
 		}
@@ -461,6 +482,10 @@ ContextMenuKeyboardResult HandleContextMenuKeyboard(ContextMenuModel &model,
 	}
 
 	if (input.key == Scintilla::Keys::End) {
+		if (model.pointerNavigation) {
+			model.pointerNavigation = false;
+			result.dirty = true;
+		}
 		if (SetOptional(model.hoveredItem, std::nullopt)) {
 			result.dirty = true;
 		}
@@ -511,7 +536,8 @@ void ContextMenuPainter::Paint(Surface &surface, const ContextMenuLayout &layout
 
 		const bool hovered = model.hoveredItem.has_value() &&
 			*model.hoveredItem == item.action;
-		const bool focused = model.focusedItem.has_value() &&
+		const bool focused = !model.pointerNavigation &&
+			model.focusedItem.has_value() &&
 			*model.focusedItem == item.action;
 		if (item.enabled && (hovered || focused)) {
 			surface.FillRectangle(item.row,

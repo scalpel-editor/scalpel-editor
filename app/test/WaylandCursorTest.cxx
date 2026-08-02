@@ -73,6 +73,24 @@ TEST_CASE("Wayland cursor state clears stale pointer serials") {
 	CHECK(replacement->cursor == Cursor::wait);
 }
 
+TEST_CASE("Wayland cursor state uses an arrow only while over a context popup") {
+	Scalpel::WaylandCursorState cursor;
+	(void)cursor.SetThemeAvailable(true);
+	(void)cursor.Request(Cursor::text);
+
+	const auto popup = cursor.EnterContextPopup(12);
+	REQUIRE(popup.has_value());
+	CHECK(popup->cursor == Cursor::arrow);
+	CHECK(popup->serial == 12);
+	CHECK(cursor.Requested() == Cursor::text);
+
+	cursor.Leave();
+	const auto editor = cursor.Enter(13);
+	REQUIRE(editor.has_value());
+	CHECK(editor->cursor == Cursor::text);
+	CHECK(editor->serial == 13);
+}
+
 TEST_CASE("Wayland cursor state rebuilds scaled themes and hotspots") {
 	Scalpel::WaylandCursorState cursor;
 	(void)cursor.SetThemeAvailable(true);
