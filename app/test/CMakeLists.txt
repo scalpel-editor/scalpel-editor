@@ -154,6 +154,19 @@ target_compile_options(menuBarTest PRIVATE -Wall -Wextra)
 
 add_test(NAME menu-bar COMMAND menuBarTest)
 
+add_executable(contextMenuTest
+  ContextMenuTest.cxx
+  ApplicationTestMain.cxx
+)
+target_include_directories(contextMenuTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(contextMenuTest PRIVATE scalpel_application)
+target_compile_options(contextMenuTest PRIVATE -Wall -Wextra)
+
+add_test(NAME context-menu COMMAND contextMenuTest)
+
 add_executable(scrollBarTest
   ScrollBarTest.cxx
   ApplicationTestMain.cxx

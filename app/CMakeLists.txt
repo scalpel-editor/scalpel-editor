@@ -174,6 +174,7 @@ add_library(scalpel_application OBJECT
   ApplicationEditor.cxx
   ApplicationPlatform.cxx
   ApplicationUi.cxx
+  ContextMenu.cxx
   DocumentFile.cxx
   DocumentWorkspace.cxx
   FileErrorCard.cxx
