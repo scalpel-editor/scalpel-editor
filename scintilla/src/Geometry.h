@@ -9,6 +9,7 @@
 #define GEOMETRY_H
 
 #include <cstdint>
+#include <stdexcept>
 
 namespace Scintilla::Internal {
 
@@ -342,6 +343,9 @@ public:
  * in lowest terms so equal ratios compare equal regardless of how they were
  * constructed. Buffer dimensions are not part of this identity: ordinary window
  * resizes at the same nominal scale keep the same RasterScale.
+ *
+ * Construction is header-only so font and render translation units can both
+ * form scales without a shared Geometry object file.
  */
 class RasterScale {
 public:
@@ -355,13 +359,28 @@ public:
 	 * Build a validated positive scale and reduce to lowest terms.
 	 * Throws std::invalid_argument when either part is zero.
 	 */
-	[[nodiscard]] static RasterScale FromParts(uint32_t numerator, uint32_t denominator);
+	[[nodiscard]] static RasterScale FromParts(uint32_t numerator, uint32_t denominator) {
+		if (numerator == 0 || denominator == 0) {
+			throw std::invalid_argument(
+				"RasterScale requires a positive numerator and denominator");
+		}
+		uint32_t a = numerator;
+		uint32_t b = denominator;
+		while (b != 0) {
+			const uint32_t remainder = a % b;
+			a = b;
+			b = remainder;
+		}
+		return RasterScale(numerator / a, denominator / a);
+	}
 
 	/**
 	 * Build from a Wayland scale numerator with denominator 120.
 	 * Throws std::invalid_argument when scaleNumerator is zero.
 	 */
-	[[nodiscard]] static RasterScale FromWaylandNumerator(uint32_t scaleNumerator);
+	[[nodiscard]] static RasterScale FromWaylandNumerator(uint32_t scaleNumerator) {
+		return FromParts(scaleNumerator, kWaylandDenominator);
+	}
 
 	[[nodiscard]] constexpr uint32_t Numerator() const noexcept { return numerator; }
 	[[nodiscard]] constexpr uint32_t Denominator() const noexcept { return denominator; }

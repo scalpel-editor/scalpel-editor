@@ -5,6 +5,7 @@
 #include <cstring>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -89,6 +90,60 @@ std::string FaceKey(const std::filesystem::path &path, int index, const FontPara
 		(rasterPolicy.antialias ? "1" : "0") + ':' +
 		std::to_string(static_cast<int>(rasterPolicy.hintStyle));
 }
+
+[[nodiscard]] int32_t NormalizePhase26_6(int32_t value) noexcept {
+	// Floor remainder into [0, 63]. C++11 % truncates toward zero for negatives.
+	int32_t remainder = value % 64;
+	if (remainder < 0) {
+		remainder += 64;
+	}
+	return remainder;
+}
+
+[[nodiscard]] FT_F26Dot6 DeviceHeight26_6(double logicalPixels, RasterScale scale) noexcept {
+	const double height =
+		std::max(1.0, logicalPixels) * 64.0 *
+		static_cast<double>(scale.Numerator()) /
+		static_cast<double>(scale.Denominator());
+	return static_cast<FT_F26Dot6>(std::lround(height));
+}
+
+/**
+ * Apply a 26.6 translation delta for the duration of outline rasterization.
+ * Restores the previous face transform so callers never leave mutable FreeType
+ * state behind (independent of call order).
+ */
+class FaceTransformGuard {
+public:
+	FaceTransformGuard(FT_Face face_, FT_Pos phaseX, FT_Pos phaseY) noexcept :
+		face(face_) {
+		if (!face) {
+			return;
+		}
+		FT_Get_Transform(face, &savedMatrix, &savedDelta);
+		FT_Vector delta{};
+		delta.x = phaseX;
+		delta.y = phaseY;
+		// Identity matrix + phase delta. FreeType applies this after hinting
+		// (ftobjs.c FT_Load_Glyph) and only to scalable outline images.
+		FT_Set_Transform(face, nullptr, &delta);
+	}
+
+	~FaceTransformGuard() noexcept {
+		if (!face) {
+			return;
+		}
+		FT_Set_Transform(face, &savedMatrix, &savedDelta);
+	}
+
+	FaceTransformGuard(const FaceTransformGuard &) = delete;
+	FaceTransformGuard &operator=(const FaceTransformGuard &) = delete;
+
+private:
+	FT_Face face = nullptr;
+	FT_Matrix savedMatrix{};
+	FT_Vector savedDelta{};
+};
 
 int FreeTypeLoadFlagsForPolicy(const FontRasterPolicy &policy) noexcept {
 	// FT_LOAD_COLOR keeps CBDT/CBLC colour bitmaps. Hint target is mutually
@@ -239,11 +294,12 @@ FontRasterPolicy RasterPolicyFromFontconfigPattern(const void *pattern) noexcept
 class FontFace::Impl {
 public:
 	Impl(std::shared_ptr<void> libraryOwner_, FcPattern *pattern_, FT_Face face_, std::filesystem::path path_,
-		std::string requestedFamily_, double size_, FontWeight weight_, bool italic_, FontStretch stretch_,
-		FontRasterPolicy rasterPolicy_, double metricsScale_, double strikePpem_, bool usesBitmapStrike_) :
+		int faceIndex_, std::string requestedFamily_, double size_, FontWeight weight_, bool italic_,
+		FontStretch stretch_, FontRasterPolicy rasterPolicy_, double metricsScale_, double strikePpem_,
+		bool usesBitmapStrike_) :
 		libraryOwner(std::move(libraryOwner_)), pattern(pattern_, FcPatternDestroy), face(face_),
-		path(std::move(path_)), requestedFamily(std::move(requestedFamily_)), size(size_), weight(weight_),
-		italic(italic_), stretch(stretch_), rasterPolicy(rasterPolicy_),
+		path(std::move(path_)), faceIndex(faceIndex_), requestedFamily(std::move(requestedFamily_)),
+		size(size_), weight(weight_), italic(italic_), stretch(stretch_), rasterPolicy(rasterPolicy_),
 		loadFlags(static_cast<FT_Int32>(FreeTypeLoadFlagsForPolicy(rasterPolicy_))),
 		metricsScale(metricsScale_), strikePpem(strikePpem_),
 		usesBitmapStrike(usesBitmapStrike_) {
@@ -259,10 +315,62 @@ public:
 			hb_font_destroy(hbFont);
 			hbFont = nullptr;
 		}
+		for (auto &entry : rasterFaces) {
+			if (entry.second) {
+				FT_Done_Face(entry.second);
+				entry.second = nullptr;
+			}
+		}
+		rasterFaces.clear();
 		if (face) {
 			FT_Done_Face(face);
 			face = nullptr;
 		}
+	}
+
+	/**
+	 * Raster-only FT_Face at the given device height (26.6). Never touches the
+	 * HarfBuzz face. Reuses faces for the same height so repeated phase variants
+	 * at one scale share one FreeType size object.
+	 */
+	FT_Face RasterFaceAt(FT_F26Dot6 deviceHeight26_6) {
+		if (deviceHeight26_6 <= 0) {
+			deviceHeight26_6 = 64;
+		}
+		if (const auto found = rasterFaces.find(deviceHeight26_6); found != rasterFaces.end()) {
+			return found->second;
+		}
+		auto *library = static_cast<FreeTypeLibrary *>(libraryOwner.get());
+		FT_Face raster = nullptr;
+		if (FT_New_Face(library->value, path.c_str(), faceIndex, &raster) != 0) {
+			return nullptr;
+		}
+		if (FT_Set_Char_Size(raster, 0, deviceHeight26_6, 72, 72) != 0) {
+			// Bitmap-only members of a collection: pick the closest strike.
+			if (raster->num_fixed_sizes <= 0) {
+				FT_Done_Face(raster);
+				return nullptr;
+			}
+			const double wanted = deviceHeight26_6 / 64.0;
+			int bestStrike = 0;
+			double bestDiff = 1e300;
+			for (int strike = 0; strike < raster->num_fixed_sizes; strike++) {
+				const double ppem = raster->available_sizes[strike].y_ppem / 64.0;
+				const double diff = std::abs(ppem - wanted);
+				if (diff < bestDiff) {
+					bestDiff = diff;
+					bestStrike = strike;
+				}
+			}
+			if (FT_Select_Size(raster, bestStrike) != 0) {
+				FT_Done_Face(raster);
+				return nullptr;
+			}
+		}
+		// Keep identity transform until a phase guard sets a delta.
+		FT_Set_Transform(raster, nullptr, nullptr);
+		rasterFaces.emplace(deviceHeight26_6, raster);
+		return raster;
 	}
 
 	// Declaration order: hb_font and FT_Face die before the FreeType library owner.
@@ -271,6 +379,7 @@ public:
 	hb_font_t *hbFont = nullptr;
 	FT_Face face = nullptr;
 	std::filesystem::path path;
+	int faceIndex = 0;
 	std::string requestedFamily;
 	double size;
 	FontWeight weight;
@@ -281,15 +390,17 @@ public:
 	double metricsScale = 1.0;
 	double strikePpem = 0.0;
 	bool usesBitmapStrike = false;
+	/** device height 26.6 → independent raster-only face (not shared with HarfBuzz). */
+	std::unordered_map<FT_F26Dot6, FT_Face> rasterFaces;
 };
 
 FontFace::FontFace(std::shared_ptr<void> libraryOwner, void *pattern, void *face,
-	std::filesystem::path path, std::string requestedFamily, double size, FontWeight weight,
-	bool italic, FontStretch stretch, FontRasterPolicy rasterPolicy,
+	std::filesystem::path path, int faceIndex, std::string requestedFamily, double size,
+	FontWeight weight, bool italic, FontStretch stretch, FontRasterPolicy rasterPolicy,
 	double metricsScale, double strikePpem, bool usesBitmapStrike) :
 	impl(std::make_unique<Impl>(std::move(libraryOwner), static_cast<FcPattern *>(pattern),
-		static_cast<FT_Face>(face), std::move(path), std::move(requestedFamily), size, weight, italic,
-		stretch, rasterPolicy, metricsScale, strikePpem, usesBitmapStrike)) {
+		static_cast<FT_Face>(face), std::move(path), faceIndex, std::move(requestedFamily), size,
+		weight, italic, stretch, rasterPolicy, metricsScale, strikePpem, usesBitmapStrike)) {
 }
 
 FontFace::~FontFace() noexcept = default;
@@ -298,8 +409,16 @@ const std::filesystem::path &FontFace::Path() const noexcept {
 	return impl->path;
 }
 
+int FontFace::FaceIndex() const noexcept {
+	return impl->faceIndex;
+}
+
 std::string FontFace::Family() const {
 	return impl->face->family_name ? impl->face->family_name : "";
+}
+
+GlyphRasterPhase GlyphRasterPhase::Normalize(int32_t x26_6, int32_t y26_6) noexcept {
+	return GlyphRasterPhase{NormalizePhase26_6(x26_6), NormalizePhase26_6(y26_6)};
 }
 
 const std::string &FontFace::RequestedFamily() const noexcept {
@@ -402,27 +521,21 @@ bool FontFace::ShapesSequence(const char32_t *codePoints, size_t count) const {
 	return clean && sawInk;
 }
 
-GlyphImage FontFace::RasterizeGlyph(uint32_t glyphId) const {
+namespace {
+
+GlyphImage CopyGlyphSlotImage(FT_GlyphSlot slot, double metricsScale) {
 	GlyphImage image;
-	if (FT_Load_Glyph(impl->face, static_cast<FT_UInt>(glyphId), impl->loadFlags) != 0) {
+	if (!slot) {
 		return image;
 	}
-	// CBDT loads may already be bitmaps; outlines still need FT_Render_Glyph.
-	// Always NORMAL for 8-bit gray: light hinting is the load target, not the
-	// render mode (FT_RENDER_MODE_LIGHT produces the same coverage format).
-	if (impl->face->glyph->format != FT_GLYPH_FORMAT_BITMAP) {
-		if (FT_Render_Glyph(impl->face->glyph, FT_RENDER_MODE_NORMAL) != 0) {
-			return image;
-		}
-	}
-	const FT_Bitmap &bitmap = impl->face->glyph->bitmap;
+	const FT_Bitmap &bitmap = slot->bitmap;
 	image.width = static_cast<int>(bitmap.width);
 	image.height = static_cast<int>(bitmap.rows);
-	image.scale = impl->metricsScale;
-	// Bearings are converted to logical units so DrawGlyph can place without
-	// re-reading the face's strike scale.
-	image.left = static_cast<int>(std::lround(impl->face->glyph->bitmap_left * impl->metricsScale));
-	image.top = static_cast<int>(std::lround(impl->face->glyph->bitmap_top * impl->metricsScale));
+	image.scale = metricsScale;
+	// Bearings stay in the face's pixel units. metricsScale converts fixed
+	// bitmap-strike pixels into logical units for the historical draw path.
+	image.left = static_cast<int>(std::lround(slot->bitmap_left * metricsScale));
+	image.top = static_cast<int>(std::lround(slot->bitmap_top * metricsScale));
 	if (image.width <= 0 || image.height <= 0 || !bitmap.buffer) {
 		image.width = 0;
 		image.height = 0;
@@ -474,6 +587,59 @@ GlyphImage FontFace::RasterizeGlyph(uint32_t glyphId) const {
 	image.left = 0;
 	image.top = 0;
 	return image;
+}
+
+GlyphImage RasterizeOnFace(FT_Face face, uint32_t glyphId, FT_Int32 loadFlags,
+	double metricsScale, FT_Pos phaseX, FT_Pos phaseY, bool applyPhase) {
+	GlyphImage image;
+	if (!face) {
+		return image;
+	}
+	// Always arm the guard when applyPhase is true so a previous non-zero phase
+	// cannot leak into a zero-phase request (guard restores on scope exit).
+	std::optional<FaceTransformGuard> phaseGuard;
+	if (applyPhase) {
+		phaseGuard.emplace(face, phaseX, phaseY);
+	}
+	if (FT_Load_Glyph(face, static_cast<FT_UInt>(glyphId), loadFlags) != 0) {
+		return image;
+	}
+	// CBDT loads may already be bitmaps; outlines still need FT_Render_Glyph.
+	// Always NORMAL for 8-bit gray: light hinting is the load target, not the
+	// render mode (FT_RENDER_MODE_LIGHT produces the same coverage format).
+	if (face->glyph->format != FT_GLYPH_FORMAT_BITMAP) {
+		if (FT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL) != 0) {
+			return image;
+		}
+	}
+	return CopyGlyphSlotImage(face->glyph, metricsScale);
+}
+
+} // namespace
+
+GlyphImage FontFace::RasterizeGlyph(uint32_t glyphId) const {
+	return RasterizeGlyph(GlyphRasterRequest::Identity(glyphId));
+}
+
+GlyphImage FontFace::RasterizeGlyph(const GlyphRasterRequest &request) const {
+	const GlyphRasterPhase phase = GlyphRasterPhase::Normalize(request.phase.x, request.phase.y);
+	// Fixed bitmap strikes: keep the logical face and strike metricsScale.
+	// FreeType does not apply FT_Set_Transform to non-scalable bitmap formats.
+	if (impl->usesBitmapStrike) {
+		return RasterizeOnFace(impl->face, request.glyphId, impl->loadFlags,
+			impl->metricsScale, 0, 0, false);
+	}
+
+	const FT_F26Dot6 deviceHeight = DeviceHeight26_6(impl->size, request.scale);
+	FT_Face rasterFace = impl->RasterFaceAt(deviceHeight);
+	if (!rasterFace) {
+		return {};
+	}
+	// Device-sized outline masks are already in device pixels; scale stays 1.
+	// Colour bitmaps loaded from a device-sized face also report scale 1 here;
+	// strike scaling for fixed-only faces is handled above.
+	return RasterizeOnFace(rasterFace, request.glyphId, impl->loadFlags, 1.0,
+		phase.x, phase.y, true);
 }
 
 void *FontFace::HarfBuzzFont() const noexcept {
@@ -558,7 +724,7 @@ public:
 			usesBitmapStrike = true;
 		}
 
-		auto selected = std::make_shared<FontFace>(library, pattern, face, path,
+		auto selected = std::make_shared<FontFace>(library, pattern, face, path, index,
 			RequestedFamilyFromParameters(parameters), parameters.size, parameters.weight,
 			parameters.italic, parameters.stretch, rasterPolicy, metricsScale, strikePpem,
 			usesBitmapStrike);

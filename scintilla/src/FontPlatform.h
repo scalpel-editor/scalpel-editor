@@ -34,11 +34,14 @@ enum class GlyphImageKind {
 /**
  * FreeType-rasterized glyph image for the renderer glyph cache.
  *
- * width/height are the pixel buffer size. left/top are logical bearings after
- * any bitmap-strike scale (pen origin to left/top of the drawn image). scale
- * maps pixel size to logical draw size (1 for outline faces; requested/strike
- * for CBDT/CBLC faces). gray is row-major top-down coverage when kind is Gray.
- * rgba is row-major top-down premultiplied RGBA when kind is Colour.
+ * width/height are the bitmap size in the raster coordinate system (device
+ * pixels for phase-aware outline rasterization; strike pixels for fixed
+ * bitmaps). left/top are integer bearings from the pen origin to the bitmap
+ * left/top edges in that same coordinate system. scale maps bitmap size to
+ * logical draw size for fixed-bitmap strikes (requested/strike); it is 1 for
+ * outline glyphs already rasterized at the requested device size. gray is
+ * row-major top-down coverage when kind is Gray. rgba is row-major top-down
+ * premultiplied RGBA when kind is Colour.
  */
 struct GlyphImage {
 	GlyphImageKind kind = GlyphImageKind::Empty;
@@ -49,6 +52,55 @@ struct GlyphImage {
 	double scale = 1.0;
 	std::vector<uint8_t> gray;
 	std::vector<uint8_t> rgba;
+};
+
+/**
+ * Normalized FreeType 26.6 subpixel phase for outline rasterization.
+ *
+ * Each component lies in [0, 63]. Equivalent device positions that differ by a
+ * whole pixel share the same phase after floor-based normalization.
+ */
+struct GlyphRasterPhase {
+	int32_t x = 0;
+	int32_t y = 0;
+
+	/** Reduce 26.6 offsets into [0, 63] with floor remainder (handles negatives). */
+	[[nodiscard]] static GlyphRasterPhase Normalize(int32_t x26_6, int32_t y26_6) noexcept;
+
+	[[nodiscard]] friend constexpr bool operator==(const GlyphRasterPhase &left,
+		const GlyphRasterPhase &right) noexcept {
+		return left.x == right.x && left.y == right.y;
+	}
+
+	[[nodiscard]] friend constexpr bool operator!=(const GlyphRasterPhase &left,
+		const GlyphRasterPhase &right) noexcept {
+		return !(left == right);
+	}
+};
+
+/**
+ * Request to rasterize one FreeType glyph at a device scale and phase.
+ *
+ * scale is the nominal output RasterScale (not bufferWidth/logicalWidth).
+ * phase is applied only to outline glyphs via FreeType's face transform delta
+ * after hinting. Fixed bitmap and colour strikes ignore phase and keep their
+ * strike-selection path.
+ */
+struct GlyphRasterRequest {
+	uint32_t glyphId = 0;
+	RasterScale scale{};
+	GlyphRasterPhase phase{};
+
+	/** Scale 1/1 and zero phase (legacy single-argument RasterizeGlyph). */
+	[[nodiscard]] static GlyphRasterRequest Identity(uint32_t glyphId) noexcept {
+		return GlyphRasterRequest{glyphId, RasterScale{}, GlyphRasterPhase{}};
+	}
+
+	[[nodiscard]] friend constexpr bool operator==(const GlyphRasterRequest &left,
+		const GlyphRasterRequest &right) noexcept {
+		return left.glyphId == right.glyphId && left.scale == right.scale &&
+			left.phase == right.phase;
+	}
 };
 
 /**
@@ -110,7 +162,7 @@ class FontFace {
 
 public:
 	FontFace(std::shared_ptr<void> libraryOwner, void *pattern, void *face,
-		std::filesystem::path path, std::string requestedFamily, double size,
+		std::filesystem::path path, int faceIndex, std::string requestedFamily, double size,
 		FontWeight weight, bool italic, FontStretch stretch,
 		FontRasterPolicy rasterPolicy = {},
 		double metricsScale = 1.0, double strikePpem = 0.0, bool usesBitmapStrike = false);
@@ -122,6 +174,8 @@ public:
 	FontFace &operator=(FontFace &&) = delete;
 
 	const std::filesystem::path &Path() const noexcept;
+	/** Fontconfig / FreeType face index within a TTC or OTC collection. */
+	[[nodiscard]] int FaceIndex() const noexcept;
 	std::string Family() const;
 	/** Requested FC_FAMILY string (stable copy; not the concrete face family). */
 	const std::string &RequestedFamily() const noexcept;
@@ -168,16 +222,25 @@ public:
 	/**
 	 * Rasterize one glyph by FreeType glyph index (not a character code).
 	 *
-	 * Loads with the face FreeTypeLoadFlags() so CBDT/CBLC colour bitmaps
-	 * stay BGRA, ordinary outlines rasterize to gray coverage, and the hint
-	 * target matches HarfBuzz. Outlines always use FT_RENDER_MODE_NORMAL
-	 * (8-bit gray); light hinting is selected by the load target, not by
-	 * FT_RENDER_MODE_LIGHT. Missing or unloadable glyphs return an empty
-	 * image. Unsupported pixel modes are rejected without reading them as
-	 * gray. Callers that share this face with HarfBuzz must not change
-	 * FT_Face size after construction.
+	 * Equivalent to RasterizeGlyph(GlyphRasterRequest::Identity(glyphId)):
+	 * scale 1/1 and zero phase. Prefer the request overload for device-scale
+	 * and phase-aware outline rasterization.
 	 */
 	GlyphImage RasterizeGlyph(uint32_t glyphId) const;
+
+	/**
+	 * Rasterize one glyph at the request's device scale and 26.6 phase.
+	 *
+	 * Outline glyphs use a separate FreeType face sized to the device ppem so
+	 * the HarfBuzz logical face is never resized or transformed. Phase is
+	 * applied with FT_Set_Transform (identity matrix + 26.6 delta) after
+	 * hinting, then restored. Fixed bitmap strikes and colour bitmaps skip
+	 * outline phase transforms and keep strike selection / metricsScale.
+	 * Load flags always match FreeTypeLoadFlags() (FT_LOAD_COLOR plus the
+	 * face hint policy). Outlines always use FT_RENDER_MODE_NORMAL. Missing
+	 * or unloadable glyphs return an empty image.
+	 */
+	GlyphImage RasterizeGlyph(const GlyphRasterRequest &request) const;
 
 	/**
 	 * HarfBuzz font for this face. Owned by FontFace and destroyed before the

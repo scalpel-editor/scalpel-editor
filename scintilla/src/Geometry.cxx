@@ -7,7 +7,6 @@
 
 #include <cstdint>
 #include <cmath>
-#include <stdexcept>
 
 #include <algorithm>
 
@@ -17,15 +16,6 @@ namespace {
 
 constexpr unsigned int Mixed(unsigned char a, unsigned char b, double proportion) noexcept {
 	return static_cast<unsigned int>(a + proportion * (b - a));
-}
-
-[[nodiscard]] uint32_t GreatestCommonDivisor(uint32_t a, uint32_t b) noexcept {
-	while (b != 0) {
-		const uint32_t remainder = a % b;
-		a = b;
-		b = remainder;
-	}
-	return a;
 }
 
 }
@@ -131,18 +121,6 @@ ColourRGBA ColourRGBA::MixedWith(ColourRGBA other, double proportion) const noex
 		Mixed(GetGreen(), other.GetGreen(), proportion),
 		Mixed(GetBlue(), other.GetBlue(), proportion),
 		Mixed(GetAlpha(), other.GetAlpha(), proportion));
-}
-
-RasterScale RasterScale::FromParts(uint32_t numerator, uint32_t denominator) {
-	if (numerator == 0 || denominator == 0) {
-		throw std::invalid_argument("RasterScale requires a positive numerator and denominator");
-	}
-	const uint32_t divisor = GreatestCommonDivisor(numerator, denominator);
-	return RasterScale(numerator / divisor, denominator / divisor);
-}
-
-RasterScale RasterScale::FromWaylandNumerator(uint32_t scaleNumerator) {
-	return FromParts(scaleNumerator, kWaylandDenominator);
 }
 
 }

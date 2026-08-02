@@ -406,3 +406,141 @@ TEST_CASE("light-hinted RasterizeGlyph is stable for the same glyph id") {
 	CHECK(first.gray == second.gray);
 	CHECK(CoverageSum(first) > 0);
 }
+
+TEST_CASE("device-phase glyph rasterization normalizes phase into 0..63") {
+	CHECK(GlyphRasterPhase::Normalize(0, 0) == GlyphRasterPhase{});
+	CHECK(GlyphRasterPhase::Normalize(32, 16).x == 32);
+	CHECK(GlyphRasterPhase::Normalize(32, 16).y == 16);
+	CHECK(GlyphRasterPhase::Normalize(64, 128) == GlyphRasterPhase{});
+	CHECK(GlyphRasterPhase::Normalize(65, 0).x == 1);
+	// Negative origins: floor remainder lands in [0, 63].
+	CHECK(GlyphRasterPhase::Normalize(-1, 0).x == 63);
+	CHECK(GlyphRasterPhase::Normalize(-64, -10).x == 0);
+	CHECK(GlyphRasterPhase::Normalize(-64, -10).y == 54);
+	CHECK(GlyphRasterPhase::Normalize(-65, 0).x == 63);
+}
+
+TEST_CASE("device-phase glyph rasterization zero and non-zero phases differ") {
+	FontCache cache;
+	const auto face = LoadPrimaryWithPolicy(cache, FontHintStyle::Slight, 16.0);
+	const ShapedRun run = ShapeText("H", face);
+	REQUIRE_FALSE(run.glyphs.empty());
+	const uint32_t glyphId = run.glyphs[0].glyphId;
+
+	const GlyphImage zero = face->RasterizeGlyph(GlyphRasterRequest::Identity(glyphId));
+	GlyphRasterRequest phaseRequest = GlyphRasterRequest::Identity(glyphId);
+	phaseRequest.phase = GlyphRasterPhase::Normalize(32, 0);
+	const GlyphImage half = face->RasterizeGlyph(phaseRequest);
+
+	REQUIRE(zero.kind == GlyphImageKind::Gray);
+	REQUIRE(half.kind == GlyphImageKind::Gray);
+	REQUIRE(zero.width > 0);
+	REQUIRE(half.width > 0);
+	// Distinct FreeType phase must change coverage and/or integer bearings.
+	const bool coverageDiffers = zero.gray != half.gray;
+	const bool boundsDiffer =
+		zero.width != half.width || zero.height != half.height ||
+		zero.left != half.left || zero.top != half.top;
+	CHECK((coverageDiffers || boundsDiffer));
+	CHECK(CoverageSum(zero) > 0);
+	CHECK(CoverageSum(half) > 0);
+
+	// Equivalent normalized phases reuse the same coverage (64 ≡ 0).
+	GlyphRasterRequest equiv = GlyphRasterRequest::Identity(glyphId);
+	equiv.phase = GlyphRasterPhase::Normalize(64, 0);
+	const GlyphImage equivImage = face->RasterizeGlyph(equiv);
+	CHECK(equivImage.gray == zero.gray);
+	CHECK(equivImage.left == zero.left);
+	CHECK(equivImage.top == zero.top);
+}
+
+TEST_CASE("device-phase glyph rasterization scale selects device ppem") {
+	FontCache cache;
+	const auto face = LoadPrimaryWithPolicy(cache, FontHintStyle::Normal, 16.0);
+	const ShapedRun run = ShapeText("A", face);
+	REQUIRE_FALSE(run.glyphs.empty());
+	const uint32_t glyphId = run.glyphs[0].glyphId;
+
+	const GlyphImage scale1 = face->RasterizeGlyph(GlyphRasterRequest::Identity(glyphId));
+	GlyphRasterRequest scale2 = GlyphRasterRequest::Identity(glyphId);
+	scale2.scale = RasterScale::FromParts(2, 1);
+	const GlyphImage at2 = face->RasterizeGlyph(scale2);
+	GlyphRasterRequest scale5_4 = GlyphRasterRequest::Identity(glyphId);
+	scale5_4.scale = RasterScale::FromWaylandNumerator(150); // 5/4
+	const GlyphImage at5_4 = face->RasterizeGlyph(scale5_4);
+
+	REQUIRE(scale1.kind == GlyphImageKind::Gray);
+	REQUIRE(at2.kind == GlyphImageKind::Gray);
+	REQUIRE(at5_4.kind == GlyphImageKind::Gray);
+	// Device size 2x should enlarge the coverage box roughly twofold.
+	CHECK(at2.width > scale1.width);
+	CHECK(at2.height > scale1.height);
+	// 5/4 is between 1 and 2.
+	CHECK(at5_4.width >= scale1.width);
+	CHECK(at5_4.width <= at2.width);
+	// Device masks report scale 1 (already at device pixels).
+	CHECK(scale1.scale == 1.0);
+	CHECK(at2.scale == 1.0);
+	CHECK(at5_4.scale == 1.0);
+}
+
+TEST_CASE("device-phase glyph rasterization does not alter logical metrics or advances") {
+	FontCache cache;
+	const auto face = LoadPrimaryWithPolicy(cache, FontHintStyle::Slight, 16.0);
+	const FontMetrics beforeMetrics = face->Metrics();
+	const ShapedRun beforeRun = ShapeText("honesty", face);
+	REQUIRE_FALSE(beforeRun.glyphs.empty());
+
+	const uint32_t glyphId = beforeRun.glyphs[0].glyphId;
+	GlyphRasterRequest request = GlyphRasterRequest::Identity(glyphId);
+	request.scale = RasterScale::FromParts(3, 2);
+	request.phase = GlyphRasterPhase::Normalize(20, 40);
+	(void)face->RasterizeGlyph(request);
+	(void)face->RasterizeGlyph(request);
+	request.phase = GlyphRasterPhase::Normalize(-5, 70);
+	(void)face->RasterizeGlyph(request);
+
+	const FontMetrics afterMetrics = face->Metrics();
+	CHECK(afterMetrics.ascent == beforeMetrics.ascent);
+	CHECK(afterMetrics.descent == beforeMetrics.descent);
+	CHECK(afterMetrics.height == beforeMetrics.height);
+
+	const ShapedRun afterRun = ShapeText("honesty", face);
+	REQUIRE(afterRun.glyphs.size() == beforeRun.glyphs.size());
+	for (size_t i = 0; i < beforeRun.glyphs.size(); i++) {
+		CHECK(afterRun.glyphs[i].glyphId == beforeRun.glyphs[i].glyphId);
+		CHECK(afterRun.glyphs[i].xAdvance == beforeRun.glyphs[i].xAdvance);
+		CHECK(afterRun.glyphs[i].yAdvance == beforeRun.glyphs[i].yAdvance);
+	}
+}
+
+TEST_CASE("device-phase glyph rasterization preserves face index on fixtures") {
+	// Checked-in fixtures are single-face files (index 0). Collection face
+	// index is retained from Fontconfig/FreeType open so TTC members reopen
+	// correctly when a multi-face fixture is available.
+	FontCache cache;
+	const auto face = LoadPrimary(cache);
+	CHECK(face->FaceIndex() == 0);
+	const ShapedRun run = ShapeText("A", face);
+	REQUIRE_FALSE(run.glyphs.empty());
+	const GlyphImage image = face->RasterizeGlyph(
+		GlyphRasterRequest::Identity(run.glyphs[0].glyphId));
+	CHECK(image.kind == GlyphImageKind::Gray);
+	CHECK(CoverageSum(image) > 0);
+}
+
+TEST_CASE("device-phase glyph rasterization single-argument path matches identity request") {
+	FontCache cache;
+	const auto face = LoadPrimary(cache);
+	const ShapedRun run = ShapeText("B", face);
+	REQUIRE_FALSE(run.glyphs.empty());
+	const uint32_t glyphId = run.glyphs[0].glyphId;
+	const GlyphImage viaId = face->RasterizeGlyph(glyphId);
+	const GlyphImage viaRequest = face->RasterizeGlyph(GlyphRasterRequest::Identity(glyphId));
+	CHECK(viaId.kind == viaRequest.kind);
+	CHECK(viaId.width == viaRequest.width);
+	CHECK(viaId.height == viaRequest.height);
+	CHECK(viaId.left == viaRequest.left);
+	CHECK(viaId.top == viaRequest.top);
+	CHECK(viaId.gray == viaRequest.gray);
+}
