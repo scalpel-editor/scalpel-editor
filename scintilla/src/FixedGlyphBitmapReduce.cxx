@@ -65,8 +65,8 @@ template <typename T>
 void ReduceLineU8ToF(const uint8_t *src, int srcCount, float *dest, int destCount,
 	int channels) {
 	if (destCount == srcCount) {
-		const int n = srcCount * channels;
-		for (int i = 0; i < n; i++) {
+		const size_t n = static_cast<size_t>(srcCount) * static_cast<size_t>(channels);
+		for (size_t i = 0; i < n; i++) {
 			dest[i] = static_cast<float>(src[i]);
 		}
 		return;
@@ -87,10 +87,16 @@ void ReduceLineU8ToF(const uint8_t *src, int srcCount, float *dest, int destCoun
 				const double nextBoundary = static_cast<double>(idx + 1);
 				const double segmentEnd = nextBoundary < right ? nextBoundary : right;
 				const double weight = segmentEnd - x;
-				sum += static_cast<double>(src[idx * channels + c]) * weight;
+				const size_t sourceOffset =
+					static_cast<size_t>(idx) * static_cast<size_t>(channels) +
+					static_cast<size_t>(c);
+				sum += static_cast<double>(src[sourceOffset]) * weight;
 				x = segmentEnd;
 			}
-			dest[i * channels + c] = static_cast<float>(sum * invWidth);
+			const size_t destOffset =
+				static_cast<size_t>(i) * static_cast<size_t>(channels) +
+				static_cast<size_t>(c);
+			dest[destOffset] = static_cast<float>(sum * invWidth);
 		}
 	}
 }
@@ -98,8 +104,8 @@ void ReduceLineU8ToF(const uint8_t *src, int srcCount, float *dest, int destCoun
 void ReduceLineFToU8(const float *src, int srcCount, uint8_t *dest, int destCount,
 	int channels) {
 	if (destCount == srcCount) {
-		const int n = srcCount * channels;
-		for (int i = 0; i < n; i++) {
+		const size_t n = static_cast<size_t>(srcCount) * static_cast<size_t>(channels);
+		for (size_t i = 0; i < n; i++) {
 			dest[i] = RoundToU8(static_cast<double>(src[i]));
 		}
 		return;
@@ -120,10 +126,16 @@ void ReduceLineFToU8(const float *src, int srcCount, uint8_t *dest, int destCoun
 				const double nextBoundary = static_cast<double>(idx + 1);
 				const double segmentEnd = nextBoundary < right ? nextBoundary : right;
 				const double weight = segmentEnd - x;
-				sum += static_cast<double>(src[idx * channels + c]) * weight;
+				const size_t sourceOffset =
+					static_cast<size_t>(idx) * static_cast<size_t>(channels) +
+					static_cast<size_t>(c);
+				sum += static_cast<double>(src[sourceOffset]) * weight;
 				x = segmentEnd;
 			}
-			dest[i * channels + c] = RoundToU8(sum * invWidth);
+			const size_t destOffset =
+				static_cast<size_t>(i) * static_cast<size_t>(channels) +
+				static_cast<size_t>(c);
+			dest[destOffset] = RoundToU8(sum * invWidth);
 		}
 	}
 }
