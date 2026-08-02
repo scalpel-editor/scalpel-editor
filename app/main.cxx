@@ -27,10 +27,13 @@
 
 #include "ApplicationEditor.h"
 #include "ApplicationUi.h"
+#include "ContextMenu.h"
 #include "DocumentFile.h"
 #include "DocumentWorkspace.h"
+#include "DrawSurface.h"
 #include "GlContext.h"
 #include "RecentFiles.h"
+#include "Renderer.h"
 #include "WaylandWindow.h"
 
 namespace {
@@ -280,13 +283,129 @@ std::vector<Scalpel::FileDialogFilter> TextDialogFilters() {
 
 /**
  * Drain ApplicationUi shell effects. Application-side work is already applied;
- * only portal dialogs and accept-close remain host work.
+ * portal dialogs, accept-close, and context-menu popup lifecycle remain host work.
  */
 using ActiveFileDialogs =
 	std::unordered_map<uint64_t, Scalpel::DocumentDialogId>;
 
+struct ContextMenuPopupHost {
+	bool wantsPaint = false;
+	Scalpel::ContextMenuPainter painter;
+};
+
+void DestroyContextMenuPopupHost(Scalpel::WaylandWindow &window,
+	Scintilla::Internal::GlContext &gl, ContextMenuPopupHost &host) {
+	gl.DestroyPopupSurface();
+	window.DestroyContextMenuPopup();
+	host.wantsPaint = false;
+}
+
+void ShowContextMenuPopup(Scalpel::ApplicationUi &ui,
+	Scalpel::WaylandWindow &window, Scintilla::Internal::GlContext &gl,
+	ContextMenuPopupHost &host, const Scalpel::ApplicationShellEffect &effect) {
+	try {
+		DestroyContextMenuPopupHost(window, gl, host);
+		const int width = Scalpel::ContextMenuPreferredWidth();
+		const int height = Scalpel::ContextMenuPreferredHeight();
+		if (!window.CreateContextMenuPopup(width, height,
+			static_cast<int>(effect.anchorX),
+			static_cast<int>(effect.anchorY), effect.serial)) {
+			std::cerr << "scalpel-editor: context menu popup unavailable\n";
+			ui.NotifyContextPopupDone();
+			return;
+		}
+		host.wantsPaint = true;
+	} catch (const std::exception &error) {
+		std::cerr << "scalpel-editor: context menu popup failed: "
+			<< error.what() << '\n';
+		DestroyContextMenuPopupHost(window, gl, host);
+		ui.NotifyContextPopupDone();
+	}
+}
+
+void ServiceContextMenuPopup(Scalpel::ApplicationUi &ui,
+	Scalpel::WaylandWindow &window, Scintilla::Internal::GlContext &gl,
+	ContextMenuPopupHost &host) {
+	if (window.ContextPopupLifecycle().NeedsDestroy()) {
+		DestroyContextMenuPopupHost(window, gl, host);
+		ui.NotifyContextPopupDone();
+		return;
+	}
+	if (!window.ContextPopupSurface()) {
+		return;
+	}
+	// Ack any pending configure pair before attaching a buffer.
+	if (!window.ContextPopupLifecycle().CanPaint()) {
+		(void)window.AckContextMenuPopupConfigure();
+	}
+	if (!window.ContextPopupLifecycle().CanPaint() || !host.wantsPaint) {
+		return;
+	}
+	if (!ui.ContextMenuOpen()) {
+		DestroyContextMenuPopupHost(window, gl, host);
+		return;
+	}
+
+	try {
+		(void)Scalpel::UpdateContextMenuActionState(ui.ContextModel(),
+			ui.Editor());
+		const Scalpel::ContextMenuLayout layout =
+			Scalpel::LayoutContextMenu(ui.ContextModel());
+		const int logicalW = static_cast<int>(layout.panel.Width());
+		const int logicalH = static_cast<int>(layout.panel.Height());
+		if (logicalW <= 0 || logicalH <= 0) {
+			return;
+		}
+		const Scalpel::WaylandScaleConfiguration &scale =
+			window.ScaleConfiguration();
+		const int bufferW = std::max(1,
+			static_cast<int>(std::lround(
+				logicalW * scale.scaleNumerator / 120.0)));
+		const int bufferH = std::max(1,
+			static_cast<int>(std::lround(
+				logicalH * scale.scaleNumerator / 120.0)));
+
+		if (!window.EnsureContextMenuPopupEglWindow(bufferW, bufferH)) {
+			throw std::runtime_error("could not create popup EGL window");
+		}
+		if (!gl.HasPopupSurface()) {
+			gl.CreatePopupSurface(window.ContextPopupEglWindow());
+		}
+		gl.MakeCurrent(Scintilla::Internal::GlContext::SurfaceTarget::Popup);
+
+		// Short-lived renderer for this popup paint; shares the process GL
+		// context and targets the default window framebuffer.
+		Scintilla::Internal::Renderer popupRenderer(gl);
+		const Scintilla::Internal::RasterScale rasterScale =
+			Scintilla::Internal::RasterScale::FromWaylandNumerator(
+				scale.scaleNumerator);
+		std::unique_ptr<Scintilla::Internal::DrawSurface> draw =
+			Scintilla::Internal::CreateExternalDrawSurface(
+				popupRenderer, 0, bufferW, bufferH, logicalW, logicalH,
+				rasterScale);
+		host.painter.Paint(*draw, layout, ui.ContextModel());
+
+		gl.SwapBuffers();
+		// Restore the editor surface for subsequent frame work.
+		gl.MakeCurrent(Scintilla::Internal::GlContext::SurfaceTarget::Editor);
+		host.wantsPaint = false;
+	} catch (const std::exception &error) {
+		std::cerr << "scalpel-editor: context menu paint failed: "
+			<< error.what() << '\n';
+		try {
+			gl.MakeCurrent(
+				Scintilla::Internal::GlContext::SurfaceTarget::Editor);
+		} catch (...) {
+		}
+		DestroyContextMenuPopupHost(window, gl, host);
+		ui.NotifyContextPopupDone();
+	}
+}
+
 void ApplyShellEffects(Scalpel::ApplicationUi &ui,
 	Scalpel::WaylandWindow &window,
+	Scintilla::Internal::GlContext &gl,
+	ContextMenuPopupHost &contextPopup,
 	ActiveFileDialogs &activeFileDialogs,
 	bool &quitAccepted) {
 	for (const Scalpel::ApplicationShellEffect &effect : ui.TakeShellEffects()) {
@@ -311,9 +430,15 @@ void ApplyShellEffects(Scalpel::ApplicationUi &ui,
 			quitAccepted = true;
 			break;
 		case Scalpel::ApplicationShellEffectKind::ShowContextMenu:
+			ShowContextMenuPopup(ui, window, gl, contextPopup, effect);
+			break;
 		case Scalpel::ApplicationShellEffectKind::CloseContextMenu:
+			DestroyContextMenuPopupHost(window, gl, contextPopup);
+			break;
 		case Scalpel::ApplicationShellEffectKind::InvalidateContextMenu:
-			// xdg_popup wiring is applied once the Wayland popup owner lands.
+			if (window.ContextPopupSurface() && ui.ContextMenuOpen()) {
+				contextPopup.wantsPaint = true;
+			}
 			break;
 		}
 	}
@@ -344,6 +469,8 @@ int main() {
 		Scalpel::WaylandWindow window("scalpel-editor", 800, 600);
 		auto glContext = std::make_unique<Scintilla::Internal::GlContext>(
 			window.Display(), window.EglWindow());
+		// Keep a non-owning pointer so the shell can target the popup surface.
+		Scintilla::Internal::GlContext &gl = *glContext;
 		Scalpel::ApplicationEditor editor(
 			std::move(glContext), window.Width(), window.Height());
 		editor.SetFrameBufferSize(
@@ -356,7 +483,8 @@ int main() {
 			"scalpel-editor\n\n"
 			"A direct Scintilla editor for Wayland.\n"
 			"Ctrl+N new tab, Ctrl+W close tab, Ctrl+Tab cycle tabs.\n"
-			"Ctrl+O open, Ctrl+S save, Ctrl+Shift+S save as, Ctrl+Q quit.\n";
+			"Ctrl+O open, Ctrl+S save, Ctrl+Shift+S save as, Ctrl+Q quit.\n"
+			"Right-click or Shift+F10 opens the editor context menu.\n";
 		editor.LoadInitialBuffer(initialText);
 		// ApplicationUi owns the base menu-plus-tab inset and expands it when
 		// the find bar is visible.
@@ -366,6 +494,8 @@ int main() {
 			Scalpel::LoadRecentFiles(recentStatePath);
 		Scalpel::ApplicationUi ui(editor, workspace, recent, recentStatePath);
 		ActiveFileDialogs activeFileDialogs;
+		ContextMenuPopupHost contextPopup;
+		bool quitAccepted = false;
 		const auto applyPointerCursor = [&] {
 			if (ui.CurrentPointerCursor() ==
 				Scalpel::ApplicationPointerCursor::Arrow) {
@@ -374,7 +504,10 @@ int main() {
 				window.SetCursor(editor.WindowState().cursor);
 			}
 		};
-		bool quitAccepted = false;
+		const auto applyEffects = [&] {
+			ApplyShellEffects(ui, window, gl, contextPopup, activeFileDialogs,
+				quitAccepted);
+		};
 
 		(void)ui.SynchronizeTabs();
 		editor.InvalidateTopChrome();
@@ -387,18 +520,21 @@ int main() {
 			DeliverPrimarySelectionResults(window, editor);
 			DeliverTextInputBatches(window, ui);
 			ApplyFileDialogResults(window, ui, activeFileDialogs);
-			ApplyShellEffects(ui, window, activeFileDialogs, quitAccepted);
+			applyEffects();
+			ServiceContextMenuPopup(ui, window, gl, contextPopup);
 			SynchronizeTextInput(ui, window);
 			ui.RefreshOpenMenuActionState();
+			// Clipboard-offer enablement may queue popup invalidate effects.
+			applyEffects();
 
 			if (window.ForceCloseRequested()) {
 				ui.PrepareForExit();
+				applyEffects();
 				break;
 			}
 			if (window.UserCloseRequested()) {
 				ui.RequestClose();
-				ApplyShellEffects(
-					ui, window, activeFileDialogs, quitAccepted);
+				applyEffects();
 				window.ClearCloseRequest();
 				if (quitAccepted) {
 					break;
@@ -416,12 +552,14 @@ int main() {
 					Scintilla::Internal::RasterScale::FromWaylandNumerator(
 						scale->scaleNumerator));
 				ui.HandleFrameSizeChange();
+				applyEffects();
 			}
 
 			for (const Scalpel::InputEvent &input : window.TakeInputs()) {
 				if (const auto *focus =
 					std::get_if<Scalpel::KeyboardFocusInput>(&input)) {
 					ui.HandleFocus(focus->focused);
+					applyEffects();
 					continue;
 				}
 				if (const auto *pointer =
@@ -431,20 +569,19 @@ int main() {
 					if (!pointerResult.consumed) {
 						editor.HandlePointerInput(*pointer);
 					}
-					ApplyShellEffects(
-						ui, window, activeFileDialogs, quitAccepted);
+					applyEffects();
 					continue;
 				}
 				if (const auto *keyboard =
 					std::get_if<Scalpel::KeyboardInput>(&input)) {
 					(void)ui.HandleKeyboard(*keyboard);
 				}
-				ApplyShellEffects(
-					ui, window, activeFileDialogs, quitAccepted);
+				applyEffects();
 			}
 
 			if (quitAccepted || window.ForceCloseRequested()) {
 				ui.PrepareForExit();
+				applyEffects();
 				break;
 			}
 
@@ -455,8 +592,13 @@ int main() {
 			SynchronizeTextInput(ui, window);
 			(void)ui.SynchronizeComposition();
 			applyPointerCursor();
+			// Popup paint is independent of the toplevel frame path.
+			ServiceContextMenuPopup(ui, window, gl, contextPopup);
 			QueueFrameDamage(editor, window);
 			if (window.CanSubmitFrame()) {
+				// Ensure the editor surface is current before editor frame work.
+				gl.MakeCurrent(
+					Scintilla::Internal::GlContext::SurfaceTarget::Editor);
 				const std::optional<Scalpel::FramePlan> plan = window.BeginFrame(
 					editor.BufferAge(),
 					editor.BufferAgeSupported(), editor.DamageSwapSupported());
@@ -479,6 +621,7 @@ int main() {
 				window.WaitForEvents(editor.TimeUntilNextWork());
 			}
 		}
+		DestroyContextMenuPopupHost(window, gl, contextPopup);
 		return 0;
 	} catch (const std::exception &error) {
 		std::cerr << "scalpel-editor: " << error.what() << '\n';

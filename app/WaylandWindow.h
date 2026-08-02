@@ -128,6 +128,12 @@ public:
 	 * pair. Returns true when an ack was sent and the popup may be painted.
 	 */
 	[[nodiscard]] bool AckContextMenuPopupConfigure();
+	/**
+	 * Create or resize the popup wl_egl_window to buffer pixels. Requires an
+	 * active popup surface. Returns false when creation fails.
+	 */
+	[[nodiscard]] bool EnsureContextMenuPopupEglWindow(int bufferWidth,
+		int bufferHeight);
 	[[nodiscard]] int Width() const noexcept { return lifecycle.Width(); }
 	[[nodiscard]] int Height() const noexcept { return lifecycle.Height(); }
 	[[nodiscard]] bool Configured() const noexcept { return configured; }

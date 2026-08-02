@@ -1683,6 +1683,20 @@ bool WaylandWindow::AckContextMenuPopupConfigure() {
 	return popupLifecycle.CanPaint();
 }
 
+bool WaylandWindow::EnsureContextMenuPopupEglWindow(int bufferWidth,
+	int bufferHeight) {
+	if (!popupSurface || bufferWidth <= 0 || bufferHeight <= 0) {
+		return false;
+	}
+	if (!popupEglWindow) {
+		popupEglWindow = wl_egl_window_create(popupSurface, bufferWidth,
+			bufferHeight);
+		return popupEglWindow != nullptr;
+	}
+	wl_egl_window_resize(popupEglWindow, bufferWidth, bufferHeight, 0, 0);
+	return true;
+}
+
 void WaylandWindow::DestroyContextMenuPopup() noexcept {
 	if (popupEglWindow) {
 		wl_egl_window_destroy(popupEglWindow);

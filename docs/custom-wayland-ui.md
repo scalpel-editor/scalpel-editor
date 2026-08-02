@@ -21,6 +21,7 @@ Useful criteria include:
 - Single sources of truth: layout, focus, scale, document state, and frame permission are not calculated independently in several places.
 - Proportional work: redraw, measurement, transfer, and deadline handling remain bounded by the event that caused them.
 - Honest scope: unsupported features and assumptions are explicit.
+- Popup surfaces: short-lived menus use a child `xdg_popup` with a positioner, an explicit grab serial, configure acknowledgement before the first buffer, and reverse-order teardown. Application layout and input policy stay off the protocol path; the shell only creates, configures, paints, and destroys the surface.
 
 ## Organize around lifecycles, not protocol wrappers
 
