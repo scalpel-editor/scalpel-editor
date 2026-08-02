@@ -2,6 +2,8 @@
 
 #include "Renderer.h"
 
+#include "FixedGlyphBitmapReduce.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -425,9 +427,12 @@ void Renderer::ClearGlyphCache() noexcept {
 		}
 	}
 	glyphCache.clear();
+	fixedBitmapScaleGenerations.clear();
 }
 
 void Renderer::RetireScaleDependentGlyphCache() noexcept {
+	// Outline masks are scale- and phase-specific: drop them on a real scale change.
+	// Fixed bitmap shrink variants stay under the three-generation LRU policy.
 	for (auto it = glyphCache.begin(); it != glyphCache.end();) {
 		if (it->first.face->UsesBitmapStrike()) {
 			++it;
@@ -439,6 +444,39 @@ void Renderer::RetireScaleDependentGlyphCache() noexcept {
 			it->second.texture = 0;
 		}
 		it = glyphCache.erase(it);
+	}
+}
+
+void Renderer::EvictFixedBitmapScaleGeneration(RasterScale scale) noexcept {
+	for (auto it = glyphCache.begin(); it != glyphCache.end();) {
+		if (!it->first.face->UsesBitmapStrike() || it->first.fixedBitmapFullStrike ||
+			it->first.scale != scale) {
+			++it;
+			continue;
+		}
+		if (it->second.texture != 0) {
+			GLuint name = it->second.texture;
+			glDeleteTextures(1, &name);
+			it->second.texture = 0;
+		}
+		it = glyphCache.erase(it);
+	}
+}
+
+void Renderer::TouchFixedBitmapScaleGeneration(RasterScale scale) {
+	constexpr size_t kMaxFixedBitmapScaleGenerations = 3;
+	const auto existing = std::find(fixedBitmapScaleGenerations.begin(),
+		fixedBitmapScaleGenerations.end(), scale);
+	if (existing != fixedBitmapScaleGenerations.end()) {
+		fixedBitmapScaleGenerations.erase(existing);
+		fixedBitmapScaleGenerations.push_back(scale);
+		return;
+	}
+	fixedBitmapScaleGenerations.push_back(scale);
+	while (fixedBitmapScaleGenerations.size() > kMaxFixedBitmapScaleGenerations) {
+		const RasterScale evict = fixedBitmapScaleGenerations.front();
+		fixedBitmapScaleGenerations.erase(fixedBitmapScaleGenerations.begin());
+		EvictFixedBitmapScaleGeneration(evict);
 	}
 }
 
@@ -572,7 +610,7 @@ void Renderer::SetOutputRasterScale(RasterScale rasterScale) {
 	}
 	MakeCurrent();
 	// Outline masks were rasterized for the previous nominal scale. Fixed
-	// bitmap strikes use logical placement and remain valid across scales.
+	// bitmap shrink variants are retained under a three-generation LRU bound.
 	RetireScaleDependentGlyphCache();
 	targetRasterScale = rasterScale;
 }
@@ -1112,9 +1150,25 @@ void Renderer::DrawTexturedQuadBuffer(float x0, float y0, float x1, float y1,
 		uniformTexStraightAlpha, uniformTexModulate, vao, vbo);
 }
 
+std::pair<int, int> Renderer::GlyphCacheTextureSize(
+	const std::shared_ptr<FontFace> &face, uint32_t glyphId, RasterScale scale,
+	GlyphRasterPhase phase, bool fixedBitmapFullStrike) const noexcept {
+	if (!face) {
+		return {0, 0};
+	}
+	const GlyphKey key{face, glyphId, scale, phase, fixedBitmapFullStrike};
+	const auto found = glyphCache.find(key);
+	if (found == glyphCache.end()) {
+		return {0, 0};
+	}
+	return {found->second.textureWidth, found->second.textureHeight};
+}
+
 const Renderer::CachedGlyph &Renderer::GetOrCreateGlyph(
-	const std::shared_ptr<FontFace> &face, const GlyphRasterRequest &request) {
-	const GlyphKey key{face, request.glyphId, request.scale, request.phase};
+	const std::shared_ptr<FontFace> &face, const GlyphRasterRequest &request,
+	bool fixedBitmapFullStrike) {
+	const GlyphKey key{face, request.glyphId, request.scale, request.phase,
+		fixedBitmapFullStrike};
 	if (const auto found = glyphCache.find(key); found != glyphCache.end()) {
 		return found->second;
 	}
@@ -1122,39 +1176,86 @@ const Renderer::CachedGlyph &Renderer::GetOrCreateGlyph(
 	const GlyphImage image = face->RasterizeGlyph(request);
 	cached.left = image.left;
 	cached.top = image.top;
+	// Logical layout extent stays at the source strike/device size even when
+	// the uploaded texture is area-reduced for fixed bitmaps.
 	cached.width = image.width;
 	cached.height = image.height;
+	cached.textureWidth = image.width;
+	cached.textureHeight = image.height;
 	cached.scale = image.scale > 0.0 ? image.scale : 1.0;
 	cached.colour = image.kind == GlyphImageKind::Colour;
 	const bool hasGray = image.kind == GlyphImageKind::Gray && !image.gray.empty();
 	const bool hasColour = image.kind == GlyphImageKind::Colour && !image.rgba.empty();
+	const bool fixedBitmap = face->UsesBitmapStrike();
 	if (image.width > 0 && image.height > 0 && (hasGray || hasColour)) {
+		const uint8_t *graySrc = hasGray ? image.gray.data() : nullptr;
+		const uint8_t *rgbaSrc = hasColour ? image.rgba.data() : nullptr;
+		int srcWidth = image.width;
+		int srcHeight = image.height;
+		FixedGlyphBitmapReduceResult reduced;
+
+		// Shrink fixed strikes toward the physical destination before upload.
+		// Full-strike cache identity never reduces (magnification / no-shrink).
+		if (fixedBitmap && !fixedBitmapFullStrike) {
+			const double metricsScale = image.scale > 0.0 ? image.scale : 1.0;
+			const double raster =
+				static_cast<double>(request.scale.Numerator()) /
+				static_cast<double>(request.scale.Denominator());
+			const double reductionFactor = metricsScale * raster;
+			const int destW = FixedGlyphReducedExtent(image.width, reductionFactor);
+			const int destH = FixedGlyphReducedExtent(image.height, reductionFactor);
+			if ((destW < image.width || destH < image.height) &&
+				destW > 0 && destH > 0) {
+				const int channels = hasGray ? 1 : 4;
+				const uint8_t *source = hasGray ? graySrc : rgbaSrc;
+				if (ReduceFixedGlyphBitmapArea(source, image.width, image.height,
+						channels, destW, destH, reduced) &&
+					reduced.width > 0 && reduced.height > 0 &&
+					!reduced.pixels.empty()) {
+					srcWidth = reduced.width;
+					srcHeight = reduced.height;
+					if (hasGray) {
+						graySrc = reduced.pixels.data();
+					} else {
+						rgbaSrc = reduced.pixels.data();
+					}
+				}
+				// On reduction failure, fall back to the full strike upload.
+			}
+		}
+		cached.textureWidth = srcWidth;
+		cached.textureHeight = srcHeight;
+
 		std::vector<uint8_t> rgba;
 		if (hasGray) {
 			// White RGB + coverage alpha (straight). DrawGlyph multiplies by fore.
-			rgba.resize(static_cast<size_t>(image.width) * static_cast<size_t>(image.height) * 4u);
-			for (size_t i = 0; i < image.gray.size(); i++) {
+			const size_t pixelCount =
+				static_cast<size_t>(srcWidth) * static_cast<size_t>(srcHeight);
+			rgba.resize(pixelCount * 4u);
+			for (size_t i = 0; i < pixelCount; i++) {
 				rgba[i * 4u + 0u] = 255;
 				rgba[i * 4u + 1u] = 255;
 				rgba[i * 4u + 2u] = 255;
-				rgba[i * 4u + 3u] = image.gray[i];
+				rgba[i * 4u + 3u] = graySrc[i];
 			}
 		} else {
-			// Already premultiplied RGBA from FreeType BGRA conversion.
-			rgba = image.rgba;
+			// Already premultiplied RGBA from FreeType BGRA conversion (or reduce).
+			const size_t byteCount =
+				static_cast<size_t>(srcWidth) * static_cast<size_t>(srcHeight) * 4u;
+			rgba.assign(rgbaSrc, rgbaSrc + byteCount);
 		}
 		GLuint tex = 0;
 		glGenTextures(1, &tex);
 		glBindTexture(GL_TEXTURE_2D, tex);
-		// Colour bitmap strikes are often downscaled; linear filter reduces blockiness.
-		// Ordinary gray glyphs keep nearest so buffer placement is a 1:1 copy.
-		const GLint filter = hasColour ? GL_LINEAR : GL_NEAREST;
+		// Fixed bitmaps use linear for residual subpixel sizing after CPU reduce.
+		// Outline coverage is device-sized and copied 1:1 with nearest.
+		const GLint filter = fixedBitmap ? GL_LINEAR : GL_NEAREST;
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, image.width, image.height, 0,
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, srcWidth, srcHeight, 0,
 			GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
 		glBindTexture(GL_TEXTURE_2D, 0);
 		cached.texture = tex;
@@ -1174,14 +1275,33 @@ void Renderer::DrawGlyph(XYPOSITION penX, XYPOSITION penY,
 		return;
 	}
 
-	// Fixed bitmap / colour strikes keep the logical strike path: no outline
-	// phase, linear filtering when downscaled, cache identity without phase.
+	// Fixed bitmap / colour strikes: logical placement, optional CPU area
+	// reduction to near-physical size, linear residual filter, no outline phase.
 	if (face->UsesBitmapStrike()) {
-		const GlyphRasterRequest request = GlyphRasterRequest::Identity(glyphId);
-		const CachedGlyph &glyph = GetOrCreateGlyph(face, request);
+		const double metricsScale = face->MetricsScale();
+		const double raster =
+			static_cast<double>(targetRasterScale.Numerator()) /
+			static_cast<double>(targetRasterScale.Denominator());
+		const double reductionFactor = metricsScale * raster;
+		const bool shrink = reductionFactor > 0.0 && reductionFactor < 1.0;
+
+		GlyphRasterRequest request;
+		request.glyphId = glyphId;
+		request.phase = {};
+		bool fullStrike = false;
+		if (shrink) {
+			request.scale = targetRasterScale;
+			TouchFixedBitmapScaleGeneration(targetRasterScale);
+		} else {
+			// One shared source-size texture for all non-shrinking scales.
+			request.scale = RasterScale{};
+			fullStrike = true;
+		}
+		const CachedGlyph &glyph = GetOrCreateGlyph(face, request, fullStrike);
 		if (glyph.texture == 0 || glyph.width <= 0 || glyph.height <= 0) {
 			return;
 		}
+		// Destination stays at the original logical ink rectangle.
 		const float scale = static_cast<float>(glyph.scale > 0.0 ? glyph.scale : 1.0);
 		const float x0 = static_cast<float>(penX) + static_cast<float>(glyph.left);
 		const float y0 = static_cast<float>(penY) - static_cast<float>(glyph.top);
@@ -1212,7 +1332,7 @@ void Renderer::DrawGlyph(XYPOSITION penX, XYPOSITION penY,
 	request.glyphId = glyphId;
 	request.scale = targetRasterScale;
 	request.phase = GlyphRasterPhase::Normalize(phaseX, phaseY);
-	const CachedGlyph &glyph = GetOrCreateGlyph(face, request);
+	const CachedGlyph &glyph = GetOrCreateGlyph(face, request, false);
 	if (glyph.texture == 0 || glyph.width <= 0 || glyph.height <= 0) {
 		return;
 	}

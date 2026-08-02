@@ -131,8 +131,10 @@ public:
 	/**
 	 * Set the stable nominal output scale used for glyph rasterization and
 	 * cache identity (Wayland preferred scale as an exact rational). Changing
-	 * it retires scale-dependent outline glyph textures. Pixmap and other temporary target
-	 * binds must not call this — only the frame/window surface path does.
+	 * it retires scale-dependent outline glyph textures immediately. Fixed
+	 * bitmap shrinking variants are kept under a three-generation LRU bound
+	 * instead of being wiped on every scale change. Pixmap and other temporary
+	 * target binds must not call this — only the frame/window surface path does.
 	 */
 	void SetOutputRasterScale(RasterScale rasterScale);
 
@@ -207,16 +209,28 @@ public:
 	 * penX/penY is the baseline origin in logical surface coordinates (y down).
 	 * Outline glyphs are rasterized at TargetRasterScale with the destination's
 	 * normalized 26.6 device phase, then copied 1:1 onto integer buffer pixels
-	 * (GL_NEAREST). Fixed bitmap / colour strikes keep logical placement with
-	 * their strike scale and linear filtering. fore modulates gray coverage as
-	 * straight alpha. Cache identity for outlines includes face, glyph id,
-	 * raster scale, and phase.
+	 * (GL_NEAREST). Fixed bitmap / colour strikes keep logical placement and
+	 * bearings; when metricsScale * RasterScale is below one the strike is
+	 * area-reduced on the CPU to near the physical destination size before
+	 * upload, with GL_LINEAR only for the residual subpixel adjustment. fore
+	 * modulates gray coverage as straight alpha. Cache identity for outlines
+	 * includes face, glyph id, raster scale, and phase. Fixed bitmaps key by
+	 * face, glyph id, and either the shrinking RasterScale or one shared
+	 * full-strike generation when no reduction is needed.
 	 */
 	void DrawGlyph(XYPOSITION penX, XYPOSITION penY, const std::shared_ptr<FontFace> &face,
 		uint32_t glyphId, ColourRGBA fore);
 
 	/** Number of entries in the glyph texture cache. */
 	[[nodiscard]] size_t GlyphCacheSize() const noexcept { return glyphCache.size(); }
+
+	/**
+	 * Uploaded texture width and height for a cache entry, or {0, 0} if absent.
+	 * fixedBitmapFullStrike selects the shared non-shrinking fixed-bitmap key.
+	 */
+	[[nodiscard]] std::pair<int, int> GlyphCacheTextureSize(
+		const std::shared_ptr<FontFace> &face, uint32_t glyphId, RasterScale scale = {},
+		GlyphRasterPhase phase = {}, bool fixedBitmapFullStrike = false) const noexcept;
 
 	/**
 	 * Copy a rectangle from a colour buffer texture into the current target.
@@ -247,14 +261,24 @@ private:
 	struct GlyphKey {
 		std::shared_ptr<const FontFace> face;
 		uint32_t glyphId = 0;
-		/** Nominal output scale; identity for fixed-bitmap colour strikes. */
+		/**
+		 * Outline: exact TargetRasterScale. Fixed bitmap shrink variants: the
+		 * active RasterScale while metricsScale * scale < 1. Ignored for key
+		 * equality when fixedBitmapFullStrike is true (use identity).
+		 */
 		RasterScale scale{};
-		/** Y-down device 26.6 phase in [0, 63]; zero for colour/bitmap strikes. */
+		/** Y-down device 26.6 phase in [0, 63]; zero for fixed bitmap strikes. */
 		GlyphRasterPhase phase{};
+		/**
+		 * Shared non-shrinking fixed-bitmap generation (full strike upload).
+		 * Distinguishes full-strike identity from a shrink variant at scale 1/1.
+		 */
+		bool fixedBitmapFullStrike = false;
 
 		bool operator==(const GlyphKey &other) const noexcept {
 			return face == other.face && glyphId == other.glyphId &&
-				scale == other.scale && phase == other.phase;
+				scale == other.scale && phase == other.phase &&
+				fixedBitmapFullStrike == other.fixedBitmapFullStrike;
 		}
 	};
 
@@ -266,15 +290,22 @@ private:
 			h ^= std::hash<uint32_t>{}(key.scale.Denominator()) + 0x9e3779b9u + (h << 6) + (h >> 2);
 			h ^= std::hash<int32_t>{}(key.phase.x) + 0x9e3779b9u + (h << 6) + (h >> 2);
 			h ^= std::hash<int32_t>{}(key.phase.y) + 0x9e3779b9u + (h << 6) + (h >> 2);
+			h ^= std::hash<bool>{}(key.fixedBitmapFullStrike) + 0x9e3779b9u + (h << 6) + (h >> 2);
 			return h;
 		}
 	};
 
 	struct CachedGlyph {
 		unsigned texture = 0;
-		/** Bitmap size in raster units (device pixels for outlines). */
+		/**
+		 * Logical/layout bitmap size in strike or device units (destination
+		 * extent for fixed bitmaps before metricsScale; device size for outlines).
+		 */
 		int width = 0;
 		int height = 0;
+		/** Uploaded GL texture size (may be area-reduced for fixed bitmaps). */
+		int textureWidth = 0;
+		int textureHeight = 0;
 		/** Integer bearings in the same units as width/height. */
 		int left = 0;
 		int top = 0;
@@ -286,10 +317,17 @@ private:
 
 	void DestroyGl() noexcept;
 	void ClearGlyphCache() noexcept;
-	/** Delete entries rasterized for the previous output scale. */
+	/** Delete outline entries rasterized for a previous output scale. */
 	void RetireScaleDependentGlyphCache() noexcept;
+	/**
+	 * Record use of a shrinking fixed-bitmap RasterScale generation and evict
+	 * the least-recently-used generation when more than three are retained.
+	 */
+	void TouchFixedBitmapScaleGeneration(RasterScale scale);
+	/** Delete fixed-bitmap cache entries keyed by the given shrinking scale. */
+	void EvictFixedBitmapScaleGeneration(RasterScale scale) noexcept;
 	const CachedGlyph &GetOrCreateGlyph(const std::shared_ptr<FontFace> &face,
-		const GlyphRasterRequest &request);
+		const GlyphRasterRequest &request, bool fixedBitmapFullStrike = false);
 	void EnsureSolidProgram();
 	void EnsureTextureProgram();
 	void EnsureGradientProgram();
@@ -322,6 +360,11 @@ private:
 	int targetLogicalWidth = 0;
 	int targetLogicalHeight = 0;
 	RasterScale targetRasterScale{};
+	/**
+	 * Recently used shrinking fixed-bitmap RasterScale values, oldest first.
+	 * At most three generations; a fourth distinct scale drops the oldest.
+	 */
+	std::vector<RasterScale> fixedBitmapScaleGenerations;
 
 	std::vector<PixelRect> clipStack;
 	std::unordered_map<GlyphKey, CachedGlyph, GlyphKeyHash> glyphCache;

@@ -1,5 +1,7 @@
 #include "RendererTest.h"
 
+#include "FixedGlyphBitmapReduce.h"
+
 TEST_CASE("DrawGlyph places ink in logical space when buffer is scaled") {
 	// HiDPI path: buffer pixels are 2x logical. Solid fills use logical
 	// coordinates; outline glyphs rasterize at the nominal scale 2 and land
@@ -675,28 +677,161 @@ TEST_CASE("glyph cache phase distinguishes scale and phase identity") {
 	CHECK(renderer.GlyphCacheSize() < 8);
 }
 
-TEST_CASE("glyph cache keeps fixed bitmap entries across output scale changes") {
+TEST_CASE("fixed bitmap glyph cache uses physical-size variants and three-generation LRU") {
 	FontCache fonts;
 	const std::filesystem::path emojiPath =
 		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "EmojiFixture.ttf";
 	std::shared_ptr<FontFace> face =
 		fonts.LoadPath(emojiPath, FontParameters("fixture-emoji", 16.0));
 	REQUIRE(face->UsesBitmapStrike());
+	REQUIRE(face->MetricsScale() > 0.0);
+	REQUIRE(face->MetricsScale() < 1.0);
 	const ShapedRun run = ShapeText("\xF0\x9F\x98\x80", face);
 	REQUIRE_FALSE(run.glyphs.empty());
+	const uint32_t glyphId = run.glyphs[0].glyphId;
+	const GlyphImage source = face->RasterizeGlyph(glyphId);
+	REQUIRE(source.width > 0);
+	REQUIRE(source.height > 0);
 
 	GlContext context;
 	Renderer renderer(context);
 	ColourBuffer buffer;
-	buffer.Resize(48, 48);
-	renderer.SetDrawTarget(buffer.FramebufferName(), 48, 48, 48, 48);
+	buffer.Resize(64, 64);
+	renderer.SetDrawTarget(buffer.FramebufferName(), 64, 64, 64, 64);
 	const ColourRGBA fg(255, 255, 255, 255);
-	const XYPOSITION baseline = face->Metrics().ascent;
-	renderer.DrawGlyph(4.0, baseline, face, run.glyphs[0].glyphId, fg);
-	REQUIRE(renderer.GlyphCacheSize() == 1);
+	const ColourRGBA bg(0, 0, 0, 255);
+	const XYPOSITION baseline = face->Metrics().ascent + 8.0;
+	const XYPOSITION penX = 4.0;
 
-	renderer.SetOutputRasterScale(RasterScale::FromParts(2, 1));
+	const auto drawAt = [&](RasterScale scale) {
+		renderer.SetOutputRasterScale(scale);
+		renderer.Clear(bg);
+		renderer.DrawGlyph(penX, baseline, face, glyphId, fg);
+	};
+
+	const auto expectedTex = [&](RasterScale scale) {
+		const double reduction = face->MetricsScale() *
+			static_cast<double>(scale.Numerator()) /
+			static_cast<double>(scale.Denominator());
+		return std::make_pair(
+			FixedGlyphReducedExtent(source.width, reduction),
+			FixedGlyphReducedExtent(source.height, reduction));
+	};
+
+	// Scale 1: reduce toward physical size; reuse without a second entry.
+	drawAt(RasterScale{});
+	REQUIRE(renderer.GlyphCacheSize() == 1);
+	const auto tex1 = renderer.GlyphCacheTextureSize(face, glyphId, RasterScale{});
+	const auto expect1 = expectedTex(RasterScale{});
+	CHECK(tex1.first == expect1.first);
+	CHECK(tex1.second == expect1.second);
+	CHECK(tex1.first < source.width);
+	CHECK(tex1.second < source.height);
+	CHECK(tex1.first >= 1);
+	const InkBounds ink1 = FindInkBounds(buffer, bg);
+	REQUIRE_FALSE(ink1.Empty());
+	drawAt(RasterScale{});
 	CHECK(renderer.GlyphCacheSize() == 1);
-	renderer.DrawGlyph(4.0, baseline, face, run.glyphs[0].glyphId, fg);
+
+	// Distinct shrinking variants at 5/4, 3/2, and 2.
+	const RasterScale scale5_4 = RasterScale::FromParts(5, 4);
+	const RasterScale scale3_2 = RasterScale::FromParts(3, 2);
+	const RasterScale scale2 = RasterScale::FromParts(2, 1);
+	drawAt(scale5_4);
+	CHECK(renderer.GlyphCacheSize() == 2);
+	const auto tex5_4 = renderer.GlyphCacheTextureSize(face, glyphId, scale5_4);
+	CHECK(tex5_4 == expectedTex(scale5_4));
+	CHECK(tex5_4.first >= tex1.first);
+	const InkBounds ink5_4 = FindInkBounds(buffer, bg);
+	REQUIRE_FALSE(ink5_4.Empty());
+	// Logical placement is unchanged: ink stays near the same layout band.
+	CHECK(std::abs(ink5_4.left - ink1.left) <= 2);
+	CHECK(std::abs(ink5_4.top - ink1.top) <= 2);
+	CHECK(std::abs((ink5_4.right - ink5_4.left) - (ink1.right - ink1.left)) <= 3);
+
+	drawAt(scale3_2);
+	CHECK(renderer.GlyphCacheSize() == 3);
+	CHECK(renderer.GlyphCacheTextureSize(face, glyphId, scale3_2) == expectedTex(scale3_2));
+
+	// Return to scale 1 reuses the resident generation (still three entries).
+	drawAt(RasterScale{});
+	CHECK(renderer.GlyphCacheSize() == 3);
+	CHECK(renderer.GlyphCacheTextureSize(face, glyphId, RasterScale{}) == tex1);
+
+	// Fourth shrinking scale evicts the least-recently-used generation (5/4).
+	// Recency after the steps above: 3/2 (older), 1, then 2 is newest after draw.
+	// LRU among {1, 5/4, 3/2} after return-to-1: 5/4 is oldest.
+	drawAt(scale2);
+	CHECK(renderer.GlyphCacheSize() == 3);
+	CHECK(renderer.GlyphCacheTextureSize(face, glyphId, scale2) == expectedTex(scale2));
+	CHECK(renderer.GlyphCacheTextureSize(face, glyphId, scale5_4) == std::make_pair(0, 0));
+	CHECK(renderer.GlyphCacheTextureSize(face, glyphId, RasterScale{}) == tex1);
+	CHECK(renderer.GlyphCacheTextureSize(face, glyphId, scale3_2).first > 0);
+
+	// Outline entries still retire immediately on scale change.
+	const std::filesystem::path primary =
+		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "FallbackPrimary.ttf";
+	std::shared_ptr<FontFace> outline =
+		fonts.LoadPath(primary, FontParameters("fixture", 16.0));
+	const ShapedRun outlineRun = ShapeText("A", outline);
+	REQUIRE_FALSE(outlineRun.glyphs.empty());
+	renderer.SetOutputRasterScale(RasterScale{});
+	const size_t beforeOutline = renderer.GlyphCacheSize();
+	renderer.DrawGlyph(4.0, outline->Metrics().ascent, outline,
+		outlineRun.glyphs[0].glyphId, ColourRGBA(0, 0, 0, 255));
+	CHECK(renderer.GlyphCacheSize() == beforeOutline + 1);
+	renderer.SetOutputRasterScale(scale2);
+	// Fixed bitmap shrink entries remain; the outline mask is gone.
+	CHECK(renderer.GlyphCacheSize() == beforeOutline);
+	CHECK(renderer.GlyphCacheTextureSize(outline, outlineRun.glyphs[0].glyphId,
+		RasterScale{}, GlyphRasterPhase{}, false) == std::make_pair(0, 0));
+}
+
+TEST_CASE("fixed bitmap glyph cache shares one full-strike entry when not shrinking") {
+	FontCache fonts;
+	const std::filesystem::path emojiPath =
+		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "EmojiFixture.ttf";
+	std::shared_ptr<FontFace> face =
+		fonts.LoadPath(emojiPath, FontParameters("fixture-emoji", 16.0));
+	REQUIRE(face->UsesBitmapStrike());
+	REQUIRE(face->MetricsScale() > 0.0);
+	// Output scale large enough that metricsScale * scale >= 1 → no CPU reduce.
+	const uint32_t minNumerator = static_cast<uint32_t>(
+		std::ceil(1.0 / face->MetricsScale() - 1e-12));
+	REQUIRE(minNumerator >= 1);
+	const RasterScale noShrink = RasterScale::FromParts(minNumerator, 1);
+	const RasterScale larger = RasterScale::FromParts(minNumerator + 1, 1);
+	REQUIRE(face->MetricsScale() *
+			static_cast<double>(noShrink.Numerator()) /
+			static_cast<double>(noShrink.Denominator()) >=
+		1.0 - 1e-12);
+
+	const ShapedRun run = ShapeText("\xF0\x9F\x98\x80", face);
+	REQUIRE_FALSE(run.glyphs.empty());
+	const uint32_t glyphId = run.glyphs[0].glyphId;
+	const GlyphImage source = face->RasterizeGlyph(glyphId);
+	REQUIRE(source.width > 0);
+
+	GlContext context;
+	Renderer renderer(context);
+	ColourBuffer buffer;
+	buffer.Resize(64, 64);
+	renderer.SetDrawTarget(buffer.FramebufferName(), 64, 64, 64, 64);
+	const ColourRGBA fg(255, 255, 255, 255);
+	const XYPOSITION baseline = face->Metrics().ascent + 8.0;
+
+	renderer.SetOutputRasterScale(noShrink);
+	renderer.DrawGlyph(4.0, baseline, face, glyphId, fg);
+	REQUIRE(renderer.GlyphCacheSize() == 1);
+	const auto full = renderer.GlyphCacheTextureSize(face, glyphId, RasterScale{},
+		GlyphRasterPhase{}, true);
+	CHECK(full.first == source.width);
+	CHECK(full.second == source.height);
+
+	// Another non-shrinking scale reuses the same full-strike generation.
+	renderer.SetOutputRasterScale(larger);
+	renderer.DrawGlyph(4.0, baseline, face, glyphId, fg);
 	CHECK(renderer.GlyphCacheSize() == 1);
+	CHECK(renderer.GlyphCacheTextureSize(face, glyphId, RasterScale{},
+		GlyphRasterPhase{}, true) == full);
 }

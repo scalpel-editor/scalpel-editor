@@ -268,7 +268,6 @@ TEST_CASE("color emoji DrawText paints non-monochrome pixels without RGB tint") 
 	REQUIRE(HasNonBackgroundInk(surface->Buffer(), bg));
 
 	bool sawNonMagenta = false;
-	bool sawTransparency = false;
 	for (int y = 0; y < surface->Buffer().Height(); y++) {
 		for (int x = 0; x < surface->Buffer().Width(); x++) {
 			const ColourRGBA px = surface->Buffer().ReadPixel(x, y);
@@ -279,9 +278,6 @@ TEST_CASE("color emoji DrawText paints non-monochrome pixels without RGB tint") 
 			if (px.GetGreen() > 8 || std::abs(static_cast<int>(px.GetRed()) -
 					static_cast<int>(px.GetBlue())) > 8) {
 				sawNonMagenta = true;
-			}
-			if (px.GetAlpha() > 0 && px.GetAlpha() < 255) {
-				sawTransparency = true;
 			}
 		}
 	}
@@ -295,13 +291,145 @@ TEST_CASE("color emoji DrawText paints non-monochrome pixels without RGB tint") 
 	REQUIRE_FALSE(ink.Empty());
 	CHECK(ink.right - ink.left < 40);
 	CHECK(ink.bottom - ink.top < 40);
-	(void)sawTransparency;
 
 	// Cache reuses the same face+glyph entry.
 	const size_t cacheBefore = renderer.GlyphCacheSize();
 	surface->DrawTextTransparent(PRectangle::FromInts(2, 0, 64, 48), font.get(), ybase,
 		grinning, fg);
 	CHECK(renderer.GlyphCacheSize() == cacheBefore);
+}
+
+TEST_CASE("color emoji DrawText edge coverage stays soft without dark fringes") {
+	FontCache fonts;
+	const std::filesystem::path emojiPath =
+		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "EmojiFixture.ttf";
+	std::shared_ptr<FontFace> emoji = fonts.LoadPath(emojiPath, FontParameters("fixture-emoji", 16.0));
+	std::shared_ptr<Font> font = FontFromFace(emoji);
+	const std::string grinning = "\xF0\x9F\x98\x80";
+	const ColourRGBA fg(255, 255, 255, 255);
+	const ColourRGBA black(0, 0, 0, 255);
+	const ColourRGBA white(255, 255, 255, 255);
+
+	GlContext context;
+	Renderer renderer(context);
+	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(renderer, 64, 48);
+	surface->BindDrawTarget();
+	const XYPOSITION ybase = surface->Ascent(font.get());
+	const auto paint = [&](ColourRGBA bg) {
+		renderer.Clear(bg);
+		surface->DrawTextTransparent(PRectangle::FromInts(2, 0, 64, 48), font.get(), ybase,
+			grinning, fg);
+	};
+
+	// Capture black-background samples first (partial coverage is visible as dim RGB).
+	paint(black);
+	REQUIRE(HasNonBackgroundInk(surface->Buffer(), black));
+	const InkBounds ink = FindInkBounds(surface->Buffer(), black);
+	REQUIRE_FALSE(ink.Empty());
+
+	struct Sample {
+		int x = 0;
+		int y = 0;
+		ColourRGBA blackPx{};
+	};
+	std::vector<Sample> partial;
+	std::vector<Sample> solid;
+	int softAngleHits = 0;
+	const double cx = 0.5 * (ink.left + ink.right);
+	const double cy = 0.5 * (ink.top + ink.bottom);
+	const int maxRadius =
+		std::max(ink.right - ink.left, ink.bottom - ink.top) + 2;
+	constexpr double kPi = 3.14159265358979323846;
+
+	for (int y = ink.top; y < ink.bottom; y++) {
+		for (int x = ink.left; x < ink.right; x++) {
+			const ColourRGBA px = surface->Buffer().ReadPixel(x, y);
+			if (ExactColour(px, black)) {
+				continue;
+			}
+			const int maxCh = std::max({static_cast<int>(px.GetRed()),
+				static_cast<int>(px.GetGreen()), static_cast<int>(px.GetBlue())});
+			if (maxCh >= 200) {
+				solid.push_back(Sample{x, y, px});
+			} else if (maxCh >= 16) {
+				// Intermediate coverage after area reduction + residual linear filter.
+				partial.push_back(Sample{x, y, px});
+			}
+		}
+	}
+	CHECK(solid.size() >= 4);
+	CHECK(partial.size() >= 4);
+
+	// Several angular sectors around the ink centre contain partial edge samples.
+	for (int i = 0; i < 8; i++) {
+		const double angle0 = kPi * 0.25 * static_cast<double>(i);
+		const double angle1 = angle0 + kPi * 0.25;
+		bool hit = false;
+		for (const Sample &s : partial) {
+			const double dx = static_cast<double>(s.x) + 0.5 - cx;
+			const double dy = static_cast<double>(s.y) + 0.5 - cy;
+			double ang = std::atan2(dy, dx);
+			if (ang < 0.0) {
+				ang += 2.0 * kPi;
+			}
+			double a0 = angle0;
+			double a1 = angle1;
+			if (a0 < 0.0) {
+				a0 += 2.0 * kPi;
+				a1 += 2.0 * kPi;
+			}
+			// Normalize sample into [0, 2pi) already; sector is contiguous in that range.
+			const bool inSector = (ang >= a0 && ang < a1) ||
+				(a1 > 2.0 * kPi && (ang >= a0 || ang < a1 - 2.0 * kPi));
+			if (inSector) {
+				const double r = std::hypot(dx, dy);
+				// Prefer the outer half of the ink so we score rim coverage.
+				if (r >= 0.25 * maxRadius) {
+					hit = true;
+					break;
+				}
+			}
+		}
+		if (hit) {
+			++softAngleHits;
+		}
+	}
+	CHECK(softAngleHits >= 4);
+
+	// Re-paint on white and compare partial samples: dark fringes from filtering
+	// straight alpha would make the white-bg edge darker than the black-bg sample.
+	paint(white);
+	int fringeViolations = 0;
+	int channelSpreadViolations = 0;
+	for (const Sample &s : partial) {
+		const ColourRGBA w = surface->Buffer().ReadPixel(s.x, s.y);
+		const int bLuma = static_cast<int>(s.blackPx.GetRed()) +
+			static_cast<int>(s.blackPx.GetGreen()) + static_cast<int>(s.blackPx.GetBlue());
+		const int wLuma =
+			static_cast<int>(w.GetRed()) + static_cast<int>(w.GetGreen()) +
+			static_cast<int>(w.GetBlue());
+		// White destination should not produce a darker composite on partial edges.
+		if (wLuma + 48 < bLuma) {
+			++fringeViolations;
+		}
+		// Premultiplied-friendly colour: no single channel on black-bg partial
+		// samples runs far ahead of the others (straight-alpha fringe symptom).
+		const int maxCh = std::max({static_cast<int>(s.blackPx.GetRed()),
+			static_cast<int>(s.blackPx.GetGreen()), static_cast<int>(s.blackPx.GetBlue())});
+		const int minCh = std::min({static_cast<int>(s.blackPx.GetRed()),
+			static_cast<int>(s.blackPx.GetGreen()), static_cast<int>(s.blackPx.GetBlue())});
+		if (maxCh >= 24 && maxCh - minCh > maxCh * 9 / 10 + 12) {
+			// Allow strong yellow (R/G >> B) but reject near-single-channel spikes.
+			const int midCh = static_cast<int>(s.blackPx.GetRed()) +
+				static_cast<int>(s.blackPx.GetGreen()) + static_cast<int>(s.blackPx.GetBlue()) -
+				maxCh - minCh;
+			if (midCh < maxCh / 5) {
+				++channelSpreadViolations;
+			}
+		}
+	}
+	CHECK(fringeViolations == 0);
+	CHECK(channelSpreadViolations == 0);
 }
 
 TEST_CASE("color emoji DrawText respects clip and overall text alpha") {
