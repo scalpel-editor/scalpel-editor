@@ -47,7 +47,7 @@ struct WaylandPopupConfigure {
  * Rejects paint until a configure pair is acknowledged. Teardown is
  * idempotent and reports the reverse ownership order the shell must follow
  * when live objects exist: frame callbacks and EGL objects first, then popup
- * role, xdg surface, and wl surface.
+ * role, xdg surface, viewport, and wl surface.
  */
 class WaylandPopupLifecycle final {
 public:
@@ -94,6 +94,7 @@ public:
 		EglWindow,
 		PopupRole,
 		XdgSurface,
+		Viewport,
 		WlSurface,
 	};
 	static constexpr TeardownStep kTeardownOrder[] = {
@@ -102,6 +103,7 @@ public:
 		TeardownStep::EglWindow,
 		TeardownStep::PopupRole,
 		TeardownStep::XdgSurface,
+		TeardownStep::Viewport,
 		TeardownStep::WlSurface,
 	};
 	static constexpr std::size_t kTeardownStepCount =

@@ -380,6 +380,7 @@ private:
 	// Context-menu popup (at most one). Created after the toplevel is mapped.
 	wl_surface *popupSurface = nullptr;
 	wl_egl_window *popupEglWindow = nullptr;
+	wp_viewport *popupViewport = nullptr;
 	xdg_surface *popupShellSurface = nullptr;
 	xdg_popup *popup = nullptr;
 	WaylandPopupLifecycle popupLifecycle;

@@ -690,6 +690,11 @@ ApplicationPointerResult ApplicationUi::HandlePointer(
 				ApplicationShellEffectKind::CloseContextMenu, {}, {},
 				0, 0, 0});
 		}
+		if (menuResult.dirty && contextMenuModel.open && contextMenuShellOpen) {
+			QueueShellEffect({
+				ApplicationShellEffectKind::InvalidateContextMenu, {}, {},
+				0, 0, 0});
+		}
 		result.owner = ApplicationPointerOwner::ContextMenu;
 		result.consumed = menuResult.consumed;
 		// Leave on the popup surface still clears press origin inside the
@@ -969,6 +974,11 @@ ApplicationKeyboardResult ApplicationUi::HandleKeyboard(
 			contextMenuShellOpen = false;
 			QueueShellEffect({
 				ApplicationShellEffectKind::CloseContextMenu, {}, {},
+				0, 0, 0});
+		}
+		if (menuResult.dirty && contextMenuModel.open && contextMenuShellOpen) {
+			QueueShellEffect({
+				ApplicationShellEffectKind::InvalidateContextMenu, {}, {},
 				0, 0, 0});
 		}
 		result.owner = ApplicationKeyboardOwner::ContextMenu;

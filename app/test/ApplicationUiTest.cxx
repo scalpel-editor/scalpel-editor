@@ -2230,6 +2230,32 @@ TEST_CASE("Application context menu pointer activation and Escape") {
 		CHECK(ui.ContextMenuOpen());
 		CHECK_FALSE(editor.Text().empty());
 	}
+
+	SECTION("popup hover queues a repaint") {
+		const Scalpel::ContextMenuLayout menuLayout =
+			Scalpel::LayoutContextMenu(ui.ContextModel());
+		REQUIRE_FALSE(menuLayout.items.empty());
+		const Point row = Center(menuLayout.items.back().row);
+		const ApplicationPointerResult move = ui.HandlePointer(
+			MakePopupPointer(PointerAction::Move, row.x, row.y));
+		CHECK(move.owner == ApplicationPointerOwner::ContextMenu);
+		CHECK(move.consumed);
+		CHECK(FindShellEffect(ui.TakeShellEffects(),
+			ApplicationShellEffectKind::InvalidateContextMenu));
+	}
+
+	SECTION("popup keyboard navigation queues a repaint") {
+		editor.SetClipboardPasteAvailable(true);
+		(void)Scalpel::UpdateContextMenuActionState(ui.ContextModel(), editor);
+		const auto focusedBefore = ui.ContextModel().focusedItem;
+		REQUIRE(focusedBefore.has_value());
+		const ApplicationKeyboardResult up = ui.HandleKeyboard(
+			MakeKey(Keys::Up));
+		CHECK(up.owner == ApplicationKeyboardOwner::ContextMenu);
+		CHECK(ui.ContextModel().focusedItem != focusedBefore);
+		CHECK(FindShellEffect(ui.TakeShellEffects(),
+			ApplicationShellEffectKind::InvalidateContextMenu));
+	}
 }
 
 TEST_CASE("Application context menu ownership priority and dismissals") {

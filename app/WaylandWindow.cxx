@@ -1064,6 +1064,13 @@ void WaylandWindow::ApplyScaleConfiguration(
 			wp_viewport_set_destination(viewport, -1, -1);
 		}
 	}
+	if (shellSurface) {
+		// Popup anchors are relative to the parent's window geometry. Keep it
+		// explicit because the buffer bounds differ from logical coordinates
+		// when a viewport or buffer scale is active.
+		xdg_surface_set_window_geometry(shellSurface, 0, 0,
+			configuration.logicalWidth, configuration.logicalHeight);
+	}
 	if (eglWindow) {
 		wl_egl_window_resize(eglWindow,
 			configuration.bufferWidth, configuration.bufferHeight, 0, 0);
@@ -1365,11 +1372,15 @@ void WaylandWindow::KeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surfac
 	auto &window = *static_cast<WaylandWindow *>(data);
 	if (surface_ == window.surface) {
 		window.textInput.SetKeyboardFocus(false);
+		// A grabbed popup takes keyboard focus from its parent. Keep the
+		// application focused across that owned-surface transfer.
+		if (!window.popupSurface) {
+			window.input.RecordKeyboardFocus(false);
+			window.input.ResetKeyboardState();
+		}
+	} else if (surface_ == window.popupSurface) {
 		window.input.RecordKeyboardFocus(false);
 		window.input.ResetKeyboardState();
-	} else if (surface_ == window.popupSurface) {
-		// Leaving the popup for the toplevel restores focus below; do not
-		// clear keyboard state until the toplevel also leaves.
 	}
 }
 
@@ -1626,8 +1637,15 @@ bool WaylandWindow::CreateContextMenuPopup(int logicalWidth, int logicalHeight,
 		return false;
 	}
 	xdg_positioner_set_size(positioner, logicalWidth, logicalHeight);
+	if (xdg_positioner_get_version(positioner) >=
+		XDG_POSITIONER_SET_PARENT_SIZE_SINCE_VERSION) {
+		xdg_positioner_set_parent_size(positioner, Width(), Height());
+	}
 	// One-pixel parent anchor at the requested point.
-	xdg_positioner_set_anchor_rect(positioner, anchorX, anchorY, 1, 1);
+	const int boundedAnchorX = std::clamp(anchorX, 0, Width() - 1);
+	const int boundedAnchorY = std::clamp(anchorY, 0, Height() - 1);
+	xdg_positioner_set_anchor_rect(positioner,
+		boundedAnchorX, boundedAnchorY, 1, 1);
 	xdg_positioner_set_anchor(positioner, XDG_POSITIONER_ANCHOR_TOP_LEFT);
 	// Grow down-right from the anchor; compositor may flip/slide.
 	xdg_positioner_set_gravity(positioner, XDG_POSITIONER_GRAVITY_BOTTOM_RIGHT);
@@ -1660,6 +1678,22 @@ bool WaylandWindow::CreateContextMenuPopup(int logicalWidth, int logicalHeight,
 	popupSurface = child;
 	popupShellSurface = childShell;
 	popup = childPopup;
+	const WaylandScaleConfiguration &scale = ScaleConfiguration();
+	if (wl_surface_get_version(popupSurface) >=
+		WL_SURFACE_SET_BUFFER_SCALE_SINCE_VERSION) {
+		wl_surface_set_buffer_scale(popupSurface, scale.surfaceBufferScale);
+	}
+	if (viewporter) {
+		popupViewport = wp_viewporter_get_viewport(viewporter, popupSurface);
+		if (!popupViewport) {
+			DestroyContextMenuPopup();
+			return false;
+		}
+		if (scale.viewportDestination) {
+			wp_viewport_set_destination(popupViewport,
+				logicalWidth, logicalHeight);
+		}
+	}
 	popupLifecycle.Begin();
 	// Initial bufferless commit; wait for configure before attaching.
 	wl_surface_commit(popupSurface);
@@ -1709,6 +1743,10 @@ void WaylandWindow::DestroyContextMenuPopup() noexcept {
 	if (popupShellSurface) {
 		xdg_surface_destroy(popupShellSurface);
 		popupShellSurface = nullptr;
+	}
+	if (popupViewport) {
+		wp_viewport_destroy(popupViewport);
+		popupViewport = nullptr;
 	}
 	if (popupSurface) {
 		wl_surface_destroy(popupSurface);

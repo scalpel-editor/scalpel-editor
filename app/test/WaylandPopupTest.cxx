@@ -80,14 +80,15 @@ TEST_CASE("Wayland popup done and idempotent destroy") {
 
 TEST_CASE("Wayland popup teardown order is reverse ownership") {
 	// Frame/EGL before role before surfaces — matches Create reverse.
-	REQUIRE(WaylandPopupLifecycle::kTeardownStepCount == 6);
+	REQUIRE(WaylandPopupLifecycle::kTeardownStepCount == 7);
 	const auto *order = WaylandPopupLifecycle::kTeardownOrder;
 	CHECK(static_cast<int>(order[0]) == 0); // FrameCallback
 	CHECK(static_cast<int>(order[1]) == 1); // EglSurface
 	CHECK(static_cast<int>(order[2]) == 2); // EglWindow
 	CHECK(static_cast<int>(order[3]) == 3); // PopupRole
 	CHECK(static_cast<int>(order[4]) == 4); // XdgSurface
-	CHECK(static_cast<int>(order[5]) == 5); // WlSurface
+	CHECK(static_cast<int>(order[5]) == 5); // Viewport
+	CHECK(static_cast<int>(order[6]) == 6); // WlSurface
 	// Strictly increasing so reverse ownership stays ordered.
 	for (std::size_t i = 1; i < WaylandPopupLifecycle::kTeardownStepCount; ++i) {
 		CHECK(static_cast<int>(order[i]) > static_cast<int>(order[i - 1]));

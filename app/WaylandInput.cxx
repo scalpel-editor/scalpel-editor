@@ -255,8 +255,10 @@ void WaylandInput::ResetPointerDevice() {
 	}), inputs.end());
 	for (size_t button = 0; button < pointerButtons.size(); button++) {
 		if (pointerButtons[button]) {
-			inputs.emplace_back(PointerInput{PointerAction::Release, CurrentModifiers(),
-				pointerX, pointerY, 0, 0, 0, static_cast<int>(button)});
+			PointerInput event{PointerAction::Release, CurrentModifiers(),
+				pointerX, pointerY, 0, 0, 0, static_cast<int>(button)};
+			event.surface = pointerSurface;
+			inputs.emplace_back(std::move(event));
 			pointerButtons[button] = false;
 		}
 	}
@@ -499,10 +501,12 @@ void WaylandInput::RecordPointerAxis(uint32_t time, uint32_t axis, double value)
 		pointerAxisTime = time;
 		return;
 	}
-	inputs.emplace_back(PointerInput{
+	PointerInput event{
 		PointerAction::Scroll, CurrentModifiers(), pointerX, pointerY,
 		axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL ? value : 0,
-		axis == WL_POINTER_AXIS_VERTICAL_SCROLL ? value : 0, time, -1});
+		axis == WL_POINTER_AXIS_VERTICAL_SCROLL ? value : 0, time, -1};
+	event.surface = pointerSurface;
+	inputs.emplace_back(std::move(event));
 }
 
 void WaylandInput::RecordPointerFrame() {
@@ -523,9 +527,11 @@ void WaylandInput::RecordPointerFrame() {
 		}
 	}
 	if (deltas[0] != 0 || deltas[1] != 0) {
-		inputs.emplace_back(PointerInput{
+		PointerInput event{
 			PointerAction::Scroll, CurrentModifiers(), pointerX, pointerY,
-			deltas[1], deltas[0], pointerAxisTime, -1});
+			deltas[1], deltas[0], pointerAxisTime, -1};
+		event.surface = pointerSurface;
+		inputs.emplace_back(std::move(event));
 	}
 	ResetPointerFrame();
 }

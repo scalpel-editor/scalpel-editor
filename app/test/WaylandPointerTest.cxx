@@ -37,9 +37,10 @@ TEST_CASE("Wayland pointer popup surface and serial are preserved") {
 	input.SetPointerSurface(Scalpel::PointerSurface::ContextPopup);
 	input.RecordPointerMotion(10, 4.0, 6.0);
 	input.RecordPointerButton(11, BTN_RIGHT, true, 99);
+	input.RecordPointerAxis(11, WL_POINTER_AXIS_VERTICAL_SCROLL, 5.0);
 	input.RecordPointerButton(12, BTN_RIGHT, false, 100);
 	const std::vector<Scalpel::InputEvent> events = input.TakeInputs();
-	REQUIRE(events.size() == 3);
+	REQUIRE(events.size() == 4);
 	const auto &motion = std::get<Scalpel::PointerInput>(events[0]);
 	CHECK(motion.surface == Scalpel::PointerSurface::ContextPopup);
 	CHECK(motion.serial == 0);
@@ -48,7 +49,10 @@ TEST_CASE("Wayland pointer popup surface and serial are preserved") {
 	CHECK(press.button == 1);
 	CHECK(press.serial == 99);
 	CHECK(press.surface == Scalpel::PointerSurface::ContextPopup);
-	const auto &release = std::get<Scalpel::PointerInput>(events[2]);
+	const auto &scroll = std::get<Scalpel::PointerInput>(events[2]);
+	CHECK(scroll.action == Scalpel::PointerAction::Scroll);
+	CHECK(scroll.surface == Scalpel::PointerSurface::ContextPopup);
+	const auto &release = std::get<Scalpel::PointerInput>(events[3]);
 	CHECK(release.serial == 100);
 	CHECK(release.surface == Scalpel::PointerSurface::ContextPopup);
 
@@ -60,6 +64,36 @@ TEST_CASE("Wayland pointer popup surface and serial are preserved") {
 	const auto leave = std::get<Scalpel::PointerInput>(input.TakeInputs().front());
 	CHECK(leave.surface == Scalpel::PointerSurface::ContextPopup);
 	CHECK(input.CurrentPointerSurface() == Scalpel::PointerSurface::Toplevel);
+}
+
+TEST_CASE("Wayland pointer popup frame and teardown retain surface") {
+	Scalpel::WaylandInput input;
+	input.SetPointerVersion(9);
+	input.SetPointerSurface(Scalpel::PointerSurface::ContextPopup);
+	input.RecordPointerMotion(20, 8, 9);
+	input.RecordPointerButton(21, BTN_LEFT, true);
+	input.RecordPointerAxis(22, WL_POINTER_AXIS_VERTICAL_SCROLL, 4.0);
+	input.RecordPointerFrame();
+	(void)input.TakeInputs();
+
+	input.RecordPointerAxis(23, WL_POINTER_AXIS_VERTICAL_SCROLL, 6.0);
+	input.RecordPointerFrame();
+	std::vector<Scalpel::InputEvent> events = input.TakeInputs();
+	REQUIRE(events.size() == 1);
+	CHECK(std::get<Scalpel::PointerInput>(events[0]).surface ==
+		Scalpel::PointerSurface::ContextPopup);
+
+	input.ResetPointerDevice();
+	events = input.TakeInputs();
+	REQUIRE(events.size() == 2);
+	CHECK(std::get<Scalpel::PointerInput>(events[0]).action ==
+		Scalpel::PointerAction::Release);
+	CHECK(std::get<Scalpel::PointerInput>(events[0]).surface ==
+		Scalpel::PointerSurface::ContextPopup);
+	CHECK(std::get<Scalpel::PointerInput>(events[1]).action ==
+		Scalpel::PointerAction::Leave);
+	CHECK(std::get<Scalpel::PointerInput>(events[1]).surface ==
+		Scalpel::PointerSurface::ContextPopup);
 }
 
 TEST_CASE("Wayland pointer coalesces current axis frames") {
