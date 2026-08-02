@@ -34,25 +34,36 @@ HarfBuzz chooses script from the span contents. Direction stays left-to-right, d
 
 ## Grayscale raster policy
 
-Each loaded `FontFace` keeps a `FontRasterPolicy` that selects FreeType load flags for both HarfBuzz shaping and `RasterizeGlyph`. Production faces extract the policy from the prepared Fontconfig match: `FC_ANTIALIAS`, `FC_HINTING`, and `FC_HINT_STYLE`. Disabled hinting or `FC_HINT_NONE` maps to `FT_LOAD_NO_HINTING`; `FC_HINT_SLIGHT` maps to `FT_LOAD_TARGET_LIGHT`; medium, full, and unknown styles map to `FT_LOAD_TARGET_NORMAL`. Explicit-path loads (deterministic tests) default to normal hinting unless the test injects another policy. The face-cache key includes the policy so light and normal faces for the same file do not share an `FT_Face`.
+Each loaded `FontFace` keeps a `FontRasterPolicy` that selects FreeType load flags for both HarfBuzz shaping and `RasterizeGlyph`. Production faces extract the policy from the prepared Fontconfig match: `FC_ANTIALIAS`, `FC_HINTING`, and `FC_HINT_STYLE`. Disabled hinting or `FC_HINT_NONE` maps to `FT_LOAD_NO_HINTING`; `FC_HINT_SLIGHT` maps to `FT_LOAD_TARGET_LIGHT`; medium, full, and unknown styles map to `FT_LOAD_TARGET_NORMAL`. Explicit-path loads (deterministic tests) default to normal hinting unless the test injects another policy. The face-cache key includes the policy so light and normal faces for the same file do not share an `FT_Face`. Host Fontconfig often selects slight (light) hinting for body faces such as Roboto; that policy is expected input, not a defect.
 
 Load flags always include `FT_LOAD_COLOR` so CBDT/CBLC colour bitmaps remain available. Outlines are always rendered with `FT_RENDER_MODE_NORMAL` (8-bit gray coverage). FreeType's light hinting algorithm is selected by the load target, not by `FT_RENDER_MODE_LIGHT`, which produces the same coverage format. When Fontconfig reports `FC_ANTIALIAS=false`, the field is retained for identity but rasterization still uses gray coverage; packed monochrome output is not supported.
 
 RGB, BGR, and vertical LCD component coverage are not consumed yet. Fontconfig may still report subpixel ordering and an LCD filter on the match; those properties are future input only. Correct LCD drawing needs per-channel destination attenuation and output-aware ordering, which the current single-alpha source-over path cannot do.
 
-## Colour emoji glyphs
+## Device-phase outline rasterization
+
+Shaping, measurement, wrapping, hit testing, selections, and caret positions stay in logical coordinates on the logical-size HarfBuzz face. Outline painting uses a separate path:
+
+1. The nominal output scale is an exact rational `RasterScale` (Wayland preferred scale numerator over 120, stored in lowest terms). It is not `bufferWidth / logicalWidth`.
+2. `Renderer::DrawGlyph` converts each logical baseline origin through that scale, splits each axis with floor into an integer buffer origin and a normalized 26.6 phase in y-down device space, and builds a `GlyphRasterRequest`.
+3. `FontFace::RasterizeGlyph` opens an independent FreeType face at the device ppem (keyed by file, Fontconfig face index, and height) so the HarfBuzz face is never resized or transformed. Phase is applied with `FT_Set_Transform` (identity matrix + 26.6 delta; vertical component negated into FreeType's y-up space) after hinting, then restored.
+4. The returned gray mask has device-pixel width, height, and bearings. The renderer places it on integer buffer pixels with a buffer-coordinate textured quad and `GL_NEAREST`, so OpenGL copies coverage one-to-one rather than resampling a logical-resolution mask.
+
+Texture-cache identity for outline glyphs includes face, glyph id, raster scale, and phase. Identical requests reuse an entry. A real output-scale change calls `SetOutputRasterScale` and retires grayscale entries; ordinary logical or buffer resizes at the same scale do not. Deterministic renderer tests assemble expected coverage from the same phase-aware glyph images and compare destination pixels for phrases such as `high standards` and `honesty` at scales 1, 5/4, 3/2, and 2. Stability of repeated draws alone is not treated as proof of correct light-hinted placement.
+
+## Colour emoji and fixed bitmap glyphs
 
 CBDT/CBLC colour fonts (and other fixed bitmap strikes) cannot use `FT_Set_Char_Size`. The face loader selects the closest fixed strike and stores `metricsScale = requestedSize / strikePpem`. HarfBuzz advances, face metrics, and glyph bearings are converted into that logical size so measurement and drawing stay aligned.
 
-`FontFace::RasterizeGlyph` loads with the face's shared FreeType load flags (`FT_LOAD_COLOR` plus the grayscale hint target). Gray coverage glyphs stay 8-bit masks and are tinted with the text foreground. `FT_PIXEL_MODE_BGRA` bitmaps are converted from FreeType's premultiplied BGRA into premultiplied RGBA (pitch may be negative). Unsupported pixel modes yield an empty image. The renderer caches colour glyphs as premultiplied textures, draws their RGB without foreground tint while applying overall text alpha, and uses linear filtering when a large colour strike is downscaled. Ordinary gray glyphs keep nearest filtering so existing pixel tests stay stable.
+Fixed bitmap and colour glyphs are not passed through outline phase transforms. They keep strike selection on the logical-size face, ignore phase in cache identity, place in logical coordinates (with `metricsScale` when downscaling a large strike), and use linear filtering when the strike is larger than the logical size. Gray outline glyphs use nearest filtering and the device-phase path above. `FT_PIXEL_MODE_BGRA` bitmaps are converted from FreeType's premultiplied BGRA into premultiplied RGBA (pitch may be negative). Unsupported pixel modes yield an empty image.
 
 COLRv1 paint graphs and SVG-in-font rendering are out of scope. FreeType does not provide general COLRv1 rendering; this path stops at colour formats FreeType can rasterize into a bitmap.
 
 ## Coordinates and pixels
 
-Drawing accepts logical, top-left coordinates with half-open rectangles. The renderer maps that space onto a buffer-sized OpenGL viewport. Window buffers may have more pixels than the logical surface when integer or fractional scaling is active.
+Drawing accepts logical, top-left coordinates with half-open rectangles for fills, strokes, images, and gradients. The renderer maps that space onto a buffer-sized OpenGL viewport. Window buffers may have more pixels than the logical surface when integer or fractional scaling is active. OpenGL scissor rectangles stay in buffer pixels.
 
-The active output scale is carried separately as an exact rational `RasterScale` (Wayland preferred scale numerator over 120, stored in lowest terms). `main` copies `WaylandScaleConfiguration::scaleNumerator` into `ApplicationEditor`. The window frame surface and offscreen frame path call `Renderer::SetOutputRasterScale`; `SetDrawTarget` only selects the FBO and sizes so pixmap binds cannot thrash scale identity mid-paint. Buffer and logical sizes can change without changing this identity; a real scale change retires grayscale glyph textures so masks from the previous scale cannot be reused. Device-size phase-aware glyph rasterization builds on this nominal scale; until that lands, the scale still owns cache retirement.
+The active output scale is an exact rational `RasterScale`. `main` copies `WaylandScaleConfiguration::scaleNumerator` into `ApplicationEditor`. The frame path calls `Renderer::SetOutputRasterScale`; `SetDrawTarget` only selects the FBO and sizes so pixmap binds cannot thrash scale identity mid-paint. Outline text additionally uses buffer-pixel placement as described under device-phase outline rasterization. Both axes share the same nominal scale so buffer-dimension rounding does not create window-size-dependent font sizes.
 
 Colour attachments are linear `GL_RGBA8`. Internal alpha is premultiplied and blended with premultiplied source-over. Public offscreen pixel buffers are converted to straight alpha and returned in top-to-bottom order.
 
@@ -68,4 +79,4 @@ Autocomplete lists, call tips, and the Scintilla context menu use explicit produ
 
 ## Testing
 
-Offscreen renderer tests use the production OpenGL path with controlled fonts and compare exact geometry and pixels where stable. Editor tests paint through the same `DrawSurface` implementation while retaining host observations. Wayland frame and scale tests verify damage conversion separately from live compositor submission.
+Offscreen renderer tests use the production OpenGL path with controlled fixture fonts. Outline text checks include reference composition against phase-aware FreeType coverage (not merely repeated-draw stability). Glyph-cache tests cover scale and phase identity and retirement on output-scale change. Host Fontconfig checks remain non-pixel-exact. Editor tests paint through the same `DrawSurface` implementation while retaining host observations. Wayland frame and scale tests verify damage conversion and nominal raster-scale ownership separately from live compositor submission.
