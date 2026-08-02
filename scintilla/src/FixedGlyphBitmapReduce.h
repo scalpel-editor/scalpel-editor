@@ -44,7 +44,8 @@ struct FixedGlyphBitmapReduceResult {
  * both axes match the source, the source is copied and reported unchanged.
  *
  * Returns false for invalid dimensions, unsupported channel counts, a null
- * source with non-empty area, or allocation size overflow, and leaves out empty.
+ * source with non-empty area, or an unsatisfied storage request, and leaves out
+ * empty.
  * Empty source (zero width or height) succeeds with an empty result.
  */
 [[nodiscard]] bool ReduceFixedGlyphBitmapArea(

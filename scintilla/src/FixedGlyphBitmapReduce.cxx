@@ -5,6 +5,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <new>
+#include <stdexcept>
+#include <utility>
 #include <vector>
 
 namespace Scintilla::Internal {
@@ -34,6 +37,11 @@ constexpr int kRgbaChannels = 4;
 		return false;
 	}
 	return MulSize(ab, c, out);
+}
+
+template <typename T>
+[[nodiscard]] bool FitsVector(size_t count) noexcept {
+	return count <= std::vector<T>().max_size();
 }
 
 [[nodiscard]] uint8_t RoundToU8(double value) noexcept {
@@ -160,13 +168,13 @@ bool ReduceFixedGlyphBitmapArea(
 	if (sourceWidth < 0 || sourceHeight < 0) {
 		return false;
 	}
+	if (destWidth <= 0 || destHeight <= 0) {
+		return false;
+	}
 	if (sourceWidth == 0 || sourceHeight == 0) {
 		return true;
 	}
 	if (source == nullptr) {
-		return false;
-	}
-	if (destWidth <= 0 || destHeight <= 0) {
 		return false;
 	}
 
@@ -179,12 +187,22 @@ bool ReduceFixedGlyphBitmapArea(
 			static_cast<size_t>(channels), outBytes)) {
 		return false;
 	}
-
+	if (!FitsVector<uint8_t>(outBytes)) {
+		return false;
+	}
 	if (outWidth == sourceWidth && outHeight == sourceHeight) {
-		out.width = sourceWidth;
-		out.height = sourceHeight;
-		out.pixels.assign(source, source + outBytes);
-		return true;
+		try {
+			FixedGlyphBitmapReduceResult reduced;
+			reduced.width = sourceWidth;
+			reduced.height = sourceHeight;
+			reduced.pixels.assign(source, source + outBytes);
+			out = std::move(reduced);
+			return true;
+		} catch (const std::bad_alloc &) {
+			return false;
+		} catch (const std::length_error &) {
+			return false;
+		}
 	}
 
 	// Intermediate: outWidth * sourceHeight * channels floats (after H pass).
@@ -193,55 +211,77 @@ bool ReduceFixedGlyphBitmapArea(
 			static_cast<size_t>(channels), intermediateCount)) {
 		return false;
 	}
-
-	std::vector<float> intermediate(intermediateCount);
-	const size_t srcRowElements =
-		static_cast<size_t>(sourceWidth) * static_cast<size_t>(channels);
-	const size_t midRowElements =
-		static_cast<size_t>(outWidth) * static_cast<size_t>(channels);
-
-	// Horizontal pass: each source row -> outWidth samples.
-	for (int y = 0; y < sourceHeight; y++) {
-		const uint8_t *srcRow = source + static_cast<size_t>(y) * srcRowElements;
-		float *midRow = intermediate.data() + static_cast<size_t>(y) * midRowElements;
-		ReduceLineU8ToF(srcRow, sourceWidth, midRow, outWidth, channels);
+	if (!FitsVector<float>(intermediateCount)) {
+		return false;
 	}
 
-	// Vertical pass: gather each column into a contiguous line, then reduce.
-	out.width = outWidth;
-	out.height = outHeight;
-	out.pixels.resize(outBytes);
+	size_t columnSrcCount = 0;
+	if (!MulSize(static_cast<size_t>(sourceHeight), static_cast<size_t>(channels),
+			columnSrcCount) || !FitsVector<float>(columnSrcCount)) {
+		return false;
+	}
+	size_t columnDestCount = 0;
+	if (!MulSize(static_cast<size_t>(outHeight), static_cast<size_t>(channels),
+			columnDestCount) || !FitsVector<uint8_t>(columnDestCount)) {
+		return false;
+	}
 
-	std::vector<float> columnSrc(static_cast<size_t>(sourceHeight) * static_cast<size_t>(channels));
-	std::vector<uint8_t> columnDest(static_cast<size_t>(outHeight) * static_cast<size_t>(channels));
+	try {
+		FixedGlyphBitmapReduceResult reduced;
+		std::vector<float> intermediate(intermediateCount);
+		const size_t srcRowElements =
+			static_cast<size_t>(sourceWidth) * static_cast<size_t>(channels);
+		const size_t midRowElements =
+			static_cast<size_t>(outWidth) * static_cast<size_t>(channels);
 
-	for (int x = 0; x < outWidth; x++) {
+		// Horizontal pass: each source row -> outWidth samples.
 		for (int y = 0; y < sourceHeight; y++) {
-			const float *midPx =
-				intermediate.data() + static_cast<size_t>(y) * midRowElements +
-				static_cast<size_t>(x) * static_cast<size_t>(channels);
-			float *colPx =
-				columnSrc.data() + static_cast<size_t>(y) * static_cast<size_t>(channels);
-			for (int c = 0; c < channels; c++) {
-				colPx[c] = midPx[c];
-			}
+			const uint8_t *srcRow = source + static_cast<size_t>(y) * srcRowElements;
+			float *midRow = intermediate.data() + static_cast<size_t>(y) * midRowElements;
+			ReduceLineU8ToF(srcRow, sourceWidth, midRow, outWidth, channels);
 		}
-		ReduceLineFToU8(columnSrc.data(), sourceHeight, columnDest.data(), outHeight, channels);
-		for (int y = 0; y < outHeight; y++) {
-			uint8_t *outPx =
-				out.pixels.data() +
-				(static_cast<size_t>(y) * static_cast<size_t>(outWidth) +
-					static_cast<size_t>(x)) *
-					static_cast<size_t>(channels);
-			const uint8_t *colPx =
-				columnDest.data() + static_cast<size_t>(y) * static_cast<size_t>(channels);
-			for (int c = 0; c < channels; c++) {
-				outPx[c] = colPx[c];
-			}
-		}
-	}
 
-	return true;
+		// Vertical pass: gather each column into a contiguous line, then reduce.
+		reduced.width = outWidth;
+		reduced.height = outHeight;
+		reduced.pixels.resize(outBytes);
+
+		std::vector<float> columnSrc(columnSrcCount);
+		std::vector<uint8_t> columnDest(columnDestCount);
+
+		for (int x = 0; x < outWidth; x++) {
+			for (int y = 0; y < sourceHeight; y++) {
+				const float *midPx =
+					intermediate.data() + static_cast<size_t>(y) * midRowElements +
+					static_cast<size_t>(x) * static_cast<size_t>(channels);
+				float *colPx =
+					columnSrc.data() + static_cast<size_t>(y) * static_cast<size_t>(channels);
+				for (int c = 0; c < channels; c++) {
+					colPx[c] = midPx[c];
+				}
+			}
+			ReduceLineFToU8(columnSrc.data(), sourceHeight, columnDest.data(), outHeight, channels);
+			for (int y = 0; y < outHeight; y++) {
+				uint8_t *outPx =
+					reduced.pixels.data() +
+					(static_cast<size_t>(y) * static_cast<size_t>(outWidth) +
+						static_cast<size_t>(x)) *
+						static_cast<size_t>(channels);
+				const uint8_t *colPx =
+					columnDest.data() + static_cast<size_t>(y) * static_cast<size_t>(channels);
+				for (int c = 0; c < channels; c++) {
+					outPx[c] = colPx[c];
+				}
+			}
+		}
+
+		out = std::move(reduced);
+		return true;
+	} catch (const std::bad_alloc &) {
+		return false;
+	} catch (const std::length_error &) {
+		return false;
+	}
 }
 
 }

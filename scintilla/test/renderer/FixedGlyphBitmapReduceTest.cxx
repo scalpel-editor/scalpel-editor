@@ -2,6 +2,8 @@
 
 #include "FixedGlyphBitmapReduce.h"
 
+#include <limits>
+
 namespace {
 
 std::vector<uint8_t> MakeGray(int width, int height, uint8_t value) {
@@ -51,8 +53,19 @@ TEST_CASE("Fixed glyph bitmap area reduction rejects invalid inputs") {
 	REQUIRE_FALSE(ReduceFixedGlyphBitmapArea(&pixel, 1, 1, 1, 1, -1, out));
 	REQUIRE_FALSE(ReduceFixedGlyphBitmapArea(&pixel, -1, 1, 1, 1, 1, out));
 	REQUIRE_FALSE(ReduceFixedGlyphBitmapArea(nullptr, 1, 1, 1, 1, 1, out));
+	REQUIRE_FALSE(ReduceFixedGlyphBitmapArea(nullptr, 0, 0, 1, 0, 1, out));
 
-	// Empty source succeeds with empty output.
+	// A float intermediate can exceed vector capacity even when its element
+	// count fits in size_t. This must fail before the source is read or memory
+	// is allocated.
+	const int maxInt = (std::numeric_limits<int>::max)();
+	REQUIRE_FALSE(ReduceFixedGlyphBitmapArea(&pixel, maxInt, maxInt, 1,
+		maxInt, maxInt - 1, out));
+	REQUIRE(out.width == 0);
+	REQUIRE(out.height == 0);
+	REQUIRE(out.pixels.empty());
+
+	// Empty source with valid destination succeeds with empty output.
 	REQUIRE(ReduceFixedGlyphBitmapArea(nullptr, 0, 0, 1, 1, 1, out));
 	REQUIRE(out.width == 0);
 	REQUIRE(out.height == 0);
