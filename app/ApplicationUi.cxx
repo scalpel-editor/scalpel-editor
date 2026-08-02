@@ -24,6 +24,14 @@ void DismissOpenMenu(MenuBarModel &menuModel, ApplicationEditor &editor) {
 	editor.InvalidateFrame();
 }
 
+[[nodiscard]] bool IsShiftMenuKey(const KeyboardInput &input) noexcept {
+	// F10 and the Menu key both map to Keys::Menu. Shift+F10 opens the context
+	// menu; bare F10 / Menu still open the menu bar.
+	return input.pressed &&
+		input.key == Scintilla::Keys::Menu &&
+		input.modifiers == Scintilla::KeyMod::Shift;
+}
+
 void PersistRecentFiles(const std::string &statePath,
 	const RecentFiles &recent) {
 	if (statePath.empty()) {
@@ -262,6 +270,7 @@ ApplicationPointerCursor CursorBelowModal(const PointerInput &input,
  * Priority: active scrollbar drag, open menu, top chrome, scrollbar hit,
  * then editor. Editor selection capture bypasses chrome so selection release
  * is delivered; an active scrollbar drag is cancelled when a menu opens.
+ * Right press in eligible editor text opens the context menu (consumed once).
  */
 ApplicationPointerResult HandleChromePointer(const PointerInput &input,
 	const ApplicationLayout &layout, MenuBarModel &menuModel,
@@ -290,6 +299,8 @@ ApplicationPointerResult HandleChromePointer(const PointerInput &input,
 
 	if (!menuWasOpen && menuModel.openMenu.has_value()) {
 		// Opening a menu cancels tentative IME; batches stay dropped while open.
+		// An open context menu must not compete with the menu bar.
+		ui.DismissApplicationContextMenu();
 		editor.CancelActiveTextInput();
 		if (ui.FindBarFocused()) {
 			ui.FindModel().SetFocused(false);
@@ -313,7 +324,8 @@ ApplicationPointerResult HandleChromePointer(const PointerInput &input,
 
 	// A selection drag that began in the editor still owns motion and release
 	// over chrome. Scintilla must see release to drop capture; the menu
-	// handler already refused to consume those events.
+	// handler already refused to consume those events. Do not open a context
+	// menu during an active left-button drag.
 	if (captured) {
 		result.owner = ApplicationPointerOwner::EditorCapture;
 		(void)UpdateTabStripPointerState(input, layout, stripModel, editor,
@@ -419,6 +431,7 @@ ApplicationPointerResult HandleChromePointer(const PointerInput &input,
 			// Tab work must not leave a menu open (for example after a race with
 			// a dismissal release that already cleared openMenu).
 			DismissOpenMenu(menuModel, editor);
+			ui.DismissApplicationContextMenu();
 			CancelScrollBarShellInteraction(scrollBarInteraction, editor);
 			if (stripHit.kind == TabStripHit::Tab) {
 				workspace.ActivateTab(stripHit.tabId);
@@ -445,6 +458,19 @@ ApplicationPointerResult HandleChromePointer(const PointerInput &input,
 		result.consumed = true;
 		result.cursor = CursorFromChrome(pointerOverChrome);
 		return result;
+	}
+
+	// Right press in eligible editor text opens the context menu once.
+	if (input.action == PointerAction::Press && input.button == 1) {
+		const Scintilla::Internal::Point point(input.x, input.y);
+		if (editor.PointAllowsContextMenu(point)) {
+			(void)editor.PrepareSelectionForContextMenu(point);
+			ui.OpenApplicationContextMenu(input.x, input.y, input.serial);
+			result.owner = ApplicationPointerOwner::ContextMenu;
+			result.consumed = true;
+			result.cursor = CursorFromChrome(pointerOverChrome);
+			return result;
+		}
 	}
 
 	// Surface leave still needs to clear editor hover.
@@ -617,6 +643,9 @@ ApplicationPointerResult ApplicationUi::HandlePointer(
 	// Refresh model values copied into MenuBarLayout before taking the one
 	// snapshot used by every hit test for this event.
 	(void)UpdateMenuBarActionState(menuModel, *editor);
+	if (contextMenuModel.open) {
+		(void)UpdateContextMenuActionState(contextMenuModel, *editor);
+	}
 	const ApplicationLayout layout = Layout();
 
 	ApplicationPointerResult result;
@@ -625,6 +654,7 @@ ApplicationPointerResult ApplicationUi::HandlePointer(
 		result.consumed = true;
 		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
 		BlurFindField();
+		DismissApplicationContextMenu();
 		HandleFileErrorPointer(input, layout.fileErrorCard, fileErrors, *editor,
 			fileErrorPressHit);
 		pointerCursor = CursorBelowModal(input, layout);
@@ -633,17 +663,73 @@ ApplicationPointerResult ApplicationUi::HandlePointer(
 		result.consumed = true;
 		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
 		BlurFindField();
+		DismissApplicationContextMenu();
 		(void)UpdateTabStripPointerState(input, layout, stripModel, *editor,
 			pointerOverChrome);
 		HandlePromptPointer(input, layout.unsavedCard, promptPressHit,
 			*workspace, *editor, cardFocus);
 		pointerCursor = CursorBelowModal(input, layout);
+	} else if (input.surface == PointerSurface::ContextPopup) {
+		// Popup-local coordinates; layout origin is always (0,0).
+		const ContextMenuLayout menuLayout = LayoutContextMenu(contextMenuModel);
+		const bool wasOpen = contextMenuModel.open;
+		const ContextMenuPointerResult menuResult =
+			HandleContextMenuPointer(contextMenuModel, menuLayout, input);
+		if (menuResult.activated) {
+			// Model already closed by the handler; drop the shell popup first.
+			if (contextMenuShellOpen) {
+				contextMenuShellOpen = false;
+				QueueShellEffect({
+					ApplicationShellEffectKind::CloseContextMenu, {}, {},
+					0, 0, 0});
+			}
+			ActivateAction(*menuResult.activated);
+		} else if (wasOpen && !contextMenuModel.open && contextMenuShellOpen) {
+			contextMenuShellOpen = false;
+			QueueShellEffect({
+				ApplicationShellEffectKind::CloseContextMenu, {}, {},
+				0, 0, 0});
+		}
+		result.owner = ApplicationPointerOwner::ContextMenu;
+		result.consumed = menuResult.consumed;
+		// Leave on the popup surface still clears press origin inside the
+		// handler; host may need toplevel leave separately.
+		if (input.action == PointerAction::Leave) {
+			result.consumed = false;
+		}
+		pointerCursor = ApplicationPointerCursor::Arrow;
+		pointerOverChrome = true;
+	} else if (contextMenuModel.open) {
+		// Toplevel events while the popup is open: outside press dismisses
+		// without click-through. Right press on eligible text re-opens.
+		result.owner = ApplicationPointerOwner::ContextMenu;
+		if (input.action == PointerAction::Press) {
+			DismissApplicationContextMenu();
+			if (input.button == 1) {
+				const Scintilla::Internal::Point point(input.x, input.y);
+				if (editor->PointAllowsContextMenu(point)) {
+					(void)editor->PrepareSelectionForContextMenu(point);
+					OpenApplicationContextMenu(input.x, input.y, input.serial);
+				}
+			}
+			result.consumed = true;
+		} else if (input.action == PointerAction::Leave) {
+			result.consumed = false;
+			result.owner = ApplicationPointerOwner::Editor;
+		} else {
+			// Motion/scroll/release on the toplevel do not reach the editor
+			// while the context menu owns the grab.
+			result.consumed = true;
+		}
+		pointerCursor = ApplicationPointerCursor::Arrow;
+		pointerOverChrome = true;
 	} else {
 		const bool captured = editor->WindowState().mouseCaptured;
 		// After modals, an active scrollbar drag, editor selection capture, and
 		// an open menu, a visible find bar owns its band before other chrome.
 		if (!captured && !scrollBarInteraction.dragging &&
-			!menuModel.openMenu.has_value() && findBarVisible) {
+			!menuModel.openMenu.has_value() && !contextMenuModel.open &&
+			findBarVisible) {
 			const FindBarHitResult findHit = HitTestFindBar(layout.find,
 				Scintilla::Internal::Point(input.x, input.y));
 			// Once a button is pressed, the find bar owns motion, release, and
@@ -826,6 +912,7 @@ bool HandleMenuBarKeyboardInput(const KeyboardInput &input,
 		HandleMenuBarKeyboard(menuModel, input);
 	if (!menuWasOpen && menuModel.openMenu.has_value()) {
 		// Opening a menu cancels tentative IME; batches stay dropped while open.
+		ui.DismissApplicationContextMenu();
 		editor.CancelActiveTextInput();
 		if (ui.FindBarFocused()) {
 			ui.FindModel().SetFocused(false);
@@ -856,12 +943,41 @@ ApplicationKeyboardResult ApplicationUi::HandleKeyboard(
 		result.owner = ApplicationKeyboardOwner::FileError;
 		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
 		BlurFindField();
+		DismissApplicationContextMenu();
 		HandleFileErrorKeyboard(input, fileErrors, *editor, fileErrorPressHit);
 	} else if (workspace->PromptActive()) {
 		result.owner = ApplicationKeyboardOwner::UnsavedPrompt;
 		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
 		BlurFindField();
+		DismissApplicationContextMenu();
 		HandlePromptKeyboard(input, *workspace, *editor, cardFocus);
+	} else if (contextMenuModel.open) {
+		// Open context menu owns every key; refresh enablement first.
+		(void)UpdateContextMenuActionState(contextMenuModel, *editor);
+		const ContextMenuKeyboardResult menuResult =
+			HandleContextMenuKeyboard(contextMenuModel, input);
+		if (menuResult.activated) {
+			if (contextMenuShellOpen) {
+				contextMenuShellOpen = false;
+				QueueShellEffect({
+					ApplicationShellEffectKind::CloseContextMenu, {}, {},
+					0, 0, 0});
+			}
+			ActivateAction(*menuResult.activated);
+		} else if (!contextMenuModel.open && contextMenuShellOpen) {
+			// Escape or equivalent closed the model.
+			contextMenuShellOpen = false;
+			QueueShellEffect({
+				ApplicationShellEffectKind::CloseContextMenu, {}, {},
+				0, 0, 0});
+		}
+		result.owner = ApplicationKeyboardOwner::ContextMenu;
+	} else if (IsShiftMenuKey(input)) {
+		// Shift+F10 / Shift+Menu: caret-anchored context menu.
+		const Scintilla::Internal::PRectangle anchor =
+			editor->MainCaretAnchorRectangle();
+		OpenApplicationContextMenu(anchor.left, anchor.top, input.serial);
+		result.owner = ApplicationKeyboardOwner::ContextMenu;
 	} else if (HandleMenuBarKeyboardInput(input, menuModel, *recent,
 		recentStatePath, *workspace, *editor, scrollBarInteraction, *this)) {
 		// Menu accelerators and open-menu navigation run before application
@@ -911,6 +1027,7 @@ void ApplicationUi::HandleFocus(bool focused) {
 	// Focus loss closes chrome that should not survive leaving the surface.
 	// SetKeyboardFocus already cancels tentative IME on the editor.
 	DismissOpenMenu(menuModel, *editor);
+	DismissApplicationContextMenu();
 	CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
 	fileErrorPressHit = false;
 	promptPressHit.reset();
@@ -920,11 +1037,16 @@ void ApplicationUi::HandleFocus(bool focused) {
 
 bool ApplicationUi::ChromeOwnsInput() const noexcept {
 	return !fileErrors.empty() || workspace->PromptActive() ||
-		menuModel.openMenu.has_value();
+		menuModel.openMenu.has_value() || contextMenuModel.open;
+}
+
+void ApplicationUi::NotifyContextPopupDone() {
+	DismissApplicationContextMenu(true);
 }
 
 void ApplicationUi::NotifyPromptBegan() {
 	DismissOpenMenu(menuModel, *editor);
+	DismissApplicationContextMenu();
 	// Opening a modal card cancels tentative IME; batches stay dropped while
 	// the card is active.
 	editor->CancelActiveTextInput();
@@ -946,6 +1068,7 @@ void ApplicationUi::AppendFileErrors(std::vector<DocumentFileError> errors) {
 		return;
 	}
 	DismissOpenMenu(menuModel, *editor);
+	DismissApplicationContextMenu();
 	// Opening a modal card cancels tentative IME; batches stay dropped while
 	// any error remains in the queue.
 	editor->CancelActiveTextInput();
@@ -1042,8 +1165,12 @@ void ApplicationUi::SynchronizeInteraction() {
 	const DocumentId activeDocument = editor->ActiveDocument();
 	const bool documentChanged = activeDocument != lastActiveDocument;
 	if (documentChanged || !fileErrors.empty() || workspace->PromptActive() ||
-		menuModel.openMenu.has_value()) {
+		menuModel.openMenu.has_value() || contextMenuModel.open) {
 		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
+	}
+	if (documentChanged) {
+		// Context menu enablement and selection are document-local.
+		DismissApplicationContextMenu();
 	}
 	if (documentChanged && findBarVisible) {
 		// Never reuse a byte origin from another retained document.
@@ -1285,6 +1412,14 @@ std::optional<ApplicationTextInputState> ApplicationUi::TakeTextInputState() {
 void ApplicationUi::SetClipboardPasteAvailable(bool available) noexcept {
 	editor->SetClipboardPasteAvailable(available);
 	findBarModel.pasteAvailable = available;
+	// Open context menu Paste enablement follows the clipboard offer; ask the
+	// host to repaint the popup rather than the toplevel frame.
+	if (contextMenuModel.open &&
+		UpdateContextMenuActionState(contextMenuModel, *editor)) {
+		QueueShellEffect({
+			ApplicationShellEffectKind::InvalidateContextMenu, {}, {},
+			0, 0, 0});
+	}
 }
 
 std::vector<ApplicationClipboardRequest> ApplicationUi::TakeClipboardRequests() {
@@ -1350,10 +1485,12 @@ std::vector<ApplicationClipboardResult> ApplicationUi::TakeClipboardResults() {
 }
 
 void ApplicationUi::HandleFrameSizeChange() {
-	// Width may change scroll clamping and tab layout. Keep an open menu;
-	// LayoutMenuBar recomputes headings and clamps the panel. Resize and
+	// Width may change scroll clamping and tab layout. Keep an open menu bar;
+	// LayoutMenuBar recomputes headings and clamps the panel. Context menus
+	// dismiss so the next open uses current geometry and scale. Resize and
 	// scale cancel an in-progress scrollbar drag.
 	CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
+	DismissApplicationContextMenu();
 	(void)SynchronizeTabs(true);
 	editor->InvalidateTopChrome();
 	editor->InvalidateScrollBars();
@@ -1371,21 +1508,68 @@ void ApplicationUi::RefreshOpenMenuActionState() {
 		UpdateMenuBarActionState(menuModel, *editor)) {
 		editor->InvalidateFrame();
 	}
+	if (contextMenuModel.open &&
+		UpdateContextMenuActionState(contextMenuModel, *editor)) {
+		QueueShellEffect({
+			ApplicationShellEffectKind::InvalidateContextMenu, {}, {},
+			0, 0, 0});
+	}
 }
 
 void ApplicationUi::PrepareForExit() {
 	DismissOpenMenu(menuModel, *editor);
+	DismissApplicationContextMenu();
 	CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
 }
 
+void ApplicationUi::QueueShellEffect(ApplicationShellEffect effect) {
+	pendingShellEffects.push_back(std::move(effect));
+}
+
+void ApplicationUi::OpenApplicationContextMenu(double anchorX, double anchorY,
+	uint32_t serial) {
+	// Replace any prior popup so the host never stacks two.
+	if (contextMenuModel.open || contextMenuShellOpen) {
+		DismissApplicationContextMenu();
+	}
+	DismissOpenMenu(menuModel, *editor);
+	editor->CancelActiveTextInput();
+	BlurFindField();
+	CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
+	OpenContextMenu(contextMenuModel);
+	(void)UpdateContextMenuActionState(contextMenuModel, *editor);
+	contextMenuShellOpen = true;
+	QueueShellEffect({
+		ApplicationShellEffectKind::ShowContextMenu, {}, {},
+		anchorX, anchorY, serial});
+}
+
+void ApplicationUi::DismissApplicationContextMenu(bool fromShellDone) {
+	const bool modelOpen = contextMenuModel.open ||
+		contextMenuModel.pressOrigin.has_value();
+	if (modelOpen) {
+		CloseContextMenu(contextMenuModel);
+	}
+	if (contextMenuShellOpen && !fromShellDone) {
+		contextMenuShellOpen = false;
+		QueueShellEffect({
+			ApplicationShellEffectKind::CloseContextMenu, {}, {},
+			0, 0, 0});
+	} else if (fromShellDone) {
+		contextMenuShellOpen = false;
+	}
+}
+
 std::vector<ApplicationShellEffect> ApplicationUi::TakeShellEffects() {
-	std::vector<ApplicationShellEffect> effects;
+	std::vector<ApplicationShellEffect> effects =
+		std::exchange(pendingShellEffects, {});
 
 	for (const DocumentShellRequest request : workspace->TakeRequests()) {
 		switch (request) {
 		case DocumentShellRequest::ShowOpen:
-			// Portals take over interaction; the in-window menu must not stay open.
+			// Portals take over interaction; menus must not stay open.
 			DismissOpenMenu(menuModel, *editor);
+			DismissApplicationContextMenu();
 			{
 				DocumentDialogIntent dialog = workspace->BeginOpenDialog();
 				effects.push_back({
@@ -1397,6 +1581,7 @@ std::vector<ApplicationShellEffect> ApplicationUi::TakeShellEffects() {
 			break;
 		case DocumentShellRequest::ShowSaveAs:
 			DismissOpenMenu(menuModel, *editor);
+			DismissApplicationContextMenu();
 			{
 				DocumentDialogIntent dialog = workspace->BeginSaveAsDialog();
 				effects.push_back({
@@ -1433,6 +1618,14 @@ std::vector<ApplicationShellEffect> ApplicationUi::TakeShellEffects() {
 	std::vector<DocumentFileError> errors = workspace->TakeFileErrors();
 	if (!errors.empty()) {
 		AppendFileErrors(std::move(errors));
+	}
+
+	// Dismissals during request handling may queue more effects.
+	if (!pendingShellEffects.empty()) {
+		effects.insert(effects.end(),
+			std::make_move_iterator(pendingShellEffects.begin()),
+			std::make_move_iterator(pendingShellEffects.end()));
+		pendingShellEffects.clear();
 	}
 
 	SynchronizeInteraction();

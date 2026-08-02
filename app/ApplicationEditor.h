@@ -251,6 +251,41 @@ public:
 		std::string_view query);
 	/** True when the active document has a non-empty selection. */
 	[[nodiscard]] bool HasSelection() const noexcept;
+	/**
+	 * True when the point is inside the editor client rectangle (text area
+	 * excluding permanent top chrome and scrollbar tracks).
+	 */
+	[[nodiscard]] bool PointInEditorClient(
+		Scintilla::Internal::Point point) const noexcept;
+	/**
+	 * True when the point is over a selection/line-number margin rather than
+	 * text. Margin right-clicks stay on the core notification path.
+	 */
+	[[nodiscard]] bool PointInSelectionMargin(
+		Scintilla::Internal::Point point) const;
+	/**
+	 * True when the point hits the current text selection (including the
+	 * caret-edge rules used by Editor::PointInSelection).
+	 */
+	[[nodiscard]] bool PointHitsSelection(Scintilla::Internal::Point point);
+	/**
+	 * True when a text context menu may open at the point: inside the editor
+	 * client and not in a selection margin.
+	 */
+	[[nodiscard]] bool PointAllowsContextMenu(
+		Scintilla::Internal::Point point);
+	/**
+	 * Prepare selection for opening the context menu at point. A click inside
+	 * the current selection leaves it alone; a click outside collapses to a
+	 * single caret at the text position under the point. Returns true when
+	 * the caret or selection changed.
+	 */
+	bool PrepareSelectionForContextMenu(Scintilla::Internal::Point point);
+	/**
+	 * One-pixel parent-relative anchor rectangle at the main caret for
+	 * Shift+F10 context-menu placement (full-frame logical coordinates).
+	 */
+	[[nodiscard]] Scintilla::Internal::PRectangle MainCaretAnchorRectangle();
 	/** True when Select All would cover at least one byte. */
 	[[nodiscard]] bool CanSelectAll() const noexcept;
 	/** True when undo history is available and the document is not read-only. */

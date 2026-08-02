@@ -1,15 +1,17 @@
 // Application chrome and overlay selection state for the production editor.
-// Owns menu, tab-strip, scrollbar interaction, modal-card, error-queue, hover,
-// press, painters, and which overlay is bound. Holds references to
-// ApplicationEditor, DocumentWorkspace, and RecentFiles. Pointer and keyboard
-// routing go through HandlePointer and HandleKeyboard with explicit owners;
-// focus loss is one transition that clears menu, scrollbar, and press state.
-// Opening a menu or modal card cancels tentative IME. Permanent-chrome and
-// active-overlay composition bind only through ApplicationUi. Workspace
-// requests and outcomes are consumed here: application-side work (prompt
-// begin, tab refresh, recent-file record and persist, file-error queue) is
-// applied directly, while typed ApplicationShellEffect values carry only the
-// portal-dialog and window-close work the host must perform. Frame-size
+// Owns menu, context menu, tab-strip, scrollbar interaction, modal-card,
+// error-queue, hover, press, painters, and which overlay is bound. Holds
+// references to ApplicationEditor, DocumentWorkspace, and RecentFiles. Pointer
+// and keyboard routing go through HandlePointer and HandleKeyboard with
+// explicit owners; focus loss is one transition that clears menu, context
+// menu, scrollbar, and press state. Opening a menu, context menu, or modal
+// card cancels tentative IME. Permanent-chrome and active-overlay composition
+// bind only through ApplicationUi; the context menu is an xdg_popup owned via
+// shell effects rather than an in-window overlay. Workspace requests and
+// outcomes are consumed here: application-side work (prompt begin, tab
+// refresh, recent-file record and persist, file-error queue) is applied
+// directly, while typed ApplicationShellEffect values carry portal-dialog,
+// window-close, and context-popup work the host must perform. Frame-size
 // response, dirty-tab sync, open-menu enablement refresh, post-shell
 // interaction cleanup, and exit dismissal also live here so main stays a
 // platform pump. ApplicationLayout is the one frame-size snapshot used for
@@ -28,6 +30,7 @@
 #include "ApplicationEditor.h"
 #include "ApplicationInput.h"
 #include "ApplicationTextInput.h"
+#include "ContextMenu.h"
 #include "DocumentId.h"
 #include "DocumentWorkspace.h"
 #include "FileErrorCard.h"
@@ -89,13 +92,14 @@ struct ApplicationLayout {
 /**
  * Who owns the pointer for one event after priority resolution.
  * Order when deciding: file error, unsaved prompt, active scrollbar drag,
- * editor selection capture, open menu, permanent chrome (including scrollbar
- * hits), then editor.
+ * editor selection capture, open menu bar, open context menu, permanent chrome
+ * (including scrollbar hits), then editor.
  */
 enum class ApplicationPointerOwner {
 	FileError,
 	UnsavedPrompt,
 	Menu,
+	ContextMenu,
 	ScrollBarDrag,
 	EditorCapture,
 	PermanentChrome,
@@ -122,13 +126,15 @@ struct ApplicationPointerResult {
 
 /**
  * Who owns keyboard handling for one event after priority resolution.
- * Order when deciding: file error, unsaved prompt, open menu (including open
- * accelerators while closed), application shortcuts and tab cycling, then
- * editor delivery.
+ * Order when deciding: file error, unsaved prompt, open context menu, open
+ * menu bar (including open accelerators while closed), application shortcuts
+ * and tab cycling, then editor delivery. Shift+F10 (Keys::Menu with Shift)
+ * opens the context menu; bare F10 / Menu still opens the menu bar.
  */
 enum class ApplicationKeyboardOwner {
 	FileError,
 	UnsavedPrompt,
+	ContextMenu,
 	Menu,
 	ApplicationShortcut,
 	FindBar,
@@ -146,24 +152,35 @@ struct ApplicationKeyboardResult {
 };
 
 /**
- * Host work produced while draining workspace requests and outcomes.
+ * Host work produced while draining workspace requests and outcomes, plus
+ * context-menu popup lifecycle for the Wayland shell.
  */
 enum class ApplicationShellEffectKind {
 	ShowOpen,
 	ShowSaveAs,
 	AcceptClose,
+	/** Create and grab an xdg_popup at anchorX/Y with serial. */
+	ShowContextMenu,
+	/** Destroy the context-menu popup if the host still owns one. */
+	CloseContextMenu,
+	/** Repaint the open popup (enablement changed); do not recreate it. */
+	InvalidateContextMenu,
 };
 
 /**
  * One typed host effect. Dialog effects carry an application-owned identity
  * plus the document path used to choose their initial folder and name. The
  * platform host maps its own request ID to dialogId; transport IDs never enter
- * ApplicationUi or DocumentWorkspace.
+ * ApplicationUi or DocumentWorkspace. Context-menu effects use anchorX/Y in
+ * parent (toplevel) logical coordinates and serial for xdg_popup.grab.
  */
 struct ApplicationShellEffect {
 	ApplicationShellEffectKind kind = ApplicationShellEffectKind::AcceptClose;
 	DocumentDialogId dialogId;
 	std::string documentPath;
+	double anchorX = 0;
+	double anchorY = 0;
+	uint32_t serial = 0;
 };
 
 /**
@@ -283,11 +300,39 @@ public:
 	void HandleFocus(bool focused);
 
 	/**
-	 * True while a file-error card, unsaved prompt, or open menu owns input.
-	 * The platform host drops IME batches while this is true; protocol
-	 * conversion stays in the adapter.
+	 * True while a file-error card, unsaved prompt, open menu bar, or open
+	 * context menu owns input. The platform host drops IME batches while this
+	 * is true; protocol conversion stays in the adapter.
 	 */
 	[[nodiscard]] bool ChromeOwnsInput() const noexcept;
+
+	/**
+	 * True while the application context-menu model is open (shell may still
+	 * be creating or painting the xdg_popup).
+	 */
+	[[nodiscard]] bool ContextMenuOpen() const noexcept {
+		return contextMenuModel.open;
+	}
+
+	/**
+	 * Compositor destroyed the context popup (xdg_popup.popup_done) or the
+	 * host failed to create it. Closes the model without queuing another
+	 * CloseContextMenu effect.
+	 */
+	void NotifyContextPopupDone();
+
+	/**
+	 * Open the context menu at a parent-relative anchor after any selection
+	 * preparation the caller already applied. Cancels IME, blurs find, closes
+	 * the menu bar, and queues ShowContextMenu for the host.
+	 */
+	void OpenApplicationContextMenu(double anchorX, double anchorY,
+		uint32_t serial);
+	/**
+	 * Close the context menu model. When the shell was asked to show a popup
+	 * and fromShellDone is false, queues CloseContextMenu.
+	 */
+	void DismissApplicationContextMenu(bool fromShellDone = false);
 
 	/**
 	 * Open the find bar (or refocus it), seed an empty query from a single-line
@@ -385,22 +430,24 @@ public:
 	void HandleFrameSizeChange();
 
 	/**
-	 * While a menu is open, refresh action enablement (clipboard Paste and
-	 * similar) and invalidate the frame when a row changes.
+	 * While a menu bar or context menu is open, refresh action enablement
+	 * (clipboard Paste and similar). The menu bar invalidates the toplevel
+	 * frame; the context menu queues InvalidateContextMenu for the popup.
 	 */
 	void RefreshOpenMenuActionState();
 
 	/**
-	 * Close any open menu and cancel scrollbar interaction before the process
-	 * exits (force-close or accept-close).
+	 * Close any open menu bar and context menu, and cancel scrollbar
+	 * interaction before the process exits (force-close or accept-close).
 	 */
 	void PrepareForExit();
 
 	/**
-	 * Consume DocumentWorkspace shell requests and outcomes. Applies prompt
-	 * begin, tab refresh, recent-file record/persist, and file-error queueing
-	 * here. Returns only portal-dialog and accept-close work for the host. A
-	 * second call with no new workspace work returns empty.
+	 * Consume DocumentWorkspace shell requests and outcomes, plus queued
+	 * context-menu popup effects. Applies prompt begin, tab refresh,
+	 * recent-file record/persist, and file-error queueing here. Returns
+	 * portal-dialog, accept-close, and context-popup work for the host. A
+	 * second call with no new work returns empty.
 	 */
 	[[nodiscard]] std::vector<ApplicationShellEffect> TakeShellEffects();
 
@@ -423,6 +470,13 @@ public:
 	[[nodiscard]] MenuBarModel &MenuModel() noexcept { return menuModel; }
 	[[nodiscard]] const MenuBarModel &MenuModel() const noexcept {
 		return menuModel;
+	}
+
+	[[nodiscard]] ContextMenuModel &ContextModel() noexcept {
+		return contextMenuModel;
+	}
+	[[nodiscard]] const ContextMenuModel &ContextModel() const noexcept {
+		return contextMenuModel;
 	}
 
 	[[nodiscard]] TabStripModel &StripModel() noexcept { return stripModel; }
@@ -482,12 +536,17 @@ private:
 	void BlurFindField();
 	/** Activate a matched action; Find is UI-local, everything else dispatches. */
 	void ActivateAction(ApplicationAction action);
+	void QueueShellEffect(ApplicationShellEffect effect);
 
 	ApplicationEditor *editor = nullptr;
 	DocumentWorkspace *workspace = nullptr;
 	RecentFiles *recent = nullptr;
 	std::string recentStatePath;
 	MenuBarModel menuModel;
+	ContextMenuModel contextMenuModel;
+	/** True after ShowContextMenu until Close or NotifyContextPopupDone. */
+	bool contextMenuShellOpen = false;
+	std::vector<ApplicationShellEffect> pendingShellEffects;
 	TabStripModel stripModel;
 	FindBarModel findBarModel;
 	bool findBarVisible = false;

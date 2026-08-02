@@ -1447,3 +1447,49 @@ TEST_CASE("production editor find origin search supports incremental extension")
 	CHECK(editor.GetSelectionStart() == 8);
 	CHECK(editor.GetSelectionEnd() == 12);
 }
+
+TEST_CASE("production editor context menu selection placement and caret anchor") {
+	using Scintilla::Internal::Point;
+	using Scintilla::Internal::PRectangle;
+
+	Scalpel::ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("abcdef\nghijkl\n");
+	// Match production top chrome without depending on TabStrip headers here.
+	const int inset = Scalpel::MenuBarHeight() + 28;
+	editor.SetTopChromeInset(inset);
+	editor.SetKeyboardFocus(true);
+	// Geometry at the middle of "abc", then restore the selection range.
+	editor.SetSel(1, 1);
+	editor.RenderFrame();
+	const auto caretState = editor.TakeTextInputState();
+	REQUIRE(caretState.has_value());
+	const double inX = caretState->cursorRectangle.x + 1;
+	const double inY = caretState->cursorRectangle.y +
+		caretState->cursorRectangle.height / 2.0;
+	editor.SetSel(0, 3); // "abc"
+	CHECK(editor.PointAllowsContextMenu(Point(inX, inY)));
+	CHECK(editor.PointHitsSelection(Point(inX, inY)));
+	CHECK_FALSE(editor.PrepareSelectionForContextMenu(Point(inX, inY)));
+	CHECK(editor.GetSelectionStart() == 0);
+	CHECK(editor.GetSelectionEnd() == 3);
+
+	const double outY = caretState->cursorRectangle.y +
+		caretState->cursorRectangle.height * 1.5;
+	CHECK(editor.PointAllowsContextMenu(Point(inX, outY)));
+	CHECK_FALSE(editor.PointHitsSelection(Point(inX, outY)));
+	CHECK(editor.PrepareSelectionForContextMenu(Point(inX, outY)));
+	CHECK(editor.GetSelectionStart() == editor.GetSelectionEnd());
+
+	// Margin is inside the client band but not eligible for the text menu.
+	const PRectangle client = editor.EditorClientRectangle();
+	const Point margin(client.left + 2, client.top + 8);
+	CHECK(editor.PointInEditorClient(margin));
+	CHECK(editor.PointInSelectionMargin(margin));
+	CHECK_FALSE(editor.PointAllowsContextMenu(margin));
+
+	editor.SetSel(4, 4);
+	const PRectangle anchor = editor.MainCaretAnchorRectangle();
+	CHECK(anchor.Width() == 1);
+	CHECK(anchor.Height() == 1);
+	CHECK(anchor.top >= inset);
+}

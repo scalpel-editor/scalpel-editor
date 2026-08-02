@@ -978,6 +978,60 @@ bool ApplicationEditor::HasSelection() const noexcept {
 	return !GetSelectionEmpty();
 }
 
+bool ApplicationEditor::PointInEditorClient(
+	Scintilla::Internal::Point point) const noexcept {
+	const PRectangle client = GetClientRectangle();
+	// Half-open so adjacent chrome edges do not count as client text.
+	return client.right > client.left && client.bottom > client.top &&
+		point.x >= client.left && point.x < client.right &&
+		point.y >= client.top && point.y < client.bottom;
+}
+
+bool ApplicationEditor::PointInSelectionMargin(
+	Scintilla::Internal::Point point) const {
+	return PointInSelMargin(point);
+}
+
+bool ApplicationEditor::PointHitsSelection(
+	Scintilla::Internal::Point point) {
+	return PointInSelection(point);
+}
+
+bool ApplicationEditor::PointAllowsContextMenu(
+	Scintilla::Internal::Point point) {
+	return PointInEditorClient(point) && !PointInSelMargin(point);
+}
+
+bool ApplicationEditor::PrepareSelectionForContextMenu(
+	Scintilla::Internal::Point point) {
+	if (PointInSelection(point)) {
+		return false;
+	}
+	const Scintilla::Position caretBefore = sel.MainCaret();
+	const Scintilla::Position anchorBefore = sel.MainAnchor();
+	Scintilla::Internal::SelectionPosition position =
+		SPositionFromLocation(point);
+	position = MovePositionOutsideChar(
+		position, sel.MainCaret() - position.Position());
+	SetEmptySelection(position);
+	if (sel.MainCaret() != caretBefore || sel.MainAnchor() != anchorBefore) {
+		textInputStateDirty = true;
+		textInputChangeCause = ApplicationTextChangeCause::Other;
+		return true;
+	}
+	return false;
+}
+
+Scintilla::Internal::PRectangle ApplicationEditor::MainCaretAnchorRectangle() {
+	RefreshStyleData();
+	const Scintilla::Internal::Point pt =
+		LocationFromPosition(sel.RangeMain().caret);
+	const int x = static_cast<int>(pt.x);
+	const int y = static_cast<int>(pt.y);
+	// One-pixel anchor for the xdg_positioner; compositor may flip/slide.
+	return PRectangle::FromInts(x, y, x + 1, y + 1);
+}
+
 bool ApplicationEditor::CanSelectAll() const noexcept {
 	return GetTextLength() > 0;
 }

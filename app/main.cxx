@@ -310,6 +310,11 @@ void ApplyShellEffects(Scalpel::ApplicationUi &ui,
 		case Scalpel::ApplicationShellEffectKind::AcceptClose:
 			quitAccepted = true;
 			break;
+		case Scalpel::ApplicationShellEffectKind::ShowContextMenu:
+		case Scalpel::ApplicationShellEffectKind::CloseContextMenu:
+		case Scalpel::ApplicationShellEffectKind::InvalidateContextMenu:
+			// xdg_popup wiring is applied once the Wayland popup owner lands.
+			break;
 		}
 	}
 }

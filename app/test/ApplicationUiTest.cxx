@@ -10,6 +10,7 @@
 #include "ApplicationEditor.h"
 #include "ApplicationTextInput.h"
 #include "ApplicationUi.h"
+#include "ContextMenu.h"
 #include "DocumentFile.h"
 #include "DocumentWorkspace.h"
 #include "FileErrorCard.h"
@@ -2010,4 +2011,371 @@ TEST_CASE("application UI find bar text input uses editor when unfocused") {
 	const bool queryHasZ = ui.FindModel().query.find('Z') != std::string::npos;
 	CHECK(editorHasZ);
 	CHECK_FALSE(queryHasZ);
+}
+
+namespace {
+
+PointerInput MakeRightPress(double x, double y, uint32_t serial = 42) {
+	PointerInput input = MakePointer(PointerAction::Press, x, y, 1);
+	input.serial = serial;
+	return input;
+}
+
+PointerInput MakePopupPointer(PointerAction action, double x, double y,
+	int button = -1) {
+	PointerInput input = MakePointer(action, x, y, button);
+	input.surface = Scalpel::PointerSurface::ContextPopup;
+	return input;
+}
+
+const ApplicationShellEffect *FindShellEffect(
+	const std::vector<ApplicationShellEffect> &effects,
+	ApplicationShellEffectKind kind) {
+	for (const ApplicationShellEffect &effect : effects) {
+		if (effect.kind == kind) {
+			return &effect;
+		}
+	}
+	return nullptr;
+}
+
+}
+
+TEST_CASE("Application context menu right-click selection and shell show") {
+	ApplicationEditor editor(400, 240);
+	PrepareChromeEditor(editor);
+	editor.LoadInitialBuffer("hello world\n");
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	// Render so style/layout metrics exist for hit tests.
+	editor.RenderFrame();
+
+	SECTION("right press outside selection places caret and shows popup") {
+		editor.SetSel(0, 5); // "hello"
+		const ApplicationLayout layout = ui.Layout();
+		// Click toward the end of the first line (past "hello ").
+		const Point client = Center(layout.client);
+		const ApplicationPointerResult press = ui.HandlePointer(
+			MakeRightPress(client.x, client.y, 99));
+		CHECK(press.consumed);
+		CHECK(press.owner == ApplicationPointerOwner::ContextMenu);
+		CHECK(ui.ContextMenuOpen());
+		CHECK(ui.ChromeOwnsInput());
+		// Selection collapsed away from the original "hello" range.
+		CHECK(editor.GetSelectionStart() == editor.GetSelectionEnd());
+		const bool stillHelloRange = editor.GetSelectionStart() == 0 &&
+			editor.GetSelectionEnd() == 5;
+		CHECK_FALSE(stillHelloRange);
+
+		const std::vector<ApplicationShellEffect> effects =
+			ui.TakeShellEffects();
+		const ApplicationShellEffect *show = FindShellEffect(effects,
+			ApplicationShellEffectKind::ShowContextMenu);
+		REQUIRE(show);
+		CHECK(show->anchorX == client.x);
+		CHECK(show->anchorY == client.y);
+		CHECK(show->serial == 99);
+	}
+
+	SECTION("right press inside selection preserves it") {
+		// Sample geometry at the middle of "hello", then restore the range.
+		editor.SetKeyboardFocus(true);
+		editor.SetSel(2, 2);
+		editor.RenderFrame();
+		const auto state = editor.TakeTextInputState();
+		REQUIRE(state.has_value());
+		const double x = state->cursorRectangle.x + 1;
+		const double y = state->cursorRectangle.y +
+			state->cursorRectangle.height / 2.0;
+		editor.SetSel(0, 5);
+		REQUIRE(editor.PointHitsSelection(Point(x, y)));
+		const ApplicationPointerResult press = ui.HandlePointer(
+			MakeRightPress(x, y, 7));
+		CHECK(press.consumed);
+		CHECK(ui.ContextMenuOpen());
+		CHECK(editor.GetSelectionStart() == 0);
+		CHECK(editor.GetSelectionEnd() == 5);
+	}
+
+	SECTION("margin right-click does not open the text context menu") {
+		const ApplicationLayout layout = ui.Layout();
+		// Left edge of the client is the line-number margin for production.
+		const double marginX = layout.client.left + 2;
+		const double marginY = layout.client.top + 8;
+		REQUIRE(editor.PointInSelectionMargin(Point(marginX, marginY)));
+		const ApplicationPointerResult press = ui.HandlePointer(
+			MakeRightPress(marginX, marginY, 3));
+		CHECK_FALSE(ui.ContextMenuOpen());
+		// Not consumed as a context-menu open; may still reach the editor.
+		CHECK(press.owner != ApplicationPointerOwner::ContextMenu);
+	}
+}
+
+TEST_CASE("Application context menu Shift+F10 anchors at caret") {
+	ApplicationEditor editor(400, 240);
+	PrepareChromeEditor(editor);
+	editor.LoadInitialBuffer("caret anchor\n");
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	editor.SetSel(6, 6);
+	editor.RenderFrame();
+
+	const PRectangle anchor = editor.MainCaretAnchorRectangle();
+	KeyboardInput shiftF10 = MakeKey(Keys::Menu, KeyMod::Shift);
+	shiftF10.serial = 55;
+	const ApplicationKeyboardResult key = ui.HandleKeyboard(shiftF10);
+	CHECK(key.owner == ApplicationKeyboardOwner::ContextMenu);
+	CHECK(ui.ContextMenuOpen());
+	// Bare F10 still opens the menu bar when the context menu is closed.
+	ui.DismissApplicationContextMenu();
+	(void)ui.TakeShellEffects();
+	const ApplicationKeyboardResult bare = ui.HandleKeyboard(
+		MakeKey(Keys::Menu));
+	CHECK(bare.owner == ApplicationKeyboardOwner::Menu);
+	REQUIRE(ui.MenuModel().openMenu.has_value());
+	CHECK_FALSE(ui.ContextMenuOpen());
+
+	// Re-open via Shift+F10 and check the shell anchor.
+	CloseMenuBar(ui.MenuModel());
+	const ApplicationKeyboardResult again = ui.HandleKeyboard(shiftF10);
+	CHECK(again.owner == ApplicationKeyboardOwner::ContextMenu);
+	const std::vector<ApplicationShellEffect> effects = ui.TakeShellEffects();
+	const ApplicationShellEffect *show = FindShellEffect(effects,
+		ApplicationShellEffectKind::ShowContextMenu);
+	REQUIRE(show);
+	CHECK(show->anchorX == anchor.left);
+	CHECK(show->anchorY == anchor.top);
+	CHECK(show->serial == 55);
+}
+
+TEST_CASE("Application context menu pointer activation and Escape") {
+	ApplicationEditor editor(400, 240);
+	PrepareChromeEditor(editor);
+	editor.LoadInitialBuffer("select me please\n");
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	editor.RenderFrame();
+
+	const Point client = Center(ui.Layout().client);
+	(void)ui.HandlePointer(MakeRightPress(client.x, client.y, 1));
+	REQUIRE(ui.ContextMenuOpen());
+	(void)ui.TakeShellEffects();
+
+	SECTION("popup-local Select All press/release dispatches and closes") {
+		const Scalpel::ContextMenuLayout menuLayout =
+			Scalpel::LayoutContextMenu(ui.ContextModel());
+		const Scalpel::ContextMenuItemLayout *selectAll = nullptr;
+		for (const auto &item : menuLayout.items) {
+			if (item.action == Scalpel::ApplicationAction::SelectAll) {
+				selectAll = &item;
+				break;
+			}
+		}
+		REQUIRE(selectAll);
+		const Point row = Center(selectAll->row);
+		const ApplicationPointerResult press = ui.HandlePointer(
+			MakePopupPointer(PointerAction::Press, row.x, row.y, 0));
+		CHECK(press.owner == ApplicationPointerOwner::ContextMenu);
+		CHECK(press.consumed);
+		const ApplicationPointerResult release = ui.HandlePointer(
+			MakePopupPointer(PointerAction::Release, row.x, row.y, 0));
+		CHECK(release.consumed);
+		CHECK_FALSE(ui.ContextMenuOpen());
+		CHECK(editor.GetSelectionStart() == 0);
+		CHECK(editor.GetSelectionEnd() ==
+			static_cast<Scintilla::Position>(editor.Text().size()));
+		const std::vector<ApplicationShellEffect> effects =
+			ui.TakeShellEffects();
+		CHECK(FindShellEffect(effects,
+			ApplicationShellEffectKind::CloseContextMenu));
+	}
+
+	SECTION("Escape closes and queues CloseContextMenu") {
+		const ApplicationKeyboardResult esc = ui.HandleKeyboard(
+			MakeKey(Keys::Escape));
+		CHECK(esc.owner == ApplicationKeyboardOwner::ContextMenu);
+		CHECK_FALSE(ui.ContextMenuOpen());
+		CHECK(FindShellEffect(ui.TakeShellEffects(),
+			ApplicationShellEffectKind::CloseContextMenu));
+	}
+
+	SECTION("disabled Paste press/release does not activate") {
+		editor.SetClipboardPasteAvailable(false);
+		(void)Scalpel::UpdateContextMenuActionState(ui.ContextModel(), editor);
+		REQUIRE_FALSE(ui.ContextModel().pasteEnabled);
+		const Scalpel::ContextMenuLayout menuLayout =
+			Scalpel::LayoutContextMenu(ui.ContextModel());
+		const Scalpel::ContextMenuItemLayout *paste = nullptr;
+		for (const auto &item : menuLayout.items) {
+			if (item.action == Scalpel::ApplicationAction::Paste) {
+				paste = &item;
+				break;
+			}
+		}
+		REQUIRE(paste);
+		CHECK_FALSE(paste->enabled);
+		const Point row = Center(paste->row);
+		(void)ui.HandlePointer(
+			MakePopupPointer(PointerAction::Press, row.x, row.y, 0));
+		const ApplicationPointerResult release = ui.HandlePointer(
+			MakePopupPointer(PointerAction::Release, row.x, row.y, 0));
+		CHECK(release.consumed);
+		// Disabled rows stay open and do not dispatch.
+		CHECK(ui.ContextMenuOpen());
+		CHECK_FALSE(editor.Text().empty());
+	}
+}
+
+TEST_CASE("Application context menu ownership priority and dismissals") {
+	ApplicationEditor editor(400, 240);
+	PrepareChromeEditor(editor);
+	editor.LoadInitialBuffer("priority\n");
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	editor.RenderFrame();
+	const Point client = Center(ui.Layout().client);
+
+	SECTION("file error outranks and dismisses the context menu") {
+		(void)ui.HandlePointer(MakeRightPress(client.x, client.y, 1));
+		REQUIRE(ui.ContextMenuOpen());
+		(void)ui.TakeShellEffects();
+		ui.AppendFileErrors({DocumentFileError{
+			DocumentFileOperation::Open, "/missing"}});
+		CHECK_FALSE(ui.ContextMenuOpen());
+		CHECK(FindShellEffect(ui.TakeShellEffects(),
+			ApplicationShellEffectKind::CloseContextMenu));
+		const ApplicationPointerResult press = ui.HandlePointer(
+			MakePointer(PointerAction::Press, client.x, client.y, 0));
+		CHECK(press.owner == ApplicationPointerOwner::FileError);
+	}
+
+	SECTION("focus loss dismisses") {
+		(void)ui.HandlePointer(MakeRightPress(client.x, client.y, 1));
+		REQUIRE(ui.ContextMenuOpen());
+		(void)ui.TakeShellEffects();
+		ui.HandleFocus(false);
+		CHECK_FALSE(ui.ContextMenuOpen());
+		CHECK(FindShellEffect(ui.TakeShellEffects(),
+			ApplicationShellEffectKind::CloseContextMenu));
+	}
+
+	SECTION("resize dismisses") {
+		(void)ui.HandlePointer(MakeRightPress(client.x, client.y, 1));
+		REQUIRE(ui.ContextMenuOpen());
+		(void)ui.TakeShellEffects();
+		editor.Resize(480, 260);
+		ui.HandleFrameSizeChange();
+		CHECK_FALSE(ui.ContextMenuOpen());
+		CHECK(FindShellEffect(ui.TakeShellEffects(),
+			ApplicationShellEffectKind::CloseContextMenu));
+	}
+
+	SECTION("NotifyContextPopupDone closes without another Close effect") {
+		(void)ui.HandlePointer(MakeRightPress(client.x, client.y, 1));
+		REQUIRE(ui.ContextMenuOpen());
+		(void)ui.TakeShellEffects();
+		ui.NotifyContextPopupDone();
+		CHECK_FALSE(ui.ContextMenuOpen());
+		CHECK_FALSE(FindShellEffect(ui.TakeShellEffects(),
+			ApplicationShellEffectKind::CloseContextMenu));
+	}
+
+	SECTION("opening the menu bar dismisses the context menu") {
+		(void)ui.HandlePointer(MakeRightPress(client.x, client.y, 1));
+		REQUIRE(ui.ContextMenuOpen());
+		(void)ui.TakeShellEffects();
+		const ApplicationKeyboardResult menu = ui.HandleKeyboard(
+			MakeKey(Keys::Menu));
+		// Context menu owns keys while open, so F10 is consumed there.
+		CHECK(menu.owner == ApplicationKeyboardOwner::ContextMenu);
+		CHECK(ui.ContextMenuOpen());
+		// Explicit dismiss then open menu bar.
+		ui.DismissApplicationContextMenu();
+		(void)ui.TakeShellEffects();
+		(void)ui.HandleKeyboard(MakeKey(Keys::Menu));
+		REQUIRE(ui.MenuModel().openMenu.has_value());
+		CHECK_FALSE(ui.ContextMenuOpen());
+	}
+
+	SECTION("IME is cancelled when the context menu opens") {
+		editor.SetKeyboardFocus(true);
+		ApplicationTextInputBatch preedit;
+		preedit.preedit = ApplicationTextInputPreedit{"xx", 2, 2};
+		ui.HandleTextInputBatch(preedit);
+		(void)ui.HandlePointer(MakeRightPress(client.x, client.y, 1));
+		CHECK(ui.ContextMenuOpen());
+		CHECK(ui.ChromeOwnsInput());
+		// Further batches are dropped while chrome owns input.
+		ApplicationTextInputBatch commit;
+		commit.commit = "yy";
+		ui.HandleTextInputBatch(commit);
+		CHECK(editor.Text().find("yy") == std::string::npos);
+	}
+}
+
+TEST_CASE("Application context menu live Paste enablement invalidates popup") {
+	ApplicationEditor editor(400, 240);
+	PrepareChromeEditor(editor);
+	editor.LoadInitialBuffer("paste live\n");
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	editor.RenderFrame();
+	const Point client = Center(ui.Layout().client);
+	(void)ui.HandlePointer(MakeRightPress(client.x, client.y, 1));
+	REQUIRE(ui.ContextMenuOpen());
+	(void)ui.TakeShellEffects();
+
+	editor.SetClipboardPasteAvailable(false);
+	(void)Scalpel::UpdateContextMenuActionState(ui.ContextModel(), editor);
+	CHECK_FALSE(ui.ContextModel().pasteEnabled);
+	ui.SetClipboardPasteAvailable(true);
+	CHECK(ui.ContextModel().pasteEnabled);
+	CHECK(FindShellEffect(ui.TakeShellEffects(),
+		ApplicationShellEffectKind::InvalidateContextMenu));
+
+	// RefreshOpenMenuActionState also invalidates the popup when flags flip.
+	ui.SetClipboardPasteAvailable(false);
+	// Clear any effect from SetClipboardPasteAvailable itself.
+	(void)ui.TakeShellEffects();
+	// Force a stale flag then refresh.
+	ui.ContextModel().pasteEnabled = true;
+	ui.RefreshOpenMenuActionState();
+	CHECK_FALSE(ui.ContextModel().pasteEnabled);
+	CHECK(FindShellEffect(ui.TakeShellEffects(),
+		ApplicationShellEffectKind::InvalidateContextMenu));
+}
+
+TEST_CASE("Application context menu not opened during left-button drag") {
+	ApplicationEditor editor(400, 240);
+	PrepareChromeEditor(editor);
+	editor.LoadInitialBuffer("drag capture\n");
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	editor.RenderFrame();
+	const Point client = Center(ui.Layout().client);
+	// Start a left-button selection drag so the editor holds capture.
+	(void)ui.HandlePointer(MakePointer(PointerAction::Press, client.x,
+		client.y, 0));
+	// Deliver press to the editor so capture engages.
+	editor.HandlePointerInput(MakePointer(PointerAction::Press, client.x,
+		client.y, 0));
+	REQUIRE(editor.WindowState().mouseCaptured);
+
+	const ApplicationPointerResult right = ui.HandlePointer(
+		MakeRightPress(client.x + 10, client.y, 8));
+	CHECK_FALSE(ui.ContextMenuOpen());
+	CHECK(right.owner == ApplicationPointerOwner::EditorCapture);
+	CHECK_FALSE(right.consumed);
 }
