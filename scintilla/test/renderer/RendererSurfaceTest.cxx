@@ -1,5 +1,7 @@
 #include "RendererTest.h"
 
+#include <utility>
+
 TEST_CASE("headless GlContext creates OpenGL 3.3 without a window system display") {
 	GlContext context;
 	REQUIRE(context.IsCurrent());
@@ -299,7 +301,7 @@ TEST_CASE("color emoji DrawText paints non-monochrome pixels without RGB tint") 
 	CHECK(renderer.GlyphCacheSize() == cacheBefore);
 }
 
-TEST_CASE("color emoji DrawText edge coverage stays soft without dark fringes") {
+TEST_CASE("color emoji DrawText edge coverage stays soft at physical scales") {
 	FontCache fonts;
 	const std::filesystem::path emojiPath =
 		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "EmojiFixture.ttf";
@@ -308,128 +310,86 @@ TEST_CASE("color emoji DrawText edge coverage stays soft without dark fringes") 
 	const std::string grinning = "\xF0\x9F\x98\x80";
 	const ColourRGBA fg(255, 255, 255, 255);
 	const ColourRGBA black(0, 0, 0, 255);
-	const ColourRGBA white(255, 255, 255, 255);
 
 	GlContext context;
 	Renderer renderer(context);
-	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(renderer, 64, 48);
-	surface->BindDrawTarget();
-	const XYPOSITION ybase = surface->Ascent(font.get());
-	const auto paint = [&](ColourRGBA bg) {
-		renderer.Clear(bg);
-		surface->DrawTextTransparent(PRectangle::FromInts(2, 0, 64, 48), font.get(), ybase,
-			grinning, fg);
+	const RasterScale scales[] = {
+		RasterScale{},
+		RasterScale::FromParts(5, 4),
+		RasterScale::FromParts(3, 2),
+		RasterScale::FromParts(2, 1),
 	};
-
-	// Capture black-background samples first (partial coverage is visible as dim RGB).
-	paint(black);
-	REQUIRE(HasNonBackgroundInk(surface->Buffer(), black));
-	const InkBounds ink = FindInkBounds(surface->Buffer(), black);
-	REQUIRE_FALSE(ink.Empty());
-
-	struct Sample {
-		int x = 0;
-		int y = 0;
-		ColourRGBA blackPx{};
-	};
-	std::vector<Sample> partial;
-	std::vector<Sample> solid;
-	int softAngleHits = 0;
-	const double cx = 0.5 * (ink.left + ink.right);
-	const double cy = 0.5 * (ink.top + ink.bottom);
-	const int maxRadius =
-		std::max(ink.right - ink.left, ink.bottom - ink.top) + 2;
+	constexpr int logicalWidth = 64;
+	constexpr int logicalHeight = 48;
 	constexpr double kPi = 3.14159265358979323846;
 
-	for (int y = ink.top; y < ink.bottom; y++) {
-		for (int x = ink.left; x < ink.right; x++) {
-			const ColourRGBA px = surface->Buffer().ReadPixel(x, y);
-			if (ExactColour(px, black)) {
-				continue;
-			}
-			const int maxCh = std::max({static_cast<int>(px.GetRed()),
-				static_cast<int>(px.GetGreen()), static_cast<int>(px.GetBlue())});
-			if (maxCh >= 200) {
-				solid.push_back(Sample{x, y, px});
-			} else if (maxCh >= 16) {
-				// Intermediate coverage after area reduction + residual linear filter.
-				partial.push_back(Sample{x, y, px});
+	for (const RasterScale scale : scales) {
+		INFO("scale " << scale.Numerator() << "/" << scale.Denominator());
+		const int bufferWidth = logicalWidth * static_cast<int>(scale.Numerator()) /
+			static_cast<int>(scale.Denominator());
+		const int bufferHeight = logicalHeight * static_cast<int>(scale.Numerator()) /
+			static_cast<int>(scale.Denominator());
+		ColourBuffer buffer;
+		buffer.Resize(bufferWidth, bufferHeight);
+		std::unique_ptr<DrawSurface> surface = CreateExternalDrawSurface(renderer,
+			buffer.FramebufferName(), bufferWidth, bufferHeight, logicalWidth, logicalHeight, scale);
+		const XYPOSITION ybase = surface->Ascent(font.get());
+		renderer.Clear(black);
+		surface->DrawTextTransparent(PRectangle::FromInts(2, 0, logicalWidth, logicalHeight),
+			font.get(), ybase, grinning, fg);
+
+		REQUIRE(HasNonBackgroundInk(buffer, black));
+		const InkBounds ink = FindInkBounds(buffer, black);
+		REQUIRE_FALSE(ink.Empty());
+
+		std::vector<std::pair<int, int>> partial;
+		int solidCount = 0;
+		const double cx = 0.5 * (ink.left + ink.right);
+		const double cy = 0.5 * (ink.top + ink.bottom);
+		const int maxRadius =
+			std::max(ink.right - ink.left, ink.bottom - ink.top) + 2;
+		for (int y = ink.top; y < ink.bottom; y++) {
+			for (int x = ink.left; x < ink.right; x++) {
+				const ColourRGBA px = buffer.ReadPixel(x, y);
+				if (ExactColour(px, black)) {
+					continue;
+				}
+				const int maxCh = std::max({static_cast<int>(px.GetRed()),
+					static_cast<int>(px.GetGreen()), static_cast<int>(px.GetBlue())});
+				if (maxCh >= 200) {
+					++solidCount;
+				} else if (maxCh >= 16) {
+					partial.emplace_back(x, y);
+				}
 			}
 		}
-	}
-	CHECK(solid.size() >= 4);
-	CHECK(partial.size() >= 4);
+		CHECK(solidCount >= 4);
+		CHECK(partial.size() >= 4);
 
-	// Several angular sectors around the ink centre contain partial edge samples.
-	for (int i = 0; i < 8; i++) {
-		const double angle0 = kPi * 0.25 * static_cast<double>(i);
-		const double angle1 = angle0 + kPi * 0.25;
-		bool hit = false;
-		for (const Sample &s : partial) {
-			const double dx = static_cast<double>(s.x) + 0.5 - cx;
-			const double dy = static_cast<double>(s.y) + 0.5 - cy;
-			double ang = std::atan2(dy, dx);
-			if (ang < 0.0) {
-				ang += 2.0 * kPi;
-			}
-			double a0 = angle0;
-			double a1 = angle1;
-			if (a0 < 0.0) {
-				a0 += 2.0 * kPi;
-				a1 += 2.0 * kPi;
-			}
-			// Normalize sample into [0, 2pi) already; sector is contiguous in that range.
-			const bool inSector = (ang >= a0 && ang < a1) ||
-				(a1 > 2.0 * kPi && (ang >= a0 || ang < a1 - 2.0 * kPi));
-			if (inSector) {
-				const double r = std::hypot(dx, dy);
-				// Prefer the outer half of the ink so we score rim coverage.
-				if (r >= 0.25 * maxRadius) {
+		int softAngleHits = 0;
+		for (int i = 0; i < 8; i++) {
+			const double angle0 = kPi * 0.25 * static_cast<double>(i);
+			const double angle1 = angle0 + kPi * 0.25;
+			bool hit = false;
+			for (const auto [x, y] : partial) {
+				const double dx = static_cast<double>(x) + 0.5 - cx;
+				const double dy = static_cast<double>(y) + 0.5 - cy;
+				double angle = std::atan2(dy, dx);
+				if (angle < 0.0) {
+					angle += 2.0 * kPi;
+				}
+				if (angle >= angle0 && angle < angle1 &&
+					std::hypot(dx, dy) >= 0.25 * maxRadius) {
 					hit = true;
 					break;
 				}
 			}
-		}
-		if (hit) {
-			++softAngleHits;
-		}
-	}
-	CHECK(softAngleHits >= 4);
-
-	// Re-paint on white and compare partial samples: dark fringes from filtering
-	// straight alpha would make the white-bg edge darker than the black-bg sample.
-	paint(white);
-	int fringeViolations = 0;
-	int channelSpreadViolations = 0;
-	for (const Sample &s : partial) {
-		const ColourRGBA w = surface->Buffer().ReadPixel(s.x, s.y);
-		const int bLuma = static_cast<int>(s.blackPx.GetRed()) +
-			static_cast<int>(s.blackPx.GetGreen()) + static_cast<int>(s.blackPx.GetBlue());
-		const int wLuma =
-			static_cast<int>(w.GetRed()) + static_cast<int>(w.GetGreen()) +
-			static_cast<int>(w.GetBlue());
-		// White destination should not produce a darker composite on partial edges.
-		if (wLuma + 48 < bLuma) {
-			++fringeViolations;
-		}
-		// Premultiplied-friendly colour: no single channel on black-bg partial
-		// samples runs far ahead of the others (straight-alpha fringe symptom).
-		const int maxCh = std::max({static_cast<int>(s.blackPx.GetRed()),
-			static_cast<int>(s.blackPx.GetGreen()), static_cast<int>(s.blackPx.GetBlue())});
-		const int minCh = std::min({static_cast<int>(s.blackPx.GetRed()),
-			static_cast<int>(s.blackPx.GetGreen()), static_cast<int>(s.blackPx.GetBlue())});
-		if (maxCh >= 24 && maxCh - minCh > maxCh * 9 / 10 + 12) {
-			// Allow strong yellow (R/G >> B) but reject near-single-channel spikes.
-			const int midCh = static_cast<int>(s.blackPx.GetRed()) +
-				static_cast<int>(s.blackPx.GetGreen()) + static_cast<int>(s.blackPx.GetBlue()) -
-				maxCh - minCh;
-			if (midCh < maxCh / 5) {
-				++channelSpreadViolations;
+			if (hit) {
+				++softAngleHits;
 			}
 		}
+		CHECK(softAngleHits >= 4);
 	}
-	CHECK(fringeViolations == 0);
-	CHECK(channelSpreadViolations == 0);
 }
 
 TEST_CASE("color emoji DrawText respects clip and overall text alpha") {

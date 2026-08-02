@@ -696,17 +696,22 @@ TEST_CASE("fixed bitmap glyph cache uses physical-size variants and three-genera
 	GlContext context;
 	Renderer renderer(context);
 	ColourBuffer buffer;
-	buffer.Resize(64, 64);
-	renderer.SetDrawTarget(buffer.FramebufferName(), 64, 64, 64, 64);
+	constexpr int logicalExtent = 64;
 	const ColourRGBA fg(255, 255, 255, 255);
 	const ColourRGBA bg(0, 0, 0, 255);
 	const XYPOSITION baseline = face->Metrics().ascent + 8.0;
 	const XYPOSITION penX = 4.0;
 
 	const auto drawAt = [&](RasterScale scale) {
+		const int bufferExtent = logicalExtent * static_cast<int>(scale.Numerator()) /
+			static_cast<int>(scale.Denominator());
+		buffer.Resize(bufferExtent, bufferExtent);
+		renderer.SetDrawTarget(buffer.FramebufferName(), bufferExtent, bufferExtent,
+			logicalExtent, logicalExtent);
 		renderer.SetOutputRasterScale(scale);
 		renderer.Clear(bg);
 		renderer.DrawGlyph(penX, baseline, face, glyphId, fg);
+		return FindInkBounds(buffer, bg);
 	};
 
 	const auto expectedTex = [&](RasterScale scale) {
@@ -719,7 +724,7 @@ TEST_CASE("fixed bitmap glyph cache uses physical-size variants and three-genera
 	};
 
 	// Scale 1: reduce toward physical size; reuse without a second entry.
-	drawAt(RasterScale{});
+	const InkBounds ink1 = drawAt(RasterScale{});
 	REQUIRE(renderer.GlyphCacheSize() == 1);
 	const auto tex1 = renderer.GlyphCacheTextureSize(face, glyphId, RasterScale{});
 	const auto expect1 = expectedTex(RasterScale{});
@@ -728,7 +733,6 @@ TEST_CASE("fixed bitmap glyph cache uses physical-size variants and three-genera
 	CHECK(tex1.first < source.width);
 	CHECK(tex1.second < source.height);
 	CHECK(tex1.first >= 1);
-	const InkBounds ink1 = FindInkBounds(buffer, bg);
 	REQUIRE_FALSE(ink1.Empty());
 	drawAt(RasterScale{});
 	CHECK(renderer.GlyphCacheSize() == 1);
@@ -737,17 +741,21 @@ TEST_CASE("fixed bitmap glyph cache uses physical-size variants and three-genera
 	const RasterScale scale5_4 = RasterScale::FromParts(5, 4);
 	const RasterScale scale3_2 = RasterScale::FromParts(3, 2);
 	const RasterScale scale2 = RasterScale::FromParts(2, 1);
-	drawAt(scale5_4);
+	const InkBounds ink5_4 = drawAt(scale5_4);
 	CHECK(renderer.GlyphCacheSize() == 2);
 	const auto tex5_4 = renderer.GlyphCacheTextureSize(face, glyphId, scale5_4);
 	CHECK(tex5_4 == expectedTex(scale5_4));
 	CHECK(tex5_4.first >= tex1.first);
-	const InkBounds ink5_4 = FindInkBounds(buffer, bg);
 	REQUIRE_FALSE(ink5_4.Empty());
-	// Logical placement is unchanged: ink stays near the same layout band.
-	CHECK(std::abs(ink5_4.left - ink1.left) <= 2);
-	CHECK(std::abs(ink5_4.top - ink1.top) <= 2);
-	CHECK(std::abs((ink5_4.right - ink5_4.left) - (ink1.right - ink1.left)) <= 3);
+	// Logical placement is unchanged when the physical bounds are scaled back.
+	const auto logical = [](int physical, RasterScale scale) {
+		return static_cast<double>(physical) * static_cast<double>(scale.Denominator()) /
+			static_cast<double>(scale.Numerator());
+	};
+	CHECK(std::abs(logical(ink5_4.left, scale5_4) - ink1.left) <= 2.0);
+	CHECK(std::abs(logical(ink5_4.top, scale5_4) - ink1.top) <= 2.0);
+	CHECK(std::abs(logical(ink5_4.right - ink5_4.left, scale5_4) -
+		(ink1.right - ink1.left)) <= 3.0);
 
 	drawAt(scale3_2);
 	CHECK(renderer.GlyphCacheSize() == 3);
@@ -775,6 +783,9 @@ TEST_CASE("fixed bitmap glyph cache uses physical-size variants and three-genera
 		fonts.LoadPath(primary, FontParameters("fixture", 16.0));
 	const ShapedRun outlineRun = ShapeText("A", outline);
 	REQUIRE_FALSE(outlineRun.glyphs.empty());
+	buffer.Resize(logicalExtent, logicalExtent);
+	renderer.SetDrawTarget(buffer.FramebufferName(), logicalExtent, logicalExtent,
+		logicalExtent, logicalExtent);
 	renderer.SetOutputRasterScale(RasterScale{});
 	const size_t beforeOutline = renderer.GlyphCacheSize();
 	renderer.DrawGlyph(4.0, outline->Metrics().ascent, outline,

@@ -265,6 +265,20 @@ TEST_CASE("Fixed glyph bitmap area reduction avoids transparent-edge colour leak
 	REQUIRE(out.pixels[1] == 0);
 	REQUIRE(out.pixels[2] == 0);
 	REQUIRE(out.pixels[3] == 64);
+
+	// A non-aligned edge has an exact premultiplied reference. Averaging an
+	// opaque red pixel with half a transparent pixel gives (170, 0, 0, 170).
+	// Unpremultiplying before filtering and premultiplying again would darken
+	// this edge, so this directly detects the fringe-producing mistake.
+	std::vector<uint8_t> unaligned(3 * 1 * 4);
+	unaligned[0] = 255;
+	unaligned[3] = 255;
+	REQUIRE(ReduceFixedGlyphBitmapArea(unaligned.data(), 3, 1, 4, 2, 1, out));
+	REQUIRE(out.width == 2);
+	REQUIRE(out.height == 1);
+	const uint8_t partialRed[4] = {170, 0, 0, 170};
+	REQUIRE(ChannelsNear(out.pixels.data(), partialRed, 4, 0));
+	REQUIRE(ChannelsNear(out.pixels.data() + 4, clear, 4, 0));
 }
 
 TEST_CASE("Fixed glyph bitmap area reduction conserves colour mass within tolerance") {
