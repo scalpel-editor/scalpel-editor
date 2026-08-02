@@ -46,6 +46,7 @@ target_compile_options(scintilla_font PRIVATE -Wall -Wextra)
 # editorTest and the future application host link this for Surface::Allocate.
 add_library(scintilla_render STATIC
   src/DrawSurface.cxx
+  src/FixedGlyphBitmapReduce.cxx
   src/Geometry.cxx
   src/GlContext.cxx
   src/Renderer.cxx

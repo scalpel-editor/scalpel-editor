@@ -2,6 +2,7 @@
 # Links scintilla_render only — does not define Surface::Allocate for editorTest.
 
 add_executable(rendererTest
+  FixedGlyphBitmapReduceTest.cxx
   RendererCompositionTest.cxx
   RendererPrimitivesTest.cxx
   RendererSurfaceTest.cxx
