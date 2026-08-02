@@ -323,6 +323,19 @@ target_compile_options(waylandPointerTest PRIVATE -Wall -Wextra)
 
 add_test(NAME wayland-pointer COMMAND waylandPointerTest)
 
+add_executable(waylandPopupTest
+  WaylandPopupTest.cxx
+  WaylandTestMain.cxx
+)
+target_include_directories(waylandPopupTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(waylandPopupTest PRIVATE scalpel_wayland)
+target_compile_options(waylandPopupTest PRIVATE -Wall -Wextra)
+
+add_test(NAME wayland-popup COMMAND waylandPopupTest)
+
 add_executable(waylandByteTransferTest
   WaylandByteTransferTest.cxx
   WaylandTestMain.cxx

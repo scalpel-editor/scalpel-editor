@@ -310,6 +310,21 @@ TEST_CASE("Wayland keyboard teardown removes stale input and reports focus loss"
 	CHECK(pointer.modifiers == Scintilla::KeyMod::Norm);
 }
 
+TEST_CASE("Wayland keyboard serial is preserved on key events") {
+	const TestKeymap keymap = MakeTestKeymap();
+	Scalpel::WaylandInput input;
+	REQUIRE(input.SetKeymap(keymap.text));
+	input.RecordKey(40, KEY_F10, true, 77);
+	input.RecordKey(41, KEY_F10, false, 78);
+	const std::vector<Scalpel::InputEvent> events = input.TakeInputs();
+	REQUIRE(events.size() == 2);
+	const auto &press = std::get<Scalpel::KeyboardInput>(events[0]);
+	const auto &release = std::get<Scalpel::KeyboardInput>(events[1]);
+	CHECK(press.serial == 77);
+	CHECK(release.serial == 78);
+	CHECK(press.key == Scintilla::Keys::Menu);
+}
+
 TEST_CASE("Wayland keyboard menu keys map F10 and Menu") {
 	const TestKeymap keymap = MakeTestKeymap();
 	Scalpel::WaylandInput input;

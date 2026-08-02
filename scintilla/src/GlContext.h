@@ -42,13 +42,37 @@ public:
 	GlContext &operator=(const GlContext &) = delete;
 	GlContext &operator=(GlContext &&) = delete;
 
-	/** Make this context current on the calling thread. */
+	/**
+	 * Which window surface MakeCurrent / SwapBuffers / BufferAge target.
+	 * Editor is the surface created with the window constructor; Popup is an
+	 * optional second surface created with CreatePopupSurface.
+	 */
+	enum class SurfaceTarget {
+		Editor,
+		Popup,
+	};
+
+	/** Make this context current on the calling thread (editor surface). */
 	void MakeCurrent();
+	/** Make this context current on the named surface target. */
+	void MakeCurrent(SurfaceTarget target);
 
 	/** Detach the current context if it is this one. */
 	void ReleaseCurrent() noexcept;
 
-	/** Submit the current window surface. Throws for a headless context. */
+	/**
+	 * Create a second EGL window surface for a popup wl_egl_window. Fails if
+	 * a popup surface already exists or the context is headless. Does not
+	 * change which surface is current.
+	 */
+	void CreatePopupSurface(void *nativeWindow);
+	/** Destroy the popup EGL surface if present; restores editor as current. */
+	void DestroyPopupSurface() noexcept;
+	[[nodiscard]] bool HasPopupSurface() const noexcept {
+		return popupSurface != nullptr;
+	}
+
+	/** Submit the currently selected window surface. Throws for headless. */
 	void SwapBuffers();
 	/** Submit only the supplied bottom-left-origin EGL damage rectangles. */
 	void SwapBuffersWithDamage(const int *rectangles, std::size_t rectangleCount);
@@ -60,9 +84,17 @@ public:
 	}
 	/** Return zero when buffer age is unavailable or cannot be queried. */
 	[[nodiscard]] int BufferAge() const noexcept;
+	/**
+	 * Buffer age for a specific surface without changing the current target.
+	 * Returns zero when unsupported or the surface is missing.
+	 */
+	[[nodiscard]] int BufferAge(SurfaceTarget target) const noexcept;
 
 	[[nodiscard]] bool IsCurrent() const noexcept;
 	[[nodiscard]] bool HasWindowSurface() const noexcept { return windowSurface; }
+	[[nodiscard]] SurfaceTarget CurrentTarget() const noexcept {
+		return currentTarget;
+	}
 
 	/** GL_VERSION string while current; empty if not current. */
 	[[nodiscard]] std::string VersionString() const;
@@ -77,12 +109,16 @@ public:
 private:
 	void ConfigureCurrentContext();
 	void Destroy() noexcept;
+	[[nodiscard]] void *SurfaceFor(SurfaceTarget target) const noexcept;
 
 	void *display = nullptr;   // EGLDisplay
 	void *context = nullptr;   // EGLContext
-	void *surface = nullptr;   // EGLSurface or null for EGL_NO_SURFACE path
+	void *surface = nullptr;   // Editor EGLSurface or null for EGL_NO_SURFACE
+	void *popupSurface = nullptr; // Optional second window surface
+	void *eglConfig = nullptr; // EGLConfig retained for popup surfaces
 	bool windowSurface = false;
 	bool bufferAgeSupported = false;
+	SurfaceTarget currentTarget = SurfaceTarget::Editor;
 	void (*swapBuffersWithDamage)() = nullptr;
 	int majorVersion = 0;
 	int minorVersion = 0;

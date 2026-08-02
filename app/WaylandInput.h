@@ -58,10 +58,19 @@ public:
 	void RecordKeyboardFocus(bool focused);
 	void UpdateModifiers(uint32_t depressed, uint32_t latched, uint32_t locked,
 		uint32_t group);
-	void RecordKey(uint32_t time, uint32_t key, bool pressed);
+	void RecordKey(uint32_t time, uint32_t key, bool pressed, uint32_t serial = 0);
+	/**
+	 * Surface that subsequent pointer events target until leave. Enter on the
+	 * context popup sets ContextPopup; enter on the toplevel sets Toplevel.
+	 */
+	void SetPointerSurface(PointerSurface surface) noexcept;
+	[[nodiscard]] PointerSurface CurrentPointerSurface() const noexcept {
+		return pointerSurface;
+	}
 	void RecordPointerMotion(uint32_t time, double x, double y);
 	void RecordPointerLeave();
-	void RecordPointerButton(uint32_t time, uint32_t button, bool pressed);
+	void RecordPointerButton(uint32_t time, uint32_t button, bool pressed,
+		uint32_t serial = 0);
 	void RecordPointerAxis(uint32_t time, uint32_t axis, double value);
 	void RecordPointerFrame();
 	void RecordPointerAxisSource(uint32_t source) noexcept;
@@ -91,7 +100,7 @@ private:
 	};
 
 	[[nodiscard]] Scintilla::KeyMod CurrentModifiers() const;
-	void AppendKey(uint32_t time, uint32_t key, bool pressed);
+	void AppendKey(uint32_t time, uint32_t key, bool pressed, uint32_t serial);
 	void StartRepeat(uint32_t time, uint32_t key);
 	void StopRepeat() noexcept;
 	[[nodiscard]] std::string TextForKey(uint32_t keycode, uint32_t keysym,
@@ -108,6 +117,7 @@ private:
 	xkb_state *state = nullptr;
 	double pointerX = 0;
 	double pointerY = 0;
+	PointerSurface pointerSurface = PointerSurface::Toplevel;
 	std::array<bool, 3> pointerButtons{};
 	std::array<PointerAxisState, 2> pointerAxes{};
 	RepeatState repeat;

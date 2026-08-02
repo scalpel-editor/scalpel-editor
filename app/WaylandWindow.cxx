@@ -88,6 +88,16 @@ const xdg_surface_listener WaylandWindow::surfaceListener = {
 	WaylandWindow::SurfaceConfigure,
 };
 
+const xdg_surface_listener WaylandWindow::popupSurfaceListener = {
+	WaylandWindow::PopupSurfaceConfigure,
+};
+
+const xdg_popup_listener WaylandWindow::popupListener = {
+	WaylandWindow::PopupConfigure,
+	WaylandWindow::PopupDone,
+	nullptr,
+};
+
 const xdg_toplevel_listener WaylandWindow::toplevelListener = {
 	WaylandWindow::ToplevelConfigure,
 	WaylandWindow::ToplevelClose,
@@ -217,6 +227,8 @@ void WaylandWindow::Destroy() noexcept {
 		wp_presentation_feedback_destroy(feedback.proxy);
 	}
 	presentationFeedback.clear();
+	// Popup before toplevel so reverse ownership order is preserved.
+	DestroyContextMenuPopup();
 	if (eglWindow) {
 		wl_egl_window_destroy(eglWindow);
 	}
@@ -1336,11 +1348,16 @@ void WaylandWindow::KeyboardKeymap(void *data, wl_keyboard *, uint32_t format,
 void WaylandWindow::KeyboardEnter(void *data, wl_keyboard *, uint32_t serial,
 	wl_surface *surface_, wl_array *) {
 	auto &window = *static_cast<WaylandWindow *>(data);
-	if (surface_ == window.surface) {
+	// Grabbed popups receive keyboard focus; retain normal toplevel focus
+	// for the main surface. Both record focus so keys continue to flow.
+	if (surface_ == window.surface || surface_ == window.popupSurface) {
 		window.clipboard.RecordSerial(serial);
 		window.primarySelection.RecordSerial(serial);
 		window.input.RecordKeyboardFocus(true);
-		window.textInput.SetKeyboardFocus(true);
+		// Text input stays on the toplevel; the popup does not own IME.
+		if (surface_ == window.surface) {
+			window.textInput.SetKeyboardFocus(true);
+		}
 	}
 }
 
@@ -1350,6 +1367,9 @@ void WaylandWindow::KeyboardLeave(void *data, wl_keyboard *, uint32_t, wl_surfac
 		window.textInput.SetKeyboardFocus(false);
 		window.input.RecordKeyboardFocus(false);
 		window.input.ResetKeyboardState();
+	} else if (surface_ == window.popupSurface) {
+		// Leaving the popup for the toplevel restores focus below; do not
+		// clear keyboard state until the toplevel also leaves.
 	}
 }
 
@@ -1359,7 +1379,8 @@ void WaylandWindow::KeyboardKey(void *data, wl_keyboard *, uint32_t serial, uint
 	window.clipboard.RecordSerial(serial);
 	window.primarySelection.RecordSerial(serial);
 	if (state == WL_KEYBOARD_KEY_STATE_PRESSED || state == WL_KEYBOARD_KEY_STATE_RELEASED) {
-		window.input.RecordKey(time, key, state == WL_KEYBOARD_KEY_STATE_PRESSED);
+		window.input.RecordKey(time, key, state == WL_KEYBOARD_KEY_STATE_PRESSED,
+			serial);
 	}
 }
 
@@ -1381,6 +1402,7 @@ void WaylandWindow::PointerEnter(void *data, wl_pointer *, uint32_t serial,
 	wl_surface *surface_, int32_t x, int32_t y) {
 	auto &window = *static_cast<WaylandWindow *>(data);
 	if (surface_ == window.surface) {
+		window.input.SetPointerSurface(PointerSurface::Toplevel);
 		window.clipboard.RecordSerial(serial);
 		window.primarySelection.RecordSerial(serial);
 		window.ApplyCursorAction(window.cursorState.Enter(serial));
@@ -1389,14 +1411,24 @@ void WaylandWindow::PointerEnter(void *data, wl_pointer *, uint32_t serial,
 			window.ApplyCursorAction(window.cursorState.SetThemeAvailable(
 				window.cursorTheme != nullptr));
 		}
-		window.input.RecordPointerMotion(0, wl_fixed_to_double(x), wl_fixed_to_double(y));
+		window.input.RecordPointerMotion(0, wl_fixed_to_double(x),
+			wl_fixed_to_double(y));
+	} else if (surface_ == window.popupSurface) {
+		// Popup-local coordinates; do not move the toplevel cursor theme.
+		window.input.SetPointerSurface(PointerSurface::ContextPopup);
+		window.clipboard.RecordSerial(serial);
+		window.primarySelection.RecordSerial(serial);
+		window.input.RecordPointerMotion(0, wl_fixed_to_double(x),
+			wl_fixed_to_double(y));
 	}
 }
 
 void WaylandWindow::PointerLeave(void *data, wl_pointer *, uint32_t, wl_surface *surface_) {
 	auto &window = *static_cast<WaylandWindow *>(data);
-	if (surface_ == window.surface) {
-		window.cursorState.Leave();
+	if (surface_ == window.surface || surface_ == window.popupSurface) {
+		if (surface_ == window.surface) {
+			window.cursorState.Leave();
+		}
 		window.input.RecordPointerLeave();
 	}
 }
@@ -1414,7 +1446,7 @@ void WaylandWindow::PointerButton(void *data, wl_pointer *, uint32_t serial, uin
 		window.clipboard.RecordSerial(serial);
 		window.primarySelection.RecordSerial(serial);
 		window.input.RecordPointerButton(
-			time, button, state == WL_POINTER_BUTTON_STATE_PRESSED);
+			time, button, state == WL_POINTER_BUTTON_STATE_PRESSED, serial);
 	}
 }
 
@@ -1542,6 +1574,133 @@ void WaylandWindow::SurfaceConfigure(void *data, xdg_surface *shellSurface_, uin
 		}
 	}
 	window.configured = true;
+}
+
+void WaylandWindow::PopupSurfaceConfigure(void *data, xdg_surface *,
+	uint32_t serial) {
+	auto &window = *static_cast<WaylandWindow *>(data);
+	window.popupLifecycle.RecordSurfaceConfigure(serial);
+}
+
+void WaylandWindow::PopupConfigure(void *data, xdg_popup *, int32_t x, int32_t y,
+	int32_t width, int32_t height) {
+	auto &window = *static_cast<WaylandWindow *>(data);
+	window.popupLifecycle.RecordPopupConfigure(x, y, width, height);
+}
+
+void WaylandWindow::PopupDone(void *data, xdg_popup *) {
+	auto &window = *static_cast<WaylandWindow *>(data);
+	window.popupLifecycle.RecordPopupDone();
+}
+
+bool WaylandWindow::CreateContextMenuPopup(int logicalWidth, int logicalHeight,
+	int anchorX, int anchorY, uint32_t serial) {
+	if (!display || !wmBase || !shellSurface || !seat || !compositor) {
+		return false;
+	}
+	if (logicalWidth <= 0 || logicalHeight <= 0) {
+		return false;
+	}
+	// Replace any existing popup rather than nesting.
+	DestroyContextMenuPopup();
+
+	wl_surface *child = wl_compositor_create_surface(compositor);
+	if (!child) {
+		return false;
+	}
+	xdg_surface *childShell = xdg_wm_base_get_xdg_surface(wmBase, child);
+	if (!childShell) {
+		wl_surface_destroy(child);
+		return false;
+	}
+	if (xdg_surface_add_listener(childShell, &popupSurfaceListener, this) != 0) {
+		xdg_surface_destroy(childShell);
+		wl_surface_destroy(child);
+		return false;
+	}
+
+	xdg_positioner *positioner = xdg_wm_base_create_positioner(wmBase);
+	if (!positioner) {
+		xdg_surface_destroy(childShell);
+		wl_surface_destroy(child);
+		return false;
+	}
+	xdg_positioner_set_size(positioner, logicalWidth, logicalHeight);
+	// One-pixel parent anchor at the requested point.
+	xdg_positioner_set_anchor_rect(positioner, anchorX, anchorY, 1, 1);
+	xdg_positioner_set_anchor(positioner, XDG_POSITIONER_ANCHOR_TOP_LEFT);
+	// Grow down-right from the anchor; compositor may flip/slide.
+	xdg_positioner_set_gravity(positioner, XDG_POSITIONER_GRAVITY_BOTTOM_RIGHT);
+	xdg_positioner_set_constraint_adjustment(positioner,
+		XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_X |
+		XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_Y |
+		XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X |
+		XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y);
+
+	xdg_popup *childPopup = xdg_surface_get_popup(childShell, shellSurface,
+		positioner);
+	xdg_positioner_destroy(positioner);
+	if (!childPopup) {
+		xdg_surface_destroy(childShell);
+		wl_surface_destroy(child);
+		return false;
+	}
+	if (xdg_popup_add_listener(childPopup, &popupListener, this) != 0) {
+		xdg_popup_destroy(childPopup);
+		xdg_surface_destroy(childShell);
+		wl_surface_destroy(child);
+		return false;
+	}
+
+	// Grab must happen before the initial bufferless commit / map.
+	xdg_popup_grab(childPopup, seat, serial);
+	xdg_surface_set_window_geometry(childShell, 0, 0, logicalWidth,
+		logicalHeight);
+
+	popupSurface = child;
+	popupShellSurface = childShell;
+	popup = childPopup;
+	popupLifecycle.Begin();
+	// Initial bufferless commit; wait for configure before attaching.
+	wl_surface_commit(popupSurface);
+	return true;
+}
+
+bool WaylandWindow::AckContextMenuPopupConfigure() {
+	if (!popupShellSurface) {
+		return false;
+	}
+	const std::optional<uint32_t> serial = popupLifecycle.TakeAckSerial();
+	if (!serial) {
+		return false;
+	}
+	xdg_surface_ack_configure(popupShellSurface, *serial);
+	const WaylandPopupConfigure &cfg = popupLifecycle.Configure();
+	if (cfg.width > 0 && cfg.height > 0) {
+		xdg_surface_set_window_geometry(popupShellSurface, 0, 0, cfg.width,
+			cfg.height);
+	}
+	return popupLifecycle.CanPaint();
+}
+
+void WaylandWindow::DestroyContextMenuPopup() noexcept {
+	if (popupEglWindow) {
+		wl_egl_window_destroy(popupEglWindow);
+		popupEglWindow = nullptr;
+	}
+	if (popup) {
+		xdg_popup_destroy(popup);
+		popup = nullptr;
+	}
+	if (popupShellSurface) {
+		xdg_surface_destroy(popupShellSurface);
+		popupShellSurface = nullptr;
+	}
+	if (popupSurface) {
+		wl_surface_destroy(popupSurface);
+		popupSurface = nullptr;
+	}
+	(void)popupLifecycle.FinishDestroy();
 }
 
 void WaylandWindow::ToplevelConfigure(void *data, xdg_toplevel *, int32_t width_,

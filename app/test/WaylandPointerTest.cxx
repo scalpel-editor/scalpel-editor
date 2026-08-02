@@ -32,6 +32,36 @@ TEST_CASE("Wayland pointer retains coordinates modifiers buttons and axes") {
 		Scalpel::PointerAction::Leave);
 }
 
+TEST_CASE("Wayland pointer popup surface and serial are preserved") {
+	Scalpel::WaylandInput input;
+	input.SetPointerSurface(Scalpel::PointerSurface::ContextPopup);
+	input.RecordPointerMotion(10, 4.0, 6.0);
+	input.RecordPointerButton(11, BTN_RIGHT, true, 99);
+	input.RecordPointerButton(12, BTN_RIGHT, false, 100);
+	const std::vector<Scalpel::InputEvent> events = input.TakeInputs();
+	REQUIRE(events.size() == 3);
+	const auto &motion = std::get<Scalpel::PointerInput>(events[0]);
+	CHECK(motion.surface == Scalpel::PointerSurface::ContextPopup);
+	CHECK(motion.serial == 0);
+	const auto &press = std::get<Scalpel::PointerInput>(events[1]);
+	CHECK(press.action == Scalpel::PointerAction::Press);
+	CHECK(press.button == 1);
+	CHECK(press.serial == 99);
+	CHECK(press.surface == Scalpel::PointerSurface::ContextPopup);
+	const auto &release = std::get<Scalpel::PointerInput>(events[2]);
+	CHECK(release.serial == 100);
+	CHECK(release.surface == Scalpel::PointerSurface::ContextPopup);
+
+	// Leave resets the surface target to the toplevel for the next enter.
+	input.SetPointerSurface(Scalpel::PointerSurface::ContextPopup);
+	input.RecordPointerMotion(13, 1, 1);
+	(void)input.TakeInputs();
+	input.RecordPointerLeave();
+	const auto leave = std::get<Scalpel::PointerInput>(input.TakeInputs().front());
+	CHECK(leave.surface == Scalpel::PointerSurface::ContextPopup);
+	CHECK(input.CurrentPointerSurface() == Scalpel::PointerSurface::Toplevel);
+}
+
 TEST_CASE("Wayland pointer coalesces current axis frames") {
 	Scalpel::WaylandInput input;
 	input.SetPointerVersion(9);

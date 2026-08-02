@@ -216,6 +216,8 @@ GlContext::GlContext(void *nativeDisplay, void *nativeWindow) {
 	context = ctx;
 	majorVersion = 3;
 	minorVersion = 3;
+	// Retain the config so a second window surface can share the same context.
+	eglConfig = cfg;
 
 	EGLSurface window = eglCreateWindowSurface(dpy, cfg,
 		reinterpret_cast<EGLNativeWindowType>(nativeWindow), nullptr);
@@ -225,6 +227,7 @@ GlContext::GlContext(void *nativeDisplay, void *nativeWindow) {
 	}
 	surface = window;
 	windowSurface = true;
+	currentTarget = SurfaceTarget::Editor;
 	const char *displayExtensions = eglQueryString(dpy, EGL_EXTENSIONS);
 	bufferAgeSupported = ClientExtensionPresent(
 		displayExtensions, "EGL_EXT_buffer_age");
@@ -287,10 +290,14 @@ void GlContext::Destroy() noexcept {
 	EGLDisplay dpy = static_cast<EGLDisplay>(display);
 	EGLContext ctx = static_cast<EGLContext>(context);
 	EGLSurface surf = static_cast<EGLSurface>(surface);
+	EGLSurface popup = static_cast<EGLSurface>(popupSurface);
 
 	if (dpy != nullptr && dpy != EGL_NO_DISPLAY) {
 		if (eglGetCurrentContext() == ctx) {
 			eglMakeCurrent(dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+		}
+		if (popup != nullptr && popup != EGL_NO_SURFACE) {
+			eglDestroySurface(dpy, popup);
 		}
 		if (surf != nullptr && surf != EGL_NO_SURFACE) {
 			eglDestroySurface(dpy, surf);
@@ -303,38 +310,110 @@ void GlContext::Destroy() noexcept {
 	display = nullptr;
 	context = nullptr;
 	surface = nullptr;
+	popupSurface = nullptr;
+	eglConfig = nullptr;
 	windowSurface = false;
 	bufferAgeSupported = false;
+	currentTarget = SurfaceTarget::Editor;
 	swapBuffersWithDamage = nullptr;
 	majorVersion = 0;
 	minorVersion = 0;
 }
 
+void *GlContext::SurfaceFor(SurfaceTarget target) const noexcept {
+	switch (target) {
+	case SurfaceTarget::Editor:
+		return surface;
+	case SurfaceTarget::Popup:
+		return popupSurface;
+	}
+	return nullptr;
+}
+
 void GlContext::MakeCurrent() {
+	MakeCurrent(SurfaceTarget::Editor);
+}
+
+void GlContext::MakeCurrent(SurfaceTarget target) {
 	if (!display || !context) {
 		throw std::runtime_error("GlContext::MakeCurrent on destroyed context");
 	}
+	void *chosen = SurfaceFor(target);
+	if (target == SurfaceTarget::Popup && !chosen) {
+		throw std::runtime_error("GlContext::MakeCurrent popup surface missing");
+	}
 	EGLDisplay dpy = static_cast<EGLDisplay>(display);
 	EGLContext ctx = static_cast<EGLContext>(context);
-	EGLSurface surf = surface ? static_cast<EGLSurface>(surface) : EGL_NO_SURFACE;
+	EGLSurface surf = chosen ? static_cast<EGLSurface>(chosen) : EGL_NO_SURFACE;
 	if (!eglMakeCurrent(dpy, surf, surf, ctx)) {
 		throw std::runtime_error(
 			"GlContext::MakeCurrent failed (egl error " + EglErrorHex() + ")");
 	}
+	currentTarget = target;
+}
+
+void GlContext::CreatePopupSurface(void *nativeWindow) {
+	if (!windowSurface || !display || !context || !eglConfig) {
+		throw std::runtime_error(
+			"GlContext::CreatePopupSurface requires a window context");
+	}
+	if (!nativeWindow) {
+		throw std::invalid_argument(
+			"GlContext::CreatePopupSurface requires a native window");
+	}
+	if (popupSurface) {
+		throw std::runtime_error("GlContext popup surface already exists");
+	}
+	EGLDisplay dpy = static_cast<EGLDisplay>(display);
+	EGLConfig cfg = static_cast<EGLConfig>(eglConfig);
+	EGLSurface popup = eglCreateWindowSurface(dpy, cfg,
+		reinterpret_cast<EGLNativeWindowType>(nativeWindow), nullptr);
+	if (popup == EGL_NO_SURFACE) {
+		throw std::runtime_error(
+			"eglCreateWindowSurface for popup failed (egl error " +
+			EglErrorHex() + ")");
+	}
+	popupSurface = popup;
+}
+
+void GlContext::DestroyPopupSurface() noexcept {
+	if (!display || !popupSurface) {
+		return;
+	}
+	EGLDisplay dpy = static_cast<EGLDisplay>(display);
+	EGLContext ctx = static_cast<EGLContext>(context);
+	// Leave the popup current only after restoring the editor surface.
+	if (eglGetCurrentContext() == ctx &&
+		currentTarget == SurfaceTarget::Popup) {
+		EGLSurface editor = surface ? static_cast<EGLSurface>(surface) :
+			EGL_NO_SURFACE;
+		if (editor != EGL_NO_SURFACE) {
+			eglMakeCurrent(dpy, editor, editor, ctx);
+			currentTarget = SurfaceTarget::Editor;
+		} else {
+			eglMakeCurrent(dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+			currentTarget = SurfaceTarget::Editor;
+		}
+	}
+	eglDestroySurface(dpy, static_cast<EGLSurface>(popupSurface));
+	popupSurface = nullptr;
 }
 
 void GlContext::SwapBuffers() {
-	if (!windowSurface || !display || !surface) {
+	void *chosen = SurfaceFor(currentTarget);
+	if (!windowSurface || !display || !chosen) {
 		throw std::runtime_error("GlContext::SwapBuffers requires a window surface");
 	}
-	if (!eglSwapBuffers(static_cast<EGLDisplay>(display), static_cast<EGLSurface>(surface))) {
+	if (!eglSwapBuffers(static_cast<EGLDisplay>(display),
+		static_cast<EGLSurface>(chosen))) {
 		throw std::runtime_error("eglSwapBuffers failed (egl error " + EglErrorHex() + ")");
 	}
 }
 
 void GlContext::SwapBuffersWithDamage(
 	const int *rectangles, std::size_t rectangleCount) {
-	if (!windowSurface || !display || !surface) {
+	void *chosen = SurfaceFor(currentTarget);
+	if (!windowSurface || !display || !chosen) {
 		throw std::runtime_error(
 			"GlContext::SwapBuffersWithDamage requires a window surface");
 	}
@@ -351,7 +430,7 @@ void GlContext::SwapBuffersWithDamage(
 		reinterpret_cast<PFNEGLSWAPBUFFERSWITHDAMAGEKHRPROC>(
 			swapBuffersWithDamage);
 	if (!damageSwap(
-		static_cast<EGLDisplay>(display), static_cast<EGLSurface>(surface),
+		static_cast<EGLDisplay>(display), static_cast<EGLSurface>(chosen),
 		rectangles,
 		static_cast<EGLint>(rectangleCount))) {
 		throw std::runtime_error(
@@ -360,12 +439,17 @@ void GlContext::SwapBuffersWithDamage(
 }
 
 int GlContext::BufferAge() const noexcept {
-	if (!windowSurface || !display || !surface || !bufferAgeSupported) {
+	return BufferAge(currentTarget);
+}
+
+int GlContext::BufferAge(SurfaceTarget target) const noexcept {
+	void *chosen = SurfaceFor(target);
+	if (!windowSurface || !display || !chosen || !bufferAgeSupported) {
 		return 0;
 	}
 	EGLint age = 0;
 	if (!eglQuerySurface(static_cast<EGLDisplay>(display),
-		static_cast<EGLSurface>(surface), EGL_BUFFER_AGE_EXT, &age)) {
+		static_cast<EGLSurface>(chosen), EGL_BUFFER_AGE_EXT, &age)) {
 		return 0;
 	}
 	return age;

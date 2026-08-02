@@ -18,6 +18,7 @@
 #include "WaylandFrame.h"
 #include "WaylandInput.h"
 #include "WaylandLifecycle.h"
+#include "WaylandPopup.h"
 #include "WaylandPrimarySelection.h"
 #include "WaylandScale.h"
 #include "WaylandTextInput.h"
@@ -53,6 +54,9 @@ struct wp_fractional_scale_v1;
 struct wp_fractional_scale_v1_listener;
 struct xdg_surface;
 struct xdg_surface_listener;
+struct xdg_popup;
+struct xdg_popup_listener;
+struct xdg_positioner;
 struct xdg_toplevel;
 struct xdg_toplevel_listener;
 struct xdg_wm_base;
@@ -93,7 +97,37 @@ public:
 	[[nodiscard]] wl_display *Display() const noexcept { return display; }
 	[[nodiscard]] wl_surface *Surface() const noexcept { return surface; }
 	[[nodiscard]] wl_egl_window *EglWindow() const noexcept { return eglWindow; }
+	[[nodiscard]] wl_surface *ContextPopupSurface() const noexcept {
+		return popupSurface;
+	}
+	[[nodiscard]] wl_egl_window *ContextPopupEglWindow() const noexcept {
+		return popupEglWindow;
+	}
+	[[nodiscard]] const WaylandPopupLifecycle &ContextPopupLifecycle()
+		const noexcept {
+		return popupLifecycle;
+	}
 	[[nodiscard]] wl_seat *Seat() const noexcept { return seat; }
+
+	/**
+	 * Create a grabbed context-menu xdg_popup as a child of the toplevel.
+	 * size is the requested logical size; anchorX/Y is a one-pixel parent
+	 * anchor in parent-local logical coordinates; serial is the triggering
+	 * input serial for xdg_popup.grab. Returns false on failure without
+	 * leaving a partial popup.
+	 */
+	[[nodiscard]] bool CreateContextMenuPopup(int logicalWidth, int logicalHeight,
+		int anchorX, int anchorY, uint32_t serial);
+	/**
+	 * Destroy the context popup and its EGL window (if any) in reverse
+	 * ownership order. Idempotent.
+	 */
+	void DestroyContextMenuPopup() noexcept;
+	/**
+	 * Acknowledge a pending popup configure when the lifecycle has a complete
+	 * pair. Returns true when an ack was sent and the popup may be painted.
+	 */
+	[[nodiscard]] bool AckContextMenuPopupConfigure();
 	[[nodiscard]] int Width() const noexcept { return lifecycle.Width(); }
 	[[nodiscard]] int Height() const noexcept { return lifecycle.Height(); }
 	[[nodiscard]] bool Configured() const noexcept { return configured; }
@@ -252,6 +286,11 @@ private:
 		uint32_t transform);
 	static void WmBasePing(void *data, xdg_wm_base *wmBase, uint32_t serial);
 	static void SurfaceConfigure(void *data, xdg_surface *shellSurface, uint32_t serial);
+	static void PopupSurfaceConfigure(void *data, xdg_surface *shellSurface,
+		uint32_t serial);
+	static void PopupConfigure(void *data, xdg_popup *popup, int32_t x, int32_t y,
+		int32_t width, int32_t height);
+	static void PopupDone(void *data, xdg_popup *popup);
 	static void ToplevelConfigure(void *data, xdg_toplevel *toplevel, int32_t width,
 		int32_t height, wl_array *states);
 	static void ToplevelClose(void *data, xdg_toplevel *toplevel);
@@ -285,6 +324,8 @@ private:
 	static const wl_surface_listener waylandSurfaceListener;
 	static const xdg_wm_base_listener wmBaseListener;
 	static const xdg_surface_listener surfaceListener;
+	static const xdg_surface_listener popupSurfaceListener;
+	static const xdg_popup_listener popupListener;
 	static const xdg_toplevel_listener toplevelListener;
 	static const zxdg_toplevel_decoration_v1_listener decorationListener;
 	static const zxdg_exported_v2_listener exportedListener;
@@ -330,6 +371,12 @@ private:
 	wl_egl_window *eglWindow = nullptr;
 	xdg_surface *shellSurface = nullptr;
 	xdg_toplevel *toplevel = nullptr;
+	// Context-menu popup (at most one). Created after the toplevel is mapped.
+	wl_surface *popupSurface = nullptr;
+	wl_egl_window *popupEglWindow = nullptr;
+	xdg_surface *popupShellSurface = nullptr;
+	xdg_popup *popup = nullptr;
+	WaylandPopupLifecycle popupLifecycle;
 	zxdg_decoration_manager_v1 *decorationManager = nullptr;
 	zxdg_toplevel_decoration_v1 *decoration = nullptr;
 	zxdg_exporter_v2 *exporter = nullptr;

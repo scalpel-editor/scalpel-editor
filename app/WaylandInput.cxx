@@ -321,7 +321,7 @@ bool WaylandInput::RunKeyRepeat() {
 	const Clock::time_point current = now();
 	int emitted = 0;
 	while (repeat.active && current >= repeat.next && emitted < 32) {
-		AppendKey(repeat.time, repeat.key, true);
+		AppendKey(repeat.time, repeat.key, true, 0);
 		repeat.next += repeat.interval;
 		emitted++;
 	}
@@ -349,11 +349,12 @@ void WaylandInput::UpdateModifiers(uint32_t depressed, uint32_t latched,
 	}
 }
 
-void WaylandInput::RecordKey(uint32_t time, uint32_t key, bool pressed) {
+void WaylandInput::RecordKey(uint32_t time, uint32_t key, bool pressed,
+	uint32_t serial) {
 	if (!state) {
 		return;
 	}
-	AppendKey(time, key, pressed);
+	AppendKey(time, key, pressed, serial);
 	if (pressed) {
 		StartRepeat(time, key);
 	} else if (repeat.active && repeat.key == key) {
@@ -361,7 +362,8 @@ void WaylandInput::RecordKey(uint32_t time, uint32_t key, bool pressed) {
 	}
 }
 
-void WaylandInput::AppendKey(uint32_t time, uint32_t key, bool pressed) {
+void WaylandInput::AppendKey(uint32_t time, uint32_t key, bool pressed,
+	uint32_t serial) {
 	const xkb_keycode_t keycode = key + 8;
 	KeyboardInput input;
 	const xkb_keysym_t keysym = xkb_state_key_get_one_sym(state, keycode);
@@ -369,10 +371,15 @@ void WaylandInput::AppendKey(uint32_t time, uint32_t key, bool pressed) {
 	input.modifiers = CurrentModifiers();
 	input.time = time;
 	input.pressed = pressed;
+	input.serial = serial;
 	if (pressed) {
 		input.text = TextForKey(keycode, keysym, input.modifiers);
 	}
 	inputs.emplace_back(std::move(input));
+}
+
+void WaylandInput::SetPointerSurface(PointerSurface surface) noexcept {
+	pointerSurface = surface;
 }
 
 void WaylandInput::StartRepeat(uint32_t time, uint32_t key) {
@@ -446,8 +453,10 @@ void WaylandInput::RecordPointerMotion(uint32_t time, double x, double y) {
 	pointerFocused = true;
 	pointerX = x;
 	pointerY = y;
-	inputs.emplace_back(PointerInput{
-		PointerAction::Move, CurrentModifiers(), x, y, 0, 0, time, -1});
+	PointerInput event{
+		PointerAction::Move, CurrentModifiers(), x, y, 0, 0, time, -1};
+	event.surface = pointerSurface;
+	inputs.emplace_back(std::move(event));
 }
 
 void WaylandInput::RecordPointerLeave() {
@@ -455,19 +464,27 @@ void WaylandInput::RecordPointerLeave() {
 		return;
 	}
 	pointerFocused = false;
-	inputs.emplace_back(PointerInput{
-		PointerAction::Leave, CurrentModifiers(), pointerX, pointerY});
+	PointerInput event{
+		PointerAction::Leave, CurrentModifiers(), pointerX, pointerY};
+	event.surface = pointerSurface;
+	inputs.emplace_back(std::move(event));
+	// Leave returns tracking to the toplevel until the next enter.
+	pointerSurface = PointerSurface::Toplevel;
 }
 
-void WaylandInput::RecordPointerButton(uint32_t time, uint32_t button, bool pressed) {
+void WaylandInput::RecordPointerButton(uint32_t time, uint32_t button,
+	bool pressed, uint32_t serial) {
 	const int translatedButton = PointerButton(button);
 	if (translatedButton < 0) {
 		return;
 	}
 	pointerButtons[static_cast<size_t>(translatedButton)] = pressed;
-	inputs.emplace_back(PointerInput{
+	PointerInput event{
 		pressed ? PointerAction::Press : PointerAction::Release,
-		CurrentModifiers(), pointerX, pointerY, 0, 0, time, translatedButton});
+		CurrentModifiers(), pointerX, pointerY, 0, 0, time, translatedButton};
+	event.serial = serial;
+	event.surface = pointerSurface;
+	inputs.emplace_back(std::move(event));
 }
 
 void WaylandInput::RecordPointerAxis(uint32_t time, uint32_t axis, double value) {
