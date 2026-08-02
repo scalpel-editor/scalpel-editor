@@ -92,7 +92,7 @@ Scintilla paints the editor client. A permanent-chrome callback paints the menu 
 
 `ApplicationEditor` supplies its client rectangle and scrollbar metrics. `ApplicationUi::BeginFrameLayout` refreshes the model values that affect geometry and retains one `ApplicationLayout` snapshot containing the menu, tabs, optional find bar, scrollbars, client, and modal cards. Permanent-chrome and overlay painters read that same snapshot until `EndFrameLayout`.
 
-Autocomplete lists and call tips use explicit production stubs. Their core behavior remains compiled and testable, but real Wayland popup surfaces for those features are not implemented. The application context menu paints into a separate grabbed `xdg_popup` EGL window surface that shares the editor GL context. Its buffer scale and viewport match the toplevel so popup-local input and painted logical coordinates agree; after each popup paint the context returns to the editor surface.
+Autocomplete lists and call tips use explicit production stubs. Their core behavior remains compiled and testable, but real Wayland popup surfaces for those features are not implemented. The application context menu paints into a separate grabbed `xdg_popup` EGL window surface that shares the editor GL context. Each renderer retains its selected EGL surface, and the popup renderer is destroyed before the context returns to the editor surface. The popup buffer scale and viewport match the toplevel so popup-local input and painted logical coordinates agree.
 
 ## Testing
 

@@ -33,6 +33,21 @@ TEST_CASE("GlContext MakeCurrent restores after ReleaseCurrent") {
 	REQUIRE_FALSE(context.VersionString().empty());
 }
 
+TEST_CASE("Renderer binds its selected window surface target") {
+	GlContext context;
+	Renderer renderer(context, GlContext::SurfaceTarget::Editor);
+	context.ReleaseCurrent();
+	renderer.MakeCurrent();
+	CHECK(context.IsCurrent());
+	CHECK(context.CurrentTarget() == GlContext::SurfaceTarget::Editor);
+	CHECK_THROWS_WITH(
+		[&context] {
+			Renderer popupRenderer(
+				context, GlContext::SurfaceTarget::Popup);
+		}(),
+		"GlContext::MakeCurrent popup surface missing");
+}
+
 TEST_CASE("clear fills ColourBuffer; readback is top-to-bottom RGBA") {
 	GlContext context;
 	Renderer renderer(context);

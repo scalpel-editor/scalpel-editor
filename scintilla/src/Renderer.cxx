@@ -401,8 +401,10 @@ ColourRGBA ColourBuffer::ReadPixel(int x, int y) const {
 	return ColourRGBA(px[0], px[1], px[2], px[3]);
 }
 
-Renderer::Renderer(GlContext &context_) : context(context_) {
-	context.MakeCurrent();
+Renderer::Renderer(
+	GlContext &context_, GlContext::SurfaceTarget surfaceTarget_) :
+	context(context_), surfaceTarget(surfaceTarget_) {
+	context.MakeCurrent(surfaceTarget);
 	// Premultiplied source-over: rgba = source + destination * (1-source alpha).
 	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 	glDisable(GL_BLEND);
@@ -576,7 +578,7 @@ void Renderer::EnsureGradientProgram() {
 }
 
 void Renderer::MakeCurrent() {
-	context.MakeCurrent();
+	context.MakeCurrent(surfaceTarget);
 }
 
 void Renderer::SetDrawTarget(unsigned framebuffer, int width, int height) {

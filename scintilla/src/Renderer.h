@@ -100,7 +100,9 @@ struct PixelRect {
  */
 class Renderer {
 public:
-	explicit Renderer(GlContext &context);
+	explicit Renderer(GlContext &context,
+		GlContext::SurfaceTarget surfaceTarget =
+			GlContext::SurfaceTarget::Editor);
 	~Renderer() noexcept;
 
 	Renderer(const Renderer &) = delete;
@@ -111,7 +113,7 @@ public:
 	[[nodiscard]] GlContext &Context() noexcept { return context; }
 	[[nodiscard]] const GlContext &Context() const noexcept { return context; }
 
-	/** Make the owning context current. */
+	/** Make the owning context current on this renderer's window surface. */
 	void MakeCurrent();
 
 	/**
@@ -354,6 +356,7 @@ private:
 	void SetBlendForColour(ColourRGBA colour);
 
 	GlContext &context;
+	GlContext::SurfaceTarget surfaceTarget;
 	unsigned targetFbo = 0;
 	int targetWidth = 0;
 	int targetHeight = 0;

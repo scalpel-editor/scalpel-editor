@@ -371,22 +371,23 @@ void ServiceContextMenuPopup(Scalpel::ApplicationUi &ui,
 		if (!gl.HasPopupSurface()) {
 			gl.CreatePopupSurface(window.ContextPopupEglWindow());
 		}
-		gl.MakeCurrent(Scintilla::Internal::GlContext::SurfaceTarget::Popup);
+		{
+			// Short-lived renderer for this popup paint; shares the process GL
+			// context while retaining the popup EGL surface as its target.
+			Scintilla::Internal::Renderer popupRenderer(gl,
+				Scintilla::Internal::GlContext::SurfaceTarget::Popup);
+			const Scintilla::Internal::RasterScale rasterScale =
+				Scintilla::Internal::RasterScale::FromWaylandNumerator(
+					scale.scaleNumerator);
+			std::unique_ptr<Scintilla::Internal::DrawSurface> draw =
+				Scintilla::Internal::CreateExternalDrawSurface(
+					popupRenderer, 0, bufferW, bufferH, logicalW, logicalH,
+					rasterScale);
+			host.painter.Paint(*draw, layout, ui.ContextModel());
 
-		// Short-lived renderer for this popup paint; shares the process GL
-		// context and targets the default window framebuffer.
-		Scintilla::Internal::Renderer popupRenderer(gl);
-		const Scintilla::Internal::RasterScale rasterScale =
-			Scintilla::Internal::RasterScale::FromWaylandNumerator(
-				scale.scaleNumerator);
-		std::unique_ptr<Scintilla::Internal::DrawSurface> draw =
-			Scintilla::Internal::CreateExternalDrawSurface(
-				popupRenderer, 0, bufferW, bufferH, logicalW, logicalH,
-				rasterScale);
-		host.painter.Paint(*draw, layout, ui.ContextModel());
-
-		gl.SwapBuffers();
-		// Restore the editor surface for subsequent frame work.
+			gl.SwapBuffers();
+		}
+		// Restore the editor only after popup GL resources are released.
 		gl.MakeCurrent(Scintilla::Internal::GlContext::SurfaceTarget::Editor);
 		host.wantsPaint = false;
 	} catch (const std::exception &error) {
