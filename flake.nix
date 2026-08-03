@@ -31,11 +31,16 @@
           libglvnd
           libsysprof-capture
           libxkbcommon
+          mesa
           pcre2
           systemd
           wayland
           wayland-protocols
         ];
+
+        SCALPEL_TEST_EGL_VENDOR_LIBRARY_FILENAMES =
+          "${pkgs.mesa}/share/glvnd/egl_vendor.d/50_mesa.json";
+        SCALPEL_TEST_LIBGL_DRIVERS_PATH = "${pkgs.mesa}/lib/dri";
       };
     };
 }
