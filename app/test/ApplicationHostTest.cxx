@@ -1,5 +1,8 @@
 #include "ApplicationTest.h"
 
+#include <vector>
+
+#include "ApplicationCommandLine.h"
 #include "MenuBar.h"
 #include "ScrollBar.h"
 
@@ -1537,4 +1540,114 @@ TEST_CASE("production editor context menu selection placement and caret anchor")
 	CHECK(anchor.Width() == 1);
 	CHECK(anchor.Height() == 1);
 	CHECK(anchor.top >= inset);
+}
+
+namespace {
+
+/** Build a mutable argv image from string views for the command-line parser. */
+class ArgvImage {
+public:
+	explicit ArgvImage(std::initializer_list<const char *> arguments) {
+		storage.reserve(arguments.size());
+		pointers.reserve(arguments.size() + 1);
+		for (const char *argument : arguments) {
+			storage.emplace_back(argument);
+		}
+		for (std::string &entry : storage) {
+			pointers.push_back(entry.data());
+		}
+		pointers.push_back(nullptr);
+	}
+
+	[[nodiscard]] int argc() const noexcept {
+		return static_cast<int>(storage.size());
+	}
+
+	[[nodiscard]] char *const *argv() noexcept {
+		return pointers.data();
+	}
+
+private:
+	std::vector<std::string> storage;
+	std::vector<char *> pointers;
+};
+
+}
+
+TEST_CASE("application command line interactive launch has no path") {
+	ArgvImage args({"scalpel-editor"});
+	const Scalpel::ApplicationInvocation invocation =
+		Scalpel::ParseApplicationCommandLine(args.argc(), args.argv());
+	CHECK(invocation.kind == Scalpel::ApplicationInvocationKind::Interactive);
+	CHECK(invocation.path.empty());
+	CHECK(invocation.message.empty());
+}
+
+TEST_CASE("application command line accepts one positional path") {
+	ArgvImage args({"scalpel-editor", "/tmp/COMMIT_EDITMSG"});
+	const Scalpel::ApplicationInvocation invocation =
+		Scalpel::ParseApplicationCommandLine(args.argc(), args.argv());
+	CHECK(invocation.kind == Scalpel::ApplicationInvocationKind::EditPath);
+	CHECK(invocation.path == "/tmp/COMMIT_EDITMSG");
+	CHECK(invocation.message.empty());
+}
+
+TEST_CASE("application command line accepts path after double dash") {
+	ArgvImage args({"scalpel-editor", "--", "-odd-name"});
+	const Scalpel::ApplicationInvocation invocation =
+		Scalpel::ParseApplicationCommandLine(args.argc(), args.argv());
+	CHECK(invocation.kind == Scalpel::ApplicationInvocationKind::EditPath);
+	CHECK(invocation.path == "-odd-name");
+	CHECK(invocation.message.empty());
+}
+
+TEST_CASE("application command line help options alone request help") {
+	for (const char *option : {"-h", "--help"}) {
+		ArgvImage args({"scalpel-editor", option});
+		const Scalpel::ApplicationInvocation invocation =
+			Scalpel::ParseApplicationCommandLine(args.argc(), args.argv());
+		CHECK(invocation.kind == Scalpel::ApplicationInvocationKind::Help);
+		CHECK(invocation.path.empty());
+		CHECK(invocation.message.empty());
+	}
+}
+
+TEST_CASE("application command line rejects unknown options") {
+	ArgvImage args({"scalpel-editor", "--wait"});
+	const Scalpel::ApplicationInvocation invocation =
+		Scalpel::ParseApplicationCommandLine(args.argc(), args.argv());
+	CHECK(invocation.kind == Scalpel::ApplicationInvocationKind::UsageError);
+	CHECK(invocation.path.empty());
+	CHECK(invocation.message == "unknown option: --wait");
+}
+
+TEST_CASE("application command line rejects a bare double dash") {
+	ArgvImage args({"scalpel-editor", "--"});
+	const Scalpel::ApplicationInvocation invocation =
+		Scalpel::ParseApplicationCommandLine(args.argc(), args.argv());
+	CHECK(invocation.kind == Scalpel::ApplicationInvocationKind::UsageError);
+	CHECK(invocation.message == "missing path after --");
+}
+
+TEST_CASE("application command line rejects excess arguments") {
+	ArgvImage args({"scalpel-editor", "one", "two"});
+	const Scalpel::ApplicationInvocation invocation =
+		Scalpel::ParseApplicationCommandLine(args.argc(), args.argv());
+	CHECK(invocation.kind == Scalpel::ApplicationInvocationKind::UsageError);
+	CHECK(invocation.message == "expected at most one path");
+}
+
+TEST_CASE("application command line rejects help with extra arguments") {
+	ArgvImage args({"scalpel-editor", "--help", "extra"});
+	const Scalpel::ApplicationInvocation invocation =
+		Scalpel::ParseApplicationCommandLine(args.argc(), args.argv());
+	CHECK(invocation.kind == Scalpel::ApplicationInvocationKind::UsageError);
+	CHECK(invocation.message == "unexpected arguments after help");
+}
+
+TEST_CASE("application command line usage text names the program") {
+	const std::string usage = Scalpel::ApplicationCommandLineUsage();
+	CHECK(usage.find("scalpel-editor") != std::string::npos);
+	CHECK(usage.find("[path]") != std::string::npos);
+	CHECK(usage.find("--help") != std::string::npos);
 }

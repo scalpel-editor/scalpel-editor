@@ -172,6 +172,7 @@ add_dependencies(scalpel_wayland scalpel_xdg_shell)
 # static archive refers back to Window and Platform functions supplied here.
 add_library(scalpel_application OBJECT
   ApplicationAction.cxx
+  ApplicationCommandLine.cxx
   ApplicationEditor.cxx
   ApplicationPlatform.cxx
   ApplicationUi.cxx
