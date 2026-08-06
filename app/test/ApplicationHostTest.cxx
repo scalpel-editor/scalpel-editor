@@ -1585,7 +1585,7 @@ TEST_CASE("application command line interactive launch has no path") {
 	const Scalpel::ApplicationInvocation invocation =
 		Scalpel::ParseApplicationCommandLine(args.argc(), args.argv());
 	CHECK(invocation.kind == Scalpel::ApplicationInvocationKind::Interactive);
-	CHECK(invocation.path.empty());
+	CHECK(invocation.paths.empty());
 	CHECK(invocation.message.empty());
 }
 
@@ -1594,7 +1594,20 @@ TEST_CASE("application command line accepts one positional path") {
 	const Scalpel::ApplicationInvocation invocation =
 		Scalpel::ParseApplicationCommandLine(args.argc(), args.argv());
 	CHECK(invocation.kind == Scalpel::ApplicationInvocationKind::EditPath);
-	CHECK(invocation.path == "/tmp/COMMIT_EDITMSG");
+	REQUIRE(invocation.paths.size() == 1);
+	CHECK(invocation.paths[0] == "/tmp/COMMIT_EDITMSG");
+	CHECK(invocation.message.empty());
+}
+
+TEST_CASE("application command line accepts multiple ordinary paths") {
+	ArgvImage args({"scalpel-editor", "file-a", "file-b", "file-c"});
+	const Scalpel::ApplicationInvocation invocation =
+		Scalpel::ParseApplicationCommandLine(args.argc(), args.argv());
+	CHECK(invocation.kind == Scalpel::ApplicationInvocationKind::EditPath);
+	REQUIRE(invocation.paths.size() == 3);
+	CHECK(invocation.paths[0] == "file-a");
+	CHECK(invocation.paths[1] == "file-b");
+	CHECK(invocation.paths[2] == "file-c");
 	CHECK(invocation.message.empty());
 }
 
@@ -1603,7 +1616,19 @@ TEST_CASE("application command line accepts path after double dash") {
 	const Scalpel::ApplicationInvocation invocation =
 		Scalpel::ParseApplicationCommandLine(args.argc(), args.argv());
 	CHECK(invocation.kind == Scalpel::ApplicationInvocationKind::EditPath);
-	CHECK(invocation.path == "-odd-name");
+	REQUIRE(invocation.paths.size() == 1);
+	CHECK(invocation.paths[0] == "-odd-name");
+	CHECK(invocation.message.empty());
+}
+
+TEST_CASE("application command line accepts multiple paths after double dash") {
+	ArgvImage args({"scalpel-editor", "--", "-file-a", "-file-b"});
+	const Scalpel::ApplicationInvocation invocation =
+		Scalpel::ParseApplicationCommandLine(args.argc(), args.argv());
+	CHECK(invocation.kind == Scalpel::ApplicationInvocationKind::EditPath);
+	REQUIRE(invocation.paths.size() == 2);
+	CHECK(invocation.paths[0] == "-file-a");
+	CHECK(invocation.paths[1] == "-file-b");
 	CHECK(invocation.message.empty());
 }
 
@@ -1613,7 +1638,7 @@ TEST_CASE("application command line help options alone request help") {
 		const Scalpel::ApplicationInvocation invocation =
 			Scalpel::ParseApplicationCommandLine(args.argc(), args.argv());
 		CHECK(invocation.kind == Scalpel::ApplicationInvocationKind::Help);
-		CHECK(invocation.path.empty());
+		CHECK(invocation.paths.empty());
 		CHECK(invocation.message.empty());
 	}
 }
@@ -1623,7 +1648,16 @@ TEST_CASE("application command line rejects unknown options") {
 	const Scalpel::ApplicationInvocation invocation =
 		Scalpel::ParseApplicationCommandLine(args.argc(), args.argv());
 	CHECK(invocation.kind == Scalpel::ApplicationInvocationKind::UsageError);
-	CHECK(invocation.path.empty());
+	CHECK(invocation.paths.empty());
+	CHECK(invocation.message == "unknown option: --wait");
+}
+
+TEST_CASE("application command line rejects options mixed with paths") {
+	ArgvImage args({"scalpel-editor", "file-a", "--wait"});
+	const Scalpel::ApplicationInvocation invocation =
+		Scalpel::ParseApplicationCommandLine(args.argc(), args.argv());
+	CHECK(invocation.kind == Scalpel::ApplicationInvocationKind::UsageError);
+	CHECK(invocation.paths.empty());
 	CHECK(invocation.message == "unknown option: --wait");
 }
 
@@ -1638,22 +1672,16 @@ TEST_CASE("application command line rejects a bare double dash") {
 TEST_CASE("application command line rejects empty paths") {
 	for (const std::initializer_list<const char *> arguments : {
 			std::initializer_list<const char *>{"scalpel-editor", ""},
-			std::initializer_list<const char *>{"scalpel-editor", "--", ""}}) {
+			std::initializer_list<const char *>{"scalpel-editor", "--", ""},
+			std::initializer_list<const char *>{
+				"scalpel-editor", "ok", ""}}) {
 		ArgvImage args(arguments);
 		const Scalpel::ApplicationInvocation invocation =
 			Scalpel::ParseApplicationCommandLine(args.argc(), args.argv());
 		CHECK(invocation.kind == Scalpel::ApplicationInvocationKind::UsageError);
-		CHECK(invocation.path.empty());
+		CHECK(invocation.paths.empty());
 		CHECK(invocation.message == "path must not be empty");
 	}
-}
-
-TEST_CASE("application command line rejects excess arguments") {
-	ArgvImage args({"scalpel-editor", "one", "two"});
-	const Scalpel::ApplicationInvocation invocation =
-		Scalpel::ParseApplicationCommandLine(args.argc(), args.argv());
-	CHECK(invocation.kind == Scalpel::ApplicationInvocationKind::UsageError);
-	CHECK(invocation.message == "expected at most one path");
 }
 
 TEST_CASE("application command line rejects help with extra arguments") {
@@ -1667,7 +1695,7 @@ TEST_CASE("application command line rejects help with extra arguments") {
 TEST_CASE("application command line usage text names the program") {
 	const std::string usage = Scalpel::ApplicationCommandLineUsage();
 	CHECK(usage.find("scalpel-editor") != std::string::npos);
-	CHECK(usage.find("[path]") != std::string::npos);
+	CHECK(usage.find("[path...]") != std::string::npos);
 	CHECK(usage.find("--help") != std::string::npos);
 }
 
@@ -1718,7 +1746,7 @@ TEST_CASE("application session pathname start loads the sole initial tab") {
 	SessionTempFile file("commit subject\n\n# git template\n");
 	Scalpel::ApplicationInvocation invocation;
 	invocation.kind = Scalpel::ApplicationInvocationKind::EditPath;
-	invocation.path = file.path;
+	invocation.paths = {file.path};
 	Scalpel::ApplicationSession session(std::move(invocation));
 	Scalpel::ApplicationEditor editor(320, 180);
 	Scalpel::DocumentWorkspace workspace(editor);
@@ -1735,10 +1763,38 @@ TEST_CASE("application session pathname start loads the sole initial tab") {
 	CHECK(workspace.TakeRecentPaths().empty());
 }
 
+TEST_CASE("application session pathname start loads ordered multi-tab set") {
+	SessionTempFile first("first body\n");
+	SessionTempFile second("second body\n");
+	Scalpel::ApplicationInvocation invocation;
+	invocation.kind = Scalpel::ApplicationInvocationKind::EditPath;
+	invocation.paths = {first.path, second.path};
+	Scalpel::ApplicationSession session(std::move(invocation));
+	Scalpel::ApplicationEditor editor(320, 180);
+	Scalpel::DocumentWorkspace workspace(editor);
+	const Scalpel::DocumentId initial = workspace.ActiveTab();
+
+	CHECK(session.Start(workspace) ==
+		Scalpel::ApplicationStartupResult::ReadyEditPath);
+	CHECK(session.PathEditorSession());
+	CHECK(workspace.TabCount() == 2);
+	CHECK(workspace.Path() == second.path);
+	CHECK(editor.Text() == "second body\n");
+	CHECK_FALSE(editor.Modified());
+	CHECK(workspace.TakeRecentPaths().empty());
+	const auto tabs = workspace.Tabs();
+	REQUIRE(tabs.size() == 2);
+	CHECK(tabs[0].id == initial);
+	CHECK(tabs[0].path == first.path);
+	CHECK_FALSE(tabs[0].active);
+	CHECK(tabs[1].path == second.path);
+	CHECK(tabs[1].active);
+}
+
 TEST_CASE("application session pathname start reports file load failure") {
 	Scalpel::ApplicationInvocation invocation;
 	invocation.kind = Scalpel::ApplicationInvocationKind::EditPath;
-	invocation.path = "/tmp/scalpel-session-missing-not-present";
+	invocation.paths = {"/tmp/scalpel-session-missing-not-present"};
 	Scalpel::ApplicationSession session(std::move(invocation));
 	Scalpel::ApplicationEditor editor(320, 180);
 	Scalpel::DocumentWorkspace workspace(editor);
@@ -1748,6 +1804,26 @@ TEST_CASE("application session pathname start reports file load failure") {
 	CHECK(session.PathEditorSession());
 	CHECK(workspace.Path().empty());
 	CHECK(workspace.TabCount() == 1);
+}
+
+TEST_CASE("application session pathname start fails all-or-nothing on bad path") {
+	SessionTempFile first("kept off disk\n");
+	Scalpel::ApplicationInvocation invocation;
+	invocation.kind = Scalpel::ApplicationInvocationKind::EditPath;
+	invocation.paths = {first.path, "/tmp/scalpel-session-missing-not-present"};
+	Scalpel::ApplicationSession session(std::move(invocation));
+	Scalpel::ApplicationEditor editor(320, 180);
+	Scalpel::DocumentWorkspace workspace(editor);
+	const Scalpel::DocumentId only = workspace.ActiveTab();
+
+	CHECK(session.Start(workspace) ==
+		Scalpel::ApplicationStartupResult::FileLoadFailed);
+	CHECK(session.PathEditorSession());
+	CHECK(workspace.TabCount() == 1);
+	CHECK(workspace.ActiveTab() == only);
+	CHECK(workspace.Path().empty());
+	CHECK(editor.Text().empty());
+	CHECK(workspace.TakeRecentPaths().empty());
 }
 
 TEST_CASE("application session rejects help and usage-error starts") {
@@ -1783,7 +1859,7 @@ TEST_CASE("application session process status for interactive launch") {
 TEST_CASE("application session process status for pathname editor launch") {
 	Scalpel::ApplicationInvocation invocation;
 	invocation.kind = Scalpel::ApplicationInvocationKind::EditPath;
-	invocation.path = "/tmp/COMMIT_EDITMSG";
+	invocation.paths = {"/tmp/COMMIT_EDITMSG"};
 	const Scalpel::ApplicationSession session(std::move(invocation));
 
 	CHECK(session.ProcessStatus(

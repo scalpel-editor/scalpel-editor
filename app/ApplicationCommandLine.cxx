@@ -25,8 +25,8 @@ namespace {
 
 std::string ApplicationCommandLineUsage() {
 	return
-		"usage: scalpel-editor [path]\n"
-		"       scalpel-editor -- path\n"
+		"usage: scalpel-editor [path...]\n"
+		"       scalpel-editor -- path...\n"
 		"       scalpel-editor -h|--help\n";
 }
 
@@ -40,49 +40,42 @@ ApplicationInvocation ParseApplicationCommandLine(int argc, char *const *argv) {
 
 	const std::string_view first = arguments[0] != nullptr ? arguments[0] : "";
 
-	if (argumentCount == 1) {
-		if (IsHelpOption(first)) {
+	if (IsHelpOption(first)) {
+		if (argumentCount == 1) {
 			ApplicationInvocation invocation;
 			invocation.kind = ApplicationInvocationKind::Help;
 			return invocation;
 		}
-		if (LooksLikeOption(first)) {
-			if (first == "--") {
-				return UsageError("missing path after --");
-			}
-			return UsageError("unknown option: " + std::string(first));
-		}
-		if (first.empty()) {
-			return UsageError("path must not be empty");
-		}
-		ApplicationInvocation invocation;
-		invocation.kind = ApplicationInvocationKind::EditPath;
-		invocation.path = std::string(first);
-		return invocation;
-	}
-
-	if (argumentCount == 2 && first == "--") {
-		const std::string_view path =
-			arguments[1] != nullptr ? arguments[1] : "";
-		if (path.empty()) {
-			return UsageError("path must not be empty");
-		}
-		ApplicationInvocation invocation;
-		invocation.kind = ApplicationInvocationKind::EditPath;
-		invocation.path = std::string(path);
-		return invocation;
-	}
-
-	if (IsHelpOption(first)) {
 		return UsageError("unexpected arguments after help");
 	}
-	if (first == "--") {
-		return UsageError("expected exactly one path after --");
+
+	std::vector<std::string> paths;
+	bool sawDoubleDash = false;
+	for (int i = 0; i < argumentCount; ++i) {
+		const std::string_view argument =
+			arguments[i] != nullptr ? arguments[i] : "";
+		if (!sawDoubleDash && argument == "--") {
+			sawDoubleDash = true;
+			continue;
+		}
+		if (!sawDoubleDash && LooksLikeOption(argument)) {
+			return UsageError("unknown option: " + std::string(argument));
+		}
+		if (argument.empty()) {
+			return UsageError("path must not be empty");
+		}
+		paths.emplace_back(argument);
 	}
-	if (LooksLikeOption(first)) {
-		return UsageError("unknown option: " + std::string(first));
+
+	if (paths.empty()) {
+		// Only `--` (or repeated `--` with no paths) was supplied.
+		return UsageError("missing path after --");
 	}
-	return UsageError("expected at most one path");
+
+	ApplicationInvocation invocation;
+	invocation.kind = ApplicationInvocationKind::EditPath;
+	invocation.paths = std::move(paths);
+	return invocation;
 }
 
 }

@@ -16,7 +16,7 @@ ApplicationStartupResult ApplicationSession::Start(
 	case ApplicationInvocationKind::Interactive:
 		return ApplicationStartupResult::ReadyInteractive;
 	case ApplicationInvocationKind::EditPath:
-		if (!workspace.LoadStartupFiles({invocation.path})) {
+		if (!workspace.LoadStartupFiles(invocation.paths)) {
 			return ApplicationStartupResult::FileLoadFailed;
 		}
 		return ApplicationStartupResult::ReadyEditPath;

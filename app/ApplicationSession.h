@@ -11,11 +11,11 @@ class DocumentWorkspace;
 
 /** Outcome of ApplicationSession::Start before the platform loop runs. */
 enum class ApplicationStartupResult {
-	/** No path; the initial untitled workspace is ready. */
+	/** No paths; the initial untitled workspace is ready. */
 	ReadyInteractive,
-	/** The supplied path was loaded into the sole initial tab. */
+	/** The supplied paths were loaded as the initial tab set. */
 	ReadyEditPath,
-	/** Path launch could not load the file; do not enter the event loop. */
+	/** Path launch could not load every path; do not enter the event loop. */
 	FileLoadFailed,
 	/** Invocation was Help or UsageError and is not a session start. */
 	InvalidInvocation,
@@ -44,8 +44,9 @@ public:
 
 	/**
 	 * Apply startup policy. Interactive launch leaves the workspace alone.
-	 * EditPath calls DocumentWorkspace::LoadStartupFiles. Help and UsageError
-	 * return InvalidInvocation without touching the workspace.
+	 * EditPath calls DocumentWorkspace::LoadStartupFiles with the full path
+	 * list. Help and UsageError return InvalidInvocation without touching the
+	 * workspace.
 	 */
 	[[nodiscard]] ApplicationStartupResult Start(DocumentWorkspace &workspace);
 
@@ -62,7 +63,7 @@ public:
 		return invocation;
 	}
 
-	/** True when the invocation asked to edit a single path. */
+	/** True when the invocation asked to edit one or more paths. */
 	[[nodiscard]] bool PathEditorSession() const noexcept {
 		return invocation.kind == ApplicationInvocationKind::EditPath;
 	}
