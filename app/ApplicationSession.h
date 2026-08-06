@@ -44,7 +44,7 @@ public:
 
 	/**
 	 * Apply startup policy. Interactive launch leaves the workspace alone.
-	 * EditPath calls DocumentWorkspace::LoadStartupFile. Help and UsageError
+	 * EditPath calls DocumentWorkspace::LoadStartupFiles. Help and UsageError
 	 * return InvalidInvocation without touching the workspace.
 	 */
 	[[nodiscard]] ApplicationStartupResult Start(DocumentWorkspace &workspace);

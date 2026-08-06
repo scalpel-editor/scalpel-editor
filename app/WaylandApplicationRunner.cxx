@@ -491,7 +491,7 @@ ApplicationTerminationReason RunWaylandApplication(ApplicationSession &session) 
 	const ApplicationStartupResult startup = session.Start(workspace);
 	if (startup == ApplicationStartupResult::FileLoadFailed ||
 		startup == ApplicationStartupResult::InvalidInvocation) {
-		// Read failures already report from LoadStartupFile.
+		// Read failures already report from LoadStartupFiles.
 		return ApplicationTerminationReason::StartupFailure;
 	}
 	const std::string recentStatePath = RecentFilesStatePath();

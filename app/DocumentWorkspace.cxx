@@ -402,30 +402,86 @@ bool DocumentWorkspace::OpenPath(std::string_view path) {
 	return ApplyOpenPaths({std::string(path)});
 }
 
-bool DocumentWorkspace::LoadStartupFile(std::string_view path) {
-	// Only the pristine constructor workspace may adopt a startup path.
-	if (path.empty() || prompt.Active() || tabs.size() != 1 ||
-		!tabs[0].path.empty() || tabs[0].untitledNumber != 1 ||
-		nextUntitledNumber != 2 || editor.Modified(tabs[0].id) ||
-		!editor.Text(tabs[0].id).empty()) {
+bool DocumentWorkspace::LoadStartupFiles(
+	const std::vector<std::string> &paths) {
+	// Only the pristine constructor workspace may adopt startup paths.
+	if (prompt.Active() || tabs.size() != 1 || !tabs[0].path.empty() ||
+		tabs[0].untitledNumber != 1 || nextUntitledNumber != 2 ||
+		editor.Modified(tabs[0].id) || !editor.Text(tabs[0].id).empty()) {
 		return false;
 	}
-	const std::string pathString = NormalizePath(path);
-	if (pathString.empty()) {
+	if (paths.empty()) {
 		return false;
 	}
-	const std::optional<std::string> text = ReadDocumentFile(pathString);
-	if (!text) {
-		std::cerr << "scalpel-editor: failed to read " << pathString << '\n';
-		fileErrors.push_back({DocumentFileOperation::Open, pathString});
+	for (const std::string &path : paths) {
+		if (path.empty()) {
+			return false;
+		}
+	}
+
+	// Distinct normalized paths in first-seen order; last path names the active tab.
+	std::vector<std::string> distinct;
+	distinct.reserve(paths.size());
+	std::string lastActive;
+	for (const std::string &path : paths) {
+		const std::string pathString = NormalizePath(path);
+		if (pathString.empty()) {
+			return false;
+		}
+		lastActive = pathString;
+		if (std::find(distinct.begin(), distinct.end(), pathString) ==
+			distinct.end()) {
+			distinct.push_back(pathString);
+		}
+	}
+
+	// Stage every distinct read before mutating tabs so failure is all-or-nothing.
+	std::vector<std::string> texts;
+	texts.reserve(distinct.size());
+	bool readFailed = false;
+	for (const std::string &pathString : distinct) {
+		const std::optional<std::string> text = ReadDocumentFile(pathString);
+		if (!text) {
+			std::cerr << "scalpel-editor: failed to read " << pathString << '\n';
+			fileErrors.push_back({DocumentFileOperation::Open, pathString});
+			readFailed = true;
+			continue;
+		}
+		texts.push_back(*text);
+	}
+	if (readFailed) {
 		return false;
 	}
-	Tab &tab = tabs[0];
-	tab.path = pathString;
-	tab.untitledNumber = 0;
-	editor.ActivateDocument(tab.id);
-	activeId = tab.id;
-	editor.LoadInitialBuffer(*text);
+
+	// First distinct path reuses the sole initial document.
+	Tab &first = tabs[0];
+	first.path = distinct[0];
+	first.untitledNumber = 0;
+	editor.ActivateDocument(first.id);
+	activeId = first.id;
+	editor.LoadInitialBuffer(texts[0]);
+	// lastActive is always among distinct; start as the first tab and update
+	// when a later distinct path is the last supplied path.
+	DocumentId finalActive = first.id;
+
+	for (std::size_t i = 1; i < distinct.size(); ++i) {
+		const DocumentId id = editor.CreateDocument();
+		Tab tab;
+		tab.id = id;
+		tab.path = distinct[i];
+		tab.untitledNumber = 0;
+		tabs.push_back(std::move(tab));
+		editor.ActivateDocument(id);
+		activeId = id;
+		editor.LoadInitialBuffer(texts[i]);
+		if (distinct[i] == lastActive) {
+			finalActive = id;
+		}
+	}
+	if (finalActive != activeId) {
+		editor.ActivateDocument(finalActive);
+		activeId = finalActive;
+	}
 	Queue(DocumentShellRequest::RefreshTabs);
 	return true;
 }

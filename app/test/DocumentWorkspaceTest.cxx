@@ -1292,7 +1292,7 @@ TEST_CASE("document workspace multi-document portal failure preserves tabs") {
 	CHECK(editor.Modified(startup));
 }
 
-TEST_CASE("document workspace startup file loads raw bytes into the sole tab") {
+TEST_CASE("document workspace startup files loads raw bytes into the sole tab") {
 	// Stray continuation and truncated lead mixed with valid UTF-8.
 	const std::string fixture = "msg\x80" "mid\xC2" "end\n";
 	TempFile file(fixture);
@@ -1300,7 +1300,7 @@ TEST_CASE("document workspace startup file loads raw bytes into the sole tab") {
 	DocumentWorkspace workspace(editor);
 	const DocumentId only = workspace.ActiveTab();
 
-	REQUIRE(workspace.LoadStartupFile(file.path));
+	REQUIRE(workspace.LoadStartupFiles({file.path}));
 	CHECK(workspace.TabCount() == 1);
 	CHECK(workspace.ActiveTab() == only);
 	CHECK(workspace.Path() == file.path);
@@ -1317,11 +1317,11 @@ TEST_CASE("document workspace startup file loads raw bytes into the sole tab") {
 	CHECK_FALSE(tabs[0].dirty);
 }
 
-TEST_CASE("document workspace startup file known path saves without Save As") {
+TEST_CASE("document workspace startup files known path saves without Save As") {
 	TempFile file("template subject\n\n# comment\n");
 	ApplicationEditor editor(320, 180);
 	DocumentWorkspace workspace(editor);
-	REQUIRE(workspace.LoadStartupFile(file.path));
+	REQUIRE(workspace.LoadStartupFiles({file.path}));
 	(void)workspace.TakeRequests();
 
 	DirtyBuffer(editor);
@@ -1336,13 +1336,98 @@ TEST_CASE("document workspace startup file known path saves without Save As") {
 	CHECK(workspace.TakeRecentPaths().empty());
 }
 
-TEST_CASE("document workspace startup file missing path fails coherently") {
+TEST_CASE("document workspace startup files opens ordered tabs and reuses first") {
+	TempFile first("alpha body\n");
+	TempFile second("beta body\n");
+	TempFile third("gamma body\n");
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	const DocumentId initial = workspace.ActiveTab();
+
+	REQUIRE(workspace.LoadStartupFiles(
+		{first.path, second.path, third.path}));
+	CHECK(workspace.TabCount() == 3);
+	CHECK(workspace.ActiveTab() != initial);
+	CHECK(workspace.Path() == third.path);
+	CHECK(editor.Text() == "gamma body\n");
+	CHECK_FALSE(editor.Modified());
+	CHECK(workspace.TakeRecentPaths().empty());
+	CHECK(workspace.TakeFileErrors().empty());
+	const auto requests = workspace.TakeRequests();
+	CHECK(HasRequest(requests, DocumentShellRequest::RefreshTabs));
+	const auto tabs = workspace.Tabs();
+	REQUIRE(tabs.size() == 3);
+	CHECK(tabs[0].id == initial);
+	CHECK(tabs[0].path == first.path);
+	CHECK(tabs[0].label == Scalpel::DocumentBaseName(first.path));
+	CHECK_FALSE(tabs[0].dirty);
+	CHECK_FALSE(tabs[0].active);
+	CHECK(tabs[1].path == second.path);
+	CHECK_FALSE(tabs[1].active);
+	CHECK(tabs[2].path == third.path);
+	CHECK(tabs[2].active);
+	CHECK_FALSE(tabs[2].dirty);
+
+	workspace.ActivateTab(initial);
+	CHECK(editor.Text() == "alpha body\n");
+	CHECK_FALSE(editor.Modified());
+	workspace.ActivateTab(tabs[1].id);
+	CHECK(editor.Text() == "beta body\n");
+	CHECK_FALSE(editor.Modified());
+}
+
+TEST_CASE("document workspace startup files deduplicates and activates last path") {
+	TempFile first("one\n");
+	TempFile second("two\n");
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	const DocumentId initial = workspace.ActiveTab();
+
+	REQUIRE(workspace.LoadStartupFiles(
+		{first.path, second.path, first.path}));
+	CHECK(workspace.TabCount() == 2);
+	CHECK(workspace.ActiveTab() == initial);
+	CHECK(workspace.Path() == first.path);
+	CHECK(editor.Text() == "one\n");
+	const auto tabs = workspace.Tabs();
+	REQUIRE(tabs.size() == 2);
+	CHECK(tabs[0].path == first.path);
+	CHECK(tabs[0].active);
+	CHECK(tabs[1].path == second.path);
+	CHECK_FALSE(tabs[1].active);
+	CHECK(workspace.TakeRecentPaths().empty());
+	CHECK(workspace.TakeFileErrors().empty());
+}
+
+TEST_CASE("document workspace startup files missing path fails without mutation") {
+	TempFile first("kept\n");
 	ApplicationEditor editor(320, 180);
 	DocumentWorkspace workspace(editor);
 	const DocumentId only = workspace.ActiveTab();
 	const std::string missing = "/tmp/scalpel-startup-missing-XXXX-not-present";
 
-	CHECK_FALSE(workspace.LoadStartupFile(missing));
+	CHECK_FALSE(workspace.LoadStartupFiles({first.path, missing}));
+	CHECK(workspace.TabCount() == 1);
+	CHECK(workspace.ActiveTab() == only);
+	CHECK(workspace.Path().empty());
+	CHECK(editor.Text().empty());
+	CHECK_FALSE(workspace.PromptActive());
+	const auto errors = workspace.TakeFileErrors();
+	REQUIRE(errors.size() == 1);
+	CHECK(errors[0].operation == DocumentFileOperation::Open);
+	CHECK(errors[0].path == missing);
+	CHECK(workspace.TakeRecentPaths().empty());
+	CHECK_FALSE(HasRequest(workspace.TakeRequests(),
+		DocumentShellRequest::RefreshTabs));
+}
+
+TEST_CASE("document workspace startup files missing sole path fails coherently") {
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	const DocumentId only = workspace.ActiveTab();
+	const std::string missing = "/tmp/scalpel-startup-missing-XXXX-not-present";
+
+	CHECK_FALSE(workspace.LoadStartupFiles({missing}));
 	CHECK(workspace.TabCount() == 1);
 	CHECK(workspace.ActiveTab() == only);
 	CHECK(workspace.Path().empty());
@@ -1354,37 +1439,39 @@ TEST_CASE("document workspace startup file missing path fails coherently") {
 	CHECK(workspace.TakeRecentPaths().empty());
 }
 
-TEST_CASE("document workspace startup file rejects empty path") {
+TEST_CASE("document workspace startup files rejects empty input") {
 	ApplicationEditor editor(320, 180);
 	DocumentWorkspace workspace(editor);
-	CHECK_FALSE(workspace.LoadStartupFile(""));
+	CHECK_FALSE(workspace.LoadStartupFiles({}));
+	CHECK_FALSE(workspace.LoadStartupFiles({""}));
+	CHECK_FALSE(workspace.LoadStartupFiles({"ok", ""}));
 	CHECK(workspace.TabCount() == 1);
 	CHECK(workspace.Path().empty());
 	CHECK(workspace.TakeFileErrors().empty());
 	CHECK(workspace.TakeRecentPaths().empty());
 }
 
-TEST_CASE("document workspace startup file rejects after workspace activity") {
+TEST_CASE("document workspace startup files rejects after workspace activity") {
 	TempFile file("after activity\n");
 	ApplicationEditor editor(320, 180);
 	DocumentWorkspace workspace(editor);
 
 	workspace.NewTab();
 	REQUIRE(workspace.TabCount() == 2);
-	CHECK_FALSE(workspace.LoadStartupFile(file.path));
+	CHECK_FALSE(workspace.LoadStartupFiles({file.path}));
 	CHECK(workspace.TabCount() == 2);
 	CHECK(workspace.Path().empty());
 	CHECK(workspace.TakeRecentPaths().empty());
 	CHECK(workspace.TakeFileErrors().empty());
 }
 
-TEST_CASE("document workspace startup file does not overwrite adopted text") {
+TEST_CASE("document workspace startup files does not overwrite adopted text") {
 	TempFile file("startup file\n");
 	ApplicationEditor editor(320, 180);
 	editor.LoadInitialBuffer("existing text\n");
 	DocumentWorkspace workspace(editor);
 
-	CHECK_FALSE(workspace.LoadStartupFile(file.path));
+	CHECK_FALSE(workspace.LoadStartupFiles({file.path}));
 	CHECK(workspace.TabCount() == 1);
 	CHECK(workspace.Path().empty());
 	CHECK(editor.Text() == "existing text\n");
@@ -1393,14 +1480,14 @@ TEST_CASE("document workspace startup file does not overwrite adopted text") {
 	CHECK(workspace.TakeFileErrors().empty());
 }
 
-TEST_CASE("document workspace startup file does not overwrite dirty text") {
+TEST_CASE("document workspace startup files does not overwrite dirty text") {
 	TempFile file("startup file\n");
 	ApplicationEditor editor(320, 180);
 	DocumentWorkspace workspace(editor);
 	DirtyBuffer(editor);
 	const std::string existing = editor.Text();
 
-	CHECK_FALSE(workspace.LoadStartupFile(file.path));
+	CHECK_FALSE(workspace.LoadStartupFiles({file.path}));
 	CHECK(workspace.TabCount() == 1);
 	CHECK(workspace.Path().empty());
 	CHECK(editor.Text() == existing);

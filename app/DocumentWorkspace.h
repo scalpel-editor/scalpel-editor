@@ -179,15 +179,17 @@ public:
 	 */
 	[[nodiscard]] bool OpenPath(std::string_view path);
 	/**
-	 * Load path into the sole initial untitled document at process startup.
-	 * Valid only while the workspace still has exactly that one initial empty,
-	 * unmodified untitled tab and no prompt. Reuses the existing document id,
-	 * leaves the buffer at its save point, refreshes the tab label, and does not
-	 * queue a recent-path outcome. Returns false for an empty path, a read
-	 * failure, or when the workspace is no longer in its startup state; the
-	 * initial tab remains coherent.
+	 * Load an ordered startup path list into the pristine constructor workspace.
+	 * Valid only while the workspace still has exactly one initial empty,
+	 * unmodified untitled tab and no prompt. Normalizes paths, keeps the first
+	 * occurrence of each distinct path as a tab in argument order, reuses the
+	 * initial document for the first path, creates sibling documents for the
+	 * rest, and activates the tab named by the last supplied path. Reads every
+	 * distinct path before mutating tabs; any empty path or read failure leaves
+	 * the initial workspace coherent and returns false. Leaves each buffer at
+	 * its save point, queues one tab refresh, and does not record recent paths.
 	 */
-	[[nodiscard]] bool LoadStartupFile(std::string_view path);
+	[[nodiscard]] bool LoadStartupFiles(const std::vector<std::string> &paths);
 	/**
 	 * Apply a Save As path to the active tab without a dialog identity.
 	 * When the prompt is awaiting Save As, success continues the pending close;
