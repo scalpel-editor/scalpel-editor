@@ -27,6 +27,7 @@
 #include "ILexer.h"
 
 #include "Debugging.h"
+#include "DrawSurface.h"
 #include "Geometry.h"
 #include "Platform.h"
 #include "CharacterType.h"
@@ -239,4 +240,65 @@ TEST_CASE("Wrapping recalculates display rows after resize and edit") {
 	CHECK(editor.observations.idleRequested);
 	editor.PaintAll();
 	CHECK(editor.WrapCount(0) > wideCount);
+}
+
+TEST_CASE("Idle wrap invalidates the client when display heights change") {
+	// Tall client so the document still fits after wrap; scroll metrics can stay
+	// at zero while display heights change. The text must still be redrawn.
+	TestHost host;
+	TestEditor editor(host, PRectangle(0, 0, 80, 400));
+	editor.SetWrapMode(Wrap::Word);
+	editor.SetText("one two three four five six seven eight");
+	editor.PaintAll();
+	const Sci::Line wrappedRows = editor.WrapCount(0);
+	REQUIRE(wrappedRows > 1);
+	// Restore the pre-wrap display height so idle wrap must change layout again.
+	REQUIRE(editor.ForceDisplayHeight(0, 1));
+	REQUIRE(editor.DisplayHeight(0) == 1);
+	editor.NeedWrapping(0, 1);
+	editor.ClearObservations();
+
+	// Drive the idle wrap path that used to update heights without Redraw when
+	// MaxScrollPos stayed zero.
+	while (editor.Idle()) {
+	}
+
+	CHECK(editor.DisplayHeight(0) == wrappedRows);
+	const TestEditorSnapshot snapshot = editor.Snapshot();
+	CHECK(snapshot.invalidatedRectangles > 0);
+}
+
+TEST_CASE("Buffered paint clears shared line pixmap for extra display rows") {
+	// Force a display height greater than the laid-out subline count so the
+	// extra row would otherwise copy a previous pixmap. The row must not keep
+	// ink from the document line above it.
+	TestHost host;
+	TestEditor editor(host, PRectangle(0, 0, 200, 120));
+	editor.SetWrapMode(Wrap::None);
+	editor.SetText("XXXXXXXX\n\n");
+	editor.PaintAll();
+	const int lineHeight = editor.TextHeightPixels();
+	REQUIRE(lineHeight > 0);
+
+	// Two display rows for the first document line; layout still has one.
+	REQUIRE(editor.ForceDisplayHeight(0, 2));
+	REQUIRE(editor.DisplayHeight(0) == 2);
+
+	const ColourRGBA initial(0, 255, 0, 255);
+	const PRectangle client = editor.ClientRectangle();
+	std::unique_ptr<DrawSurface> surface =
+		editor.PaintToSurface(client, initial);
+	REQUIRE(surface != nullptr);
+
+	// Sample past the margin into the text area of the first real text row and
+	// the forced extra display row that shares the buffered pixmap.
+	const int textX = static_cast<int>(client.left) + 24;
+	const int textY = lineHeight / 2;
+	const int extraY = lineHeight + lineHeight / 2;
+	const ColourRGBA textPixel = surface->Buffer().ReadPixel(textX, textY);
+	const ColourRGBA extraPixel = surface->Buffer().ReadPixel(textX, extraY);
+	// First row has text ink (not the cleared initial green).
+	CHECK_FALSE(textPixel == initial);
+	// Extra row must not reuse the text row's ink from the shared pixmap.
+	CHECK_FALSE(extraPixel == textPixel);
 }

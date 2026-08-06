@@ -2579,6 +2579,18 @@ void EditView::PaintText(Surface *surfaceWindow, const EditModel &model, const V
 					ll->SetBracesHighlight(rangeLine, model.braces, static_cast<char>(model.bracesMatchStyle),
 						static_cast<int>(model.highlightGuideColumn * vsDraw.spaceWidth), bracesIgnoreStyle);
 
+					if (bufferedDraw) {
+						// The line pixmap is shared across display rows. Erase it
+						// before drawing so a prior row cannot remain when this
+						// row paints nothing (extra height slots, empty
+						// annotation rows, or a path that skips a full fill).
+						surface->FillRectangle(
+							PRectangle::FromInts(0, 0,
+								static_cast<int>(rcClient.Width()),
+								vsDraw.lineHeight),
+							Fill(vsDraw.styles[StyleDefault].back));
+					}
+
 					if (leftTextOverlap && (bufferedDraw || ((phasesDraw < PhasesDraw::Multiple) && (FlagSet(phase, DrawPhase::back))))) {
 						// Clear the left margin
 						PRectangle rcSpacer = rcLine;

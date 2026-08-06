@@ -84,7 +84,9 @@ The active output scale is an exact rational `RasterScale`. `main` copies `Wayla
 
 Sibling pixmaps retain logical drawing dimensions but allocate their colour buffers at the active output scale. Copies and pattern fills map logical source coordinates across those scaled buffers, so buffered editor text uses the same device-pixel glyph placement as direct window drawing.
 
-The frame surface keeps the prepared damage rectangle clipped for the complete editor paint. Buffered lines may be drawn in full inside their sibling pixmap, but copies, margins, and direct frame operations cannot modify preserved pixels outside that damage.
+The frame surface keeps the prepared damage rectangle clipped for the complete editor paint. Buffered lines may be drawn in full inside their sibling pixmap, but copies, margins, and direct frame operations cannot modify preserved pixels outside that damage. Each buffered display row starts by filling the shared line pixmap with the default background so a prior row cannot remain when the current row paints nothing.
+
+When wrapping changes display heights, the editor invalidates the client even if scroll metrics are unchanged. Short documents that still fit on screen can change row layout without moving the scrollbar; without that invalidation, partial paints can leave old rows at previous Y positions.
 
 Colour attachments are linear `GL_RGBA8`. Internal alpha is premultiplied and blended with premultiplied source-over. Public offscreen pixel buffers are converted to straight alpha and returned in top-to-bottom order.
 

@@ -167,6 +167,15 @@ public:
 
 	// Wrapping concern (protected on Editor); test-only access for focused suites.
 	using Editor::WrapCount;
+	using Editor::NeedWrapping;
+	using Editor::Idle;
+	/** Test-only: force contraction display height without re-layout. */
+	bool ForceDisplayHeight(Sci::Line lineDoc, int height) {
+		return pcs->SetHeight(lineDoc, height);
+	}
+	int DisplayHeight(Sci::Line lineDoc) const noexcept {
+		return pcs->GetHeight(lineDoc);
+	}
 	using Editor::SetWrapVisualFlags;
 	using Editor::GetWrapVisualFlags;
 	using Editor::SetWrapVisualFlagsLocation;

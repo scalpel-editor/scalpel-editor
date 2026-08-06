@@ -377,6 +377,12 @@ bool Editor::WrapLines(WrapScope ws) {
 		SetTopLine(std::clamp<Sci::Line>(goodTopLine, 0, MaxScrollPos()));
 		SetVerticalScrollPos();
 		insideWrapScroll = false;
+		// Display heights can change without scroll metrics changing (for
+		// example a short document that still fits on screen). Invalidate the
+		// text so partial paints cannot leave old rows at previous Y positions.
+		if (!AbandonPaint()) {
+			Redraw();
+		}
 	}
 
 	return wrapOccurred;
