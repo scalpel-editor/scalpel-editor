@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Scalpel Editor
+GenericName=Text Editor
+Comment=Wayland-only plain-text editor
+Exec=scalpel-editor %F
+Icon=scalpel-editor
+Terminal=false
+Categories=Utility;TextEditor;
+MimeType=text/plain;
+StartupNotify=true
+Keywords=text;editor;plain;wayland;
