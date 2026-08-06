@@ -207,6 +207,28 @@ TEST_CASE("production editor captures damage before bounded painting") {
 		preserved.end());
 }
 
+TEST_CASE("production editor retries an abandoned bounded paint") {
+	using Scintilla::Internal::PRectangle;
+
+	Scalpel::ApplicationEditor editor(240, 100);
+	editor.LoadInitialBuffer(
+		"a long line whose display height changes when the editor becomes narrow");
+	editor.SetWrapMode(Scintilla::Wrap::Word);
+	REQUIRE(editor.RenderFrame());
+
+	// Resize schedules a complete repaint and makes every line need wrapping.
+	// Select a bounded paint to exercise the production abandonment path.
+	editor.Resize(100, 100);
+	(void)editor.TakeFrameDamage();
+	const PRectangle bounded = PRectangle::FromInts(20, 0, 40, 20);
+	CHECK_FALSE(editor.RenderFrame({bounded}));
+
+	const PRectangle client = editor.EditorClientRectangle();
+	const std::vector<PRectangle> retry = editor.TakeFrameDamage();
+	CHECK(std::find(retry.begin(), retry.end(), client) != retry.end());
+	CHECK(editor.RenderFrame(retry));
+}
+
 TEST_CASE("production editor host exposes shell state") {
 	Scalpel::ApplicationEditor editor(240, 120);
 	editor.LoadInitialBuffer("one\ntwo\nthree\n");

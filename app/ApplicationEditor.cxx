@@ -1155,11 +1155,11 @@ void ApplicationEditor::HandlePrimarySelectionResult(uint64_t id,
 	}
 }
 
-void ApplicationEditor::RenderFrame() {
-	RenderFrame(TakeFrameDamage());
+bool ApplicationEditor::RenderFrame() {
+	return RenderFrame(TakeFrameDamage());
 }
 
-void ApplicationEditor::RenderFrame(const std::vector<PRectangle> &damage) {
+bool ApplicationEditor::RenderFrame(const std::vector<PRectangle> &damage) {
 	const int width = FrameWidth();
 	const int height = FrameHeight();
 	// Offscreen path keeps a one-to-one colour buffer for FramePixels. Output
@@ -1185,29 +1185,36 @@ void ApplicationEditor::RenderFrame(const std::vector<PRectangle> &damage) {
 		if (paintEditor) {
 			Paint(frame.get(), rcPaint);
 		}
-		if (paintChrome) {
-			permanentChromePainter(*frame, width, height);
-		}
-		if (overlayPainter) {
-			overlayPainter(*frame, width, height);
+		if (paintState != PaintState::abandoned) {
+			if (paintChrome) {
+				permanentChromePainter(*frame, width, height);
+			}
+			if (overlayPainter) {
+				overlayPainter(*frame, width, height);
+			}
 		}
 	} catch (...) {
 		paintState = PaintState::notPainting;
 		paintingAllText = false;
 		throw;
 	}
+	const bool completed = paintState != PaintState::abandoned;
 	paintState = PaintState::notPainting;
 	paintingAllText = false;
+	if (!completed) {
+		InvalidateClient();
+	}
+	return completed;
 }
 
-void ApplicationEditor::PresentFrame() {
+bool ApplicationEditor::PresentFrame() {
 	if (!glContext->HasWindowSurface()) {
 		throw std::runtime_error("ApplicationEditor::PresentFrame requires a window surface");
 	}
-	PresentFrame(TakeFrameDamage(), {}, true);
+	return PresentFrame(TakeFrameDamage(), {}, true);
 }
 
-void ApplicationEditor::PresentFrame(
+bool ApplicationEditor::PresentFrame(
 	const std::vector<PRectangle> &damage,
 	const std::vector<int> &eglDamage, bool fullSwap) {
 	if (!glContext->HasWindowSurface()) {
@@ -1241,25 +1248,33 @@ void ApplicationEditor::PresentFrame(
 		if (paintEditor) {
 			Paint(frame.get(), rcPaint);
 		}
-		if (paintChrome) {
-			permanentChromePainter(*frame, width, height);
-		}
-		if (overlayPainter) {
-			overlayPainter(*frame, width, height);
+		if (paintState != PaintState::abandoned) {
+			if (paintChrome) {
+				permanentChromePainter(*frame, width, height);
+			}
+			if (overlayPainter) {
+				overlayPainter(*frame, width, height);
+			}
 		}
 	} catch (...) {
 		paintState = PaintState::notPainting;
 		paintingAllText = false;
 		throw;
 	}
+	const bool completed = paintState != PaintState::abandoned;
 	paintState = PaintState::notPainting;
 	paintingAllText = false;
+	if (!completed) {
+		InvalidateClient();
+		return false;
+	}
 	if (fullSwap) {
 		glContext->SwapBuffers();
 	} else {
 		glContext->SwapBuffersWithDamage(
 			eglDamage.data(), eglDamage.size() / 4);
 	}
+	return true;
 }
 
 void ApplicationEditor::SetOverlayPainter(OverlayPainter painter) noexcept {

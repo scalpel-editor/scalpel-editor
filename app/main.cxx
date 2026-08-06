@@ -607,10 +607,15 @@ int main() {
 					window.PrepareFrame(*plan);
 					try {
 						ui.BeginFrameLayout();
-						editor.PresentFrame(EditorDamage(plan->repaintDamage),
+						const bool presented = editor.PresentFrame(
+							EditorDamage(plan->repaintDamage),
 							EglDamage(plan->eglDamage), plan->fullSwap);
 						ui.EndFrameLayout();
-						window.SubmitFrame(plan->submission);
+						if (presented) {
+							window.SubmitFrame(plan->submission);
+						} else {
+							window.CancelFrame();
+						}
 					} catch (...) {
 						ui.EndFrameLayout();
 						window.CancelFrame();

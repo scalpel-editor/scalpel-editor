@@ -311,11 +311,13 @@ public:
 	/** Drop preedit / tentative IME state (for example when a modal prompt opens). */
 	void CancelActiveTextInput();
 	[[nodiscard]] std::optional<ApplicationTextInputState> TakeTextInputState();
-	void RenderFrame();
-	void RenderFrame(
+	/** Return false when the core abandons the paint and schedules a full retry. */
+	bool RenderFrame();
+	bool RenderFrame(
 		const std::vector<Scintilla::Internal::PRectangle> &damage);
-	void PresentFrame();
-	void PresentFrame(
+	/** Return false without swapping when the core abandons the paint. */
+	bool PresentFrame();
+	bool PresentFrame(
 		const std::vector<Scintilla::Internal::PRectangle> &damage,
 		const std::vector<int> &eglDamage, bool fullSwap);
 	/**
