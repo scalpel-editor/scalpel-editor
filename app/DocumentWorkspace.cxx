@@ -402,6 +402,33 @@ bool DocumentWorkspace::OpenPath(std::string_view path) {
 	return ApplyOpenPaths({std::string(path)});
 }
 
+bool DocumentWorkspace::LoadStartupFile(std::string_view path) {
+	// Only the pristine constructor workspace may adopt a startup path.
+	if (path.empty() || prompt.Active() || tabs.size() != 1 ||
+		!tabs[0].path.empty() || tabs[0].untitledNumber != 1 ||
+		nextUntitledNumber != 2) {
+		return false;
+	}
+	const std::string pathString = NormalizePath(path);
+	if (pathString.empty()) {
+		return false;
+	}
+	const std::optional<std::string> text = ReadDocumentFile(pathString);
+	if (!text) {
+		std::cerr << "scalpel-editor: failed to read " << pathString << '\n';
+		fileErrors.push_back({DocumentFileOperation::Open, pathString});
+		return false;
+	}
+	Tab &tab = tabs[0];
+	tab.path = pathString;
+	tab.untitledNumber = 0;
+	editor.ActivateDocument(tab.id);
+	activeId = tab.id;
+	editor.LoadInitialBuffer(*text);
+	Queue(DocumentShellRequest::RefreshTabs);
+	return true;
+}
+
 void DocumentWorkspace::HandleSaveResult(bool accepted,
 	std::string_view savedPath) {
 	const uint64_t promptGeneration =

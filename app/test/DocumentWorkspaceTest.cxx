@@ -1291,3 +1291,89 @@ TEST_CASE("document workspace multi-document portal failure preserves tabs") {
 	CHECK(editor.Text() == dirtyText);
 	CHECK(editor.Modified(startup));
 }
+
+TEST_CASE("document workspace startup file loads raw bytes into the sole tab") {
+	// Stray continuation and truncated lead mixed with valid UTF-8.
+	const std::string fixture = "msg\x80" "mid\xC2" "end\n";
+	TempFile file(fixture);
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	const DocumentId only = workspace.ActiveTab();
+
+	REQUIRE(workspace.LoadStartupFile(file.path));
+	CHECK(workspace.TabCount() == 1);
+	CHECK(workspace.ActiveTab() == only);
+	CHECK(workspace.Path() == file.path);
+	CHECK(editor.Text() == fixture);
+	CHECK_FALSE(editor.Modified());
+	CHECK_FALSE(workspace.BufferModified());
+	CHECK(workspace.TakeRecentPaths().empty());
+	CHECK(workspace.TakeFileErrors().empty());
+	const auto requests = workspace.TakeRequests();
+	CHECK(HasRequest(requests, DocumentShellRequest::RefreshTabs));
+	const auto tabs = workspace.Tabs();
+	REQUIRE(tabs.size() == 1);
+	CHECK(tabs[0].label == Scalpel::DocumentBaseName(file.path));
+	CHECK_FALSE(tabs[0].dirty);
+}
+
+TEST_CASE("document workspace startup file known path saves without Save As") {
+	TempFile file("template subject\n\n# comment\n");
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	REQUIRE(workspace.LoadStartupFile(file.path));
+	(void)workspace.TakeRequests();
+
+	DirtyBuffer(editor);
+	workspace.RequestSave();
+	CHECK_FALSE(editor.Modified());
+	CHECK(workspace.Path() == file.path);
+	CHECK(workspace.TakeFileErrors().empty());
+	const auto read = Scalpel::ReadDocumentFile(file.path);
+	REQUIRE(read.has_value());
+	CHECK(*read == editor.Text());
+	// Interactive Open still records recent paths; startup load must not.
+	CHECK(workspace.TakeRecentPaths().empty());
+}
+
+TEST_CASE("document workspace startup file missing path fails coherently") {
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	const DocumentId only = workspace.ActiveTab();
+	const std::string missing = "/tmp/scalpel-startup-missing-XXXX-not-present";
+
+	CHECK_FALSE(workspace.LoadStartupFile(missing));
+	CHECK(workspace.TabCount() == 1);
+	CHECK(workspace.ActiveTab() == only);
+	CHECK(workspace.Path().empty());
+	CHECK_FALSE(workspace.PromptActive());
+	const auto errors = workspace.TakeFileErrors();
+	REQUIRE(errors.size() == 1);
+	CHECK(errors[0].operation == DocumentFileOperation::Open);
+	CHECK(errors[0].path == missing);
+	CHECK(workspace.TakeRecentPaths().empty());
+}
+
+TEST_CASE("document workspace startup file rejects empty path") {
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	CHECK_FALSE(workspace.LoadStartupFile(""));
+	CHECK(workspace.TabCount() == 1);
+	CHECK(workspace.Path().empty());
+	CHECK(workspace.TakeFileErrors().empty());
+	CHECK(workspace.TakeRecentPaths().empty());
+}
+
+TEST_CASE("document workspace startup file rejects after workspace activity") {
+	TempFile file("after activity\n");
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+
+	workspace.NewTab();
+	REQUIRE(workspace.TabCount() == 2);
+	CHECK_FALSE(workspace.LoadStartupFile(file.path));
+	CHECK(workspace.TabCount() == 2);
+	CHECK(workspace.Path().empty());
+	CHECK(workspace.TakeRecentPaths().empty());
+	CHECK(workspace.TakeFileErrors().empty());
+}

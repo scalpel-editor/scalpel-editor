@@ -179,6 +179,16 @@ public:
 	 */
 	[[nodiscard]] bool OpenPath(std::string_view path);
 	/**
+	 * Load path into the sole initial untitled document at process startup.
+	 * Valid only while the workspace still has exactly that one initial
+	 * untitled tab and no prompt. Reuses the existing document id, leaves the
+	 * buffer at its save point, refreshes the tab label, and does not queue a
+	 * recent-path outcome. Returns false for an empty path, a read failure, or
+	 * when the workspace is no longer in its startup state; the initial tab
+	 * remains coherent.
+	 */
+	[[nodiscard]] bool LoadStartupFile(std::string_view path);
+	/**
 	 * Apply a Save As path to the active tab without a dialog identity.
 	 * When the prompt is awaiting Save As, success continues the pending close;
 	 * cancel or write failure keeps it.
