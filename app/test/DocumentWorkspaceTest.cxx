@@ -1377,3 +1377,34 @@ TEST_CASE("document workspace startup file rejects after workspace activity") {
 	CHECK(workspace.TakeRecentPaths().empty());
 	CHECK(workspace.TakeFileErrors().empty());
 }
+
+TEST_CASE("document workspace startup file does not overwrite adopted text") {
+	TempFile file("startup file\n");
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("existing text\n");
+	DocumentWorkspace workspace(editor);
+
+	CHECK_FALSE(workspace.LoadStartupFile(file.path));
+	CHECK(workspace.TabCount() == 1);
+	CHECK(workspace.Path().empty());
+	CHECK(editor.Text() == "existing text\n");
+	CHECK_FALSE(editor.Modified());
+	CHECK(workspace.TakeRecentPaths().empty());
+	CHECK(workspace.TakeFileErrors().empty());
+}
+
+TEST_CASE("document workspace startup file does not overwrite dirty text") {
+	TempFile file("startup file\n");
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	DirtyBuffer(editor);
+	const std::string existing = editor.Text();
+
+	CHECK_FALSE(workspace.LoadStartupFile(file.path));
+	CHECK(workspace.TabCount() == 1);
+	CHECK(workspace.Path().empty());
+	CHECK(editor.Text() == existing);
+	CHECK(editor.Modified());
+	CHECK(workspace.TakeRecentPaths().empty());
+	CHECK(workspace.TakeFileErrors().empty());
+}

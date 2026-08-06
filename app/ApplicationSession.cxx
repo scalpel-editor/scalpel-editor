@@ -1,5 +1,7 @@
 #include "ApplicationSession.h"
 
+#include <utility>
+
 #include "DocumentWorkspace.h"
 
 namespace Scalpel {

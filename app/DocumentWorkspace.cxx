@@ -406,7 +406,8 @@ bool DocumentWorkspace::LoadStartupFile(std::string_view path) {
 	// Only the pristine constructor workspace may adopt a startup path.
 	if (path.empty() || prompt.Active() || tabs.size() != 1 ||
 		!tabs[0].path.empty() || tabs[0].untitledNumber != 1 ||
-		nextUntitledNumber != 2) {
+		nextUntitledNumber != 2 || editor.Modified(tabs[0].id) ||
+		!editor.Text(tabs[0].id).empty()) {
 		return false;
 	}
 	const std::string pathString = NormalizePath(path);

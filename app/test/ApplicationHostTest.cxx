@@ -1635,6 +1635,19 @@ TEST_CASE("application command line rejects a bare double dash") {
 	CHECK(invocation.message == "missing path after --");
 }
 
+TEST_CASE("application command line rejects empty paths") {
+	for (const std::initializer_list<const char *> arguments : {
+			std::initializer_list<const char *>{"scalpel-editor", ""},
+			std::initializer_list<const char *>{"scalpel-editor", "--", ""}}) {
+		ArgvImage args(arguments);
+		const Scalpel::ApplicationInvocation invocation =
+			Scalpel::ParseApplicationCommandLine(args.argc(), args.argv());
+		CHECK(invocation.kind == Scalpel::ApplicationInvocationKind::UsageError);
+		CHECK(invocation.path.empty());
+		CHECK(invocation.message == "path must not be empty");
+	}
+}
+
 TEST_CASE("application command line rejects excess arguments") {
 	ArgvImage args({"scalpel-editor", "one", "two"});
 	const Scalpel::ApplicationInvocation invocation =

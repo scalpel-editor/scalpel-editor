@@ -1,6 +1,7 @@
 #include "ApplicationCommandLine.h"
 
 #include <string_view>
+#include <utility>
 
 namespace Scalpel {
 namespace {
@@ -51,6 +52,9 @@ ApplicationInvocation ParseApplicationCommandLine(int argc, char *const *argv) {
 			}
 			return UsageError("unknown option: " + std::string(first));
 		}
+		if (first.empty()) {
+			return UsageError("path must not be empty");
+		}
 		ApplicationInvocation invocation;
 		invocation.kind = ApplicationInvocationKind::EditPath;
 		invocation.path = std::string(first);
@@ -60,6 +64,9 @@ ApplicationInvocation ParseApplicationCommandLine(int argc, char *const *argv) {
 	if (argumentCount == 2 && first == "--") {
 		const std::string_view path =
 			arguments[1] != nullptr ? arguments[1] : "";
+		if (path.empty()) {
+			return UsageError("path must not be empty");
+		}
 		ApplicationInvocation invocation;
 		invocation.kind = ApplicationInvocationKind::EditPath;
 		invocation.path = std::string(path);
