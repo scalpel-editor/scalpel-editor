@@ -19,6 +19,10 @@ cmake --preset dev
 cmake --build build --target scalpel-editor
 ```
 
+## Installing on openSUSE Leap 16
+
+See [packaging/README.md](packaging/README.md) to build an RPM and install it with `zypper`.
+
 ## Design documentation
 
 - [Scintilla core boundary](docs/scintilla-core.md)
