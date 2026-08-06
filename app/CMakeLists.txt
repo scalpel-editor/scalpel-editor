@@ -203,4 +203,14 @@ add_executable(scalpel-editor main.cxx)
 target_link_libraries(scalpel-editor PRIVATE scalpel_application scalpel_wayland)
 target_compile_options(scalpel-editor PRIVATE -Wall -Wextra)
 
+install(TARGETS scalpel-editor
+  RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+)
+install(FILES "${PROJECT_SOURCE_DIR}/pkg/scalpel-editor.desktop"
+  DESTINATION "${CMAKE_INSTALL_DATADIR}/applications"
+)
+install(FILES "${PROJECT_SOURCE_DIR}/pkg/scalpel-editor.png"
+  DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps"
+)
+
 add_subdirectory(test)
