@@ -23,7 +23,8 @@ Important application state has one authority:
 - `ApplicationEditor` owns the production Scintilla host, retained documents, rendering, editor work deadlines, and editor-facing clipboard and text-input state.
 - `DocumentWorkspace` owns tabs, paths, file operations, application file-dialog intents, and dirty-close policy.
 - `WaylandWindow` owns the display connection, Wayland and EGL objects, external services, input transport, scaling, and frame submission.
-- `ApplicationUi` owns application composition: chrome models and painters, overlay and cursor selection, layout snapshots, input priority, focus transitions, and the application side of workspace requests and outcomes. Typed effects carry only portal-dialog and accepted-close work to `main.cxx`; dialog effects use application identities while the platform pump alone maps portal request IDs. Each controller entry point leaves interaction state consistent before returning. The complete boundary is described in [application-ui.md](application-ui.md).
+- `ApplicationUi` owns application composition: chrome models and painters, overlay and cursor selection, layout snapshots, input priority, focus transitions, and the application side of workspace requests and outcomes. Typed effects carry only portal-dialog and accepted-close work to the Wayland runner; dialog effects use application identities while the platform pump alone maps portal request IDs. Each controller entry point leaves interaction state consistent before returning. The complete boundary is described in [application-ui.md](application-ui.md).
+- `ApplicationSession` owns process startup and exit-status policy for interactive and one-path launches so those decisions can be tested without a compositor.
 
 Components exchange copied values, stable identifiers, and explicit results instead of retaining pointers across unrelated lifetimes.
 

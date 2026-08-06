@@ -8,6 +8,8 @@ The editor has no GTK, Qt, or general-purpose UI toolkit dependency. Its applica
 
 The application supports multiple tabs, desktop-portal open and save dialogs, atomic whole-file saves, dirty-buffer close prompts, recent files, menu and keyboard actions, two-axis scrollbars, clipboard and primary selection, text-input-v3 IME, compositor-driven key repeat, cursor themes, fractional scaling, damage-aware frame pacing, and optional presentation feedback.
 
+With no arguments, `scalpel-editor` opens an untitled interactive workspace. With exactly one path, it loads that file as the only initial tab, keeps that path for save, and does not add it to recent files. The process stays in the foreground until the window closes. A Wayland session is required for either launch form.
+
 The project is still under active development. Text shaping currently targets left-to-right English. Autocomplete, call tips, and the Scintilla context menu remain compiled but do not yet have real Wayland popup surfaces. Lexilla integration, Markdown styling, bidirectional layout, drag and drop, and a system accessibility caret are outside the current application scope.
 
 ## Building
@@ -18,6 +20,33 @@ See [BUILDING.md](BUILDING.md) for the openSUSE and NixOS build environments. Th
 cmake --preset dev
 cmake --build build --target scalpel-editor
 ```
+
+## As a Git commit message editor
+
+Git can open `scalpel-editor` for `COMMIT_EDITMSG` and similar one-file editor paths. Configure either:
+
+```sh
+git config --global core.editor scalpel-editor
+```
+
+or:
+
+```sh
+export GIT_EDITOR=scalpel-editor
+```
+
+Git supplies one path. The editor loads that file, leaves Git's template comments unchanged, and writes saves back to the same path (including Ctrl+S and the dirty-close Save choice). There is no `--wait` flag: the process remains in the foreground until the window closes.
+
+Exit status:
+
+| Outcome | Status |
+| --- | --- |
+| Accepted window close after a normal session | 0 |
+| Invalid command line or failure to read the path | non-zero |
+| Forced shell or compositor shutdown during a path edit | non-zero |
+| Uncaught failure after a path or interactive launch is ready | non-zero |
+
+Interactive (no-argument) forced shutdown still returns success, matching the previous process behavior. Git treats a non-zero editor status as an aborted commit.
 
 ## Installing on openSUSE Leap 16
 

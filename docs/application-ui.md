@@ -8,23 +8,25 @@ The application UI is a fixed composition of the Scintilla editor, a menu bar, a
 | --- | --- |
 | `WaylandWindow` | Display connection, Wayland and EGL objects, external services, input transport, scaling, frame submission, and waiting. |
 | `ApplicationEditor` | Scintilla documents, editor input, rendering, damage, editor work deadlines, editor client geometry, scrollbar visibility and ranges, clipboard values, text-input state, wrapped plain-text find, and the process-wide generic editor text face. |
-| `DocumentWorkspace` | Tabs, paths, file operations, application dialog intents, recent-path outcomes, and dirty-close policy. |
+| `DocumentWorkspace` | Tabs, paths, file operations, application dialog intents, recent-path outcomes, startup-file loading, and dirty-close policy. |
+| `ApplicationSession` | Process-lifetime startup and exit-status policy for interactive and pathname launches, independent of the compositor. |
 | `ApplicationUi` | Chrome models and painters (including the find bar and context menu), top-chrome inset, modal-card and error state, hover and press state, scrollbar interaction, input priority, cursor choice, overlay selection, application layout snapshots, recent-file updates, and conversion of workspace work into host effects (including context-popup show/close/invalidate). |
-| `main.cxx` | Construction and the platform pump. It moves copied events and external-service results across the boundary, performs host effects (including the grabbed context-menu `xdg_popup`), submits frames, and waits. |
+| `WaylandApplicationRunner` | Construction and the platform pump. It applies session startup, moves copied events and external-service results across the boundary, performs host effects (including the grabbed context-menu `xdg_popup`), submits frames, waits, and returns a typed termination reason. |
+| `main.cxx` | Command-line parsing, help and usage reporting, invoking the Wayland runner, mapping the termination reason through session policy, and returning the process status. |
 
-`ApplicationUi` receives references to `ApplicationEditor`, `DocumentWorkspace`, and `RecentFiles`; it does not replace their ownership. `main.cxx` keeps those objects alive in dependency order and contains no application input-priority or overlay-selection policy. The top-chrome inset (menu plus tab strip, plus the find bar when visible) is established by `ApplicationUi`, not by `main.cxx`.
+`ApplicationUi` receives references to `ApplicationEditor`, `DocumentWorkspace`, and `RecentFiles`; it does not replace their ownership. The Wayland runner keeps those objects alive in dependency order and contains no application input-priority or overlay-selection policy. The top-chrome inset (menu plus tab strip, plus the find bar when visible) is established by `ApplicationUi`, not by the runner or `main.cxx`.
 
 ## Event flow
 
 One platform-loop iteration has this application order:
 
-1. `main.cxx` takes copied presentation, clipboard, primary-selection, text-input, and portal results from `WaylandWindow`.
+1. The Wayland runner takes copied presentation, clipboard, primary-selection, text-input, and portal results from `WaylandWindow`.
 2. Portal results are translated from platform request IDs to application dialog IDs and delivered through `ApplicationUi`. Clipboard results and text-input batches also enter through `ApplicationUi`, which chooses the editor or find field as owner. Primary-selection traffic still targets `ApplicationEditor` directly.
 3. Window-close, size, focus, pointer, and keyboard changes enter `ApplicationUi`. It applies application transitions immediately. Only an unconsumed pointer event crosses from `ApplicationUi` to `ApplicationEditor`; keyboard delivery is completed inside `ApplicationUi`.
-4. `ApplicationUi::TakeShellEffects` drains workspace requests and outcomes plus queued context-menu popup effects. UI-local work is completed there, while portal-dialog, accepted-close, and context-popup work is returned to `main.cxx`.
-5. `main.cxx` starts requested portal dialogs, records the platform-to-application dialog ID mapping, feeds startup failure back through `ApplicationUi`, and creates, paints, or destroys the context-menu popup.
-6. After editor work and application synchronization, `ApplicationUi` selects the overlay and cursor. `main.cxx` transfers editor damage to `WaylandWindow` and may paint an independent popup surface.
-7. When the compositor permits a frame, `ApplicationUi` retains one frame layout while `ApplicationEditor` paints the editor, permanent chrome, and active overlay. `main.cxx` then submits the frame and returns to the shared event wait.
+4. `ApplicationUi::TakeShellEffects` drains workspace requests and outcomes plus queued context-menu popup effects. UI-local work is completed there, while portal-dialog, accepted-close, and context-popup work is returned to the runner.
+5. The runner starts requested portal dialogs, records the platform-to-application dialog ID mapping, feeds startup failure back through `ApplicationUi`, and creates, paints, or destroys the context-menu popup.
+6. After editor work and application synchronization, `ApplicationUi` selects the overlay and cursor. The runner transfers editor damage to `WaylandWindow` and may paint an independent popup surface.
+7. When the compositor permits a frame, `ApplicationUi` retains one frame layout while `ApplicationEditor` paints the editor, permanent chrome, and active overlay. The runner then submits the frame and returns to the shared event wait.
 
 Focus loss is one `ApplicationUi` transition: it cancels editor focus and tentative IME, closes the menu bar and context menu, cancels scrollbar interaction, clears modal press state, and blurs the find field without closing the bar or discarding its query. Opening a menu, context menu, or modal card also cancels tentative IME and blurs the find field. While a modal card, menu bar, or context menu owns input, `ChromeOwnsInput` tells the platform adapter to discard compositor IME batches; protocol conversion remains outside the UI.
 
@@ -44,7 +46,7 @@ Focus loss is one `ApplicationUi` transition: it cancels editor focus and tentat
 
 Modal owners consume pointer input. Editor selection capture and surface leave remain deliverable to `ApplicationEditor` so Scintilla can finish its interaction. A click that dismisses a menu does not also activate the control underneath it. A pointer press in the editor client while the find bar is visible leaves the bar open but transfers keyboard focus back to the editor. Each routing entry point applies actions, invalidation, and interaction cleanup before returning.
 
-The same coordinator chooses the pointer cursor. Chrome and modal interaction select the arrow; editor interaction defers to the Scintilla cursor. `CurrentPointerCursor` also forces the arrow when a modal appears without a pointer event, so `main.cxx` only applies the resolved choice.
+The same coordinator chooses the pointer cursor. Chrome and modal interaction select the arrow; editor interaction defers to the Scintilla cursor. `CurrentPointerCursor` also forces the arrow when a modal appears without a pointer event, so the Wayland runner only applies the resolved choice.
 
 Keyboard priority is file-error card, unsaved-changes prompt, open context menu, Shift+F10 context-menu open, menu-bar navigation or accelerator, the global Find action (`Ctrl+F` / Edit > Find), a focused find field, other application shortcuts or tab cycle, then editor input. Overlay paint priority is file-error card, unsaved-changes prompt, open menu bar dropdown, then no overlay. The context menu paints on its own popup surface rather than the in-window overlay. A higher-priority modal closes an open menu or context menu, and every overlay change invalidates the full frame.
 
@@ -89,6 +91,8 @@ Fontconfig resolves the canonical family through the host configuration when the
 
 `DocumentWorkspace` opens and saves document files as raw bytes. A readable file succeeds even when its contents are not valid UTF-8: it becomes a normal clean document, is recorded as a successful recent path, and does not enqueue a file error or warning. Open and save do not validate, replace, transcode, or normalize invalid sequences. Valid UTF-8 and invalid bytes may coexist in one document.
 
+Process startup may load exactly one path into the sole initial tab through `LoadStartupFile`. That path is bound for save and is not recorded as a recent file, so temporary editor paths such as Git's `COMMIT_EDITMSG` stay out of the Recent menu. Interactive Open and Recent continue to record successful paths.
+
 LF is the editor's native line ending: Enter inserts LF, including after a document has been converted to CRLF. Open and Save neither detect nor change line endings, so untouched bytes and any mixed endings remain as they are. The Edit menu provides `Convert Line Endings to LF` and `Convert Line Endings to CRLF` as explicit whole-document edits; either conversion is one undo action and marks the document modified when bytes change.
 
 Saving an unchanged document writes its content bytes exactly. After an edit, bytes outside the edited range remain exact; normal text input continues to insert UTF-8. How invalid bytes behave under caret movement, deletion, and painting is the editor core rule in [scintilla-core.md](scintilla-core.md) (Text and layout contract); the workspace does not reimplement that logic.
@@ -109,7 +113,7 @@ Invalid UTF-8 in file contents is separate from path encoding, I/O failures, lin
 | Accept close | Returns a typed close effect. |
 | Context menu open / close / invalidate | Returns typed popup effects with parent-relative anchor and grab serial for show; close and invalidate drive popup lifecycle without recreating dialog state. |
 
-Only `main.cxx` turns those typed effects into portal requests, process-loop exit, or context-menu popup create/paint/destroy. Portal request IDs remain platform details: `main.cxx` maps each one to the application dialog ID and returns only that application ID with success, cancellation, or startup failure. `ApplicationUi` passes the result to the captured workspace intent, so a late result cannot silently target whichever tab is active at that time.
+Only the Wayland runner turns those typed effects into portal requests, accepted-close termination, or context-menu popup create/paint/destroy. Portal request IDs remain platform details: the runner maps each one to the application dialog ID and returns only that application ID with success, cancellation, or startup failure. `ApplicationUi` passes the result to the captured workspace intent, so a late result cannot silently target whichever tab is active at that time.
 
 ## Scope and extension
 

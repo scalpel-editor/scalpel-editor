@@ -1,5 +1,5 @@
 // Multi-document open, save, tab, dirty-prompt, and close workflow.
-// Paired with ApplicationEditor (document bytes) and main (Wayland adapter).
+// Paired with ApplicationEditor (document bytes) and the Wayland runner.
 // ApplicationAction dispatches File menu work through this object.
 
 #ifndef DOCUMENTWORKSPACE_H
