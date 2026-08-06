@@ -2,14 +2,14 @@
 # Build source and binary RPMs from the current checkout.
 set -euo pipefail
 
-REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SPEC_FILE="${REPOSITORY_ROOT}/packaging/scalpel-editor.spec"
+REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SPEC_FILE="${REPOSITORY_ROOT}/packaging/rpm/scalpel-editor.spec"
 RPM_TOPDIR="${REPOSITORY_ROOT}/.rpm-build"
 PACKAGE_VERSION="$(awk '$1 == "Version:" { print $2; exit }' "${SPEC_FILE}")"
 SOURCE_ARCHIVE="${RPM_TOPDIR}/SOURCES/scalpel-editor-${PACKAGE_VERSION}.tar.gz"
 
 if [[ -z "${PACKAGE_VERSION}" ]]; then
-	echo "build-rpm.sh: could not read Version from ${SPEC_FILE}" >&2
+	echo "build.sh: could not read Version from ${SPEC_FILE}" >&2
 	exit 1
 fi
 
@@ -23,6 +23,11 @@ mkdir -p \
 
 git -C "${REPOSITORY_ROOT}" ls-files \
 	--cached --others --exclude-standard -z |
+	while IFS= read -r -d '' path; do
+		if [[ -e "${REPOSITORY_ROOT}/${path}" || -L "${REPOSITORY_ROOT}/${path}" ]]; then
+			printf '%s\0' "${path}"
+		fi
+	done |
 	tar --create --gzip --file "${SOURCE_ARCHIVE}" \
 		--directory "${REPOSITORY_ROOT}" \
 		--transform "s,^,scalpel-editor-${PACKAGE_VERSION}/," \

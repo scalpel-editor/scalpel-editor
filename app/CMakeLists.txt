@@ -212,10 +212,10 @@ target_link_options(scalpel-editor PRIVATE -pie)
 install(TARGETS scalpel-editor
   RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
 )
-install(FILES "${PROJECT_SOURCE_DIR}/pkg/scalpel-editor.desktop"
+install(FILES "${PROJECT_SOURCE_DIR}/packaging/scalpel-editor.desktop"
   DESTINATION "${CMAKE_INSTALL_DATADIR}/applications"
 )
-install(FILES "${PROJECT_SOURCE_DIR}/pkg/scalpel-editor.png"
+install(FILES "${PROJECT_SOURCE_DIR}/packaging/scalpel-editor.png"
   DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps"
 )
 

@@ -19,7 +19,7 @@ sudo zypper install \
 From the repository root, build both the binary RPM and its source RPM:
 
 ```sh
-./packaging/build-rpm.sh
+./packaging/rpm/build.sh
 ```
 
 Install the locally built, unsigned package with `zypper`; the architecture directory is normally `x86_64` or `aarch64`:

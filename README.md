@@ -50,7 +50,7 @@ Interactive (no-argument) forced shutdown still returns success, matching the pr
 
 ## Installing on openSUSE Leap 16
 
-See [packaging/README.md](packaging/README.md) to build an RPM and install it with `zypper`.
+See [packaging/rpm/README.md](packaging/rpm/README.md) to build an RPM and install it with `zypper`.
 
 ## Design documentation
 
