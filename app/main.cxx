@@ -20,7 +20,6 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -480,13 +479,6 @@ int main() {
 		editor.SetFrameRasterScale(
 			Scintilla::Internal::RasterScale::FromWaylandNumerator(
 				window.ScaleConfiguration().scaleNumerator));
-		constexpr std::string_view initialText =
-			"scalpel-editor\n\n"
-			"A direct Scintilla editor for Wayland.\n"
-			"Ctrl+N new tab, Ctrl+W close tab, Ctrl+Tab cycle tabs.\n"
-			"Ctrl+O open, Ctrl+S save, Ctrl+Shift+S save as, Ctrl+Q quit.\n"
-			"Right-click or Shift+F10 opens the editor context menu.\n";
-		editor.LoadInitialBuffer(initialText);
 		// ApplicationUi owns the base menu-plus-tab inset and expands it when
 		// the find bar is visible.
 		Scalpel::DocumentWorkspace workspace(editor);
