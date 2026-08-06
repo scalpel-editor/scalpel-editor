@@ -1,5 +1,6 @@
 # Build trees (one per check-matrix preset, see check.sh)
 /build/
+/build-release/
 /build-asan/
 /build-ubsan/
 /build-nixos/
