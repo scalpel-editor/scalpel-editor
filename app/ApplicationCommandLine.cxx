@@ -68,7 +68,7 @@ ApplicationInvocation ParseApplicationCommandLine(int argc, char *const *argv) {
 	}
 
 	if (paths.empty()) {
-		// Only `--` (or repeated `--` with no paths) was supplied.
+		// The sole argument was the option terminator.
 		return UsageError("missing path after --");
 	}
 

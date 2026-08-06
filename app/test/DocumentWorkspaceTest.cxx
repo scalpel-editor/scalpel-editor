@@ -1292,7 +1292,7 @@ TEST_CASE("document workspace multi-document portal failure preserves tabs") {
 	CHECK(editor.Modified(startup));
 }
 
-TEST_CASE("document workspace startup files loads raw bytes into the sole tab") {
+TEST_CASE("document workspace startup files load raw bytes into the sole tab") {
 	// Stray continuation and truncated lead mixed with valid UTF-8.
 	const std::string fixture = "msg\x80" "mid\xC2" "end\n";
 	TempFile file(fixture);
@@ -1317,7 +1317,7 @@ TEST_CASE("document workspace startup files loads raw bytes into the sole tab") 
 	CHECK_FALSE(tabs[0].dirty);
 }
 
-TEST_CASE("document workspace startup files known path saves without Save As") {
+TEST_CASE("document workspace startup file saves to its known path") {
 	TempFile file("template subject\n\n# comment\n");
 	ApplicationEditor editor(320, 180);
 	DocumentWorkspace workspace(editor);
