@@ -1468,21 +1468,23 @@ void Renderer::DrawRGBAImage(PRectangle rc, int width, int height, const unsigne
 	glDeleteTextures(1, &tex);
 }
 
-void Renderer::Copy(PRectangle rc, Point from, const ColourBuffer &source) {
-	if (!source.Valid() || rc.Width() <= 0.0 || rc.Height() <= 0.0) {
+void Renderer::Copy(PRectangle rc, Point from, const ColourBuffer &source,
+	int sourceLogicalWidth, int sourceLogicalHeight) {
+	if (!source.Valid() || sourceLogicalWidth <= 0 || sourceLogicalHeight <= 0 ||
+		rc.Width() <= 0.0 || rc.Height() <= 0.0) {
 		return;
 	}
 	BeginDraw();
 	if (CurrentClip().Empty()) {
 		return;
 	}
-	const float sw = static_cast<float>(source.Width());
-	const float sh = static_cast<float>(source.Height());
+	const float sw = static_cast<float>(sourceLogicalWidth);
+	const float sh = static_cast<float>(sourceLogicalHeight);
 	if (sw <= 0.0f || sh <= 0.0f) {
 		return;
 	}
 	// Source UVs in OpenGL space (origin bottom-left on the texture).
-	// `from` and destination size are top-down surface coords on the source buffer.
+	// `from` and destination size are top-down logical coords on the source.
 	const float srcLeft = static_cast<float>(from.x);
 	const float srcTop = static_cast<float>(from.y);
 	const float srcRight = srcLeft + static_cast<float>(rc.Width());
@@ -1501,16 +1503,18 @@ void Renderer::Copy(PRectangle rc, Point from, const ColourBuffer &source) {
 		u0, vTop, u1, vBottom, source.TextureName(), false, false);
 }
 
-void Renderer::FillRectanglePattern(PRectangle rc, const ColourBuffer &pattern) {
-	if (!pattern.Valid() || rc.Width() <= 0.0 || rc.Height() <= 0.0) {
+void Renderer::FillRectanglePattern(PRectangle rc, const ColourBuffer &pattern,
+	int patternLogicalWidth, int patternLogicalHeight) {
+	if (!pattern.Valid() || patternLogicalWidth <= 0 || patternLogicalHeight <= 0 ||
+		rc.Width() <= 0.0 || rc.Height() <= 0.0) {
 		return;
 	}
 	BeginDraw();
 	if (CurrentClip().Empty()) {
 		return;
 	}
-	const float pw = static_cast<float>(pattern.Width());
-	const float ph = static_cast<float>(pattern.Height());
+	const float pw = static_cast<float>(patternLogicalWidth);
+	const float ph = static_cast<float>(patternLogicalHeight);
 	if (pw <= 0.0f || ph <= 0.0f) {
 		return;
 	}

@@ -113,6 +113,47 @@ TEST_CASE("DrawSurface maps logical coordinates into a scaled framebuffer") {
 	CHECK(ExactColour(target.ReadPixel(6, 3), black));
 }
 
+TEST_CASE("scaled sibling pixmap text matches direct framebuffer text") {
+	GlContext context;
+	Renderer renderer(context);
+	ColourBuffer target;
+	target.Resize(80, 40);
+	std::unique_ptr<DrawSurface> surface = CreateExternalDrawSurface(
+		renderer, target.FramebufferName(), 80, 40, 40, 20,
+		RasterScale::FromParts(2, 1));
+
+	FontCache fonts;
+	const std::filesystem::path primary =
+		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "FallbackPrimary.ttf";
+	std::shared_ptr<FontFace> face =
+		fonts.LoadPath(primary, FontParameters("fixture", 12.0));
+	std::shared_ptr<Font> font = FontFromFace(face);
+	const ColourRGBA background(255, 255, 255, 255);
+	const ColourRGBA foreground(0, 0, 0, 255);
+	renderer.Clear(background);
+
+	const XYPOSITION baseline = surface->Ascent(font.get()) + 2.0f;
+	surface->DrawTextTransparent(PRectangle::FromInts(2, 0, 18, 20),
+		font.get(), baseline, "Ag", foreground);
+
+	std::unique_ptr<Surface> pixmap = surface->AllocatePixMap(20, 20);
+	auto *drawPixmap = dynamic_cast<DrawSurface *>(pixmap.get());
+	REQUIRE(drawPixmap != nullptr);
+	CHECK(drawPixmap->Buffer().Width() == 40);
+	CHECK(drawPixmap->Buffer().Height() == 40);
+	pixmap->FillRectangle(PRectangle::FromInts(0, 0, 20, 20), Fill(background));
+	pixmap->DrawTextTransparent(PRectangle::FromInts(2, 0, 18, 20),
+		font.get(), baseline, "Ag", foreground);
+	surface->Copy(PRectangle::FromInts(20, 0, 40, 20), Point(0, 0), *pixmap);
+
+	const std::vector<uint8_t> pixels = target.ReadPixelsTopDown();
+	for (int y = 0; y < 40; y++) {
+		const auto left = pixels.begin() + static_cast<ptrdiff_t>(y * 80 * 4);
+		const auto middle = left + 40 * 4;
+		CHECK(std::equal(left, middle, middle));
+	}
+}
+
 TEST_CASE("DrawSurface measures through shaped runs; measure-only text is a no-op") {
 	FontCache fonts;
 	const std::filesystem::path primary = std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "FallbackPrimary.ttf";

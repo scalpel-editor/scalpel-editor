@@ -103,11 +103,15 @@ private:
 	std::shared_ptr<FontFace> RequireFace(const Font *font_) const;
 	FontMetrics MetricsOf(const Font *font_) const;
 	void EnsureRenderer() const;
+	[[nodiscard]] int LogicalWidth() const noexcept;
+	[[nodiscard]] int LogicalHeight() const noexcept;
 	void DrawTextCommon(PRectangle rc, const Font *font_, XYPOSITION ybase, std::string_view text,
 		ColourRGBA fore, bool fillBack, ColourRGBA back, bool clipToRc);
 
 	Renderer *renderer = nullptr;
 	ColourBuffer buffer;
+	int bufferLogicalWidth = 0;
+	int bufferLogicalHeight = 0;
 	bool initialised = false;
 	SurfaceMode mode{};
 	ShapedRunCache runCache;

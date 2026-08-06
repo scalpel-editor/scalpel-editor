@@ -3,6 +3,8 @@
 #include "DrawSurface.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -12,6 +14,22 @@
 #include "ShapedRun.h"
 
 namespace Scintilla::Internal {
+
+namespace {
+
+[[nodiscard]] int ScalePixmapDimension(int logical, RasterScale scale) {
+	const uint64_t numerator = scale.Numerator();
+	const uint64_t denominator = scale.Denominator();
+	const uint64_t scaled =
+		(static_cast<uint64_t>(logical) * numerator + denominator - 1) /
+		denominator;
+	if (scaled > static_cast<uint64_t>(std::numeric_limits<int>::max())) {
+		throw std::overflow_error("scaled pixmap dimension exceeds integer range");
+	}
+	return static_cast<int>(scaled);
+}
+
+}
 
 DrawSurface::DrawSurface(Renderer *renderer_, FontFallback fallback_) :
 	renderer(renderer_),
@@ -36,13 +54,25 @@ void DrawSurface::EnsureRenderer() const {
 	}
 }
 
+int DrawSurface::LogicalWidth() const noexcept {
+	return buffer.Valid() ?
+		(bufferLogicalWidth > 0 ? bufferLogicalWidth : buffer.Width()) :
+		externalLogicalWidth;
+}
+
+int DrawSurface::LogicalHeight() const noexcept {
+	return buffer.Valid() ?
+		(bufferLogicalHeight > 0 ? bufferLogicalHeight : buffer.Height()) :
+		externalLogicalHeight;
+}
+
 void DrawSurface::BindDrawTarget() {
 	EnsureRenderer();
 	const unsigned framebuffer = buffer.Valid() ? buffer.FramebufferName() : externalFramebuffer;
 	const int width = buffer.Valid() ? buffer.Width() : externalWidth;
 	const int height = buffer.Valid() ? buffer.Height() : externalHeight;
-	const int logicalWidth = buffer.Valid() ? width : externalLogicalWidth;
-	const int logicalHeight = buffer.Valid() ? height : externalLogicalHeight;
+	const int logicalWidth = buffer.Valid() ? LogicalWidth() : externalLogicalWidth;
+	const int logicalHeight = buffer.Valid() ? LogicalHeight() : externalLogicalHeight;
 	if (!buffer.Valid() && !hasExternalTarget) {
 		throw std::runtime_error("DrawSurface::BindDrawTarget without a framebuffer");
 	}
@@ -98,7 +128,12 @@ std::unique_ptr<Surface> DrawSurface::AllocatePixMap(int width, int height) {
 	pix->initialised = true;
 	if (width > 0 && height > 0) {
 		renderer->MakeCurrent();
-		pix->buffer.Resize(width, height);
+		const RasterScale scale = renderer->TargetRasterScale();
+		pix->bufferLogicalWidth = width;
+		pix->bufferLogicalHeight = height;
+		pix->buffer.Resize(
+			ScalePixmapDimension(width, scale),
+			ScalePixmapDimension(height, scale));
 	}
 	return pix;
 }
@@ -118,6 +153,8 @@ void DrawSurface::Release() noexcept {
 	}
 	initialised = false;
 	clipStack.clear();
+	bufferLogicalWidth = 0;
+	bufferLogicalHeight = 0;
 	hasExternalTarget = false;
 	externalFramebuffer = 0;
 	externalWidth = 0;
@@ -210,7 +247,8 @@ void DrawSurface::FillRectangle(PRectangle rc, Surface &surfacePattern) {
 		return;
 	}
 	BindDrawTarget();
-	renderer->FillRectanglePattern(rc, pattern->Buffer());
+	renderer->FillRectanglePattern(rc, pattern->Buffer(),
+		pattern->LogicalWidth(), pattern->LogicalHeight());
 }
 
 void DrawSurface::RoundedRectangle(PRectangle rc, FillStroke fillStroke) {
@@ -264,7 +302,8 @@ void DrawSurface::Copy(PRectangle rc, Point from, Surface &surfaceSource) {
 		return;
 	}
 	BindDrawTarget();
-	renderer->Copy(rc, from, source->Buffer());
+	renderer->Copy(rc, from, source->Buffer(),
+		source->LogicalWidth(), source->LogicalHeight());
 }
 
 std::unique_ptr<IScreenLineLayout> DrawSurface::Layout(const IScreenLine *screenLine) {

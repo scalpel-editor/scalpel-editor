@@ -82,6 +82,8 @@ Drawing accepts logical, top-left coordinates with half-open rectangles for fill
 
 The active output scale is an exact rational `RasterScale`. `main` copies `WaylandScaleConfiguration::scaleNumerator` into `ApplicationEditor`. The frame path calls `Renderer::SetOutputRasterScale`; `SetDrawTarget` only selects the FBO and sizes so pixmap binds cannot thrash scale identity mid-paint. Outline text additionally uses buffer-pixel placement as described under device-phase outline rasterization. Both axes share the same nominal scale so buffer-dimension rounding does not create window-size-dependent font sizes.
 
+Sibling pixmaps retain logical drawing dimensions but allocate their colour buffers at the active output scale. Copies and pattern fills map logical source coordinates across those scaled buffers, so buffered editor text uses the same device-pixel glyph placement as direct window drawing.
+
 Colour attachments are linear `GL_RGBA8`. Internal alpha is premultiplied and blended with premultiplied source-over. Public offscreen pixel buffers are converted to straight alpha and returned in top-to-bottom order.
 
 ## Application composition

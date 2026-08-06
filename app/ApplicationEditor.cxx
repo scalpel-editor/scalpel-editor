@@ -581,6 +581,7 @@ void ApplicationEditor::SetFrameRasterScale(Scintilla::Internal::RasterScale sca
 	}
 	frameRasterScale = scale;
 	frame.reset();
+	DropGraphics();
 	// Retire grayscale masks immediately so a later resize-only bind cannot
 	// leave textures from the previous output scale in the cache.
 	renderer->SetOutputRasterScale(frameRasterScale);

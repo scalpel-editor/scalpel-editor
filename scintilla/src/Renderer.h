@@ -236,15 +236,17 @@ public:
 
 	/**
 	 * Copy a rectangle from a colour buffer texture into the current target.
-	 * from is the top-left of the source region in source pixel space.
+	 * from is the top-left of the source region in source logical space.
 	 * rc is the destination rectangle in the current target.
 	 */
-	void Copy(PRectangle rc, Point from, const ColourBuffer &source);
+	void Copy(PRectangle rc, Point from, const ColourBuffer &source,
+		int sourceLogicalWidth, int sourceLogicalHeight);
 
 	/**
 	 * Tile source texture across rc (pattern fill). Source must be non-empty.
 	 */
-	void FillRectanglePattern(PRectangle rc, const ColourBuffer &pattern);
+	void FillRectanglePattern(PRectangle rc, const ColourBuffer &pattern,
+		int patternLogicalWidth, int patternLogicalHeight);
 
 	[[nodiscard]] int TargetWidth() const noexcept { return targetWidth; }
 	[[nodiscard]] int TargetHeight() const noexcept { return targetHeight; }
