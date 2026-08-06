@@ -142,7 +142,6 @@ ListBox::ListBox() noexcept = default;
 ListBox::~ListBox() noexcept = default;
 
 std::unique_ptr<ListBox> ListBox::Allocate() {
-	LogPopup("ListBox::Allocate");
 	return std::make_unique<StubListBox>();
 }
 
