@@ -8,7 +8,7 @@ The application UI is a fixed composition of the Scintilla editor, a menu bar, a
 | --- | --- |
 | `WaylandWindow` | Display connection, Wayland and EGL objects, external services, input transport, scaling, frame submission, and waiting. |
 | `ApplicationEditor` | Scintilla documents, editor input, rendering, damage, editor work deadlines, editor client geometry, scrollbar visibility and ranges, clipboard values, text-input state, wrapped plain-text find, and the process-wide generic editor text face. |
-| `DocumentWorkspace` | Tabs, paths, file operations, application dialog intents, recent-path outcomes, startup-file loading, and dirty-close policy. |
+| `DocumentWorkspace` | Tabs, paths, file operations, application dialog intents, recent-path outcomes, startup path-list loading, and dirty-close policy. |
 | `ApplicationSession` | Process-lifetime startup and exit-status policy for interactive and pathname launches, independent of the compositor. |
 | `ApplicationUi` | Chrome models and painters (including the find bar and context menu), top-chrome inset, modal-card and error state, hover and press state, scrollbar interaction, input priority, cursor choice, overlay selection, application layout snapshots, recent-file updates, and conversion of workspace work into host effects (including context-popup show/close/invalidate). |
 | `WaylandApplicationRunner` | Construction and the platform pump. It applies session startup, moves copied events and external-service results across the boundary, performs host effects (including the grabbed context-menu `xdg_popup`), submits frames, waits, and returns a typed termination reason. |
@@ -91,7 +91,7 @@ Fontconfig resolves the canonical family through the host configuration when the
 
 `DocumentWorkspace` opens and saves document files as raw bytes. A readable file succeeds even when its contents are not valid UTF-8: it becomes a normal clean document, is recorded as a successful recent path, and does not enqueue a file error or warning. Open and save do not validate, replace, transcode, or normalize invalid sequences. Valid UTF-8 and invalid bytes may coexist in one document.
 
-Process startup may load exactly one path into the sole initial tab through `LoadStartupFile`. That path is bound for save and is not recorded as a recent file, so temporary editor paths such as Git's `COMMIT_EDITMSG` stay out of the Recent menu. Interactive Open and Recent continue to record successful paths.
+Process startup may load an ordered path list through `LoadStartupFiles`. Distinct paths become tabs in argument order; the first reuses the pristine initial document, later paths create sibling documents, and the tab named by the last supplied path becomes active. Startup paths are bound for save and are not recorded as recent files, so temporary editor paths such as Git's `COMMIT_EDITMSG` stay out of the Recent menu. Every distinct path is read before any tab mutation; an empty or unreadable path leaves the initial workspace coherent and fails the process startup. Interactive Open and Recent continue to record successful paths.
 
 LF is the editor's native line ending: Enter inserts LF, including after a document has been converted to CRLF. Open and Save neither detect nor change line endings, so untouched bytes and any mixed endings remain as they are. The Edit menu provides `Convert Line Endings to LF` and `Convert Line Endings to CRLF` as explicit whole-document edits; either conversion is one undo action and marks the document modified when bytes change.
 
