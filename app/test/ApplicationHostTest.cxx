@@ -3,8 +3,14 @@
 #include <vector>
 
 #include "ApplicationCommandLine.h"
+#include "ApplicationSession.h"
+#include "DocumentFile.h"
+#include "DocumentWorkspace.h"
 #include "MenuBar.h"
 #include "ScrollBar.h"
+
+#include <cstdio>
+#include <unistd.h>
 
 TEST_CASE("production editor host constructs and renders its initial buffer") {
 	Scalpel::ApplicationEditor editor(320, 180);
@@ -1650,4 +1656,130 @@ TEST_CASE("application command line usage text names the program") {
 	CHECK(usage.find("scalpel-editor") != std::string::npos);
 	CHECK(usage.find("[path]") != std::string::npos);
 	CHECK(usage.find("--help") != std::string::npos);
+}
+
+namespace {
+
+class SessionTempFile {
+public:
+	explicit SessionTempFile(std::string_view contents) {
+		char pattern[] = "/tmp/scalpel-session-XXXXXX";
+		const int fd = mkstemp(pattern);
+		REQUIRE(fd >= 0);
+		path = pattern;
+		if (!contents.empty()) {
+			const ssize_t written = write(fd, contents.data(), contents.size());
+			REQUIRE(written == static_cast<ssize_t>(contents.size()));
+		}
+		REQUIRE(close(fd) == 0);
+	}
+	~SessionTempFile() {
+		if (!path.empty()) {
+			(void)std::remove(path.c_str());
+		}
+	}
+	SessionTempFile(const SessionTempFile &) = delete;
+	SessionTempFile &operator=(const SessionTempFile &) = delete;
+
+	std::string path;
+};
+
+}
+
+TEST_CASE("application session interactive start leaves the workspace untitled") {
+	Scalpel::ApplicationInvocation invocation;
+	invocation.kind = Scalpel::ApplicationInvocationKind::Interactive;
+	Scalpel::ApplicationSession session(invocation);
+	Scalpel::ApplicationEditor editor(320, 180);
+	Scalpel::DocumentWorkspace workspace(editor);
+
+	CHECK(session.Start(workspace) ==
+		Scalpel::ApplicationStartupResult::ReadyInteractive);
+	CHECK_FALSE(session.PathEditorSession());
+	CHECK(workspace.TabCount() == 1);
+	CHECK(workspace.Path().empty());
+	CHECK(workspace.TakeRecentPaths().empty());
+}
+
+TEST_CASE("application session pathname start loads the sole initial tab") {
+	SessionTempFile file("commit subject\n\n# git template\n");
+	Scalpel::ApplicationInvocation invocation;
+	invocation.kind = Scalpel::ApplicationInvocationKind::EditPath;
+	invocation.path = file.path;
+	Scalpel::ApplicationSession session(std::move(invocation));
+	Scalpel::ApplicationEditor editor(320, 180);
+	Scalpel::DocumentWorkspace workspace(editor);
+	const Scalpel::DocumentId only = workspace.ActiveTab();
+
+	CHECK(session.Start(workspace) ==
+		Scalpel::ApplicationStartupResult::ReadyEditPath);
+	CHECK(session.PathEditorSession());
+	CHECK(workspace.TabCount() == 1);
+	CHECK(workspace.ActiveTab() == only);
+	CHECK(workspace.Path() == file.path);
+	CHECK(editor.Text() == "commit subject\n\n# git template\n");
+	CHECK_FALSE(editor.Modified());
+	CHECK(workspace.TakeRecentPaths().empty());
+}
+
+TEST_CASE("application session pathname start reports file load failure") {
+	Scalpel::ApplicationInvocation invocation;
+	invocation.kind = Scalpel::ApplicationInvocationKind::EditPath;
+	invocation.path = "/tmp/scalpel-session-missing-not-present";
+	Scalpel::ApplicationSession session(std::move(invocation));
+	Scalpel::ApplicationEditor editor(320, 180);
+	Scalpel::DocumentWorkspace workspace(editor);
+
+	CHECK(session.Start(workspace) ==
+		Scalpel::ApplicationStartupResult::FileLoadFailed);
+	CHECK(session.PathEditorSession());
+	CHECK(workspace.Path().empty());
+	CHECK(workspace.TabCount() == 1);
+}
+
+TEST_CASE("application session rejects help and usage-error starts") {
+	for (const auto kind : {
+			Scalpel::ApplicationInvocationKind::Help,
+			Scalpel::ApplicationInvocationKind::UsageError}) {
+		Scalpel::ApplicationInvocation invocation;
+		invocation.kind = kind;
+		Scalpel::ApplicationSession session(invocation);
+		Scalpel::ApplicationEditor editor(320, 180);
+		Scalpel::DocumentWorkspace workspace(editor);
+		CHECK(session.Start(workspace) ==
+			Scalpel::ApplicationStartupResult::InvalidInvocation);
+		CHECK(workspace.Path().empty());
+	}
+}
+
+TEST_CASE("application session process status for interactive launch") {
+	Scalpel::ApplicationInvocation invocation;
+	invocation.kind = Scalpel::ApplicationInvocationKind::Interactive;
+	const Scalpel::ApplicationSession session(invocation);
+
+	CHECK(session.ProcessStatus(
+		Scalpel::ApplicationTerminationReason::AcceptedClose) == 0);
+	CHECK(session.ProcessStatus(
+		Scalpel::ApplicationTerminationReason::ForcedShutdown) == 0);
+	CHECK(session.ProcessStatus(
+		Scalpel::ApplicationTerminationReason::StartupFailure) == 1);
+	CHECK(session.ProcessStatus(
+		Scalpel::ApplicationTerminationReason::FatalFailure) == 1);
+}
+
+TEST_CASE("application session process status for pathname editor launch") {
+	Scalpel::ApplicationInvocation invocation;
+	invocation.kind = Scalpel::ApplicationInvocationKind::EditPath;
+	invocation.path = "/tmp/COMMIT_EDITMSG";
+	const Scalpel::ApplicationSession session(std::move(invocation));
+
+	CHECK(session.ProcessStatus(
+		Scalpel::ApplicationTerminationReason::AcceptedClose) == 0);
+	// Forced shell loss must not look like a successful Git edit.
+	CHECK(session.ProcessStatus(
+		Scalpel::ApplicationTerminationReason::ForcedShutdown) == 1);
+	CHECK(session.ProcessStatus(
+		Scalpel::ApplicationTerminationReason::StartupFailure) == 1);
+	CHECK(session.ProcessStatus(
+		Scalpel::ApplicationTerminationReason::FatalFailure) == 1);
 }

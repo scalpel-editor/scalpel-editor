@@ -175,6 +175,7 @@ add_library(scalpel_application OBJECT
   ApplicationCommandLine.cxx
   ApplicationEditor.cxx
   ApplicationPlatform.cxx
+  ApplicationSession.cxx
   ApplicationUi.cxx
   ContextMenu.cxx
   DocumentFile.cxx
