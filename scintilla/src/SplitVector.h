@@ -61,6 +61,10 @@ protected:
 	/// reallocating if more space needed.
 	void RoomFor(ptrdiff_t insertionLength) {
 		if (gapLength < insertionLength) {
+			// growSize 0 would spin forever in the doubling loop below.
+			if (growSize == 0) {
+				growSize = 1;
+			}
 			while (growSize < body.size() / 6)
 				growSize *= 2;
 			ReAllocate(body.size() + insertionLength + growSize);

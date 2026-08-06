@@ -391,6 +391,21 @@ TEST_CASE("SplitVector") {
 		REQUIRE(5 == sv.GetGrowSize());
 	}
 
+	SECTION("GrowSizeZeroStillInserts") {
+		// SetGrowSize(0) must not hang or prevent growth when the gap is full.
+		sv.SetGrowSize(0);
+		REQUIRE(0 == sv.GetGrowSize());
+		sv.InsertValue(0, 1, 1);
+		for (int i = 0; i < 20; i++) {
+			sv.InsertValue(sv.Length(), 1, i + 2);
+		}
+		REQUIRE(21 == sv.Length());
+		REQUIRE(1 == sv.ValueAt(0));
+		REQUIRE(21 == sv.ValueAt(20));
+		// RoomFor repairs a zero grow size so later growth stays sane.
+		REQUIRE(sv.GetGrowSize() >= 1);
+	}
+
 	SECTION("OutsideBounds") {
 		sv.InsertValue(0, 10, 87);
 		REQUIRE(0 == sv.ValueAt(-1));
