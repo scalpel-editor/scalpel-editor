@@ -32,4 +32,6 @@ See [packaging/README.md](packaging/README.md) to build an RPM and install it wi
 - [Design principles](docs/design-principles.md)
 - [Lessons for custom Wayland UI applications](docs/custom-wayland-ui.md)
 
-The Scintilla-derived core remains under the [Scintilla license](scintilla/License.txt).
+## License
+
+Project-owned code, documentation, and artwork are licensed under the [Blue Oak Model License 1.0.0](LICENSE.md). The Scintilla-derived core remains under the [Scintilla license](scintilla/License.txt), identified by the SPDX short identifier `HPND`. Separately licensed test material retains the license identified alongside it.

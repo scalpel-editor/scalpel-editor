@@ -48,4 +48,4 @@ sudo zypper install --force --allow-unsigned-rpm \
 
 This checkout has no configured upstream URL, so the local-source spec intentionally has no `URL` tag. Add the project's canonical public URL and use its release archive for `Source0` before submitting the package to the Open Build Service.
 
-The spec uses `HPND`, the SPDX identifier for the bundled Scintilla license. The repository does not currently include a top-level license statement covering the application-owned code and icon. The copyright holder should add that statement before publishing the RPM to other users, then update the spec's `License` field if necessary.
+The spec uses `BlueOak-1.0.0 AND HPND` because the package combines project-owned work under the Blue Oak Model License 1.0.0 with the Scintilla-derived core under the Scintilla license. Both license texts are installed in the binary RPM.

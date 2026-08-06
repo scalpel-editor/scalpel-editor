@@ -2,7 +2,7 @@ Name:           scalpel-editor
 Version:        0.1.0
 Release:        1
 Summary:        Wayland-only plain-text editor
-License:        HPND
+License:        BlueOak-1.0.0 AND HPND
 Source0:        %{name}-%{version}.tar.gz
 BuildRequires:  cmake >= 3.25
 BuildRequires:  desktop-file-utils
@@ -42,6 +42,7 @@ desktop-file-validate \
   %{buildroot}%{_datadir}/applications/%{name}.desktop
 
 %files
+%license LICENSE.md
 %license scintilla/License.txt
 %doc README.md
 %{_bindir}/%{name}
