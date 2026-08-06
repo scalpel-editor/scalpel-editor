@@ -112,6 +112,9 @@ public:
 	 * still readable. Caller owns the surface.
 	 */
 	std::unique_ptr<DrawSurface> PaintToSurface();
+	/** Paint a bounded rectangle over a known initial target colour. */
+	std::unique_ptr<DrawSurface> PaintToSurface(
+		PRectangle paintRectangle, ColourRGBA initialColour);
 	void ClearObservations();
 	TestEditorSnapshot Snapshot() const;
 	// Drive fine tickers the host would fire (dwell, caret, …).

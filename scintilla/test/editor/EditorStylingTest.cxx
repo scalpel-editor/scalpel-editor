@@ -28,6 +28,7 @@
 #include "ILexer.h"
 
 #include "Debugging.h"
+#include "DrawSurface.h"
 #include "Geometry.h"
 #include "Platform.h"
 #include "CharacterType.h"
@@ -67,6 +68,23 @@
 
 using namespace Scintilla;
 using namespace Scintilla::Internal;
+
+TEST_CASE("Buffered editor paint stays inside bounded damage") {
+	TestHost host;
+	TestEditor editor(host, PRectangle::FromInts(0, 0, 120, 60));
+	editor.SetText("first line\nsecond line\n");
+	editor.PaintAll();
+
+	const ColourRGBA untouched(255, 0, 255, 255);
+	const PRectangle damage = PRectangle::FromInts(30, 4, 40, 10);
+	std::unique_ptr<DrawSurface> surface =
+		editor.PaintToSurface(damage, untouched);
+	REQUIRE(surface != nullptr);
+
+	CHECK_FALSE(surface->Buffer().ReadPixel(35, 6) == untouched);
+	CHECK(surface->Buffer().ReadPixel(50, 6) == untouched);
+	CHECK(surface->Buffer().ReadPixel(35, 12) == untouched);
+}
 
 TEST_CASE("Style definition round-trip and clear redraw") {
 	TestHost host;

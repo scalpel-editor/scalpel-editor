@@ -1370,8 +1370,9 @@ void Editor::Paint(Surface *surfaceWindow, PRectangle rcArea) {
 		return;
 	}
 
-	if (!view.bufferedDraw)
-		surfaceWindow->SetClip(rcArea);
+	// The line pixmap is intentionally painted in full, but every copy and
+	// direct frame operation must stay inside the damage prepared by the host.
+	surfaceWindow->SetClip(rcArea);
 
 	if (paintState != PaintState::abandoned) {
 		if (vs.marginInside) {
@@ -1402,8 +1403,7 @@ void Editor::Paint(Surface *surfaceWindow, PRectangle rcArea) {
 				NeedWrapping(pcs->DocFromDisplay(topLine));
 			}
 		}
-		if (!view.bufferedDraw)
-			surfaceWindow->PopClip();
+		surfaceWindow->PopClip();
 		return;
 	}
 
@@ -1416,8 +1416,7 @@ void Editor::Paint(Surface *surfaceWindow, PRectangle rcArea) {
 		}
 	}
 
-	if (!view.bufferedDraw)
-		surfaceWindow->PopClip();
+	surfaceWindow->PopClip();
 
 	NotifyPainted();
 }

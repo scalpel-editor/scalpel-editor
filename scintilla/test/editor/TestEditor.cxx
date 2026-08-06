@@ -171,15 +171,22 @@ void TestEditor::PaintAll() {
 }
 
 std::unique_ptr<DrawSurface> TestEditor::PaintToSurface() {
+	return PaintToSurface(GetClientRectangle(), ColourRGBA{});
+}
+
+std::unique_ptr<DrawSurface> TestEditor::PaintToSurface(
+	PRectangle paintRectangle, ColourRGBA initialColour) {
 	paintState = PaintState::painting;
-	rcPaint = GetClientRectangle();
-	paintingAllText = true;
-	const int width = std::max(1, static_cast<int>(rcPaint.Width()));
-	const int height = std::max(1, static_cast<int>(rcPaint.Height()));
+	rcPaint = paintRectangle;
+	paintingAllText = rcPaint == GetClientRectangle();
+	const PRectangle client = GetClientRectangle();
+	const int width = std::max(1, static_cast<int>(client.Width()));
+	const int height = std::max(1, static_cast<int>(client.Height()));
 	host.EnsureRenderer();
 	const double fontSize = static_cast<double>(Platform::DefaultFontSize());
 	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(
 		*host.GetRenderer(), width, height, FontFallback::Fixed(TestFontFallbackFaces(fontSize)));
+	host.GetRenderer()->Clear(initialColour);
 	Paint(surface.get(), rcPaint);
 	paintState = PaintState::notPainting;
 	paintingAllText = false;
