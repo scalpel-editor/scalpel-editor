@@ -715,6 +715,22 @@ TEST_CASE("CharacterIndex") {
 		REQUIRE(cb.IndexLineStart(1, LineCharacterIndexType::Utf32) == 2);
 	}
 
+	SECTION("NonCharacterInvalidBytesCountAsSingles") {
+		// U+FFFE is classified as invalid with multi-byte width. Line character
+		// indexes must still count each byte as one character, matching LenChar.
+		cb.SetUTF8Substance(true);
+		cb.AllocateLineCharacterIndex(LineCharacterIndexType::Utf16 | LineCharacterIndexType::Utf32);
+
+		bool startSequence = false;
+		constexpr std::string_view nonCharacter = "a\xEF\xBF\xBEz";
+		cb.InsertString(0, nonCharacter.data(), nonCharacter.length(), startSequence);
+
+		REQUIRE(cb.IndexLineStart(0, LineCharacterIndexType::Utf16) == 0);
+		REQUIRE(cb.IndexLineStart(1, LineCharacterIndexType::Utf16) == 5);
+		REQUIRE(cb.IndexLineStart(0, LineCharacterIndexType::Utf32) == 0);
+		REQUIRE(cb.IndexLineStart(1, LineCharacterIndexType::Utf32) == 5);
+	}
+
 	SECTION("Deletion") {
 		cb.SetUTF8Substance(true);
 

@@ -105,10 +105,16 @@ size_t UTF8Length(std::wstring_view wsv) noexcept {
 size_t UTF8PositionFromUTF16Position(std::string_view u8Text, size_t positionUTF16) noexcept {
 	size_t positionUTF8 = 0;
 	for (size_t lengthUTF16 = 0; (positionUTF8 < u8Text.length()) && (lengthUTF16 < positionUTF16);) {
-		const unsigned char uch = u8Text[positionUTF8];
-		const unsigned int byteCount = UTF8BytesOfLead[uch];
-		lengthUTF16 += UTF16LengthFromUTF8ByteCount(byteCount);
-		positionUTF8 += byteCount;
+		const int status = UTF8Classify(u8Text.data() + positionUTF8, u8Text.length() - positionUTF8);
+		if (status & UTF8MaskInvalid) {
+			// Invalid byte is one UTF-16 unit and advances one byte so scans never skip.
+			lengthUTF16 += 1;
+			positionUTF8 += 1;
+		} else {
+			const unsigned int byteCount = static_cast<unsigned int>(status & UTF8MaskWidth);
+			lengthUTF16 += UTF16LengthFromUTF8ByteCount(byteCount);
+			positionUTF8 += byteCount;
+		}
 	}
 
 	return positionUTF8;
@@ -138,12 +144,17 @@ void UTF8FromUTF32Character(int uch, char *putf) noexcept {
 
 size_t UTF16Length(std::string_view svu8) noexcept {
 	size_t ulen = 0;
-	for (size_t i = 0; i< svu8.length();) {
-		const unsigned char ch = svu8[i];
-		const unsigned int byteCount = UTF8BytesOfLead[ch];
-		const unsigned int utf16Len = UTF16LengthFromUTF8ByteCount(byteCount);
-		i += byteCount;
-		ulen += (i > svu8.length()) ? 1 : utf16Len;
+	for (size_t i = 0; i < svu8.length();) {
+		const int status = UTF8Classify(svu8.data() + i, svu8.length() - i);
+		if (status & UTF8MaskInvalid) {
+			// Each invalid byte is one UTF-16 unit; never skip following bytes.
+			ulen += 1;
+			i += 1;
+		} else {
+			const unsigned int byteCount = static_cast<unsigned int>(status & UTF8MaskWidth);
+			ulen += UTF16LengthFromUTF8ByteCount(byteCount);
+			i += byteCount;
+		}
 	}
 	return ulen;
 }
@@ -151,24 +162,27 @@ size_t UTF16Length(std::string_view svu8) noexcept {
 size_t UTF16FromUTF8(std::string_view svu8, wchar_t *tbuf, size_t tlen) {
 	size_t ui = 0;
 	for (size_t i = 0; i < svu8.length();) {
-		unsigned char ch = svu8[i];
-		const unsigned int byteCount = UTF8BytesOfLead[ch];
-		unsigned int value = 0;
-
-		if (i + byteCount > svu8.length()) {
-			// Trying to read past end but still have space to write
-			if (ui < tlen) {
-				tbuf[ui] = ch;
-				ui++;
+		const unsigned char lead = static_cast<unsigned char>(svu8[i]);
+		const int status = UTF8Classify(svu8.data() + i, svu8.length() - i);
+		if (status & UTF8MaskInvalid) {
+			// Isolated invalid byte: keep scanning so later valid text is not dropped.
+			if (ui >= tlen) {
+				throw std::runtime_error("UTF16FromUTF8: attempted write beyond end");
 			}
-			break;
+			tbuf[ui] = lead;
+			ui++;
+			i++;
+			continue;
 		}
 
+		const unsigned int byteCount = static_cast<unsigned int>(status & UTF8MaskWidth);
 		const size_t outLen = UTF16LengthFromUTF8ByteCount(byteCount);
 		if (ui + outLen > tlen) {
 			throw std::runtime_error("UTF16FromUTF8: attempted write beyond end");
 		}
 
+		unsigned char ch = lead;
+		unsigned int value = 0;
 		i++;
 		switch (byteCount) {
 		case 1:
@@ -176,26 +190,26 @@ size_t UTF16FromUTF8(std::string_view svu8, wchar_t *tbuf, size_t tlen) {
 			break;
 		case 2:
 			value = (ch & leadBits2) << shiftByte2;
-			ch = svu8[i++];
+			ch = static_cast<unsigned char>(svu8[i++]);
 			value += TrailByteValue(ch);
 			tbuf[ui] = static_cast<wchar_t>(value);
 			break;
 		case 3:
 			value = (ch & leadBits3) << shiftByte3;
-			ch = svu8[i++];
+			ch = static_cast<unsigned char>(svu8[i++]);
 			value += (TrailByteValue(ch) << shiftByte2);
-			ch = svu8[i++];
+			ch = static_cast<unsigned char>(svu8[i++]);
 			value += TrailByteValue(ch);
 			tbuf[ui] = static_cast<wchar_t>(value);
 			break;
 		default:
 			// Outside the BMP so need two surrogates
 			value = (ch & leadBits4) << shiftByte4;
-			ch = svu8[i++];
+			ch = static_cast<unsigned char>(svu8[i++]);
 			value += TrailByteValue(ch) << shiftByte3;
-			ch = svu8[i++];
+			ch = static_cast<unsigned char>(svu8[i++]);
 			value += TrailByteValue(ch) << shiftByte2;
-			ch = svu8[i++];
+			ch = static_cast<unsigned char>(svu8[i++]);
 			value += TrailByteValue(ch);
 			tbuf[ui] = SurrogateLead(value);
 			ui++;
@@ -210,10 +224,14 @@ size_t UTF16FromUTF8(std::string_view svu8, wchar_t *tbuf, size_t tlen) {
 size_t UTF32Length(std::string_view svu8) noexcept {
 	size_t ulen = 0;
 	for (size_t i = 0; i < svu8.length();) {
-		const unsigned char ch = svu8[i];
-		const unsigned int byteCount = UTF8BytesOfLead[ch];
-		i += byteCount;
-		ulen++;
+		const int status = UTF8Classify(svu8.data() + i, svu8.length() - i);
+		if (status & UTF8MaskInvalid) {
+			ulen += 1;
+			i += 1;
+		} else {
+			i += static_cast<unsigned int>(status & UTF8MaskWidth);
+			ulen += 1;
+		}
 	}
 	return ulen;
 }
@@ -221,23 +239,25 @@ size_t UTF32Length(std::string_view svu8) noexcept {
 size_t UTF32FromUTF8(std::string_view svu8, unsigned int *tbuf, size_t tlen) {
 	size_t ui = 0;
 	for (size_t i = 0; i < svu8.length();) {
-		unsigned char ch = svu8[i];
-		const unsigned int byteCount = UTF8BytesOfLead[ch];
-		unsigned int value = 0;
-
-		if (i + byteCount > svu8.length()) {
-			// Trying to read past end but still have space to write
-			if (ui < tlen) {
-				tbuf[ui] = ch;
-				ui++;
+		const unsigned char lead = static_cast<unsigned char>(svu8[i]);
+		const int status = UTF8Classify(svu8.data() + i, svu8.length() - i);
+		if (status & UTF8MaskInvalid) {
+			if (ui >= tlen) {
+				throw std::runtime_error("UTF32FromUTF8: attempted write beyond end");
 			}
-			break;
+			tbuf[ui] = lead;
+			ui++;
+			i++;
+			continue;
 		}
 
 		if (ui == tlen) {
 			throw std::runtime_error("UTF32FromUTF8: attempted write beyond end");
 		}
 
+		const unsigned int byteCount = static_cast<unsigned int>(status & UTF8MaskWidth);
+		unsigned char ch = lead;
+		unsigned int value = 0;
 		i++;
 		switch (byteCount) {
 		case 1:
@@ -245,23 +265,23 @@ size_t UTF32FromUTF8(std::string_view svu8, unsigned int *tbuf, size_t tlen) {
 			break;
 		case 2:
 			value = (ch & leadBits2) << shiftByte2;
-			ch = svu8[i++];
+			ch = static_cast<unsigned char>(svu8[i++]);
 			value += TrailByteValue(ch);
 			break;
 		case 3:
 			value = (ch & leadBits3) << shiftByte3;
-			ch = svu8[i++];
+			ch = static_cast<unsigned char>(svu8[i++]);
 			value += TrailByteValue(ch) << shiftByte2;
-			ch = svu8[i++];
+			ch = static_cast<unsigned char>(svu8[i++]);
 			value += TrailByteValue(ch);
 			break;
 		default:
 			value = (ch & leadBits4) << shiftByte4;
-			ch = svu8[i++];
+			ch = static_cast<unsigned char>(svu8[i++]);
 			value += TrailByteValue(ch) << shiftByte3;
-			ch = svu8[i++];
+			ch = static_cast<unsigned char>(svu8[i++]);
 			value += TrailByteValue(ch) << shiftByte2;
-			ch = svu8[i++];
+			ch = static_cast<unsigned char>(svu8[i++]);
 			value += TrailByteValue(ch);
 			break;
 		}

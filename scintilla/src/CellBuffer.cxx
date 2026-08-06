@@ -811,11 +811,13 @@ CountWidths CountCharacterWidthsUTF8(std::string_view sv) noexcept {
 	CountWidths cw;
 	size_t remaining = sv.length();
 	while (remaining > 0) {
-		const int utf8Status = UTF8Classify(sv);
-		const int lenChar = utf8Status & UTF8MaskWidth;
+		// UTF8DrawBytes treats every invalid sequence, including non-characters with
+		// multi-byte classify width, as one byte so line character indexes match
+		// Document movement and LenChar.
+		const int lenChar = UTF8DrawBytes(sv.data(), remaining);
 		cw.CountChar(lenChar);
-		sv.remove_prefix(lenChar);
-		remaining -= lenChar;
+		sv.remove_prefix(static_cast<size_t>(lenChar));
+		remaining -= static_cast<size_t>(lenChar);
 	}
 	return cw;
 }

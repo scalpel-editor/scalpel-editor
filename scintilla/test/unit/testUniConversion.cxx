@@ -73,9 +73,17 @@ TEST_CASE("UTF16Length") {
 	}
 
 	SECTION("UTF16Length Invalid Lead byte implies 3 trails but only 2") {
+		// Truncated multi-byte lead must not skip the following bytes.
 		const char *s = "a\xF1yz";
 		const size_t len = UTF16Length(s);
-		REQUIRE(len == 2U);
+		REQUIRE(len == 4U);
+	}
+
+	SECTION("UTF16Length Invalid lead then valid character") {
+		// Incomplete 4-byte lead, then a valid 2-byte character and ASCII.
+		const char *s = "\xF1\xC2\xA2z";
+		const size_t len = UTF16Length(s);
+		REQUIRE(len == 3U);
 	}
 }
 
@@ -194,13 +202,39 @@ TEST_CASE("UniConversion") {
 	}
 
 	SECTION("UTF16FromUTF8 Invalid Lead byte implies 3 trails but only 2") {
+		// Truncated multi-byte lead is one isolated unit; later bytes are converted.
 		const char *s = "a\xF1yz";
 		wchar_t tbuf[4] = {};
 		const size_t tlen = UTF16FromUTF8(s, tbuf, 4);
-		REQUIRE(tlen == 2U);
+		REQUIRE(tlen == 4U);
 		REQUIRE(tbuf[0] == 'a');
 		REQUIRE(tbuf[1] == 0xF1);
+		REQUIRE(tbuf[2] == 'y');
+		REQUIRE(tbuf[3] == 'z');
 		// Invalid so can't round trip
+	}
+
+	SECTION("UTF16FromUTF8 Invalid lead then valid character") {
+		const char *s = "\xF1\xC2\xA2z";
+		wchar_t tbuf[3] = {};
+		const size_t tlen = UTF16FromUTF8(s, tbuf, 3);
+		REQUIRE(tlen == 3U);
+		REQUIRE(tbuf[0] == 0xF1);
+		REQUIRE(tbuf[1] == 0xA2);
+		REQUIRE(tbuf[2] == 'z');
+	}
+
+	SECTION("UTF16FromUTF8 Non-character is three isolated units") {
+		// U+FFFE is classified invalid with multi-byte width; conversion matches
+		// the document one-byte-character policy.
+		const char *s = "\xEF\xBF\xBE";
+		wchar_t tbuf[3] = {};
+		const size_t tlen = UTF16FromUTF8(s, tbuf, 3);
+		REQUIRE(tlen == 3U);
+		REQUIRE(tbuf[0] == 0xEF);
+		REQUIRE(tbuf[1] == 0xBF);
+		REQUIRE(tbuf[2] == 0xBE);
+		REQUIRE(UTF16Length(s) == 3U);
 	}
 
 	// UTF32FromUTF8
@@ -284,9 +318,23 @@ TEST_CASE("UniConversion") {
 		const char *s = "a\xF1yz";
 		unsigned int tbuf[4] = {};
 		const size_t tlen = UTF32FromUTF8(s, tbuf, 4);
-		REQUIRE(tlen == 2U);
+		REQUIRE(tlen == 4U);
 		REQUIRE(tbuf[0] == static_cast<unsigned int>('a'));
 		REQUIRE(tbuf[1] == 0xF1);
+		REQUIRE(tbuf[2] == static_cast<unsigned int>('y'));
+		REQUIRE(tbuf[3] == static_cast<unsigned int>('z'));
+		REQUIRE(UTF32Length(s) == 4U);
+	}
+
+	SECTION("UTF32FromUTF8 Invalid lead then valid character") {
+		const char *s = "\xF1\xC2\xA2z";
+		unsigned int tbuf[3] = {};
+		const size_t tlen = UTF32FromUTF8(s, tbuf, 3);
+		REQUIRE(tlen == 3U);
+		REQUIRE(tbuf[0] == 0xF1);
+		REQUIRE(tbuf[1] == 0xA2);
+		REQUIRE(tbuf[2] == static_cast<unsigned int>('z'));
+		REQUIRE(UTF32Length(s) == 3U);
 	}
 }
 
@@ -395,5 +443,38 @@ TEST_CASE("UTF8Classify") {
 	}
 	SECTION("UTF8Classify 4 byte lead invalid 3rd trail") {
 		REQUIRE(UTFClass("\xF0\x9F\x9Fq") == (1 | UTF8MaskInvalid));
+	}
+}
+
+TEST_CASE("UTF8DrawBytes") {
+
+	SECTION("UTF8DrawBytes valid multi-byte") {
+		REQUIRE(UTF8DrawBytes("\xE2\x82\xAC", 3) == 3);
+		REQUIRE(UTF8DrawBytes("\xF0\x9F\x8C\x90", 4) == 4);
+	}
+
+	SECTION("UTF8DrawBytes invalid and non-character are one byte") {
+		// Matches Document invalid-UTF-8 policy: each invalid byte is one character.
+		REQUIRE(UTF8DrawBytes("\x80", 1) == 1);
+		REQUIRE(UTF8DrawBytes("\xC2", 1) == 1);
+		REQUIRE(UTF8DrawBytes("\xF1yz", 3) == 1);
+		REQUIRE(UTF8DrawBytes("\xEF\xBF\xBE", 3) == 1);
+		REQUIRE(UTF8DrawBytes("\xEF\xBF\xBF", 3) == 1);
+		REQUIRE(UTF8DrawBytes("\xF0\x9F\xBF\xBF", 4) == 1);
+	}
+
+	SECTION("UTF8DrawBytes scan covers full input") {
+		const char *s = "a\xF1yz\xEF\xBF\xBE";
+		size_t i = 0;
+		size_t steps = 0;
+		while (i < 7) {
+			const int width = UTF8DrawBytes(s + i, 7 - i);
+			REQUIRE(width >= 1);
+			i += static_cast<size_t>(width);
+			steps++;
+		}
+		REQUIRE(i == 7U);
+		// a, F1, y, z, and three non-character bytes
+		REQUIRE(steps == 7U);
 	}
 }
