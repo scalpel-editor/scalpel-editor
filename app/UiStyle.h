@@ -37,7 +37,7 @@ struct UiStyle {
 	const Scintilla::Internal::ColourRGBA panelFill{0xfc, 0xfc, 0xfc, 0xff};
 
 	// Menu bar and dropdown.
-	const Scintilla::Internal::ColourRGBA menuBarFill{0xe8, 0xe8, 0xe8, 0xff};
+	const Scintilla::Internal::ColourRGBA menuBarFill{0xf0, 0xf0, 0xf0, 0xff};
 	const Scintilla::Internal::ColourRGBA menuItemHover{0xe8, 0xf0, 0xf8, 0xff};
 	const Scintilla::Internal::ColourRGBA menuSeparator{0xd0, 0xd0, 0xd0, 0xff};
 	const Scintilla::Internal::ColourRGBA menuDropdownShadow{0x00, 0x00, 0x00, 0x28};
@@ -63,7 +63,7 @@ struct UiStyle {
 	const int menuRecentDropdownPreferredWidth = 440;
 
 	// Tab strip.
-	const Scintilla::Internal::ColourRGBA tabStripFill{0xe4, 0xe4, 0xe4, 0xff};
+	const Scintilla::Internal::ColourRGBA tabStripFill{0xec, 0xec, 0xec, 0xff};
 	const Scintilla::Internal::ColourRGBA tabDirtyAccent{0xc0, 0x60, 0x20, 0xff};
 	const Scintilla::Internal::ColourRGBA tabCloseFill{0xd0, 0xd0, 0xd0, 0xff};
 	const Scintilla::Internal::ColourRGBA tabCloseHoverFill{0xc0, 0x70, 0x70, 0xff};
