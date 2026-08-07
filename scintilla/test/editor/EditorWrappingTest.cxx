@@ -302,3 +302,78 @@ TEST_CASE("Buffered paint clears shared line pixmap for extra display rows") {
 	// Extra row must not reuse the text row's ink from the shared pixmap.
 	CHECK_FALSE(extraPixel == textPixel);
 }
+
+TEST_CASE("Pending wrap survives deleting lines before the wrap range") {
+	// NeedWrapping queues a half-open line range. A multi-line delete before
+	// that range must shift both ends so idle wrap still corrects heights for
+	// the surviving lines that were pending.
+	TestHost host;
+	TestEditor editor(host, PRectangle(0, 0, 80, 600));
+	editor.SetWrapMode(Wrap::Word);
+	std::string text;
+	for (int i = 0; i < 12; ++i) {
+		text += "one two three four five six seven eight\n";
+	}
+	editor.SetText(text);
+	editor.PaintAll();
+	const Sci::Line wrappedRows = editor.WrapCount(8);
+	REQUIRE(wrappedRows > 1);
+	REQUIRE(editor.GetLineCount() >= 12);
+
+	// Wrong heights on lines that will remain after deleting the first six.
+	for (Sci::Line line = 6; line < 10; ++line) {
+		REQUIRE(editor.ForceDisplayHeight(line, 1));
+	}
+	editor.NeedWrapping(6, 10);
+
+	const Sci::Position deleteEnd = editor.PositionFromLine(6);
+	REQUIRE(deleteEnd > 0);
+	editor.DeleteRange(0, deleteEnd);
+
+	// Former line 8 is now line 2.
+	REQUIRE(editor.DisplayHeight(2) == 1);
+
+	while (editor.Idle()) {
+	}
+
+	CHECK(editor.DisplayHeight(2) == wrappedRows);
+	CHECK(editor.DisplayHeight(0) == wrappedRows);
+	CHECK(editor.DisplayHeight(3) == wrappedRows);
+}
+
+TEST_CASE("Pending wrap keeps the prefix when a delete starts inside the range") {
+	// Deleting from the middle of a pending range through its end must leave
+	// the earlier pending lines scheduled; only adjusting end by linesAdded can
+	// invert the interval and drop that prefix.
+	TestHost host;
+	TestEditor editor(host, PRectangle(0, 0, 80, 600));
+	editor.SetWrapMode(Wrap::Word);
+	std::string text;
+	for (int i = 0; i < 16; ++i) {
+		text += "one two three four five six seven eight\n";
+	}
+	editor.SetText(text);
+	editor.PaintAll();
+	const Sci::Line wrappedRows = editor.WrapCount(4);
+	REQUIRE(wrappedRows > 1);
+
+	for (Sci::Line line = 4; line < 12; ++line) {
+		REQUIRE(editor.ForceDisplayHeight(line, 1));
+	}
+	editor.NeedWrapping(4, 12);
+
+	// Delete from line 8 through line 15, past the pending end.
+	const Sci::Position deleteStart = editor.PositionFromLine(8);
+	const Sci::Position deleteEnd = editor.GetLength();
+	REQUIRE(deleteEnd > deleteStart);
+	editor.DeleteRange(deleteStart, deleteEnd - deleteStart);
+
+	REQUIRE(editor.DisplayHeight(4) == 1);
+	REQUIRE(editor.DisplayHeight(7) == 1);
+
+	while (editor.Idle()) {
+	}
+
+	CHECK(editor.DisplayHeight(4) == wrappedRows);
+	CHECK(editor.DisplayHeight(7) == wrappedRows);
+}

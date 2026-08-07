@@ -394,10 +394,26 @@ void Editor::CheckModificationForWrap(DocModification mh) {
 		const Sci::Line lineDoc = pdoc->SciLineFromPosition(mh.position);
 		const Sci::Line lines = std::max(static_cast<Sci::Line>(0), mh.linesAdded);
 		if (Wrapping()) {
-			// Check if this modification crosses any of the wrap points
+			// Keep a pending wrap interval aligned with document line numbers after
+			// inserts and deletes. Only adjusting end left start at pre-edit indices,
+			// so a multi-line delete before the range could make start >= end and drop
+			// the pending work. A delete that begins inside the range and continues
+			// past end must leave [start, lineDoc) pending for the surviving prefix.
 			if (wrapPending.NeedsWrap()) {
-				if (lineDoc < wrapPending.end) { // Inserted/deleted before or inside wrap range
+				if (lineDoc < wrapPending.start) {
+					wrapPending.start += mh.linesAdded;
 					wrapPending.end += mh.linesAdded;
+				} else if (lineDoc < wrapPending.end) {
+					wrapPending.end += mh.linesAdded;
+					if (wrapPending.end < lineDoc) {
+						wrapPending.end = lineDoc;
+					}
+				}
+				if (wrapPending.start < 0) {
+					wrapPending.start = 0;
+				}
+				if (wrapPending.end < wrapPending.start) {
+					wrapPending.Reset();
 				}
 			}
 			NeedWrapping(lineDoc, lineDoc + lines + 1);
