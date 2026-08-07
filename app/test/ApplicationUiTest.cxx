@@ -1603,12 +1603,23 @@ TEST_CASE("application UI workflow frame size and exit cleanup") {
 	ui.ScrollBars().dragging = true;
 	ui.ScrollBars().hover = Scalpel::ScrollBarHit::Thumb;
 	ui.MenuModel().openMenu = Scalpel::ApplicationMenu::File;
+	ui.MenuModel().pressOrigin = Scalpel::MenuBarPressOrigin{
+		Scalpel::MenuBarPressKind::Item, Scalpel::ApplicationMenu::File,
+		Scalpel::ApplicationAction::NewTab};
+	ui.OpenFindBar();
+	ui.FindModel().pressOrigin = Scalpel::FindBarPressKind::Next;
+	ui.FileErrorPressHit() = true;
+	ui.PromptPressHit() = UnsavedCardHit::Save;
 	editor.Resize(480, 260);
 	ui.HandleFrameSizeChange();
 	CHECK_FALSE(ui.ScrollBars().dragging);
 	CHECK(ui.ScrollBars().hover == Scalpel::ScrollBarHit::None);
 	// Open menu survives resize; full-frame invalidation covers the panel.
 	REQUIRE(ui.MenuModel().openMenu == Scalpel::ApplicationMenu::File);
+	CHECK_FALSE(ui.MenuModel().pressOrigin.has_value());
+	CHECK_FALSE(ui.FindModel().pressOrigin.has_value());
+	CHECK_FALSE(ui.FileErrorPressHit());
+	CHECK_FALSE(ui.PromptPressHit().has_value());
 	CHECK(HasDamage(editor.TakeFrameDamage(), PRectangle::FromInts(
 		0, 0, editor.FrameWidth(), editor.FrameHeight())));
 

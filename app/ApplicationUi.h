@@ -425,7 +425,8 @@ public:
 
 	/**
 	 * Respond to a logical frame size or scale change already applied to the
-	 * editor. Cancels scrollbar interaction, refreshes tab layout, and
+	 * editor. Cancels scrollbar interaction, clears armed menu/find/modal
+	 * press origins, dismisses the context menu, refreshes tab layout, and
 	 * invalidates chrome; full-frame when a modal card or open menu is visible.
 	 */
 	void HandleFrameSizeChange();

@@ -1520,9 +1520,14 @@ void ApplicationUi::HandleFrameSizeChange() {
 	// Width may change scroll clamping and tab layout. Keep an open menu bar;
 	// LayoutMenuBar recomputes headings and clamps the panel. Context menus
 	// dismiss so the next open uses current geometry and scale. Resize and
-	// scale cancel an in-progress scrollbar drag.
+	// scale cancel an in-progress scrollbar drag and clear armed press origins
+	// so a later release cannot activate a control that moved under the pointer.
 	CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
 	DismissApplicationContextMenu();
+	menuModel.pressOrigin.reset();
+	findBarModel.pressOrigin.reset();
+	fileErrorPressHit = false;
+	promptPressHit.reset();
 	(void)SynchronizeTabs(true);
 	editor->InvalidateTopChrome();
 	editor->InvalidateScrollBars();
