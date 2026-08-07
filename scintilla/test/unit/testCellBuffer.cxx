@@ -649,6 +649,23 @@ TEST_CASE("UndoHistory") {
 		REQUIRE(uh.TentativeSteps() == -1);
 		REQUIRE(uh.CanUndo());
 	}
+
+	SECTION("ValidateIgnoresContainerTokens") {
+		// Container actions store a host token in position, not a document offset.
+		// Validate must not treat a large token as an out-of-range change.
+		bool startSequence = false;
+		uh.AppendAction(ActionType::insert, 0, "ab", 2, startSequence, true);
+		uh.AppendAction(ActionType::container, 1000, nullptr, 0, startSequence, true);
+		uh.AppendAction(ActionType::insert, 2, "cd", 2, startSequence, true);
+		REQUIRE(uh.Actions() == 3);
+		REQUIRE(uh.Validate(4));
+		// SetCurrent to the end (current document length 4) must accept the history.
+		REQUIRE_NOTHROW(uh.SetCurrent(3, 4));
+		REQUIRE(uh.Current() == 3);
+		// Rewind to after first insert; document length at that point is 2.
+		REQUIRE_NOTHROW(uh.SetCurrent(1, 2));
+		REQUIRE(uh.Current() == 1);
+	}
 }
 
 TEST_CASE("UndoActions") {
@@ -1609,6 +1626,28 @@ TEST_CASE("CellBufferLoadUndoHistory") {
 		// There was also a modified delete (reverting the insert) at 3 in the original but that is missing.
 		const History hist{ {{1, 1, changeSaved}, {3, 1, changeModified}}, {} };
 		REQUIRE(HistoryOf(cb) == hist);
+	}
+
+	SECTION("ContainerActionsSurviveSetCurrent") {
+		// Host selection undo records container tokens that may exceed document length.
+		// Restoring the current action index must keep those actions.
+		cb.SetUndoCollection(false);
+		constexpr std::string_view sInsert = "abcd";
+		bool startSequence = false;
+		cb.InsertString(0, sInsert.data(), sInsert.length(), startSequence);
+		cb.SetUndoCollection(true);
+
+		PushUndoAction(cb, insert, 0, "ab");
+		cb.PushUndoActionType(static_cast<int>(ActionType::container), 1000);
+		PushUndoAction(cb, insert, 2, "cd");
+		cb.SetUndoSavePoint(0);
+		cb.SetUndoDetach(-1);
+		cb.SetUndoTentative(-1);
+		REQUIRE_NOTHROW(cb.SetUndoCurrent(3));
+		REQUIRE(cb.UndoCurrent() == 3);
+		REQUIRE(cb.UndoActions() == 3);
+		REQUIRE(cb.UndoActionType(1) == static_cast<int>(ActionType::container));
+		REQUIRE(cb.UndoActionPosition(1) == 1000);
 	}
 
 }

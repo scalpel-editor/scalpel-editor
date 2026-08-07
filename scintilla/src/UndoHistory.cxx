@@ -456,12 +456,17 @@ bool UndoHistory::Validate(intptr_t lengthDocument) const noexcept {
 	const intptr_t lengthOriginal = lengthDocument - sizeChange;
 	intptr_t lengthCurrent = lengthOriginal;
 	for (int act = 0; act < actions.SSize(); act++) {
+		const ActionType at = actions.types[act].at;
+		// Container actions store a host token in position, not a document offset.
+		if (at == ActionType::container) {
+			continue;
+		}
 		const intptr_t lengthChange = actions.Length(act);
 		if (actions.Position(act) > lengthCurrent) {
 			// Change outside document.
 			return false;
 		}
-		lengthCurrent += (actions.types[act].at == ActionType::insert) ? lengthChange : -lengthChange;
+		lengthCurrent += (at == ActionType::insert) ? lengthChange : -lengthChange;
 		if (lengthCurrent < 0) {
 			return false;
 		}
