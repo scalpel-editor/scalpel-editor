@@ -130,6 +130,50 @@ TEST_CASE("DeleteBack removes the previous character") {
 	CHECK(editor.CurrentPos() == 1);
 }
 
+TEST_CASE("DeleteBack removes one UTF-8 character or invalid byte") {
+	TestHost host;
+	TestEditor editor(host);
+	// "a" + é (C3 A9) + "b"
+	editor.SetText("a\xC3\xA9" "b");
+	Goto(editor, 3);  // after é
+	editor.RunCommand(EditorCommand::DeleteBack);
+	CHECK(editor.Text() == "ab");
+	CHECK(editor.CurrentPos() == 1);
+
+	// Non-character U+FFFE: each byte is one character under invalid-UTF-8 policy
+	editor.SetText("x\xEF\xBF\xBEy");
+	Goto(editor, 4);  // after non-character bytes
+	editor.RunCommand(EditorCommand::DeleteBack);
+	CHECK(editor.Text() == "x\xEF\xBFy");
+	CHECK(editor.CurrentPos() == 3);
+}
+
+TEST_CASE("DeleteBack over CRLF removes the whole line ending") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.SetText("a\r\nb");
+	Goto(editor, 3);  // after \n
+	editor.RunCommand(EditorCommand::DeleteBack);
+	// Document::DelCharBack treats \r\n as one unit when the caret is after \n
+	CHECK(editor.Text() == "ab");
+	CHECK(editor.CurrentPos() == 1);
+}
+
+TEST_CASE("CharRight steps over multi-byte and invalid UTF-8") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.SetText("a\xC3\xA9" "\x80" "z");
+	Goto(editor, 0);
+	editor.RunCommand(EditorCommand::CharRight);
+	CHECK(editor.CurrentPos() == 1);
+	editor.RunCommand(EditorCommand::CharRight);
+	CHECK(editor.CurrentPos() == 3);  // past é
+	editor.RunCommand(EditorCommand::CharRight);
+	CHECK(editor.CurrentPos() == 4);  // past lone trail byte
+	editor.RunCommand(EditorCommand::CharRight);
+	CHECK(editor.CurrentPos() == 5);
+}
+
 TEST_CASE("Tab inserts indentation into an empty selection") {
 	TestHost host;
 	TestEditor editor(host);
