@@ -89,7 +89,7 @@ Fontconfig resolves the canonical family through the host configuration when the
 
 ## Document open and save
 
-`DocumentWorkspace` opens and saves document files as raw bytes. A readable file succeeds even when its contents are not valid UTF-8: it becomes a normal clean document, is recorded as a successful recent path, and does not enqueue a file error or warning. Open and save do not validate, replace, transcode, or normalize invalid sequences. Valid UTF-8 and invalid bytes may coexist in one document.
+`DocumentWorkspace` opens and saves document files as raw bytes. A readable regular file succeeds even when its contents are not valid UTF-8: it becomes a normal clean document, is recorded as a successful recent path, and does not enqueue a file error or warning. Open and save do not validate, replace, transcode, or normalize invalid sequences. Valid UTF-8 and invalid bytes may coexist in one document. Directories, devices, fifos, and other non-regular paths fail as ordinary open errors; they must not throw or leave the workspace half-updated.
 
 Process startup may load an ordered path list through `LoadStartupFiles`. Distinct paths become tabs in argument order; the first reuses the pristine initial document, later paths create sibling documents, and the tab named by the last supplied path becomes active. Startup paths are bound for save and are not recorded as recent files, so temporary editor paths such as Git's `COMMIT_EDITMSG` stay out of the Recent menu. Every distinct path is read before any tab mutation; an empty or unreadable path leaves the initial workspace coherent and fails the process startup. Interactive Open and Recent continue to record successful paths.
 

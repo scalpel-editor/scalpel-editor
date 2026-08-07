@@ -2,8 +2,6 @@
 
 #include <cerrno>
 #include <climits>
-#include <fstream>
-#include <iterator>
 #include <vector>
 
 #include <fcntl.h>
@@ -63,14 +61,42 @@ namespace {
 }
 
 std::optional<std::string> ReadDocumentFile(const std::string &path) {
-	std::ifstream input(path, std::ios::binary);
-	if (!input) {
+	// Use POSIX open/read rather than iostream so directories and other
+	// non-regular paths return nullopt instead of throwing from filebuf.
+	if (path.empty()) {
 		return std::nullopt;
 	}
-	std::string bytes{
-		std::istreambuf_iterator<char>(input),
-		std::istreambuf_iterator<char>()};
-	if (input.bad()) {
+	const int fd = ::open(path.c_str(), O_RDONLY | O_CLOEXEC);
+	if (fd < 0) {
+		return std::nullopt;
+	}
+	struct stat st {};
+	if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode)) {
+		(void)close(fd);
+		return std::nullopt;
+	}
+
+	std::string bytes;
+	if (st.st_size > 0) {
+		bytes.reserve(static_cast<std::size_t>(st.st_size));
+	}
+	constexpr std::size_t chunkSize = 64 * 1024;
+	char buffer[chunkSize];
+	for (;;) {
+		const ssize_t n = ::read(fd, buffer, chunkSize);
+		if (n < 0) {
+			if (errno == EINTR) {
+				continue;
+			}
+			(void)close(fd);
+			return std::nullopt;
+		}
+		if (n == 0) {
+			break;
+		}
+		bytes.append(buffer, static_cast<std::size_t>(n));
+	}
+	if (close(fd) != 0) {
 		return std::nullopt;
 	}
 	return bytes;

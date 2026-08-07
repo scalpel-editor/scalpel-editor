@@ -10,8 +10,10 @@
 namespace Scalpel {
 
 /**
- * Read every byte from path. Returns nullopt when the file cannot be opened
- * or read. Bytes are not validated as UTF-8.
+ * Read every byte from a regular file at path. Returns nullopt when the path
+ * is empty, missing, not a regular file (directory, device, fifo, and so on),
+ * or cannot be opened or read. Symlinks to regular files are followed. Bytes
+ * are not validated as UTF-8 and are not size-limited.
  */
 [[nodiscard]] std::optional<std::string> ReadDocumentFile(
 	const std::string &path);

@@ -323,6 +323,25 @@ TEST_CASE("document workspace file errors report failed opens and saves") {
 	CHECK(workspace.TakeFileErrors().empty());
 }
 
+TEST_CASE("document workspace open rejects a directory path without throwing") {
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("startup\n");
+	DocumentWorkspace workspace(editor);
+	const DocumentId startup = workspace.ActiveTab();
+	const std::string startupText = editor.Text();
+
+	CHECK_FALSE(workspace.OpenPath("/tmp"));
+	CHECK(workspace.ActiveTab() == startup);
+	CHECK(editor.Text() == startupText);
+	CHECK(workspace.TabCount() == 1);
+	const std::vector<Scalpel::DocumentFileError> errors =
+		workspace.TakeFileErrors();
+	REQUIRE(errors.size() == 1);
+	CHECK(errors[0].operation == DocumentFileOperation::Open);
+	CHECK(errors[0].path == "/tmp");
+	CHECK(workspace.TakeRecentPaths().empty());
+}
+
 TEST_CASE("document workspace open path is no-op while dirty prompt is active") {
 	TempFile file("other\n");
 	ApplicationEditor editor(320, 180);

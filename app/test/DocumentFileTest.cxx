@@ -71,6 +71,13 @@ TEST_CASE("document file read fails for a missing path") {
 		"/tmp/scalpel-document-file-missing-path").has_value());
 }
 
+TEST_CASE("document file read fails for empty path directory and non-regular") {
+	CHECK_FALSE(Scalpel::ReadDocumentFile({}).has_value());
+	// Directories must not throw from iostream filebuf (libstdc++ EISDIR).
+	CHECK_FALSE(Scalpel::ReadDocumentFile("/tmp").has_value());
+	CHECK_FALSE(Scalpel::ReadDocumentFile("/dev/null").has_value());
+}
+
 TEST_CASE("document file write fails for an empty path") {
 	CHECK_FALSE(Scalpel::WriteDocumentFile({}, "text"));
 }
