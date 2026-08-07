@@ -1674,9 +1674,31 @@ public:
 #if 1
 TEST_CASE("CellBufferLong") {
 
-	// Call methods on CellBuffer pseudo-randomly trying  to trigger assertion failures
+	// Call methods on CellBuffer pseudo-randomly trying to trigger assertion failures
+	// and compare buffer bytes with a reference string model after every operation.
 
 	CellBuffer cb(true, false);
+	std::string model;
+
+	const auto contentsOf = [](CellBuffer &buffer) {
+		const Sci::Position length = buffer.Length();
+		std::string contents(static_cast<size_t>(length), '\0');
+		if (length > 0) {
+			buffer.GetCharRange(contents.data(), 0, length);
+		}
+		return contents;
+	};
+
+	const auto checkModel = [&]() {
+		REQUIRE(contentsOf(cb) == model);
+		// Line starts must cover the buffer and be non-decreasing.
+		REQUIRE(cb.Lines() >= 1);
+		REQUIRE(cb.LineStart(0) == 0);
+		REQUIRE(cb.LineStart(cb.Lines()) == cb.Length());
+		for (Sci::Line line = 1; line <= cb.Lines(); line++) {
+			REQUIRE(cb.LineStart(line) >= cb.LineStart(line - 1));
+		}
+	};
 
 	SECTION("Random") {
 		RandomSequence rseq;
@@ -1692,6 +1714,7 @@ TEST_CASE("CellBufferLong") {
 				}
 				bool startSequence = false;
 				cb.InsertString(pos, sInsert.c_str(), len, startSequence);
+				model.insert(static_cast<size_t>(pos), sInsert);
 			} else if (r <= 5) {	// 30%
 				// Delete Text
 				const Sci::Position pos = rseq.Next() % (cb.Length() + 1);
@@ -1699,19 +1722,43 @@ TEST_CASE("CellBufferLong") {
 				if (pos + len <= cb.Length()) {
 					bool startSequence = false;
 					cb.DeleteChars(pos, len, startSequence);
+					model.erase(static_cast<size_t>(pos), static_cast<size_t>(len));
 				}
 			} else if (r <= 8) {	// 30%
-				// Undo or redo
+				// Undo or redo against the model by replaying buffer steps on the model.
 				const bool undo = rseq.Next() % 2 == 1;
 				if (undo) {
-					UndoBlock(cb);
+					const int steps = cb.StartUndo();
+					for (int step = 0; step < steps; step++) {
+						const Action action = cb.GetUndoStep();
+						if (action.at == ActionType::insert) {
+							model.erase(static_cast<size_t>(action.position),
+								static_cast<size_t>(action.lenData));
+						} else if (action.at == ActionType::remove) {
+							model.insert(static_cast<size_t>(action.position),
+								action.data, static_cast<size_t>(action.lenData));
+						}
+						cb.PerformUndoStep();
+					}
 				} else {
-					RedoBlock(cb);
+					const int steps = cb.StartRedo();
+					for (int step = 0; step < steps; step++) {
+						const Action action = cb.GetRedoStep();
+						if (action.at == ActionType::insert) {
+							model.insert(static_cast<size_t>(action.position),
+								action.data, static_cast<size_t>(action.lenData));
+						} else if (action.at == ActionType::remove) {
+							model.erase(static_cast<size_t>(action.position),
+								static_cast<size_t>(action.lenData));
+						}
+						cb.PerformRedoStep();
+					}
 				}
 			} else {	// 10%
 				// Save
 				cb.SetSavePoint();
 			}
+			checkModel();
 		}
 	}
 }
