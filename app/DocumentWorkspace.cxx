@@ -80,13 +80,29 @@ bool DocumentWorkspace::SaveToPath(DocumentId tabId,
 	if (!index) {
 		return false;
 	}
-	if (!WriteDocumentFile(destination, editor.Text(tabId))) {
-		std::cerr << "scalpel-editor: failed to write " << destination << '\n';
-		fileErrors.push_back({DocumentFileOperation::Save, destination});
+	const std::string pathString = NormalizePath(destination);
+	if (pathString.empty()) {
+		return false;
+	}
+	// Path identity matches open: only one tab may be bound to a normalized
+	// path. Save As must not create a second binding that OpenPath can never
+	// select and that would race two buffers onto the same file.
+	if (const std::optional<std::size_t> existing =
+			FindIndexByPath(pathString)) {
+		if (tabs[*existing].id != tabId) {
+			std::cerr << "scalpel-editor: path already open in another tab "
+				<< pathString << '\n';
+			fileErrors.push_back({DocumentFileOperation::Save, pathString});
+			return false;
+		}
+	}
+	if (!WriteDocumentFile(pathString, editor.Text(tabId))) {
+		std::cerr << "scalpel-editor: failed to write " << pathString << '\n';
+		fileErrors.push_back({DocumentFileOperation::Save, pathString});
 		return false;
 	}
 	editor.MarkSaved(tabId);
-	tabs[*index].path = destination;
+	tabs[*index].path = pathString;
 	tabs[*index].untitledNumber = 0;
 	Queue(DocumentShellRequest::RefreshTabs);
 	return true;

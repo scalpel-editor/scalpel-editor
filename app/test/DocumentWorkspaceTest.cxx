@@ -549,6 +549,51 @@ TEST_CASE("document workspace tabs open selects existing path") {
 	CHECK(editor.Text() == "once\n");
 }
 
+TEST_CASE("document workspace Save As refuses a path already open in another tab") {
+	TempFile first("first body\n");
+	TempFile second("second body\n");
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("startup\n");
+	DocumentWorkspace workspace(editor);
+
+	REQUIRE(workspace.OpenPath(first.path));
+	const DocumentId firstId = workspace.ActiveTab();
+	REQUIRE(workspace.OpenPath(second.path));
+	const DocumentId secondId = workspace.ActiveTab();
+	REQUIRE(firstId != secondId);
+	DirtyBuffer(editor);
+	const std::string dirtySecond = editor.Text();
+	(void)workspace.TakeRecentPaths();
+	(void)workspace.TakeFileErrors();
+	(void)workspace.TakeRequests();
+
+	// Save the dirty second tab under the first tab's path must not rebind or
+	// write: path uniqueness matches OpenPath, and first's on-disk bytes stay.
+	workspace.RequestSaveAs();
+	REQUIRE(HasRequest(workspace.TakeRequests(), DocumentShellRequest::ShowSaveAs));
+	const auto dialog = workspace.BeginSaveAsDialog();
+	workspace.HandleDialogResult(dialog.id, true, {first.path});
+
+	const std::vector<Scalpel::DocumentFileError> errors =
+		workspace.TakeFileErrors();
+	REQUIRE(errors.size() == 1);
+	CHECK(errors[0].operation == DocumentFileOperation::Save);
+	CHECK(errors[0].path == first.path);
+	CHECK(workspace.TakeRecentPaths().empty());
+	CHECK(workspace.ActiveTab() == secondId);
+	CHECK(workspace.Path() == second.path);
+	CHECK(editor.Text() == dirtySecond);
+	CHECK(editor.Modified());
+
+	workspace.ActivateTab(firstId);
+	CHECK(workspace.Path() == first.path);
+	CHECK(editor.Text() == "first body\n");
+	CHECK_FALSE(editor.Modified());
+	const auto onDisk = Scalpel::ReadDocumentFile(first.path);
+	REQUIRE(onDisk.has_value());
+	CHECK(*onDisk == "first body\n");
+}
+
 TEST_CASE("document workspace tabs close clean tab") {
 	ApplicationEditor editor(320, 180);
 	editor.LoadInitialBuffer("first\n");
