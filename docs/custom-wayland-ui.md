@@ -155,6 +155,7 @@ Keyboard composition and repeat also have lifecycles:
 - Cancel incomplete composition on focus or keymap replacement.
 - Use the compositor's repeat rate and delay.
 - Check key repeatability through xkbcommon.
+- Do not arm key repeat while a compose sequence is open: repeating a dead key re-feeds the compose state and can emit a composed character before the base letter.
 - Cancel repeat on release, focus loss, device loss, keymap replacement, or seat removal.
 
 ## Keep clipboard and primary selection independent

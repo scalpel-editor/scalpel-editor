@@ -358,6 +358,15 @@ void WaylandInput::RecordKey(uint32_t time, uint32_t key, bool pressed,
 	}
 	AppendKey(time, key, pressed, serial);
 	if (pressed) {
+		// AppendKey may feed the compose state. While a sequence is open
+		// (dead key or Multi_key), compositor key-repeat must not re-feed
+		// the same keysym: a second dead_acute completes as U+00B4 before the
+		// user types the base letter. Stop any prior key's repeat as well.
+		if (composeState &&
+			xkb_compose_state_get_status(composeState) == XKB_COMPOSE_COMPOSING) {
+			StopRepeat();
+			return;
+		}
 		StartRepeat(time, key);
 	} else if (repeat.active && repeat.key == key) {
 		StopRepeat();

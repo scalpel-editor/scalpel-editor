@@ -73,6 +73,39 @@ TEST_CASE("Wayland keyboard compose cancellation discards the sequence") {
 	CHECK(std::get<Scalpel::KeyboardInput>(events[2]).text == "a");
 }
 
+TEST_CASE("Wayland keyboard does not repeat while compose is open") {
+	using namespace std::chrono_literals;
+	const TestKeymap keymap = MakeTestKeymap("intl");
+	Scalpel::WaylandInput::Clock::time_point now{};
+	Scalpel::WaylandInput input("C.utf8", [&now] { return now; });
+	REQUIRE(input.SetKeymap(keymap.text));
+	REQUIRE(input.SetRepeatInfo(100, 10));
+
+	// dead_acute starts a compose sequence and must not arm key repeat: a
+	// repeated feed completes as U+00B4 before the base letter arrives.
+	input.RecordKey(50, KEY_APOSTROPHE, true);
+	REQUIRE(input.TakeInputs().size() == 1);
+	CHECK_FALSE(input.TimeUntilKeyRepeat().has_value());
+	now += 50ms;
+	CHECK_FALSE(input.RunKeyRepeat());
+	CHECK(input.TakeInputs().empty());
+
+	input.RecordKey(51, KEY_E, true);
+	std::vector<Scalpel::InputEvent> events = input.TakeInputs();
+	REQUIRE(events.size() == 1);
+	CHECK(std::get<Scalpel::KeyboardInput>(events[0]).text == "é");
+
+	// Ordinary letters still repeat after the sequence finishes.
+	input.RecordKey(52, KEY_A, true);
+	REQUIRE(input.TakeInputs().size() == 1);
+	CHECK(input.TimeUntilKeyRepeat() == 10ms);
+	now += 10ms;
+	CHECK(input.RunKeyRepeat());
+	events = input.TakeInputs();
+	REQUIRE(events.size() == 1);
+	CHECK(std::get<Scalpel::KeyboardInput>(events[0]).text == "a");
+}
+
 TEST_CASE("Wayland keyboard command keys bypass compose state") {
 	const TestKeymap keymap = MakeTestKeymap("intl");
 	Scalpel::WaylandInput input("C.utf8");
