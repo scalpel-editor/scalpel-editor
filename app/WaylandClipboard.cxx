@@ -339,6 +339,7 @@ void WaylandClipboard::DestroyDataDevice() noexcept {
 
 void WaylandClipboard::DestroySource(bool reportCancellation) noexcept {
 	if (source) {
+		CancelSourceTransfers(sourceRequest);
 		wl_data_source_destroy(source);
 		source = nullptr;
 		if (reportCancellation) {
@@ -347,6 +348,21 @@ void WaylandClipboard::DestroySource(bool reportCancellation) noexcept {
 	}
 	sourceRequest = 0;
 	state.CancelOwnership();
+}
+
+void WaylandClipboard::CancelSourceTransfers(uint64_t request) noexcept {
+	for (ActiveTransfer &active : transfers) {
+		if (active.operation == ClipboardOperation::Copy &&
+			active.request == request) {
+			active.transfer.Cancel();
+			(void)active.transfer.TakeResult();
+		}
+	}
+	transfers.erase(std::remove_if(transfers.begin(), transfers.end(),
+		[request](const ActiveTransfer &active) {
+			return active.operation == ClipboardOperation::Copy &&
+				active.request == request;
+		}), transfers.end());
 }
 
 void WaylandClipboard::DestroyOffer(wl_data_offer *offer) noexcept {
@@ -374,9 +390,13 @@ void WaylandClipboard::CollectTransferResults() {
 		if (!result) {
 			continue;
 		}
+		// Source writes only feed peers. Ownership outcomes are Published,
+		// Cancelled, or the create-time Failed path—not write completion.
+		if (active.operation == ClipboardOperation::Copy) {
+			continue;
+		}
 		ClipboardResultStatus status = ResultStatus(result->status);
-		if (active.operation == ClipboardOperation::Paste &&
-			status == ClipboardResultStatus::Complete &&
+		if (status == ClipboardResultStatus::Complete &&
 			!IsValidWaylandText(result->bytes)) {
 			status = ClipboardResultStatus::InvalidUtf8;
 			result->bytes.clear();
@@ -470,20 +490,20 @@ void WaylandClipboard::DataSourceSend(void *data, wl_data_source *source_,
 		clipboard.CollectTransferResults();
 	} catch (...) {
 		(void)close(descriptor);
-		clipboard.Report(clipboard.sourceRequest, ClipboardOperation::Copy,
-			ClipboardResultStatus::Failed);
 	}
 }
 
 void WaylandClipboard::DataSourceCancelled(void *data, wl_data_source *source_) {
 	auto &clipboard = *static_cast<WaylandClipboard *>(data);
 	if (source_ == clipboard.source) {
+		const uint64_t request = clipboard.sourceRequest;
+		clipboard.CancelSourceTransfers(request);
 		wl_data_source_destroy(clipboard.source);
 		clipboard.source = nullptr;
-		clipboard.state.CancelOwnership();
-		clipboard.Report(clipboard.sourceRequest, ClipboardOperation::Copy,
-			ClipboardResultStatus::Cancelled);
 		clipboard.sourceRequest = 0;
+		clipboard.state.CancelOwnership();
+		clipboard.Report(request, ClipboardOperation::Copy,
+			ClipboardResultStatus::Cancelled);
 	}
 }
 

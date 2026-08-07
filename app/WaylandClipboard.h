@@ -139,6 +139,7 @@ private:
 	void DestroyDataDevice() noexcept;
 	void DestroySource(bool reportCancellation) noexcept;
 	void DestroyOffer(wl_data_offer *offer) noexcept;
+	void CancelSourceTransfers(uint64_t request) noexcept;
 	void CancelTransfers() noexcept;
 	void CollectTransferResults();
 	void Report(uint64_t request, ClipboardOperation operation,

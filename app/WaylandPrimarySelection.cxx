@@ -410,9 +410,13 @@ void WaylandPrimarySelection::CollectTransferResults() {
 		if (!result) {
 			continue;
 		}
+		// Source writes only feed peers. Ownership outcomes are Published,
+		// Cancelled, or the create-time Failed path—not write completion.
+		if (active.operation == PrimarySelectionOperation::Publish) {
+			continue;
+		}
 		PrimarySelectionResultStatus status = ResultStatus(result->status);
-		if (active.operation == PrimarySelectionOperation::Paste &&
-			status == PrimarySelectionResultStatus::Complete &&
+		if (status == PrimarySelectionResultStatus::Complete &&
 			!IsValidWaylandText(result->bytes)) {
 			status = PrimarySelectionResultStatus::InvalidUtf8;
 			result->bytes.clear();
@@ -492,9 +496,6 @@ void WaylandPrimarySelection::SourceSend(
 		selection.CollectTransferResults();
 	} catch (...) {
 		(void)close(descriptor);
-		selection.Report(selection.sourceRequest,
-			PrimarySelectionOperation::Publish,
-			PrimarySelectionResultStatus::Failed);
 	}
 }
 
@@ -502,13 +503,14 @@ void WaylandPrimarySelection::SourceCancelled(
 	void *data, zwp_primary_selection_source_v1 *source_) {
 	auto &selection = *static_cast<WaylandPrimarySelection *>(data);
 	if (source_ == selection.source) {
+		const uint64_t request = selection.sourceRequest;
+		selection.CancelSourceTransfers(request);
 		zwp_primary_selection_source_v1_destroy(selection.source);
 		selection.source = nullptr;
-		selection.state.CancelOwnership();
-		selection.Report(selection.sourceRequest,
-			PrimarySelectionOperation::Publish,
-			PrimarySelectionResultStatus::Cancelled);
 		selection.sourceRequest = 0;
+		selection.state.CancelOwnership();
+		selection.Report(request, PrimarySelectionOperation::Publish,
+			PrimarySelectionResultStatus::Cancelled);
 	}
 }
 
