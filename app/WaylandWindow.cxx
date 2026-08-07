@@ -452,6 +452,10 @@ void WaylandWindow::CancelFrame() noexcept {
 	if (preparedSubmission != 0) {
 		DestroyPresentationFeedback(preparedSubmission);
 		preparedSubmission = 0;
+	}
+	// Restore captured damage whenever a paint is open, including BeginFrame
+	// before PrepareFrame (when preparedSubmission is still zero).
+	if (frameState.Painting()) {
 		frameState.CancelPaint();
 	}
 }

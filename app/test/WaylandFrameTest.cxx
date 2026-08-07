@@ -62,6 +62,29 @@ TEST_CASE("Wayland frame paint cancellation restores captured damage") {
 	CHECK_FALSE(frame.CallbackOutstanding());
 }
 
+TEST_CASE("Wayland frame cancel before prepare restores captured damage") {
+	// Mirrors WaylandWindow::CancelFrame when BeginFrame ran but PrepareFrame
+	// did not (preparedSubmission still zero): painting must not stick open.
+	Scalpel::WaylandFrameState frame;
+	frame.Invalidate({4, 5, 20, 30});
+	const auto plan = frame.BeginFrame(100, 80, 1, true, true);
+	REQUIRE(plan.has_value());
+	CHECK(frame.Painting());
+	CHECK_FALSE(frame.CallbackOutstanding());
+
+	frame.CancelPaint();
+	CHECK_FALSE(frame.Painting());
+	CHECK(frame.Invalidated());
+	CHECK(frame.CanSubmit());
+	const auto replacement = frame.BeginFrame(100, 80, 1, true, true);
+	REQUIRE(replacement.has_value());
+	CHECK(replacement->submissionDamage ==
+		std::vector<Scalpel::FrameRectangle>{{4, 5, 20, 30}});
+	CHECK_FALSE(frame.PrepareFrame(replacement->submission, false).has_value());
+	frame.SubmitFrame(replacement->submission);
+	frame.FrameCallbackDone();
+}
+
 TEST_CASE("Wayland frame accepts completion during buffer swap") {
 	Scalpel::WaylandFrameState frame;
 	frame.Invalidate({4, 5, 20, 30});
