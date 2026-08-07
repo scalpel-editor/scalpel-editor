@@ -230,11 +230,15 @@ void AutoComplete::Show(bool show) {
 }
 
 void AutoComplete::Cancel() noexcept {
-	if (lb->Created()) {
+	// Always leave inactive state, even when Create left no WindowID (production
+	// list-box stubs) so Active() cannot stick true after AutoCCancel or CancelModes.
+	if (lb) {
 		lb->Clear();
-		lb->Destroy();
-		active = false;
+		if (lb->Created()) {
+			lb->Destroy();
+		}
 	}
+	active = false;
 }
 
 

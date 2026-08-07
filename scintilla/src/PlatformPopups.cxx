@@ -7,6 +7,8 @@
 // Real popup windows remain outside the current application scope.
 
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -103,24 +105,30 @@ public:
 		if (!list) {
 			return;
 		}
-		std::string word;
-		int type = -1;
-		for (const char *p = list; ; p++) {
-			if (*p == separator || *p == '\0') {
-				if (!word.empty()) {
-					items.push_back({word, type});
-					word.clear();
-					type = -1;
+		// Match GTK/Win32/TestListBox: separator splits items; typesep starts an
+		// optional integer type that is not part of the item text.
+		const size_t count = std::strlen(list) + 1;
+		std::vector<char> words(list, list + count);
+		char *startword = words.data();
+		char *numword = nullptr;
+		for (size_t i = 0; words[i]; i++) {
+			if (words[i] == separator) {
+				words[i] = '\0';
+				if (numword) {
+					*numword = '\0';
 				}
-				if (*p == '\0') {
-					break;
-				}
-			} else if (*p == typesep) {
-				type = 0;
-				// type digits follow typesep in the usual list format; keep simple.
-			} else {
-				word.push_back(*p);
+				Append(startword, numword ? std::atoi(numword + 1) : -1);
+				startword = words.data() + i + 1;
+				numword = nullptr;
+			} else if (words[i] == typesep) {
+				numword = words.data() + i;
 			}
+		}
+		if (startword) {
+			if (numword) {
+				*numword = '\0';
+			}
+			Append(startword, numword ? std::atoi(numword + 1) : -1);
 		}
 	}
 
