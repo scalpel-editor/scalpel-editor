@@ -255,6 +255,26 @@ TEST_CASE("Document") {
 		doc.document.RemoveWatcher(&mw, nullptr);
 	}
 
+	SECTION("StyleInsertDelete") {
+		// Inserted style bytes are zero; existing styles shift with substance;
+		// endStyled is pulled back to the modification point.
+		DocPlus doc("abcd");
+		doc.document.StartStyling(0);
+		doc.document.SetStyles(4, "\1\2\3\4");
+		REQUIRE(doc.Styles() == std::string("\1\2\3\4", 4));
+		REQUIRE(doc.document.GetEndStyled() == 4);
+
+		doc.document.InsertString(2, "X");
+		REQUIRE(doc.document.Length() == 5);
+		REQUIRE(doc.Styles() == std::string("\1\2\0\3\4", 5));
+		REQUIRE(doc.document.GetEndStyled() == 2);
+
+		REQUIRE(doc.document.DeleteChars(1, 2));
+		REQUIRE(doc.document.Length() == 3);
+		REQUIRE(doc.Styles() == std::string("\1\3\4", 3));
+		REQUIRE(doc.document.GetEndStyled() == 1);
+	}
+
 	// Search ranges are from first argument to just before second argument
 	// Arguments are expected to be at character boundaries and will be tweaked if
 	// part way through a character.

@@ -196,6 +196,19 @@ TEST_CASE("LineMarkers") {
 		REQUIRE(1 == lm.LineFromHandle(handle1));
 		REQUIRE(4 == lm.LineFromHandle(handle2));
 	}
+
+	SECTION("RemoveLineMergesMarkersOntoPrevious") {
+		// Deleting a non-first line must keep its markers on the previous line.
+		const int handleOn1 = lm.AddMark(1, 1, 4);
+		const int handleOn2 = lm.AddMark(2, 3, 4);
+		REQUIRE(2 == lm.MarkValue(1));
+		REQUIRE(8 == lm.MarkValue(2));
+		lm.RemoveLine(2);
+		REQUIRE((2 | 8) == lm.MarkValue(1));
+		REQUIRE(0 == lm.MarkValue(2));
+		REQUIRE(1 == lm.LineFromHandle(handleOn1));
+		REQUIRE(1 == lm.LineFromHandle(handleOn2));
+	}
 }
 
 TEST_CASE("LineLevels") {
