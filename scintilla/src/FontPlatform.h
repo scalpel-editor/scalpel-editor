@@ -36,12 +36,12 @@ enum class GlyphImageKind {
  *
  * width/height are the bitmap size in the raster coordinate system (device
  * pixels for phase-aware outline rasterization; strike pixels for fixed
- * bitmaps). left/top are integer bearings from the pen origin to the bitmap
- * left/top edges in that same coordinate system. scale maps bitmap size to
- * logical draw size for fixed-bitmap strikes (requested/strike); it is 1 for
- * outline glyphs already rasterized at the requested device size. gray is
- * row-major top-down coverage when kind is Gray. rgba is row-major top-down
- * premultiplied RGBA when kind is Colour.
+ * bitmaps). For outline glyphs, left/top are device-pixel bearings and scale is
+ * 1. For fixed-bitmap strikes, RasterizeGlyph stores left/top already converted
+ * into logical units with metricsScale, while width/height remain strike pixels;
+ * DrawGlyph multiplies only the extents by scale when building the destination
+ * rectangle. gray is row-major top-down coverage when kind is Gray. rgba is
+ * row-major top-down premultiplied RGBA when kind is Colour.
  */
 struct GlyphImage {
 	GlyphImageKind kind = GlyphImageKind::Empty;

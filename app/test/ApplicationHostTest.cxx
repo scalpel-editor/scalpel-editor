@@ -33,6 +33,49 @@ TEST_CASE("production editor host constructs and renders its initial buffer") {
 	CHECK_FALSE(editor.Notifications().empty());
 }
 
+TEST_CASE("production editor reuses the offscreen frame colour buffer across paints") {
+	Scalpel::ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("reuse frame buffer\nsecond line\n");
+	(void)editor.TakeFrameDamage();
+
+	REQUIRE(editor.RenderFrame({Scintilla::Internal::PRectangle::FromInts(0, 0, 320, 180)}));
+	const unsigned firstFbo = editor.FrameColourBufferName();
+	REQUIRE(firstFbo != 0);
+	const size_t glyphsAfterFirst = editor.GlyphTextureCacheSize();
+	REQUIRE(glyphsAfterFirst > 0);
+	// Overlay text paints on the frame surface and fills its shaped-run cache.
+	editor.SetOverlayPainter([](Scintilla::Internal::Surface &surface, int, int) {
+		// Use a measure-only path is insufficient; draw through the frame surface.
+		const auto font = Scintilla::Internal::Font::Allocate(
+			Scintilla::Internal::FontParameters("sans-serif", 12.0f));
+		surface.DrawTextTransparent(
+			Scintilla::Internal::PRectangle::FromInts(4, 4, 120, 24), font.get(),
+			16.0f, "overlay", Scintilla::Internal::ColourRGBA(0, 0, 0, 255));
+	});
+	REQUIRE(editor.RenderFrame({Scintilla::Internal::PRectangle::FromInts(0, 0, 320, 180)}));
+	CHECK(editor.FrameColourBufferName() == firstFbo);
+	CHECK(editor.GlyphTextureCacheSize() >= glyphsAfterFirst);
+	const size_t shapedAfterOverlay = editor.FrameShapedRunCacheSize();
+	REQUIRE(shapedAfterOverlay > 0);
+
+	// Same logical size: colour buffer and shaped runs stay resident.
+	REQUIRE(editor.RenderFrame({Scintilla::Internal::PRectangle::FromInts(0, 0, 320, 180)}));
+	CHECK(editor.FrameColourBufferName() == firstFbo);
+	CHECK(editor.FrameShapedRunCacheSize() == shapedAfterOverlay);
+
+	// Logical resize drops the frame surface. GL may recycle the FBO name, so
+	// prove rebuild via new FramePixels dimensions and a cleared shaped cache
+	// (overlay removed).
+	editor.SetOverlayPainter(nullptr);
+	editor.Resize(400, 220);
+	(void)editor.TakeFrameDamage();
+	REQUIRE(editor.RenderFrame({Scintilla::Internal::PRectangle::FromInts(0, 0, 400, 220)}));
+	REQUIRE(editor.FrameColourBufferName() != 0);
+	const auto resized = editor.FramePixels();
+	REQUIRE(resized.size() == 400U * 220U * 4U);
+	CHECK(editor.FrameShapedRunCacheSize() == 0);
+}
+
 TEST_CASE("production editor host shows line numbers and a text-left gap") {
 	Scalpel::ApplicationEditor editor(320, 180);
 

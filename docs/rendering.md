@@ -8,7 +8,9 @@ The editor uses one concrete rendering implementation for both the live Wayland 
 
 `ApplicationEditor` owns the production context, renderer, and frame surface. Its resource base is destroyed after `ScintillaBase` releases cached drawing objects, so OpenGL and font resources remain valid during editor teardown.
 
-Pixmap surfaces and offscreen targets own texture-backed colour buffers. OpenGL objects are destroyed while their context is current.
+Pixmap surfaces and offscreen targets own texture-backed colour buffers. OpenGL objects are destroyed while their context is current. `DrawSurface` destruction and `Release` make the context current before deleting those objects and treat a missing context as best-effort cleanup rather than throwing from a destructor.
+
+`ApplicationEditor` reuses the frame `DrawSurface` across paints when the offscreen colour-buffer size, or the external framebuffer identity with buffer size, logical size, and `RasterScale`, is unchanged. Reuse keeps the surface shaped-run cache and avoids reallocating the offscreen colour attachment every frame. Each paint begins with `ResetClips` so a reused surface cannot keep a damage clip from an abandoned or failed previous paint. Logical resize, top-chrome changes, and output-scale changes still drop the frame surface.
 
 ## Font selection
 
@@ -49,7 +51,7 @@ Shaping, measurement, wrapping, hit testing, selections, and caret positions sta
 3. `FontFace::RasterizeGlyph` opens an independent FreeType face at the device ppem (keyed by file, Fontconfig face index, and height) so the HarfBuzz face is never resized or transformed. Phase is applied with `FT_Set_Transform` (identity matrix + 26.6 delta; vertical component negated into FreeType's y-up space) after hinting, then restored.
 4. The returned gray mask has device-pixel width, height, and bearings. The renderer places it on integer buffer pixels with a buffer-coordinate textured quad and `GL_NEAREST`, so OpenGL copies coverage one-to-one rather than resampling a logical-resolution mask.
 
-Texture-cache identity for outline glyphs includes face, glyph id, raster scale, and phase. Identical requests reuse an entry. A real output-scale change calls `SetOutputRasterScale` and retires all scale-dependent outline entries immediately. Fixed bitmap textures follow a separate three-generation bound described under colour emoji. Ordinary logical or buffer resizes at the same nominal scale do not retire entries. Deterministic renderer tests assemble expected coverage from the same phase-aware glyph images and compare destination pixels for phrases such as `high standards` and `honesty` at scales 1, 5/4, 3/2, and 2. Stability of repeated draws alone is not treated as proof of correct light-hinted placement.
+Texture-cache identity for outline glyphs includes face, glyph id, raster scale, and phase. Identical requests reuse an entry. A real output-scale change calls `SetOutputRasterScale` and retires all scale-dependent outline entries immediately. There is no separate capacity bound on outline entries between scale changes: distinct 26.6 phases for the same glyph each keep a texture until retirement (a 64-phase walk of one glyph yields 64 entries). Fixed bitmap textures follow a separate three-generation bound described under colour emoji. Ordinary logical or buffer resizes at the same nominal scale do not retire entries. Deterministic renderer tests assemble expected coverage from the same phase-aware glyph images and compare destination pixels for phrases such as `high standards` and `honesty` at scales 1, 5/4, 3/2, and 2. Stability of repeated draws alone is not treated as proof of correct light-hinted placement.
 
 ## Colour emoji and fixed bitmap glyphs
 

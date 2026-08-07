@@ -684,6 +684,16 @@ void Renderer::PopClip() {
 	ApplyScissor();
 }
 
+void Renderer::ClearClips() {
+	if (clipStack.empty()) {
+		return;
+	}
+	MakeCurrent();
+	glBindFramebuffer(GL_FRAMEBUFFER, targetFbo);
+	clipStack.clear();
+	ApplyScissor();
+}
+
 void Renderer::Clear(ColourRGBA colour) {
 	MakeCurrent();
 	glBindFramebuffer(GL_FRAMEBUFFER, targetFbo);

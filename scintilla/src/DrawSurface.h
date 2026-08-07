@@ -46,9 +46,22 @@ public:
 	[[nodiscard]] Renderer *GetRenderer() const noexcept { return renderer; }
 	[[nodiscard]] ColourBuffer &Buffer() noexcept { return buffer; }
 	[[nodiscard]] const ColourBuffer &Buffer() const noexcept { return buffer; }
+	/** True when SetExternalDrawTarget last configured a non-owning framebuffer. */
+	[[nodiscard]] bool HasExternalTarget() const noexcept { return hasExternalTarget; }
+	[[nodiscard]] unsigned ExternalFramebuffer() const noexcept { return externalFramebuffer; }
+	[[nodiscard]] int ExternalBufferWidth() const noexcept { return externalWidth; }
+	[[nodiscard]] int ExternalBufferHeight() const noexcept { return externalHeight; }
+	[[nodiscard]] int ExternalLogicalWidth() const noexcept { return externalLogicalWidth; }
+	[[nodiscard]] int ExternalLogicalHeight() const noexcept { return externalLogicalHeight; }
+	[[nodiscard]] RasterScale SurfaceRasterScale() const noexcept { return rasterScale; }
 
 	/** Bind this surface's colour buffer as the renderer draw target. */
 	void BindDrawTarget();
+	/**
+	 * Clear surface and renderer clip stacks before a new frame paint. Safe when
+	 * the surface is reused across frames after an abandoned or partial paint.
+	 */
+	void ResetClips() noexcept;
 	/** Use a non-owning framebuffer target, including window framebuffer 0. */
 	void SetExternalDrawTarget(unsigned framebuffer, int bufferWidth, int bufferHeight,
 		int logicalWidth, int logicalHeight, RasterScale rasterScale = {});

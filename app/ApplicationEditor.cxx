@@ -592,6 +592,20 @@ size_t ApplicationEditor::GlyphTextureCacheSize() const noexcept {
 	return renderer->GlyphCacheSize();
 }
 
+unsigned ApplicationEditor::FrameColourBufferName() const noexcept {
+	if (!frame || !frame->Buffer().Valid()) {
+		return 0;
+	}
+	return frame->Buffer().FramebufferName();
+}
+
+size_t ApplicationEditor::FrameShapedRunCacheSize() const noexcept {
+	if (!frame) {
+		return 0;
+	}
+	return frame->RunCache().Size();
+}
+
 void ApplicationEditor::SetKeyboardFocus(bool focused) {
 	SetFocus(focused);
 	if (!focused) {
@@ -1165,8 +1179,19 @@ bool ApplicationEditor::RenderFrame(const std::vector<PRectangle> &damage) {
 	const int height = FrameHeight();
 	// Offscreen path keeps a one-to-one colour buffer for FramePixels. Output
 	// scale is set on the renderer explicitly so pixmap binds cannot thrash it.
+	// Reuse the surface when size matches so the shaped-run cache and colour
+	// buffer survive successive paints at the same logical size.
 	renderer->SetOutputRasterScale(frameRasterScale);
-	frame = Scintilla::Internal::CreateDrawSurface(*renderer, width, height);
+	const bool reuseOffscreen = frame && frame->Buffer().Valid() &&
+		!frame->HasExternalTarget() &&
+		frame->Buffer().Width() == width && frame->Buffer().Height() == height &&
+		frame->GetRenderer() == renderer.get();
+	if (reuseOffscreen) {
+		frame->ResetClips();
+		frame->BindDrawTarget();
+	} else {
+		frame = Scintilla::Internal::CreateDrawSurface(*renderer, width, height);
+	}
 	paintState = PaintState::painting;
 	const PRectangle client = GetClientRectangle();
 	const bool paintOverlay = static_cast<bool>(overlayPainter);
@@ -1227,8 +1252,26 @@ bool ApplicationEditor::PresentFrame(
 	}
 	const int width = FrameWidth();
 	const int height = FrameHeight();
-	frame = Scintilla::Internal::CreateExternalDrawSurface(
-		*renderer, 0, bufferWidth, bufferHeight, width, height, frameRasterScale);
+	// Reuse the external frame surface when buffer, logical, and scale match so
+	// the shaped-run cache is not discarded every compositor frame.
+	const bool reuseExternal = frame && !frame->Buffer().Valid() &&
+		frame->HasExternalTarget() &&
+		frame->ExternalFramebuffer() == 0 &&
+		frame->ExternalBufferWidth() == bufferWidth &&
+		frame->ExternalBufferHeight() == bufferHeight &&
+		frame->ExternalLogicalWidth() == width &&
+		frame->ExternalLogicalHeight() == height &&
+		frame->SurfaceRasterScale() == frameRasterScale &&
+		frame->GetRenderer() == renderer.get();
+	if (reuseExternal) {
+		frame->ResetClips();
+		frame->SetExternalDrawTarget(
+			0, bufferWidth, bufferHeight, width, height, frameRasterScale);
+		frame->BindDrawTarget();
+	} else {
+		frame = Scintilla::Internal::CreateExternalDrawSurface(
+			*renderer, 0, bufferWidth, bufferHeight, width, height, frameRasterScale);
+	}
 	paintState = PaintState::painting;
 	const PRectangle client = GetClientRectangle();
 	const bool paintOverlay = static_cast<bool>(overlayPainter);

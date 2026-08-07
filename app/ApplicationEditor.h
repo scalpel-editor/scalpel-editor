@@ -187,6 +187,18 @@ public:
 	/** Entries in the renderer's glyph texture cache (for focused scale tests). */
 	[[nodiscard]] size_t GlyphTextureCacheSize() const noexcept;
 	/**
+	 * Offscreen frame colour-buffer FBO name, or 0 when the frame is missing,
+	 * external, or not yet created. Used to prove same-size paint reuses the
+	 * buffer instead of allocating a new one each frame.
+	 */
+	[[nodiscard]] unsigned FrameColourBufferName() const noexcept;
+	/**
+	 * Entries in the frame surface shaped-run cache (chrome / overlay text).
+	 * Body text painted through the buffered line pixmap uses that pixmap's
+	 * cache instead. Zero when no frame surface is retained.
+	 */
+	[[nodiscard]] size_t FrameShapedRunCacheSize() const noexcept;
+	/**
 	 * Reserve a fixed logical-height band at the top of the frame for permanent
 	 * chrome (menu bar plus tab strip). Scintilla's client rectangle starts
 	 * below the inset and ends left of the vertical bar and above the horizontal

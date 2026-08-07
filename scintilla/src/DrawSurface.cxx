@@ -102,6 +102,18 @@ void DrawSurface::BindDrawTarget() {
 	renderer->BindCurrentTarget();
 }
 
+void DrawSurface::ResetClips() noexcept {
+	clipStack.clear();
+	if (!renderer) {
+		return;
+	}
+	try {
+		renderer->ClearClips();
+	} catch (...) {
+		// Best-effort: leave the surface clip list empty for the next paint.
+	}
+}
+
 void DrawSurface::SetExternalDrawTarget(unsigned framebuffer,
 	int bufferWidth, int bufferHeight, int logicalWidth, int logicalHeight,
 	RasterScale surfaceRasterScale) {

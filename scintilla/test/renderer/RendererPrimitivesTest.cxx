@@ -353,6 +353,25 @@ TEST_CASE("surface clip survives drawing to a sibling pixmap") {
 	surface->PopClip();
 }
 
+TEST_CASE("ResetClips drops a stuck damage clip before the next paint") {
+	GlContext context;
+	Renderer renderer(context);
+	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(renderer, 8, 8);
+	const ColourRGBA bg(0, 0, 0, 255);
+	const ColourRGBA fg(255, 0, 0, 255);
+	surface->BindDrawTarget();
+	renderer.Clear(bg);
+	// Simulate a frame that set a damage clip and never popped it (throw path).
+	surface->SetClip(PRectangle::FromInts(0, 0, 2, 2));
+	CHECK(renderer.ClipDepth() == 1);
+	surface->ResetClips();
+	CHECK(renderer.ClipDepth() == 0);
+	surface->BindDrawTarget();
+	surface->FillRectangle(PRectangle::FromInts(0, 0, 8, 8), Fill(fg));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(0, 0), fg));
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(7, 7), fg));
+}
+
 TEST_CASE("DrawRGBAImage no-ops empty and null inputs without changing pixels") {
 	GlContext context;
 	Renderer renderer(context);

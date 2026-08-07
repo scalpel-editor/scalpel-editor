@@ -156,6 +156,12 @@ public:
 	/** Restore the previous clip; no-op if the stack is empty. */
 	void PopClip();
 
+	/**
+	 * Drop every clip and restore the full-target scissor. Frame hosts call this
+	 * at the start of a paint so a reused surface cannot keep a prior damage clip.
+	 */
+	void ClearClips();
+
 	/** Opaque axis-aligned fill of a half-open rectangle (scissor + clear). */
 	void FillRectangleOpaque(PRectangle rc, ColourRGBA colour);
 

@@ -677,6 +677,44 @@ TEST_CASE("glyph cache phase distinguishes scale and phase identity") {
 	CHECK(renderer.GlyphCacheSize() < 8);
 }
 
+TEST_CASE("outline glyph cache grows with distinct phases until scale retirement") {
+	// Outline entries are keyed by face, glyph, scale, and 26.6 phase with no
+	// capacity bound except SetOutputRasterScale. Fixed bitmaps use a separate
+	// three-generation bound. This case records the growth shape for one glyph.
+	FontCache fonts;
+	const std::filesystem::path primary =
+		std::filesystem::path(SCALPEL_TEST_FONT_DIR) / "FallbackPrimary.ttf";
+	std::shared_ptr<FontFace> face =
+		fonts.LoadPath(primary, FontParameters("fixture", 16.0));
+	const ShapedRun run = ShapeText("A", face);
+	REQUIRE_FALSE(run.glyphs.empty());
+	const uint32_t glyphId = run.glyphs[0].glyphId;
+
+	GlContext context;
+	Renderer renderer(context);
+	ColourBuffer buffer;
+	buffer.Resize(64, 64);
+	renderer.SetDrawTarget(buffer.FramebufferName(), 64, 64, 64, 64);
+	renderer.SetOutputRasterScale(RasterScale{});
+	const ColourRGBA fg(0, 0, 0, 255);
+	const XYPOSITION baseline = face->Metrics().ascent;
+
+	// 64 distinct x phases at unit scale (frac k/64 for k in 0..63).
+	for (int phase = 0; phase < 64; phase++) {
+		const XYPOSITION penX = 4.0 + static_cast<XYPOSITION>(phase) / 64.0;
+		renderer.DrawGlyph(penX, baseline, face, glyphId, fg);
+	}
+	CHECK(renderer.GlyphCacheSize() == 64);
+	// A second pass at the same phases reuses every entry.
+	for (int phase = 0; phase < 64; phase++) {
+		const XYPOSITION penX = 4.0 + static_cast<XYPOSITION>(phase) / 64.0;
+		renderer.DrawGlyph(penX, baseline, face, glyphId, fg);
+	}
+	CHECK(renderer.GlyphCacheSize() == 64);
+	renderer.SetOutputRasterScale(RasterScale::FromParts(2, 1));
+	CHECK(renderer.GlyphCacheSize() == 0);
+}
+
 TEST_CASE("fixed bitmap glyph cache uses physical-size variants and three-generation LRU") {
 	FontCache fonts;
 	const std::filesystem::path emojiPath =
