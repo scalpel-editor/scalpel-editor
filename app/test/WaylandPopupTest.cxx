@@ -78,6 +78,23 @@ TEST_CASE("Wayland popup done and idempotent destroy") {
 	CHECK(life.Phase() == WaylandPopupPhase::Idle);
 }
 
+TEST_CASE("Wayland popup ack does not resurrect a done popup") {
+	// xdg_popup.popup_done requires client destroy; a pending configure pair
+	// must not be ackable back into Ready after done.
+	WaylandPopupLifecycle life;
+	life.Begin();
+	life.RecordPopupConfigure(0, 0, 100, 50);
+	life.RecordSurfaceConfigure(9);
+	CHECK_FALSE(life.CanPaint());
+
+	life.RecordPopupDone();
+	CHECK(life.Phase() == WaylandPopupPhase::Done);
+	CHECK(life.NeedsDestroy());
+	CHECK_FALSE(life.TakeAckSerial().has_value());
+	CHECK(life.Phase() == WaylandPopupPhase::Done);
+	CHECK_FALSE(life.CanPaint());
+}
+
 TEST_CASE("Wayland popup teardown order is reverse ownership") {
 	// Frame/EGL before role before surfaces — matches Create reverse.
 	REQUIRE(WaylandPopupLifecycle::kTeardownStepCount == 7);

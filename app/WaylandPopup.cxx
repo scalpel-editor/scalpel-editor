@@ -36,6 +36,12 @@ void WaylandPopupLifecycle::RecordSurfaceConfigure(uint32_t serial) noexcept {
 }
 
 std::optional<uint32_t> WaylandPopupLifecycle::TakeAckSerial() noexcept {
+	// popup_done and destroy are terminal until the next Begin; never
+	// resurrect those phases into Ready by acknowledging a stale pair.
+	if (phase != WaylandPopupPhase::AwaitingConfigure &&
+		phase != WaylandPopupPhase::Ready) {
+		return std::nullopt;
+	}
 	if (!configure.hasPopupGeometry || !configure.hasSurfaceSerial ||
 		configure.acknowledged) {
 		return std::nullopt;
