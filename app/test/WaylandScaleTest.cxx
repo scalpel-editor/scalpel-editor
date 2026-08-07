@@ -1,5 +1,7 @@
 #include "WaylandLifecycleTest.h"
 
+#include <cmath>
+
 TEST_CASE("Wayland scale follows entered outputs and preferred integer scale") {
 	Scalpel::WaylandScaleState scale(801, 601);
 	REQUIRE(scale.TakeConfiguration() ==
@@ -63,6 +65,19 @@ TEST_CASE("Wayland scale rejects invalid sizes and scales") {
 	CHECK_THROWS(scale.SetPreferredBufferScale(0));
 	CHECK_THROWS(scale.SetFractionalPreferredScale(0));
 	CHECK_THROWS(scale.Resize(800, 0));
+}
+
+TEST_CASE("Wayland buffer dimensions round upward for fractional scale") {
+	// Protocol scale is numerator/120. Nearest rounding undershoots some
+	// logical sizes; the surface path ceils so the buffer covers the destination.
+	CHECK(Scalpel::ScaledBufferDimension(100, 180) == 150);
+	CHECK(Scalpel::ScaledBufferDimension(801, 150) == 1002);
+	// lround(801 * 150 / 120) is 1001 and would leave the destination short.
+	CHECK(Scalpel::ScaledBufferDimension(801, 150) !=
+		static_cast<int>(std::lround(801 * 150 / 120.0)));
+	CHECK(Scalpel::ScaledBufferDimension(1, 150) == 2);
+	CHECK_THROWS(Scalpel::ScaledBufferDimension(0, 120));
+	CHECK_THROWS(Scalpel::ScaledBufferDimension(10, 0));
 }
 
 TEST_CASE("Wayland scale remains pending until its configuration is applied") {

@@ -362,12 +362,11 @@ void ServiceContextMenuPopup(Scalpel::ApplicationUi &ui,
 		}
 		const Scalpel::WaylandScaleConfiguration &scale =
 			window.ScaleConfiguration();
-		const int bufferW = std::max(1,
-			static_cast<int>(std::lround(
-				logicalW * scale.scaleNumerator / 120.0)));
-		const int bufferH = std::max(1,
-			static_cast<int>(std::lround(
-				logicalH * scale.scaleNumerator / 120.0)));
+		// Same upward rounding as the main surface buffer size.
+		const int bufferW = Scalpel::ScaledBufferDimension(
+			logicalW, scale.scaleNumerator);
+		const int bufferH = Scalpel::ScaledBufferDimension(
+			logicalH, scale.scaleNumerator);
 
 		if (!window.EnsureContextMenuPopupEglWindow(bufferW, bufferH)) {
 			throw std::runtime_error("could not create popup EGL window");

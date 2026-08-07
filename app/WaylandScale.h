@@ -9,6 +9,16 @@
 
 namespace Scalpel {
 
+/** Preferred Wayland scale denominator (fractional-scale-v1). */
+constexpr uint32_t WaylandScaleDenominator = 120;
+
+/**
+ * Convert one logical surface dimension to buffer pixels for the preferred
+ * scale numerator over WaylandScaleDenominator. Rounds upward so the buffer
+ * covers the full destination (same rule as the main surface configuration).
+ */
+[[nodiscard]] int ScaledBufferDimension(int logical, uint32_t scaleNumerator);
+
 struct WaylandScaleConfiguration {
 	int logicalWidth = 0;
 	int logicalHeight = 0;

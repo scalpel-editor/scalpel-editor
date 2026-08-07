@@ -7,20 +7,20 @@
 
 namespace Scalpel {
 
-namespace {
-
-constexpr uint32_t FractionalScaleDenominator = 120;
-
-int ScaleDimension(int logical, uint32_t numerator) {
-	const uint64_t scaled = static_cast<uint64_t>(logical) * numerator;
+int ScaledBufferDimension(int logical, uint32_t scaleNumerator) {
+	if (logical <= 0) {
+		throw std::invalid_argument("Wayland buffer dimension requires a positive logical size");
+	}
+	if (scaleNumerator == 0) {
+		throw std::invalid_argument("Wayland buffer dimension requires a positive scale");
+	}
+	const uint64_t scaled = static_cast<uint64_t>(logical) * scaleNumerator;
 	const uint64_t rounded =
-		(scaled + FractionalScaleDenominator - 1) / FractionalScaleDenominator;
+		(scaled + WaylandScaleDenominator - 1) / WaylandScaleDenominator;
 	if (rounded == 0 || rounded > INT_MAX) {
 		throw std::overflow_error("Wayland scale exceeds supported buffer dimensions");
 	}
 	return static_cast<int>(rounded);
-}
-
 }
 
 WaylandScaleState::WaylandScaleState(int logicalWidth_, int logicalHeight_) :
@@ -168,7 +168,7 @@ void WaylandScaleState::Refresh() {
 WaylandScaleConfiguration WaylandScaleState::Calculate() const {
 	const bool fractional = viewporterAvailable && fractionalScaleAvailable &&
 		fractionalPreferredScale.has_value();
-	uint32_t numerator = FractionalScaleDenominator;
+	uint32_t numerator = WaylandScaleDenominator;
 	int surfaceBufferScale = 1;
 	if (fractional) {
 		numerator = *fractionalPreferredScale;
@@ -184,23 +184,23 @@ WaylandScaleConfiguration WaylandScaleState::Calculate() const {
 		if (!bufferScaleAvailable) {
 			integerScale = 1;
 		}
-		if (integerScale > INT_MAX / static_cast<int>(FractionalScaleDenominator)) {
+		if (integerScale > INT_MAX / static_cast<int>(WaylandScaleDenominator)) {
 			throw std::overflow_error("Wayland integer scale is too large");
 		}
-		numerator = static_cast<uint32_t>(integerScale) * FractionalScaleDenominator;
+		numerator = static_cast<uint32_t>(integerScale) * WaylandScaleDenominator;
 		surfaceBufferScale = integerScale;
 	}
 	const uint64_t cursorRounded =
-		(static_cast<uint64_t>(numerator) + FractionalScaleDenominator - 1) /
-		FractionalScaleDenominator;
+		(static_cast<uint64_t>(numerator) + WaylandScaleDenominator - 1) /
+		WaylandScaleDenominator;
 	if (cursorRounded == 0 || cursorRounded > INT_MAX) {
 		throw std::overflow_error("Wayland scale exceeds supported cursor size");
 	}
 	return {
 		logicalWidth,
 		logicalHeight,
-		ScaleDimension(logicalWidth, numerator),
-		ScaleDimension(logicalHeight, numerator),
+		ScaledBufferDimension(logicalWidth, numerator),
+		ScaledBufferDimension(logicalHeight, numerator),
 		numerator,
 		surfaceBufferScale,
 		static_cast<int>(cursorRounded),
