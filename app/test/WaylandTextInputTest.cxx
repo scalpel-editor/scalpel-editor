@@ -166,3 +166,37 @@ TEST_CASE("Wayland text input cancels batches on leave and detach") {
 	CHECK(batches[0].cancel);
 	CHECK(input.SetKeyboardFocus(false).empty());
 }
+
+TEST_CASE("Wayland text input mismatched serial applies changes but blocks state") {
+	// Protocol: apply preedit/commit/delete even when serial is stale; do not
+	// push client state until a done serial matches the last commit count.
+	Scalpel::WaylandTextInputState input;
+	(void)input.Attach();
+	(void)input.UpdateClientState(TextInputClientState());
+	(void)input.SetKeyboardFocus(true);
+	REQUIRE(input.Enter().size() == 3);
+	CHECK(input.CommitSerial() == 1);
+
+	input.RecordPreedit("stale", 5, 5);
+	input.Done(0);
+	auto batches = input.TakeBatches();
+	REQUIRE(batches.size() == 1);
+	REQUIRE(batches[0].preedit.has_value());
+	CHECK(batches[0].preedit->text == "stale");
+	CHECK_FALSE(batches[0].refreshState);
+
+	auto changed = TextInputClientState();
+	changed.cursorRectangle.x++;
+	CHECK(input.UpdateClientState(changed).empty());
+	CHECK(input.CommitSerial() == 1);
+
+	input.Done(1);
+	batches = input.TakeBatches();
+	REQUIRE(batches.size() == 1);
+	CHECK(batches[0].refreshState);
+	const auto flushed = input.UpdateClientState(changed);
+	REQUIRE(flushed.size() == 2);
+	CHECK(flushed[0].type == Scalpel::WaylandTextInputRequestType::State);
+	CHECK(flushed[1].type == Scalpel::WaylandTextInputRequestType::Commit);
+	CHECK(input.CommitSerial() == 2);
+}

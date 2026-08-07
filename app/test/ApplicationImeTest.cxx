@@ -142,6 +142,37 @@ TEST_CASE("production editor reports empty IME refresh as other") {
 	CHECK(state->changeCause == Scalpel::ApplicationTextChangeCause::Other);
 }
 
+TEST_CASE("production editor empty IME done clears preedit") {
+	// text-input-v3 treats a done with no preedit_string as applying the
+	// initial empty preedit, so an empty batch must drop tentative text.
+	Scalpel::ApplicationEditor editor(240, 120);
+	editor.LoadInitialBuffer("base");
+
+	Scalpel::ApplicationTextInputBatch preedit;
+	preedit.preedit = Scalpel::ApplicationTextInputPreedit{"x", 1, 1};
+	editor.HandleTextInputBatch(preedit);
+	CHECK(editor.Text() == "xbase");
+	CHECK(editor.ImeIndicatorAt(0) != 0);
+
+	Scalpel::ApplicationTextInputBatch emptyDone;
+	editor.HandleTextInputBatch(emptyDone);
+	CHECK(editor.Text() == "base");
+	CHECK(editor.ImeIndicatorAt(0) == 0);
+}
+
+TEST_CASE("production editor IME deletion excludes the selection") {
+	Scalpel::ApplicationEditor editor(240, 120);
+	editor.LoadInitialBuffer("abcde");
+	// Select "cd" (bytes 2..4); before=1 deletes 'b', after=1 deletes 'e'.
+	editor.SetSel(2, 4);
+
+	Scalpel::ApplicationTextInputBatch batch;
+	batch.deletion = Scalpel::ApplicationTextInputDelete{1, 1};
+	batch.commit = "X";
+	editor.HandleTextInputBatch(batch);
+	CHECK(editor.Text() == "aX");
+}
+
 TEST_CASE("production editor preserves IME cause across pointer motion") {
 	Scalpel::ApplicationEditor editor(240, 120);
 	editor.LoadInitialBuffer("base");
