@@ -91,6 +91,15 @@ public:
 		const std::vector<std::string> &uris);
 	void Clear() noexcept;
 	[[nodiscard]] std::vector<FileDialogResult> TakeResults();
+	/**
+	 * Snapshot of in-flight portal request paths and owners. Used to send
+	 * Request.Close on teardown without inventing acceptance results.
+	 */
+	struct PendingHandle {
+		std::string requestPath;
+		std::string portalOwner;
+	};
+	[[nodiscard]] std::vector<PendingHandle> PendingHandles() const;
 
 private:
 	struct Pending {

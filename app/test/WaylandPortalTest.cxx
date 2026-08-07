@@ -148,6 +148,25 @@ TEST_CASE("Wayland file dialog state drops pending work on clear") {
 	CHECK(state.TakeResults().empty());
 }
 
+TEST_CASE("Wayland file dialog state exposes pending handles for close") {
+	Scalpel::WaylandFileDialogState state;
+	CHECK(state.PendingHandles().empty());
+	(void)state.Begin(Scalpel::FileDialogMode::Open, "/path/open", ":1.10");
+	(void)state.Begin(Scalpel::FileDialogMode::Save, "/path/save", ":1.20");
+	const auto handles = state.PendingHandles();
+	REQUIRE(handles.size() == 2);
+	CHECK(handles[0].requestPath == "/path/open");
+	CHECK(handles[0].portalOwner == ":1.10");
+	CHECK(handles[1].requestPath == "/path/save");
+	CHECK(handles[1].portalOwner == ":1.20");
+	// Snapshot is independent of later abandon; Clear still drops live state.
+	CHECK(state.Abandon("/path/open"));
+	CHECK(state.PendingHandles().size() == 1);
+	CHECK(state.PendingHandles()[0].requestPath == "/path/save");
+	state.Clear();
+	CHECK(state.PendingHandles().empty());
+}
+
 TEST_CASE("Wayland file dialog state rejects invalid begin arguments") {
 	Scalpel::WaylandFileDialogState state;
 	CHECK_THROWS(state.Begin(Scalpel::FileDialogMode::Open, "", ":1.1"));

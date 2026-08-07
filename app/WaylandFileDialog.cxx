@@ -203,6 +203,16 @@ std::vector<FileDialogResult> WaylandFileDialogState::TakeResults() {
 	return taken;
 }
 
+std::vector<WaylandFileDialogState::PendingHandle>
+WaylandFileDialogState::PendingHandles() const {
+	std::vector<PendingHandle> handles;
+	handles.reserve(pending.size());
+	for (const Pending &entry : pending) {
+		handles.push_back({entry.requestPath, entry.portalOwner});
+	}
+	return handles;
+}
+
 std::vector<WaylandFileDialogState::Pending>::iterator
 WaylandFileDialogState::Find(std::string_view requestPath) noexcept {
 	return std::find_if(pending.begin(), pending.end(),
@@ -579,10 +589,31 @@ std::optional<uint64_t> WaylandFileDialog::Show(DBusConnection *busConnection,
 }
 
 void WaylandFileDialog::Clear() noexcept {
-	if (connection && responseFilterInstalled) {
-		dbus_connection_remove_filter(
-			connection, &WaylandFileDialog::ResponseFilter, this);
-		responseFilterInstalled = false;
+	if (connection) {
+		// Abort open portal dialogs so they do not outlive the editor.
+		// Request.Close does not emit Response; pending state is dropped below
+		// without inventing acceptance.
+		for (const WaylandFileDialogState::PendingHandle &handle :
+			state.PendingHandles()) {
+			if (handle.requestPath.empty() || handle.portalOwner.empty()) {
+				continue;
+			}
+			DBusMessage *close = dbus_message_new_method_call(
+				handle.portalOwner.c_str(), handle.requestPath.c_str(),
+				PortalRequestInterface, "Close");
+			if (!close) {
+				continue;
+			}
+			dbus_message_set_no_reply(close, TRUE);
+			(void)dbus_connection_send(connection, close, nullptr);
+			dbus_message_unref(close);
+		}
+		(void)dbus_connection_flush(connection);
+		if (responseFilterInstalled) {
+			dbus_connection_remove_filter(
+				connection, &WaylandFileDialog::ResponseFilter, this);
+			responseFilterInstalled = false;
+		}
 	}
 	connection = nullptr;
 	state.Clear();
