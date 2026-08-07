@@ -24,6 +24,7 @@ enum class ApplicationClipboardStatus {
 	TooLarge,
 	TimedOut,
 	Superseded,
+	NotApplied,
 };
 
 struct ApplicationClipboardRequest {

@@ -84,6 +84,8 @@ const char *ClipboardStatusName(ApplicationClipboardStatus status) noexcept {
 		return "transfer timed out";
 	case ApplicationClipboardStatus::Superseded:
 		return "superseded";
+	case ApplicationClipboardStatus::NotApplied:
+		return "text not applied";
 	}
 	return "unknown";
 }
@@ -1084,7 +1086,11 @@ void ApplicationEditor::HandleClipboardResult(uint64_t id,
 		if (!pendingPaste || pendingPaste->id != id ||
 			pendingPaste->documentGeneration != documentGeneration) {
 			reportedStatus = ApplicationClipboardStatus::Superseded;
-		} else if (!text.empty() && CanPaste()) {
+		} else if (text.empty()) {
+			reportedStatus = ApplicationClipboardStatus::NoText;
+		} else if (!CanPaste()) {
+			reportedStatus = ApplicationClipboardStatus::NotApplied;
+		} else {
 			Scintilla::Internal::UndoGroup undoGroup(pdoc);
 			ClearSelection(multiPasteMode == Scintilla::MultiPaste::Each);
 			InsertPasteShape(text, PasteShape::stream);

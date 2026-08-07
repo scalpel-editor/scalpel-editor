@@ -50,6 +50,46 @@ TEST_CASE("production editor applies a completed asynchronous paste") {
 		Scalpel::ApplicationClipboardStatus::Complete);
 }
 
+TEST_CASE("production editor reports empty and unwritable clipboard pastes") {
+	Scalpel::ApplicationEditor editor(200, 100);
+	editor.LoadInitialBuffer("body");
+	editor.SetClipboardPasteAvailable(true);
+	editor.RequestClipboardPaste();
+	std::vector<Scalpel::ApplicationClipboardRequest> requests =
+		editor.TakeClipboardRequests();
+	REQUIRE(requests.size() == 1);
+	editor.HandleClipboardResult(requests.front().id,
+		Scalpel::ApplicationClipboardOperation::Paste,
+		Scalpel::ApplicationClipboardStatus::Complete, {});
+	CHECK(editor.Text() == "body");
+	CHECK(editor.ClipboardResults().back().status ==
+		Scalpel::ApplicationClipboardStatus::NoText);
+
+	editor.SetReadOnly(true);
+	editor.RequestClipboardPaste();
+	// Read-only documents refuse Paste() before a request is queued.
+	CHECK(editor.TakeClipboardRequests().empty());
+	// Direct result path still reports NotApplied when paste cannot land.
+	editor.HandleClipboardResult(99,
+		Scalpel::ApplicationClipboardOperation::Paste,
+		Scalpel::ApplicationClipboardStatus::Complete, "late");
+	// No pending paste id 99: superseded rather than not-applied.
+	CHECK(editor.ClipboardResults().back().status ==
+		Scalpel::ApplicationClipboardStatus::Superseded);
+
+	editor.SetReadOnly(false);
+	editor.RequestClipboardPaste();
+	requests = editor.TakeClipboardRequests();
+	REQUIRE(requests.size() == 1);
+	editor.SetReadOnly(true);
+	editor.HandleClipboardResult(requests.front().id,
+		Scalpel::ApplicationClipboardOperation::Paste,
+		Scalpel::ApplicationClipboardStatus::Complete, "blocked");
+	CHECK(editor.Text() == "body");
+	CHECK(editor.ClipboardResults().back().status ==
+		Scalpel::ApplicationClipboardStatus::NotApplied);
+}
+
 TEST_CASE("production editor rejects stale asynchronous paste results") {
 	Scalpel::ApplicationEditor editor(200, 100);
 	editor.LoadInitialBuffer("first");
