@@ -41,6 +41,10 @@ cmake --build build --target waylandFrameTest
 cmake --build build --target scalpel-editor
 ```
 
+Do not use `--clean-first` or manually delete build products.
+
+Do not use tmp folders to rebuild the project.
+
 Ninja rebuilds that target's dependencies. A CMake dependency or compile-flag change may rebuild more of the tree; still request only the needed target and let Ninja decide.
 
 Documentation-only changes do not require a build unless they alter build or test instructions.
