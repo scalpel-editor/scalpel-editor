@@ -352,3 +352,18 @@ TEST_CASE("surface clip survives drawing to a sibling pixmap") {
 	REQUIRE(ExactColour(surface->Buffer().ReadPixel(8, 8), bg));
 	surface->PopClip();
 }
+
+TEST_CASE("DrawRGBAImage no-ops empty and null inputs without changing pixels") {
+	GlContext context;
+	Renderer renderer(context);
+	std::unique_ptr<DrawSurface> surface = CreateDrawSurface(renderer, 4, 4);
+	const ColourRGBA bg(10, 20, 30, 255);
+	surface->BindDrawTarget();
+	renderer.Clear(bg);
+	const unsigned char pixel[] = {255, 0, 0, 255};
+	surface->DrawRGBAImage(PRectangle::FromInts(0, 0, 1, 1), 0, 1, pixel);
+	surface->DrawRGBAImage(PRectangle::FromInts(0, 0, 1, 1), 1, 0, pixel);
+	surface->DrawRGBAImage(PRectangle::FromInts(0, 0, 1, 1), 1, 1, nullptr);
+	surface->DrawRGBAImage(PRectangle::FromInts(0, 0, 0, 1), 1, 1, pixel);
+	REQUIRE(ExactColour(surface->Buffer().ReadPixel(0, 0), bg));
+}

@@ -37,9 +37,16 @@ DrawSurface::DrawSurface(Renderer *renderer_, FontFallback fallback_) :
 }
 
 DrawSurface::~DrawSurface() {
+	// Match Release: MakeCurrent can throw if the context is already gone, and
+	// destructors must not propagate. Prefer an orderly GL delete while current;
+	// if that fails, drop the names without a current context rather than abort.
 	if (buffer.Valid() && renderer) {
-		renderer->MakeCurrent();
-		buffer.Destroy();
+		try {
+			renderer->MakeCurrent();
+			buffer.Destroy();
+		} catch (...) {
+			buffer.Destroy();
+		}
 	}
 }
 
