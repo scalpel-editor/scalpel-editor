@@ -1122,9 +1122,14 @@ void ApplicationEditor::HandlePrimarySelectionResult(uint64_t id,
 	ApplicationPrimarySelectionOperation operation,
 	ApplicationPrimarySelectionStatus status, std::string text) {
 	ApplicationPrimarySelectionStatus reportedStatus = status;
+	// Only ownership-ending publish outcomes clear the claim. Source write
+	// Complete, timeout, or peer failure do not mean the compositor took the
+	// selection; treating them as loss skipped later clear publishes.
 	if (operation == ApplicationPrimarySelectionOperation::Publish &&
 		id == latestPrimarySelectionClaimRequest &&
-		status != ApplicationPrimarySelectionStatus::Published) {
+		(status == ApplicationPrimarySelectionStatus::Cancelled ||
+			status == ApplicationPrimarySelectionStatus::Unavailable ||
+			status == ApplicationPrimarySelectionStatus::Failed)) {
 		primarySelectionClaimed = false;
 	}
 	if (operation == ApplicationPrimarySelectionOperation::Paste &&

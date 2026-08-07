@@ -148,6 +148,34 @@ TEST_CASE("production editor ignores stale primary claim failures") {
 	CHECK(editor.TakePrimarySelectionRequests().size() == 1);
 }
 
+TEST_CASE("production editor keeps primary claim after source write complete") {
+	Scalpel::ApplicationEditor editor(240, 120);
+	editor.LoadInitialBuffer("primary selection");
+
+	editor.HandleKeyboardInput({static_cast<Scintilla::Keys>('A'),
+		Scintilla::KeyMod::Ctrl, {}, 1, true});
+	const std::vector<Scalpel::ApplicationPrimarySelectionRequest> claim =
+		editor.TakePrimarySelectionRequests();
+	REQUIRE(claim.size() == 1);
+	editor.HandlePrimarySelectionResult(claim.front().id,
+		Scalpel::ApplicationPrimarySelectionOperation::Publish,
+		Scalpel::ApplicationPrimarySelectionStatus::Published);
+	// A peer reading the source completes a write transfer for the same claim
+	// id. That must not drop ownership tracking.
+	editor.HandlePrimarySelectionResult(claim.front().id,
+		Scalpel::ApplicationPrimarySelectionOperation::Publish,
+		Scalpel::ApplicationPrimarySelectionStatus::Complete);
+
+	editor.HandleKeyboardInput({Scintilla::Keys::Right, Scintilla::KeyMod::Norm,
+		{}, 2, true});
+	const std::vector<Scalpel::ApplicationPrimarySelectionRequest> clear =
+		editor.TakePrimarySelectionRequests();
+	REQUIRE(clear.size() == 1);
+	CHECK(clear.front().operation ==
+		Scalpel::ApplicationPrimarySelectionOperation::Publish);
+	CHECK_FALSE(clear.front().text.has_value());
+}
+
 TEST_CASE("production editor defers pointer selection ownership until release") {
 	Scalpel::ApplicationEditor editor(320, 120);
 	editor.LoadInitialBuffer("alpha beta gamma");
