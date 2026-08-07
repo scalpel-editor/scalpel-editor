@@ -24,7 +24,6 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -38,6 +37,7 @@
 #include "GlContext.h"
 #include "RecentFiles.h"
 #include "Renderer.h"
+#include "WaylandApplicationAdapter.h"
 #include "WaylandWindow.h"
 
 namespace {
@@ -289,9 +289,6 @@ std::vector<Scalpel::FileDialogFilter> TextDialogFilters() {
  * Drain ApplicationUi shell effects. Application-side work is already applied;
  * portal dialogs, accept-close, and context-menu popup lifecycle remain host work.
  */
-using ActiveFileDialogs =
-	std::unordered_map<uint64_t, Scalpel::DocumentDialogId>;
-
 struct ContextMenuPopupHost {
 	bool wantsPaint = false;
 	Scalpel::ContextMenuPainter painter;
@@ -410,28 +407,28 @@ void ApplyShellEffects(Scalpel::ApplicationUi &ui,
 	Scalpel::WaylandWindow &window,
 	Scintilla::Internal::GlContext &gl,
 	ContextMenuPopupHost &contextPopup,
-	ActiveFileDialogs &activeFileDialogs,
+	Scalpel::ActiveFileDialogs &activeFileDialogs,
 	bool &quitAccepted) {
-	for (const Scalpel::ApplicationShellEffect &effect : ui.TakeShellEffects()) {
+	const std::vector<Scalpel::ApplicationShellEffect> effects =
+		ui.TakeShellEffects();
+	Scalpel::ApplySessionShellEffects(effects, ui, activeFileDialogs,
+		quitAccepted,
+		[&window](const Scalpel::ApplicationShellEffect &effect)
+			-> std::optional<uint64_t> {
+			if (effect.kind == Scalpel::ApplicationShellEffectKind::ShowOpen) {
+				return StartOpenDialog(window, effect.documentPath);
+			}
+			if (effect.kind ==
+				Scalpel::ApplicationShellEffectKind::ShowSaveAs) {
+				return RequestSaveAsDialog(window, effect.documentPath);
+			}
+			return std::nullopt;
+		});
+	for (const Scalpel::ApplicationShellEffect &effect : effects) {
 		switch (effect.kind) {
 		case Scalpel::ApplicationShellEffectKind::ShowOpen:
-			if (const std::optional<uint64_t> requestId =
-					StartOpenDialog(window, effect.documentPath)) {
-				activeFileDialogs[*requestId] = effect.dialogId;
-			} else {
-				ui.NotifyDialogFailed(effect.dialogId);
-			}
-			break;
 		case Scalpel::ApplicationShellEffectKind::ShowSaveAs:
-			if (const std::optional<uint64_t> requestId =
-					RequestSaveAsDialog(window, effect.documentPath)) {
-				activeFileDialogs[*requestId] = effect.dialogId;
-			} else {
-				ui.NotifyDialogFailed(effect.dialogId);
-			}
-			break;
 		case Scalpel::ApplicationShellEffectKind::AcceptClose:
-			quitAccepted = true;
 			break;
 		case Scalpel::ApplicationShellEffectKind::ShowContextMenu:
 			ShowContextMenuPopup(ui, window, gl, contextPopup, effect);
@@ -445,24 +442,6 @@ void ApplyShellEffects(Scalpel::ApplicationUi &ui,
 			}
 			break;
 		}
-	}
-}
-
-void ApplyFileDialogResults(Scalpel::WaylandWindow &window,
-	Scalpel::ApplicationUi &ui,
-	ActiveFileDialogs &activeFileDialogs) {
-	for (const Scalpel::FileDialogResult &result :
-		window.TakeFileDialogResults()) {
-		const auto intent = activeFileDialogs.find(result.id);
-		if (intent == activeFileDialogs.end()) {
-			continue;
-		}
-		const Scalpel::DocumentDialogId dialogId = intent->second;
-		activeFileDialogs.erase(intent);
-		const bool accepted =
-			result.status == Scalpel::FileDialogResultStatus::Accepted &&
-			!result.paths.empty();
-		ui.NotifyDialogResult(dialogId, accepted, result.paths);
 	}
 }
 
@@ -510,6 +489,10 @@ ApplicationTerminationReason RunWaylandApplication(ApplicationSession &session) 
 		ApplyShellEffects(ui, window, gl, contextPopup, activeFileDialogs,
 			quitAccepted);
 	};
+	const auto leaveSession = [&] {
+		ui.PrepareForExit();
+		applyEffects();
+	};
 
 	(void)ui.SynchronizeTabs();
 	editor.InvalidateTopChrome();
@@ -521,7 +504,8 @@ ApplicationTerminationReason RunWaylandApplication(ApplicationSession &session) 
 		DeliverClipboardResults(window, ui);
 		DeliverPrimarySelectionResults(window, editor);
 		DeliverTextInputBatches(window, ui);
-		ApplyFileDialogResults(window, ui, activeFileDialogs);
+		ApplyFileDialogResults(window.TakeFileDialogResults(), ui,
+			activeFileDialogs);
 		applyEffects();
 		ServiceContextMenuPopup(ui, window, gl, contextPopup);
 		SynchronizeTextInput(ui, window);
@@ -530,8 +514,7 @@ ApplicationTerminationReason RunWaylandApplication(ApplicationSession &session) 
 		applyEffects();
 
 		if (window.ForceCloseRequested()) {
-			ui.PrepareForExit();
-			applyEffects();
+			leaveSession();
 			break;
 		}
 		if (window.UserCloseRequested()) {
@@ -539,6 +522,7 @@ ApplicationTerminationReason RunWaylandApplication(ApplicationSession &session) 
 			applyEffects();
 			window.ClearCloseRequest();
 			if (quitAccepted) {
+				leaveSession();
 				break;
 			}
 		}
@@ -580,8 +564,7 @@ ApplicationTerminationReason RunWaylandApplication(ApplicationSession &session) 
 		}
 
 		if (quitAccepted || window.ForceCloseRequested()) {
-			ui.PrepareForExit();
-			applyEffects();
+			leaveSession();
 			break;
 		}
 
@@ -627,10 +610,7 @@ ApplicationTerminationReason RunWaylandApplication(ApplicationSession &session) 
 		}
 	}
 	DestroyContextMenuPopupHost(window, gl, contextPopup);
-	if (quitAccepted) {
-		return ApplicationTerminationReason::AcceptedClose;
-	}
-	return ApplicationTerminationReason::ForcedShutdown;
+	return SessionLoopTerminationReason(quitAccepted);
 }
 
 }

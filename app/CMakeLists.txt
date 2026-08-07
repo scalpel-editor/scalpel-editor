@@ -203,6 +203,7 @@ target_compile_options(scalpel_application PRIVATE -Wall -Wextra)
 
 add_executable(scalpel-editor
   main.cxx
+  WaylandApplicationAdapter.cxx
   WaylandApplicationRunner.cxx
 )
 target_link_libraries(scalpel-editor PRIVATE scalpel_application scalpel_wayland)

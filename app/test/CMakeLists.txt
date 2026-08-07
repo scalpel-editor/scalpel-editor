@@ -427,3 +427,20 @@ target_link_libraries(waylandIntegrationTest PRIVATE
 target_compile_options(waylandIntegrationTest PRIVATE -Wall -Wextra)
 
 add_test(NAME wayland-integration COMMAND waylandIntegrationTest)
+
+add_executable(waylandApplicationAdapterTest
+  WaylandApplicationAdapterTest.cxx
+  ../WaylandApplicationAdapter.cxx
+  WaylandTestMain.cxx
+)
+target_include_directories(waylandApplicationAdapterTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(waylandApplicationAdapterTest PRIVATE
+  scalpel_application
+  scalpel_wayland
+)
+target_compile_options(waylandApplicationAdapterTest PRIVATE -Wall -Wextra)
+
+add_test(NAME wayland-application-adapter COMMAND waylandApplicationAdapterTest)

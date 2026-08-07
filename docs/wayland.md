@@ -62,6 +62,8 @@ The application is single-threaded. One poll snapshot combines:
 
 Each descriptor retains the callback for its concern. The timeout is the earliest eligible deadline. A blocked Wayland flush is recovered without allowing already-due editor work to spin.
 
+Session shell mapping (portal request IDs to application dialog IDs, dialog startup failure, and accept-close) lives in `WaylandApplicationAdapter` and is covered by deterministic tests without a display. Context-menu popup create, paint, and destroy remain in the runner beside EGL. Force-close, accepted close, and quit-from-input all call `PrepareForExit` before leaving the loop so menus and context popups are dismissed consistently.
+
 ## Frame lifecycle
 
 Damage accumulation is separate from compositor permission to submit. `WaylandFrameState` retains pending invalidation while a frame callback is outstanding, captures the damage used by an active paint, and preserves invalidation raised during painting for the next frame.
