@@ -170,10 +170,7 @@ bool Editor::WrapBlock(Surface *surface, Sci::Line lineToWrap, Sci::Line lineToW
 
 	ElapsedPeriod epWrapping;
 
-	// Wrap all the short lines in multiple threads
-
-	// If only 1 thread needed then use the main thread, else spin up multiple
-	const std::launch policy = multiThreaded ? std::launch::async : std::launch::deferred;
+	// Wrap all the short lines, using multiple threads when available.
 
 	std::atomic<size_t> nextIndex = 0;
 
@@ -188,10 +185,8 @@ bool Editor::WrapBlock(Surface *surface, Sci::Line lineToWrap, Sci::Line lineToW
 	// Protect the line layout cache from being accessed from multiple threads simultaneously
 	std::mutex mutexRetrieve;
 
-	std::vector<std::future<void>> futures;
-	for (size_t th = 0; th < threads; th++) {
-		std::future<void> fut = std::async(policy,
-			[=, &surface, &nextIndex, &linesAfterWrap, &mutexRetrieve]() {
+	const auto wrapShortLines =
+		[=, &nextIndex, &linesAfterWrap, &mutexRetrieve]() {
 			// llTemporary is reused for non-significant lines, avoiding allocation costs.
 			std::shared_ptr<LineLayout> llTemporary = std::make_shared<LineLayout>(-1, 200);
 			while (true) {
@@ -205,8 +200,12 @@ bool Editor::WrapBlock(Surface *surface, Sci::Line lineToWrap, Sci::Line lineToW
 				if (lengthLine < lengthToMultiThread) {
 					std::shared_ptr<LineLayout> ll;
 					if (significantLines.LineMayCache(lineNumber)) {
-						std::lock_guard<std::mutex> guard(mutexRetrieve);
-						ll = view.RetrieveLineLayout(lineNumber, *this);
+						if (multiThreaded) {
+							std::lock_guard<std::mutex> guard(mutexRetrieve);
+							ll = view.RetrieveLineLayout(lineNumber, *this);
+						} else {
+							ll = view.RetrieveLineLayout(lineNumber, *this);
+						}
 					} else {
 						ll = llTemporary;
 						ll->ReSet(lineNumber, lengthLine);
@@ -215,13 +214,19 @@ bool Editor::WrapBlock(Surface *surface, Sci::Line lineToWrap, Sci::Line lineToW
 					linesAfterWrap[i] = ll->lines;
 				}
 			}
-		});
-		futures.push_back(std::move(fut));
+		};
+
+	if (threads == 1) {
+		wrapShortLines();
+	} else {
+		std::vector<std::future<void>> futures(threads);
+		for (std::future<void> &future : futures) {
+			future = std::async(std::launch::async, wrapShortLines);
+		}
+		for (std::future<void> &future : futures) {
+			future.get();
+		}
 	}
-	for (const std::future<void> &f : futures) {
-		f.wait();
-	}
-	// End of multiple threads
 
 	// Multiply duration by number of threads to produce (near) equivalence to duration if single threaded
 	const double durationShortLines = epWrapping.Duration(true);

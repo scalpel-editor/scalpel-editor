@@ -495,24 +495,24 @@ void EditView::LayoutLine(const EditModel &model, Surface *surface, const ViewSt
 
 			std::atomic<uint32_t> nextIndex = 0;
 
-			const bool multiThreaded = threads > 1;
-			const bool multiThreadedContext = multiThreaded || callerMultiThreaded;
+			const bool multiThreadedContext = (threads > 1) || callerMultiThreaded;
 			IPositionCache *pCache = posCache.get();
 
-			// If only 1 thread needed then use the main thread, else spin up multiple
-			const std::launch policy = (multiThreaded) ? std::launch::async : std::launch::deferred;
-
-			std::vector<std::future<void>> futures;
-			for (size_t th = 0; th < threads; th++) {
-				// Find relative positions of everything except for tabs
-				std::future<void> fut = std::async(policy,
-					[pCache, surface, &vstyle, &ll, &segments, &nextIndex, multiThreadedContext]() {
-						LayoutSegments(pCache, surface, vstyle, ll, segments, nextIndex, multiThreadedContext);
-					});
-				futures.push_back(std::move(fut));
-			}
-			for (const std::future<void> &f : futures) {
-				f.wait();
+			// Find relative positions of everything except for tabs.
+			const auto layoutSegments =
+				[pCache, surface, &vstyle, ll, &segments, &nextIndex, multiThreadedContext]() {
+					LayoutSegments(pCache, surface, vstyle, ll, segments, nextIndex, multiThreadedContext);
+				};
+			if (threads == 1) {
+				layoutSegments();
+			} else {
+				std::vector<std::future<void>> futures(threads);
+				for (std::future<void> &future : futures) {
+					future = std::async(std::launch::async, layoutSegments);
+				}
+				for (std::future<void> &future : futures) {
+					future.get();
+				}
 			}
 		}
 

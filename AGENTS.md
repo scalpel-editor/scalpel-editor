@@ -81,6 +81,12 @@ For failure details, run a test binary directly: `./build/scintilla/test/unit/un
 - Do not write code that calls an external API without reading the relevant source or local headers first. This includes Wayland, EGL, xkbcommon, FreeType, and the Scintilla core itself. If the needed source is not available, stop and ask for it. Do not guess signatures, types, ownership rules, or lifecycle rules.
 - Prefer deleting indirection over adding abstraction. When tempted to make something more generally useful, stop and make it do its one job better instead.
 
+### Upstream Scintilla fixes
+
+- Record incorporated upstream fixes and the most recently reviewed upstream changeset in `scintilla/UPSTREAM_FIXES.md`.
+- Commit each adapted fix with its ledger entry and any focused test changes. The commit message must name the upstream Mercurial changesets, explain why the fix applies, and describe material local adaptations.
+- Update the ledger review position after every completed upstream review, including a review that incorporates nothing. Do not catalog routine cleanup or every rejected upstream change.
+
 ### Includes
 
 Production headers under `app/`, `scintilla/src/`, and `scintilla/include/` must compile alone. Do not run the full header scan as routine session work. When a session changes production headers or their includes, check only those paths — either pass them explicitly or use `tools/check-self-contained-headers.sh --changed` (dirty production headers vs `HEAD`). The no-argument full scan is for occasional audits and phase gates; it uses the configured development tree's compile database to select flags for the target that owns each header.
