@@ -38,8 +38,9 @@ Protocol objects are destroyed from child to parent. Removing a seat or manager 
 
 Asynchronous operations do not retain an editor pointer:
 
-- Clipboard paste results carry a request identity and apply only to the current document generation.
-- Primary-selection paste retains its requested document position and applies only while the document revision remains current.
+- Clipboard paste results carry a request identity and apply only to the current document generation. Empty completed text is reported as no text; text that cannot land on a read-only or protected selection is reported as not applied.
+- Primary-selection paste retains its requested document position and applies only while the document revision remains current (any text change or document switch).
+- Clipboard and primary ownership are reported as published, cancelled, unavailable, or create failure. Peer source reads use the shared write transfer path but do not produce Copy or Publish completion results and do not end local ownership tracking.
 - Text-input state uses protocol commit serials and publishes copied batches only at `done`.
 - File-dialog results carry a stable portal request ID. `main` maps it to the application dialog identity that retains the original open or save intent, including the initiating tab.
 - Portal parent handles are accepted only from the current xdg-foreign export.

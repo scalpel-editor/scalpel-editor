@@ -162,9 +162,9 @@ Keyboard composition and repeat also have lifecycles:
 
 Clipboard and primary selection can share stateless MIME ranking and bounded byte-transfer machinery, but they have different ownership, offers, serials, cancellation, and user interaction.
 
-Each transfer should own one nonblocking descriptor, a byte limit, a deadline, and exactly one completion result. Partial reads and writes, `EAGAIN`, EOF, peer failure, cancellation, timeout, and excessive size are ordinary states.
+Each transfer should own one nonblocking descriptor, a byte limit, a deadline, and exactly one completion result. Partial reads and writes, `EAGAIN`, EOF, peer failure, cancellation, timeout, and excessive size are ordinary states. Source-side writes that feed a peer are transport for an already published offer: cancel them when the source is destroyed or cancelled, and do not surface their completion as a new ownership result.
 
-Do not clear or replace primary ownership merely because a middle-button paste begins. Retain the requested paste position so delayed text does not follow later pointer movement.
+Do not clear or replace primary ownership merely because a middle-button paste begins or because a peer finished reading the source. Retain the requested paste position so delayed text does not follow later pointer movement. Clear the local primary claim only when publish is cancelled, unavailable, or fails to create a source.
 
 ## Batch text input at the protocol boundary
 
