@@ -421,6 +421,11 @@ TEST_CASE("Document") {
 		REQUIRE(doc.document.FindText(0, 7, "z", FindOption::MatchCase, &lengthFinding) == 6);
 		lengthFinding = 3;
 		REQUIRE(doc.document.FindText(0, 7, "\xe2\x82\xac", FindOption::MatchCase, &lengthFinding) == 3);
+		// Case-insensitive search must advance like NextPosition over invalid bytes
+		lengthFinding = 1;
+		REQUIRE(doc.document.FindText(0, 7, "z", FindOption::None, &lengthFinding) == 6);
+		lengthFinding = 3;
+		REQUIRE(doc.document.FindText(0, 7, "\xe2\x82\xac", FindOption::None, &lengthFinding) == 3);
 		// test DelCharBack(): deleting back over an invalid byte removes exactly that byte
 		doc.document.DelCharBack(3);
 		REQUIRE(doc.document.Length() == 6);
@@ -428,6 +433,38 @@ TEST_CASE("Document") {
 		ch = doc.document.GetCharacterAndWidth(2, &width);
 		REQUIRE(width == 3);
 		REQUIRE(ch == 0x20AC);
+	}
+
+	SECTION("Case-insensitive FindText advances one byte over non-characters") {
+		// U+FFFE is classified invalid with multi-byte width; document policy treats
+		// each of its three bytes as one character. Case-fold search must not skip
+		// over them and miss following content (same as MatchCase / NextPosition).
+		DocPlus doc("a\xEF\xBF\xBEz");
+		REQUIRE(doc.document.Length() == 5);
+		REQUIRE(doc.document.NextPosition(1, 1) == 2);
+		REQUIRE(doc.document.LenChar(1) == 1);
+
+		Sci::Position lengthFinding = 1;
+		REQUIRE(doc.document.FindText(0, 5, "z", FindOption::MatchCase, &lengthFinding) == 4);
+		lengthFinding = 1;
+		REQUIRE(doc.document.FindText(0, 5, "z", FindOption::None, &lengthFinding) == 4);
+		lengthFinding = 1;
+		REQUIRE(doc.document.FindText(0, 5, "Z", FindOption::None, &lengthFinding) == 4);
+		// Reverse case-fold search also finds content after non-characters.
+		lengthFinding = 1;
+		REQUIRE(doc.document.FindText(5, 0, "z", FindOption::None, &lengthFinding) == 4);
+		// Truncated multi-byte lead mid-string must not drop following ASCII under fold.
+		DocPlus truncated("a\xF1yz");
+		lengthFinding = 1;
+		REQUIRE(truncated.document.FindText(0, 4, "z", FindOption::None, &lengthFinding) == 3);
+	}
+
+	SECTION("Empty FindText needle returns minPos without scanning") {
+		DocPlus doc("abc");
+		Sci::Position lengthFinding = 0;
+		REQUIRE(doc.document.FindText(1, 3, "x", FindOption::MatchCase, &lengthFinding) == 1);
+		lengthFinding = 0;
+		REQUIRE(doc.document.FindText(2, 0, "x", FindOption::None, &lengthFinding) == 2);
 	}
 
 	SECTION("RegexSearchAndSubstitution") {

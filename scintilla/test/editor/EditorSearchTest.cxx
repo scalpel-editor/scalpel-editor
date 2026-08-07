@@ -128,3 +128,39 @@ TEST_CASE("ReplaceSel replaces the selection") {
 	editor.ReplaceSel("cd");
 	CHECK(editor.GetText() == "abcdef");
 }
+
+TEST_CASE("SearchInTarget case-insensitive finds text after non-character bytes") {
+	TestHost host;
+	TestEditor editor(host);
+	// U+FFFE non-character between needle and haystack fragments
+	LoadClean(editor, "aa\xEF\xBF\xBE" "bb");
+	editor.SetSearchFlags(FindOption::None);
+	editor.TargetWholeDocument();
+	const Sci::Position pos = editor.SearchInTarget("BB");
+	CHECK(pos == 5);
+	CHECK(editor.GetTargetStart() == 5);
+	CHECK(editor.GetTargetEnd() == 7);
+}
+
+TEST_CASE("SearchInTarget reverse finds earlier match") {
+	TestHost host;
+	TestEditor editor(host);
+	LoadClean(editor, "one two one");
+	editor.SetSearchFlags(FindOption::MatchCase);
+	editor.SetTargetRange(editor.GetTextLength(), 0);
+	const Sci::Position pos = editor.SearchInTarget("one");
+	CHECK(pos == 8);
+	CHECK(editor.GetTargetStart() == 8);
+	CHECK(editor.GetTargetEnd() == 11);
+}
+
+TEST_CASE("ReplaceTarget after zero-width target inserts without deleting") {
+	TestHost host;
+	TestEditor editor(host);
+	LoadClean(editor, "ab");
+	editor.SetTargetRange(1, 1);
+	CHECK(editor.ReplaceTargetBasic("X") == 1);
+	CHECK(editor.GetText() == "aXb");
+	CHECK(editor.GetTargetStart() == 1);
+	CHECK(editor.GetTargetEnd() == 2);
+}

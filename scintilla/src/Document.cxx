@@ -2142,7 +2142,10 @@ Sci::Position Document::FindText(Sci::Position minPos, Sci::Position maxPos, con
 						for (int b = 1; b < widthCharBytes; b++) {
 							bytes[b] = cbView.CharAt(posIndexDocument + b);
 						}
-						widthChar = UTF8Classify(bytes, widthCharBytes) & UTF8MaskWidth;
+						// Invalid UTF-8, including non-characters with multi-byte classify
+						// width, is one character for fold and advance so search stays
+						// aligned with LenChar and NextPosition.
+						widthChar = UTF8DrawBytes(bytes, static_cast<size_t>(widthCharBytes));
 						if (!indexSearch) {	// First character
 							widthFirstCharacter = widthChar;
 						}
