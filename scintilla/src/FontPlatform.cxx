@@ -485,25 +485,38 @@ bool FontFace::ShapesSequence(const char32_t *codePoints, size_t count) const {
 	if (!codePoints || count == 0 || !impl->hbFont) {
 		return false;
 	}
-	hb_buffer_t *buffer = hb_buffer_create();
+	// Must match ShapeSpan in ShapedRun.cxx: discretionary liga/dlig off so
+	// fallback acceptance uses the same features as measurement and drawing.
+	static const hb_feature_t kEditorShapeFeatures[] = {
+		{HB_TAG('l', 'i', 'g', 'a'), 0, HB_FEATURE_GLOBAL_START, HB_FEATURE_GLOBAL_END},
+		{HB_TAG('d', 'l', 'i', 'g'), 0, HB_FEATURE_GLOBAL_START, HB_FEATURE_GLOBAL_END},
+	};
+	struct HbBufferDestroy {
+		void operator()(hb_buffer_t *buffer) const noexcept {
+			if (buffer) {
+				hb_buffer_destroy(buffer);
+			}
+		}
+	};
+	std::unique_ptr<hb_buffer_t, HbBufferDestroy> buffer(hb_buffer_create());
 	if (!buffer) {
 		return false;
 	}
-	hb_buffer_set_content_type(buffer, HB_BUFFER_CONTENT_TYPE_UNICODE);
-	hb_buffer_set_direction(buffer, HB_DIRECTION_LTR);
-	hb_buffer_set_cluster_level(buffer, HB_BUFFER_CLUSTER_LEVEL_MONOTONE_CHARACTERS);
+	hb_buffer_set_content_type(buffer.get(), HB_BUFFER_CONTENT_TYPE_UNICODE);
+	hb_buffer_set_direction(buffer.get(), HB_DIRECTION_LTR);
+	hb_buffer_set_cluster_level(buffer.get(), HB_BUFFER_CLUSTER_LEVEL_MONOTONE_CHARACTERS);
 	for (size_t i = 0; i < count; i++) {
-		hb_buffer_add(buffer, static_cast<hb_codepoint_t>(codePoints[i]),
+		hb_buffer_add(buffer.get(), static_cast<hb_codepoint_t>(codePoints[i]),
 			static_cast<unsigned int>(i));
 	}
-	hb_buffer_guess_segment_properties(buffer);
+	hb_buffer_guess_segment_properties(buffer.get());
 	// Keep editor line ordering left-to-right even when script detection differs.
-	hb_buffer_set_direction(buffer, HB_DIRECTION_LTR);
-	hb_shape(impl->hbFont, buffer, nullptr, 0);
+	hb_buffer_set_direction(buffer.get(), HB_DIRECTION_LTR);
+	hb_shape(impl->hbFont, buffer.get(), kEditorShapeFeatures, 2);
 
-	const unsigned int glyphCount = hb_buffer_get_length(buffer);
-	const hb_glyph_info_t *infos = hb_buffer_get_glyph_infos(buffer, nullptr);
-	const hb_glyph_position_t *positions = hb_buffer_get_glyph_positions(buffer, nullptr);
+	const unsigned int glyphCount = hb_buffer_get_length(buffer.get());
+	const hb_glyph_info_t *infos = hb_buffer_get_glyph_infos(buffer.get(), nullptr);
+	const hb_glyph_position_t *positions = hb_buffer_get_glyph_positions(buffer.get(), nullptr);
 	bool sawInk = false;
 	bool clean = true;
 	for (unsigned int g = 0; g < glyphCount; g++) {
@@ -517,7 +530,6 @@ bool FontFace::ShapesSequence(const char32_t *codePoints, size_t count) const {
 			sawInk = true;
 		}
 	}
-	hb_buffer_destroy(buffer);
 	return clean && sawInk;
 }
 

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <list>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -82,6 +83,7 @@ std::string CacheKey(
 }
 
 // Discretionary ligatures off; required shaping features stay under HarfBuzz defaults.
+// FontFace::ShapesSequence must use the same tags so fallback acceptance matches shaping.
 const hb_feature_t *LigatureFeatures(unsigned int &count) noexcept {
 	static const hb_feature_t features[] = {
 		{HB_TAG('l', 'i', 'g', 'a'), 0, HB_FEATURE_GLOBAL_START, HB_FEATURE_GLOBAL_END},
@@ -90,6 +92,16 @@ const hb_feature_t *LigatureFeatures(unsigned int &count) noexcept {
 	count = 2;
 	return features;
 }
+
+struct HbBufferDestroy {
+	void operator()(hb_buffer_t *buffer) const noexcept {
+		if (buffer) {
+			hb_buffer_destroy(buffer);
+		}
+	}
+};
+
+using HbBufferPtr = std::unique_ptr<hb_buffer_t, HbBufferDestroy>;
 
 void ShapeSpan(
 	const std::vector<InputCharacter> &spanCharacters,
@@ -105,35 +117,35 @@ void ShapeSpan(
 		throw std::runtime_error("FontFace has no HarfBuzz font");
 	}
 
-	hb_buffer_t *buffer = hb_buffer_create();
+	HbBufferPtr buffer(hb_buffer_create());
 	if (!buffer) {
 		throw std::runtime_error("HarfBuzz buffer allocation failed");
 	}
 	// hb_buffer_add requires UNICODE content type; it does not set it itself.
-	hb_buffer_set_content_type(buffer, HB_BUFFER_CONTENT_TYPE_UNICODE);
-	hb_buffer_set_direction(buffer, HB_DIRECTION_LTR);
-	hb_buffer_set_cluster_level(buffer, HB_BUFFER_CLUSTER_LEVEL_MONOTONE_CHARACTERS);
+	hb_buffer_set_content_type(buffer.get(), HB_BUFFER_CONTENT_TYPE_UNICODE);
+	hb_buffer_set_direction(buffer.get(), HB_DIRECTION_LTR);
+	hb_buffer_set_cluster_level(buffer.get(), HB_BUFFER_CLUSTER_LEVEL_MONOTONE_CHARACTERS);
 
 	for (const InputCharacter &ch : spanCharacters) {
 		// cluster is the original byte offset so fallback splits keep one address space.
-		hb_buffer_add(buffer, static_cast<hb_codepoint_t>(ch.codePoint),
+		hb_buffer_add(buffer.get(), static_cast<hb_codepoint_t>(ch.codePoint),
 			static_cast<unsigned int>(ch.byteOffset));
 	}
 	// Script from the buffer contents; direction stays LTR for editor lines.
-	hb_buffer_guess_segment_properties(buffer);
-	hb_buffer_set_direction(buffer, HB_DIRECTION_LTR);
+	hb_buffer_guess_segment_properties(buffer.get());
+	hb_buffer_set_direction(buffer.get(), HB_DIRECTION_LTR);
 	// English language remains the editor default when HarfBuzz leaves it unset.
-	if (hb_buffer_get_language(buffer) == HB_LANGUAGE_INVALID) {
-		hb_buffer_set_language(buffer, hb_language_from_string("en", -1));
+	if (hb_buffer_get_language(buffer.get()) == HB_LANGUAGE_INVALID) {
+		hb_buffer_set_language(buffer.get(), hb_language_from_string("en", -1));
 	}
 
 	unsigned int featureCount = 0;
 	const hb_feature_t *features = LigatureFeatures(featureCount);
-	hb_shape(hbFont, buffer, features, featureCount);
+	hb_shape(hbFont, buffer.get(), features, featureCount);
 
-	const unsigned int glyphCount = hb_buffer_get_length(buffer);
-	const hb_glyph_info_t *infos = hb_buffer_get_glyph_infos(buffer, nullptr);
-	const hb_glyph_position_t *positions = hb_buffer_get_glyph_positions(buffer, nullptr);
+	const unsigned int glyphCount = hb_buffer_get_length(buffer.get());
+	const hb_glyph_info_t *infos = hb_buffer_get_glyph_infos(buffer.get(), nullptr);
+	const hb_glyph_position_t *positions = hb_buffer_get_glyph_positions(buffer.get(), nullptr);
 
 	// Bitmap strikes shape at strike ppem; scale into the requested logical size.
 	const XYPOSITION metricsScale = static_cast<XYPOSITION>(face->MetricsScale());
@@ -151,8 +163,6 @@ void ShapeSpan(
 		glyph.face = face;
 		outGlyphs.push_back(glyph);
 	}
-
-	hb_buffer_destroy(buffer);
 }
 
 // Map glyph advances onto per-byte end positions and caret stops.
@@ -164,32 +174,42 @@ void FinishRun(
 	run.byteEndPositions.assign(run.text.size(), 0.0);
 	run.caretStops = {0};
 
-	if (characters.empty()) {
+	if (characters.empty() || units.empty()) {
 		return;
+	}
+
+	// Byte offset → unit index so each glyph maps in O(1) after an O(text) fill.
+	// Avoids O(glyphs × units) nested scans on long subdivided layout segments.
+	std::vector<size_t> unitOfByte(run.text.size(), units.size());
+	std::vector<size_t> unitBeginByte(units.size(), 0);
+	std::vector<size_t> unitEndByte(units.size(), 0);
+	for (size_t u = 0; u < units.size(); u++) {
+		const InputCharacter &first = characters[units[u].charBegin];
+		const InputCharacter &last = characters[units[u].charEnd - 1];
+		unitBeginByte[u] = first.byteOffset;
+		unitEndByte[u] = last.byteOffset + last.byteLength;
+		for (size_t b = unitBeginByte[u]; b < unitEndByte[u]; b++) {
+			unitOfByte[b] = u;
+		}
 	}
 
 	// Total advance per unit (sum of glyphs whose cluster falls in the unit).
 	std::vector<XYPOSITION> advanceByUnit(units.size(), 0.0);
 	for (const ShapedGlyph &glyph : run.glyphs) {
-		for (size_t u = 0; u < units.size(); u++) {
-			const InputCharacter &first = characters[units[u].charBegin];
-			const InputCharacter &last = characters[units[u].charEnd - 1];
-			const size_t unitBegin = first.byteOffset;
-			const size_t unitEnd = last.byteOffset + last.byteLength;
-			if (glyph.cluster >= unitBegin && glyph.cluster < unitEnd) {
-				advanceByUnit[u] += glyph.xAdvance;
-				break;
-			}
+		if (glyph.cluster >= unitOfByte.size()) {
+			continue;
+		}
+		const size_t u = unitOfByte[glyph.cluster];
+		if (u < units.size()) {
+			advanceByUnit[u] += glyph.xAdvance;
 		}
 	}
 
 	XYPOSITION cumulative = 0.0;
 	for (size_t u = 0; u < units.size(); u++) {
 		cumulative += advanceByUnit[u];
-		const InputCharacter &first = characters[units[u].charBegin];
-		const InputCharacter &last = characters[units[u].charEnd - 1];
-		const size_t unitBegin = first.byteOffset;
-		const size_t unitEnd = last.byteOffset + last.byteLength;
+		const size_t unitBegin = unitBeginByte[u];
+		const size_t unitEnd = unitEndByte[u];
 		for (size_t b = unitBegin; b < unitEnd; b++) {
 			run.byteEndPositions[b] = cumulative;
 		}

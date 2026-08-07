@@ -215,7 +215,8 @@ public:
 
 	/**
 	 * True when shaping the complete sequence yields at least one non-.notdef
-	 * glyph and no positive-advance .notdef. Default-ignorable joiners and
+	 * glyph and no positive-advance .notdef. Uses the same HarfBuzz features as
+	 * ShapeText (discretionary liga/dlig off, LTR). Default-ignorable joiners and
 	 * selectors may map to zero-advance placeholders. Empty sequences are false.
 	 */
 	bool ShapesSequence(const char32_t *codePoints, size_t count) const;
