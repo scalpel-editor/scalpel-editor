@@ -388,4 +388,26 @@ TEST_CASE("Selection") {
 		REQUIRE(thinString == "T5v3-2");
 	}
 
+	SECTION("MovePositions updates thin rectangular base") {
+		// Thin selections keep rangeRectangular as the extent used when
+		// rebuilding line ranges. Edits must shift that base as well as the
+		// realized line ranges.
+		Selection selection;
+		selection.selType = Selection::SelTypes::thin;
+		selection.Rectangular() = SelectionRange(SelectionPosition(10), SelectionPosition(4));
+		selection.SetSelection(SelectionRange(SelectionPosition(4), SelectionPosition(6)));
+		selection.AddSelectionWithoutTrim(SelectionRange(SelectionPosition(8), SelectionPosition(10)));
+
+		selection.MovePositions(true, 2, 3);
+
+		REQUIRE(selection.Rectangular() == SelectionRange(SelectionPosition(13), SelectionPosition(7)));
+		REQUIRE(selection.Range(0) == SelectionRange(SelectionPosition(7), SelectionPosition(9)));
+		REQUIRE(selection.Range(1) == SelectionRange(SelectionPosition(11), SelectionPosition(13)));
+
+		selection.MovePositions(false, 5, 2);
+		REQUIRE(selection.Rectangular() == SelectionRange(SelectionPosition(11), SelectionPosition(5)));
+		REQUIRE(selection.Range(0) == SelectionRange(SelectionPosition(5), SelectionPosition(7)));
+		REQUIRE(selection.Range(1) == SelectionRange(SelectionPosition(9), SelectionPosition(11)));
+	}
+
 }

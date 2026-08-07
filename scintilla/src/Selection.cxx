@@ -449,7 +449,10 @@ void Selection::MovePositions(bool insertion, Sci::Position startChange, Sci::Po
 	for (SelectionRange &range : ranges) {
 		range.MoveForInsertDelete(insertion, startChange, length);
 	}
-	if (selType == SelTypes::rectangle) {
+	// Thin rectangular selections keep rangeRectangular as the base extent used
+	// when rebuilding line ranges; leave it out of date and SetRectangularRange
+	// after an edit rebuilds from stale coordinates.
+	if (IsRectangular()) {
 		rangeRectangular.MoveForInsertDelete(insertion, startChange, length);
 	}
 }
