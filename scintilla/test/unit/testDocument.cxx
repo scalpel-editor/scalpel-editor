@@ -679,6 +679,168 @@ TEST_CASE("Document") {
 
 }
 
+TEST_CASE("DocumentWatchers") {
+
+	SECTION("RemoveWatcherDuringNotification") {
+		// Removing the current watcher (or another) mid-notification must not
+		// invalidate iteration or crash. Remaining watchers still receive the event.
+		DocPlus doc("");
+		struct CountingWatcher : public EmptyWatcher {
+			Document *owner = nullptr;
+			DocWatcher *removeTarget = nullptr;
+			int modifiedCount = 0;
+			void NotifyModified(Document *document, DocModification, void *) override {
+				modifiedCount++;
+				if (removeTarget) {
+					document->RemoveWatcher(removeTarget, nullptr);
+					removeTarget = nullptr;
+				}
+			}
+		};
+		CountingWatcher first;
+		CountingWatcher second;
+		first.owner = &doc.document;
+		first.removeTarget = &first; // remove self during first callback
+		second.owner = &doc.document;
+		REQUIRE(doc.document.AddWatcher(&first, nullptr));
+		REQUIRE(doc.document.AddWatcher(&second, nullptr));
+		doc.document.InsertString(0, "x");
+		// First receives BeforeInsert, InsertCheck path, and InsertText; self-removal
+		// after the first of those leaves later notifications for first skipped once removed.
+		// Second must still receive every notification for the insert sequence.
+		REQUIRE(second.modifiedCount >= 2);
+		REQUIRE(first.modifiedCount >= 1);
+		// first was removed; only second remains for a further edit
+		const int secondAfterInsert = second.modifiedCount;
+		doc.document.InsertString(1, "y");
+		REQUIRE(second.modifiedCount > secondAfterInsert);
+		REQUIRE(doc.document.RemoveWatcher(&second, nullptr));
+	}
+
+	SECTION("NestedModificationBlocked") {
+		// Watchers must not re-enter text mutation; enteredModification rejects them.
+		DocPlus doc("ab");
+		struct MutatingWatcher : public EmptyWatcher {
+			bool triedInsert = false;
+			bool triedDelete = false;
+			Sci::Position insertResult = -1;
+			bool deleteResult = true;
+			void NotifyModified(Document *document, DocModification mh, void *) override {
+				if (FlagSet(mh.modificationType, ModificationFlags::BeforeInsert) && !triedInsert) {
+					triedInsert = true;
+					insertResult = document->InsertString(0, "!");
+				}
+				if (FlagSet(mh.modificationType, ModificationFlags::BeforeDelete) && !triedDelete) {
+					triedDelete = true;
+					deleteResult = document->DeleteChars(0, 1);
+				}
+			}
+		};
+		MutatingWatcher mw;
+		REQUIRE(doc.document.AddWatcher(&mw, nullptr));
+		doc.document.InsertString(2, "c");
+		REQUIRE(mw.triedInsert);
+		REQUIRE(mw.insertResult == 0);
+		REQUIRE(doc.Contents() == "abc");
+		doc.document.DeleteChars(1, 1);
+		REQUIRE(mw.triedDelete);
+		REQUIRE_FALSE(mw.deleteResult);
+		REQUIRE(doc.Contents() == "ac");
+		doc.document.RemoveWatcher(&mw, nullptr);
+	}
+
+	SECTION("NotificationOrderAndLengths") {
+		DocPlus doc("ab");
+		struct OrderWatcher : public EmptyWatcher {
+			std::vector<ModificationFlags> flags;
+			std::vector<Sci::Position> positions;
+			std::vector<Sci::Position> lengths;
+			std::vector<Sci::Line> linesAdded;
+			void NotifyModified(Document *, DocModification mh, void *) override {
+				flags.push_back(mh.modificationType);
+				positions.push_back(mh.position);
+				lengths.push_back(mh.length);
+				linesAdded.push_back(mh.linesAdded);
+			}
+		};
+		OrderWatcher ow;
+		REQUIRE(doc.document.AddWatcher(&ow, nullptr));
+		doc.document.InsertString(2, "\ncd");
+		// InsertCheck, BeforeInsert, InsertText (+ StartAction)
+		REQUIRE(ow.flags.size() == 3);
+		REQUIRE(FlagSet(ow.flags[0], ModificationFlags::InsertCheck));
+		REQUIRE(FlagSet(ow.flags[1], ModificationFlags::BeforeInsert));
+		REQUIRE(FlagSet(ow.flags[2], ModificationFlags::InsertText));
+		REQUIRE(ow.positions[2] == 2);
+		REQUIRE(ow.lengths[2] == 3);
+		REQUIRE(ow.linesAdded[2] == 1);
+		REQUIRE(doc.document.LinesTotal() == 2);
+
+		ow.flags.clear();
+		ow.positions.clear();
+		ow.lengths.clear();
+		ow.linesAdded.clear();
+		doc.document.DeleteChars(1, 2); // 'b' and '\n'
+		REQUIRE(ow.flags.size() == 2);
+		REQUIRE(FlagSet(ow.flags[0], ModificationFlags::BeforeDelete));
+		REQUIRE(FlagSet(ow.flags[1], ModificationFlags::DeleteText));
+		REQUIRE(ow.positions[1] == 1);
+		REQUIRE(ow.lengths[1] == 2);
+		REQUIRE(ow.linesAdded[1] == -1);
+		REQUIRE(doc.Contents() == "acd");
+		doc.document.RemoveWatcher(&ow, nullptr);
+	}
+
+	SECTION("SavePointAndTentative") {
+		DocPlus doc("x");
+		struct SaveWatcher : public EmptyWatcher {
+			int saveTrue = 0;
+			int saveFalse = 0;
+			void NotifySavePoint(Document *, void *, bool atSavePoint) override {
+				if (atSavePoint) {
+					saveTrue++;
+				} else {
+					saveFalse++;
+				}
+			}
+		};
+		SaveWatcher sw;
+		REQUIRE(doc.document.AddWatcher(&sw, nullptr));
+		doc.document.SetSavePoint();
+		REQUIRE(sw.saveTrue == 1);
+		REQUIRE(doc.document.IsSavePoint());
+		doc.document.InsertString(1, "y");
+		REQUIRE(sw.saveFalse == 1);
+		REQUIRE_FALSE(doc.document.IsSavePoint());
+
+		// Tentative composition: commit leaves text; undo of tentative is Document::TentativeUndo
+		doc.document.TentativeStart();
+		doc.document.InsertString(2, "z");
+		REQUIRE(doc.Contents() == "xyz");
+		REQUIRE(doc.document.TentativeActive());
+		doc.document.TentativeUndo();
+		REQUIRE(doc.Contents() == "xy");
+		REQUIRE_FALSE(doc.document.TentativeActive());
+		doc.document.RemoveWatcher(&sw, nullptr);
+	}
+
+	SECTION("EmptyAndFinalNewline") {
+		DocPlus doc("");
+		REQUIRE(doc.document.Length() == 0);
+		REQUIRE(doc.document.LinesTotal() == 1);
+		REQUIRE(doc.document.LineStart(0) == 0);
+		REQUIRE(doc.document.LineStart(1) == 0);
+		doc.document.InsertString(0, "a\n");
+		REQUIRE(doc.document.LinesTotal() == 2);
+		REQUIRE(doc.document.LineStart(1) == 2);
+		// Final newline: last line is empty
+		REQUIRE(doc.document.LineEnd(1) == 2);
+		doc.document.DeleteChars(0, 2);
+		REQUIRE(doc.document.Length() == 0);
+		REQUIRE(doc.document.LinesTotal() == 1);
+	}
+}
+
 TEST_CASE("DocumentUndo") {
 
 	// These tests check that Undo reports the end of coalesced deletes

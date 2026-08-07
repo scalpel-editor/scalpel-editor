@@ -192,7 +192,10 @@ Document::Document(DocumentOption options) :
 }
 
 Document::~Document() {
-	for (const WatcherWithUserData &watcher : watchers) {
+	// Snapshot so a watcher that removes itself (or another entry) cannot
+	// invalidate iteration while the document is going away.
+	const std::vector<WatcherWithUserData> notifyList = watchers;
+	for (const WatcherWithUserData &watcher : notifyList) {
 		watcher.watcher->NotifyDeleted(this, watcher.userData);
 	}
 }
@@ -517,11 +520,27 @@ int SCI_METHOD Document::DEVersion() const noexcept {
 	return deRelease0;
 }
 
+namespace {
+
+// Call each currently registered watcher. Snapshot the list first so a callback
+// that adds or removes watchers cannot invalidate iterators or skip entries.
+template <typename Fn>
+void ForEachWatcher(std::vector<Document::WatcherWithUserData> &watchers, Fn &&fn) {
+	const std::vector<Document::WatcherWithUserData> notifyList = watchers;
+	for (const Document::WatcherWithUserData &entry : notifyList) {
+		if (std::find(watchers.begin(), watchers.end(), entry) != watchers.end()) {
+			fn(entry);
+		}
+	}
+}
+
+}
+
 void SCI_METHOD Document::SetErrorStatus(int status) {
 	// Tell the watchers an error has occurred.
-	for (const WatcherWithUserData &watcher : watchers) {
+	ForEachWatcher(watchers, [this, status](const WatcherWithUserData &watcher) {
 		watcher.watcher->NotifyErrorOccurred(this, watcher.userData, static_cast<Status>(status));
-	}
+	});
 }
 
 void Document::CheckPosition(Sci::Position pos) const {
@@ -2253,9 +2272,15 @@ void Document::EnsureStyledTo(Sci::Position pos) {
 			pli->Colourise(endStyledTo, pos);
 		} else {
 			// Ask the watchers to style, and stop as soon as one responds.
-			for (std::vector<WatcherWithUserData>::iterator it = watchers.begin();
-				(pos > GetEndStyled()) && (it != watchers.end()); ++it) {
-				it->watcher->NotifyStyleNeeded(this, it->userData, pos);
+			// Snapshot so add/remove during NotifyStyleNeeded cannot invalidate iterators.
+			const std::vector<WatcherWithUserData> notifyList = watchers;
+			for (const WatcherWithUserData &entry : notifyList) {
+				if (pos <= GetEndStyled()) {
+					break;
+				}
+				if (std::find(watchers.begin(), watchers.end(), entry) != watchers.end()) {
+					entry.watcher->NotifyStyleNeeded(this, entry.userData, pos);
+				}
 			}
 		}
 	}
@@ -2487,20 +2512,24 @@ bool Document::RemoveWatcher(DocWatcher *watcher, void *userData) noexcept {
 }
 
 void Document::NotifyModifyAttempt() {
-	for (const WatcherWithUserData &watcher : watchers) {
+	ForEachWatcher(watchers, [this](const WatcherWithUserData &watcher) {
 		watcher.watcher->NotifyModifyAttempt(this, watcher.userData);
-	}
+	});
 }
 
 void Document::NotifySavePoint(bool atSavePoint) {
-	for (const WatcherWithUserData &watcher : watchers) {
+	ForEachWatcher(watchers, [this, atSavePoint](const WatcherWithUserData &watcher) {
 		watcher.watcher->NotifySavePoint(this, watcher.userData, atSavePoint);
-	}
+	});
 }
 
 void Document::NotifyGroupCompleted() noexcept {
-	for (const WatcherWithUserData &watcher : watchers) {
-		watcher.watcher->NotifyGroupCompleted(this, watcher.userData);
+	try {
+		ForEachWatcher(watchers, [this](const WatcherWithUserData &watcher) {
+			watcher.watcher->NotifyGroupCompleted(this, watcher.userData);
+		});
+	} catch (...) {
+		// Called from UndoGroup destructor; must not throw.
 	}
 }
 
@@ -2510,9 +2539,9 @@ void Document::NotifyModified(DocModification mh) {
 	} else if (FlagSet(mh.modificationType, ModificationFlags::DeleteText)) {
 		decorations->DeleteRange(mh.position, mh.length);
 	}
-	for (const WatcherWithUserData &watcher : watchers) {
+	ForEachWatcher(watchers, [this, &mh](const WatcherWithUserData &watcher) {
 		watcher.watcher->NotifyModified(this, mh, watcher.userData);
-	}
+	});
 }
 
 bool Document::IsWordPartSeparator(unsigned int ch) const {
