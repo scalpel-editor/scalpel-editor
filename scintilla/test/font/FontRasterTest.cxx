@@ -206,6 +206,29 @@ TEST_CASE("ShapeText treats each invalid UTF-8 byte as one character") {
 	CHECK(clusters[2] == 2);
 }
 
+TEST_CASE("ShapeText advances one byte for non-character and truncated multi-byte UTF-8") {
+	FontCache cache;
+	const auto face = LoadPrimary(cache);
+	// U+FFFE is a 3-byte non-character: UTF8Classify reports width 3 with invalid.
+	// Document policy and shaping both treat each of those bytes as one character.
+	const std::string nonCharacter = "A\xEF\xBF\xBE" "Z";
+	const ShapedRun nonCharRun = ShapeText(nonCharacter, face);
+	REQUIRE(nonCharRun.byteEndPositions.size() == 5);
+	CHECK(MonotonicEnds(nonCharRun.byteEndPositions));
+	REQUIRE(nonCharRun.caretStops == std::vector<size_t>{0, 1, 2, 3, 4, 5});
+	// Truncated 4-byte lead F1 mid-string must not swallow following ASCII.
+	const std::string truncated = "A\xF1" "yz";
+	const ShapedRun truncatedRun = ShapeText(truncated, face);
+	REQUIRE(truncatedRun.byteEndPositions.size() == 4);
+	CHECK(MonotonicEnds(truncatedRun.byteEndPositions));
+	REQUIRE(truncatedRun.caretStops == std::vector<size_t>{0, 1, 2, 3, 4});
+	// MeasureWidths and WidthText share the same shaped interpretation.
+	std::vector<XYPOSITION> positions(4, 0.0);
+	MeasureWidthsShaped(truncated, face, {}, positions.data());
+	CHECK(positions == truncatedRun.byteEndPositions);
+	CHECK(WidthTextShaped(truncated, face) == truncatedRun.Width());
+}
+
 TEST_CASE("ShapeText splits fallback spans without losing byte offsets") {
 	FontCache cache;
 	const auto primary = LoadPrimary(cache);

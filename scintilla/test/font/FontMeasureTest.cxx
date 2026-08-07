@@ -50,3 +50,39 @@ TEST_CASE("MeasureWidthsShaped uses the shaped-run cache when given") {
 	CHECK(first == second);
 	CHECK(WidthTextShaped("AB", face, {}, &cache) == first[1]);
 }
+
+TEST_CASE("ShapeText long run keeps monotonic ends and matches WidthText") {
+	FontCache fonts;
+	const auto face = LoadPrimary(fonts);
+	// Longer than BreakFinder lengthEachSubdivision (100) so layout subdivides;
+	// ShapeText itself still shapes the full string in one call.
+	const std::string text(320, 'A');
+	const ShapedRun run = ShapeText(text, face);
+	REQUIRE(run.byteEndPositions.size() == text.size());
+	CHECK(MonotonicEnds(run.byteEndPositions));
+	REQUIRE(run.caretStops.size() == text.size() + 1);
+	CHECK(run.caretStops.front() == 0);
+	CHECK(run.caretStops.back() == text.size());
+	CHECK(WidthTextShaped(text, face) == run.Width());
+	CHECK(run.Width() > 0.0);
+	// Sum of glyph advances equals the reported width (no lost clusters).
+	XYPOSITION glyphSum = 0.0;
+	for (const ShapedGlyph &glyph : run.glyphs) {
+		glyphSum += glyph.xAdvance;
+	}
+	CHECK(glyphSum == run.Width());
+}
+
+TEST_CASE("ShapedRunCache capacity bounds retained entries under churn") {
+	FontCache fonts;
+	const auto face = LoadPrimary(fonts);
+	ShapedRunCache cache(4);
+	for (int i = 0; i < 12; i++) {
+		const std::string text(static_cast<size_t>(i + 1), 'B');
+		const auto run = cache.Get(text, face);
+		REQUIRE(run);
+		CHECK(run->text == text);
+		CHECK(cache.Size() <= cache.Capacity());
+	}
+	CHECK(cache.Size() == 4);
+}

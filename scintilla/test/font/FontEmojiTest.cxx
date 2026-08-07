@@ -245,6 +245,24 @@ TEST_CASE("ZWJ sequence is not split across per-code-point faces") {
 	CHECK(run.caretStops == std::vector<size_t>{0, text.size()});
 }
 
+TEST_CASE("ShapesSequence agrees with ShapeText feature policy for ZWJ") {
+	FontCache cache;
+	const auto emoji = LoadEmoji(cache);
+	const auto points = CodePointsOf(woman + zwj + rocket);
+	// Acceptance must use the same liga/dlig-off policy as ShapeText so a face
+	// that only composes under discretionary ligatures is not selected.
+	CHECK(emoji->ShapesSequence(points.data(), points.size()));
+	const ShapedRun run = ShapeText(woman + zwj + rocket, emoji);
+	REQUIRE_FALSE(run.glyphs.empty());
+	bool sawInk = false;
+	for (const ShapedGlyph &glyph : run.glyphs) {
+		if (glyph.glyphId != 0) {
+			sawInk = true;
+		}
+	}
+	CHECK(sawInk);
+}
+
 TEST_CASE("FontFace HasColor distinguishes colour and monochrome fixtures") {
 	FontCache cache;
 	const auto mono = LoadEmojiMono(cache);
