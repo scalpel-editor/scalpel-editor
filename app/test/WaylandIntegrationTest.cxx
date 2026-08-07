@@ -91,7 +91,12 @@ TEST_CASE("Wayland shell integration removes a seat during compose and repeat") 
 	Scalpel::WaylandLifecycle lifecycle(800, 600);
 	(void)lifecycle.AddGlobal(Scalpel::WaylandGlobalKind::Seat, 40, 9);
 	(void)lifecycle.UpdateSeatCapabilities(40, false, true);
+	// Apostrophe on intl starts a compose sequence; key-repeat stays off
+	// while composing (see CORE-032).
 	input.RecordKey(1, KEY_APOSTROPHE, true);
+	CHECK_FALSE(input.TimeUntilKeyRepeat().has_value());
+	// A plain letter arms compositor key-repeat until the seat is removed.
+	input.RecordKey(2, KEY_E, true);
 	REQUIRE(input.TimeUntilKeyRepeat() == 10ms);
 
 	const auto actions = lifecycle.RemoveGlobal(40);
@@ -107,6 +112,7 @@ TEST_CASE("Wayland shell integration removes a seat during compose and repeat") 
 	now += 10ms;
 	CHECK_FALSE(input.RunKeyRepeat());
 	const std::vector<Scalpel::InputEvent> removed = input.TakeInputs();
+	// Device reset drops queued keys and reports a single focus loss.
 	REQUIRE(removed.size() == 1);
 	CHECK_FALSE(std::get<Scalpel::KeyboardFocusInput>(removed[0]).focused);
 
@@ -114,7 +120,7 @@ TEST_CASE("Wayland shell integration removes a seat during compose and repeat") 
 	(void)lifecycle.UpdateSeatCapabilities(41, false, true);
 	REQUIRE(input.SetKeymap(keymap.text));
 	input.RecordKeyboardFocus(true);
-	input.RecordKey(2, KEY_E, true);
+	input.RecordKey(3, KEY_E, true);
 	const std::vector<Scalpel::InputEvent> replacement = input.TakeInputs();
 	REQUIRE(replacement.size() == 2);
 	CHECK(std::get<Scalpel::KeyboardInput>(replacement[1]).text == "e");
