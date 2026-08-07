@@ -126,10 +126,11 @@ struct ApplicationPointerResult {
 
 /**
  * Who owns keyboard handling for one event after priority resolution.
- * Order when deciding: file error, unsaved prompt, open context menu, open
- * menu bar (including open accelerators while closed), application shortcuts
- * and tab cycling, then editor delivery. Shift+F10 (Keys::Menu with Shift)
- * opens the context menu; bare F10 / Menu still opens the menu bar.
+ * Order when deciding: file error, unsaved prompt, open context menu,
+ * Shift+F10 context-menu open, open menu bar (including open accelerators
+ * while closed), global Find (Ctrl+F), a focused find field for editing and
+ * field-local clipboard keys, other application shortcuts and tab cycling,
+ * then editor delivery. Bare F10 / Menu still opens the menu bar.
  */
 enum class ApplicationKeyboardOwner {
 	FileError,

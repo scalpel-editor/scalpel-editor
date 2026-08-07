@@ -1000,16 +1000,38 @@ ApplicationKeyboardResult ApplicationUi::HandleKeyboard(
 		OpenFindBar();
 		result.owner = ApplicationKeyboardOwner::ApplicationShortcut;
 	} else if (findBarVisible && findBarModel.focused) {
-		const FindBarKeyboardResult findResult =
-			HandleFindBarKeyboard(findBarModel, input);
-		if (findResult.dirty) {
-			editor->InvalidateTopChrome();
+		// Field-local clipboard and select-all stay on the query. Other matched
+		// application shortcuts and tab cycle continue after the field, matching
+		// documented keyboard priority. Remaining keys (editing, Escape, Enter)
+		// stay on the find field and do not reach the editor.
+		const std::optional<ApplicationAction> action =
+			MatchApplicationAction(input);
+		const bool findFieldShortcut = action.has_value() &&
+			(*action == ApplicationAction::Cut ||
+				*action == ApplicationAction::Copy ||
+				*action == ApplicationAction::Paste ||
+				*action == ApplicationAction::SelectAll);
+		if (action.has_value() && !findFieldShortcut) {
+			ActivateAction(*action);
+			result.owner = ApplicationKeyboardOwner::ApplicationShortcut;
+		} else if (IsPrevTabShortcut(input)) {
+			workspace->CycleTab(-1);
+			result.owner = ApplicationKeyboardOwner::ApplicationShortcut;
+		} else if (IsNextTabShortcut(input)) {
+			workspace->CycleTab(1);
+			result.owner = ApplicationKeyboardOwner::ApplicationShortcut;
+		} else {
+			const FindBarKeyboardResult findResult =
+				HandleFindBarKeyboard(findBarModel, input);
+			if (findResult.dirty) {
+				editor->InvalidateTopChrome();
+			}
+			if (findResult.queryChanged) {
+				RunIncrementalFind();
+			}
+			ApplyFindBarRequests(findResult.requests);
+			result.owner = ApplicationKeyboardOwner::FindBar;
 		}
-		if (findResult.queryChanged) {
-			RunIncrementalFind();
-		}
-		ApplyFindBarRequests(findResult.requests);
-		result.owner = ApplicationKeyboardOwner::FindBar;
 	} else if (const std::optional<ApplicationAction> action =
 		MatchApplicationAction(input)) {
 		ActivateAction(*action);

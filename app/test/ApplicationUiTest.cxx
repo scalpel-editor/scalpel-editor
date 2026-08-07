@@ -1722,6 +1722,50 @@ TEST_CASE("application UI find bar next previous and not-found status") {
 	CHECK(ui.FindModel().status == Scalpel::FindBarStatus::NoMatches);
 }
 
+TEST_CASE("application UI find focus keeps application shortcuts and field clipboard") {
+	ApplicationEditor editor(400, 240);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	const Scalpel::DocumentId first = editor.ActiveDocument();
+	ui.OpenFindBar();
+	REQUIRE(ui.FindBarFocused());
+	(void)ui.HandleKeyboard(MakeText("needle"));
+	CHECK(ui.FindModel().query == "needle");
+
+	// Save and tab cycle must not be swallowed by the focused field.
+	const ApplicationKeyboardResult save = ui.HandleKeyboard(
+		MakeLetter('S', KeyMod::Ctrl));
+	CHECK(save.owner == ApplicationKeyboardOwner::ApplicationShortcut);
+	CHECK(ui.FindBarFocused());
+	CHECK(ui.FindModel().query == "needle");
+
+	const ApplicationKeyboardResult newTab = ui.HandleKeyboard(
+		MakeLetter('N', KeyMod::Ctrl));
+	CHECK(newTab.owner == ApplicationKeyboardOwner::ApplicationShortcut);
+	CHECK(workspace.Tabs().size() == 2);
+	CHECK(editor.ActiveDocument() != first);
+	CHECK(ui.FindBarFocused());
+
+	const ApplicationKeyboardResult cycle = ui.HandleKeyboard(
+		MakeKey(Keys::Tab, KeyMod::Ctrl));
+	CHECK(cycle.owner == ApplicationKeyboardOwner::ApplicationShortcut);
+	CHECK(workspace.ActiveTab() == first);
+
+	// Field-local Ctrl+A still selects the query rather than the document.
+	(void)ui.HandleKeyboard(MakeLetter('F', KeyMod::Ctrl));
+	REQUIRE(ui.FindBarFocused());
+	ui.FindModel().caret = 1;
+	ui.FindModel().anchor = 1;
+	const ApplicationKeyboardResult selectAll = ui.HandleKeyboard(
+		MakeLetter('A', KeyMod::Ctrl));
+	CHECK(selectAll.owner == ApplicationKeyboardOwner::FindBar);
+	CHECK(ui.FindModel().HasSelection());
+	CHECK(ui.FindModel().SelectedText() == ui.FindModel().query);
+}
+
 TEST_CASE("application UI find bar pointer close and editor focus transfer") {
 	ApplicationEditor editor(400, 240);
 	PrepareChromeEditor(editor);
