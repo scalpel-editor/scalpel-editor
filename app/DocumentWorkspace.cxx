@@ -349,7 +349,7 @@ void DocumentWorkspace::ChooseLargeFile(LargeFileChoice choice) {
 
 	if (choice == LargeFileChoice::Open) {
 		// Retry under the hard limit; confirmation only covered the warning band.
-		const DocumentFileReadResult text =
+		DocumentFileReadResult text =
 			ReadDocumentFile(pending.path, DocumentFileHardLimitBytes);
 		if (text.status == DocumentFileReadStatus::TooLarge) {
 			std::cerr << "scalpel-editor: file too large: " << pending.path
@@ -527,7 +527,7 @@ bool DocumentWorkspace::LoadStartupFiles(
 	texts.reserve(distinct.size());
 	bool readFailed = false;
 	for (const std::string &pathString : distinct) {
-		const DocumentFileReadResult text =
+		DocumentFileReadResult text =
 			ReadDocumentFile(pathString, DocumentFileHardLimitBytes);
 		if (text.status == DocumentFileReadStatus::TooLarge) {
 			std::cerr << "scalpel-editor: file too large: " << pathString << '\n';
@@ -637,7 +637,7 @@ bool DocumentWorkspace::OpenPathList(const std::vector<std::string> &paths) {
 		}
 		// Interactive opens use the warning threshold first. Oversized paths
 		// pause for confirmation; remaining multi-path entries wait in order.
-		const DocumentFileReadResult text =
+		DocumentFileReadResult text =
 			ReadDocumentFile(pathString, DocumentFileWarningThresholdBytes);
 		if (text.status == DocumentFileReadStatus::TooLarge) {
 			std::vector<std::string> remaining;
