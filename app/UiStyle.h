@@ -131,6 +131,13 @@ struct UiStyle {
 	const int fileErrorTitlePathGap = 8;
 	const int fileErrorButtonWidth = 96;
 
+	// Large-file confirmation card (Open / Cancel).
+	const int largeFileCardMaxWidth = 480;
+	const int largeFileCardMinWidth = 220;
+	const int largeFilePathHeight = 24;
+	const int largeFileTitlePathGap = 8;
+	const int largeFileButtonGap = 8;
+
 private:
 	UiStyle() = default;
 	friend const UiStyle &DefaultUiStyle() noexcept;

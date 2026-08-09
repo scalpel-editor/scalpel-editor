@@ -218,6 +218,35 @@ void HandleFileErrorPointer(const PointerInput &input,
 	}
 }
 
+void HandleLargeFilePointer(const PointerInput &input,
+	const LargeFileCardLayout &layout,
+	std::optional<LargeFileCardHit> &pressHit, DocumentWorkspace &workspace,
+	ApplicationEditor &editor, int &cardFocus) {
+	const Scintilla::Internal::Point point(input.x, input.y);
+	if (input.action == PointerAction::Press && input.button == 0) {
+		pressHit = HitTestLargeFileCard(layout, point);
+		if (*pressHit == LargeFileCardHit::Open) {
+			cardFocus = 0;
+			editor.InvalidateClient();
+		} else if (*pressHit == LargeFileCardHit::Cancel) {
+			cardFocus = 1;
+			editor.InvalidateClient();
+		}
+		return;
+	}
+	if (input.action == PointerAction::Release && input.button == 0) {
+		const LargeFileCardHit hit = HitTestLargeFileCard(layout, point);
+		if (pressHit && *pressHit == hit) {
+			if (hit == LargeFileCardHit::Open) {
+				workspace.ChooseLargeFile(LargeFileChoice::Open);
+			} else if (hit == LargeFileCardHit::Cancel) {
+				workspace.ChooseLargeFile(LargeFileChoice::Cancel);
+			}
+		}
+		pressHit.reset();
+	}
+}
+
 void HandlePromptPointer(const PointerInput &input,
 	const UnsavedChangesCardLayout &layout,
 	std::optional<UnsavedCardHit> &pressHit, DocumentWorkspace &workspace,
@@ -504,6 +533,7 @@ ApplicationLayout BuildApplicationLayout(int frameWidth, int frameHeight,
 		scrollMetrics.vertical, scrollMetrics.horizontal);
 	layout.client = client;
 	layout.unsavedCard = LayoutUnsavedChangesCard(frameWidth, frameHeight);
+	layout.largeFileCard = LayoutLargeFileCard(frameWidth, frameHeight);
 	layout.fileErrorCard = LayoutFileErrorCard(frameWidth, frameHeight);
 	return layout;
 }
@@ -556,8 +586,13 @@ const ApplicationLayout &ApplicationUi::FrameLayout() const {
 }
 
 BoundOverlay ApplicationUi::DesiredOverlay() const noexcept {
+	// File errors outrank every other overlay so a hard-limit failure after
+	// large-file Open cannot leave another modal armed underneath.
 	if (!fileErrors.empty()) {
 		return BoundOverlay::FileError;
+	}
+	if (workspace->LargeFilePromptActive()) {
+		return BoundOverlay::LargeFile;
 	}
 	if (workspace->PromptActive()) {
 		return BoundOverlay::UnsavedChanges;
@@ -581,7 +616,8 @@ void ApplicationUi::BindPainters() {
 BoundOverlay ApplicationUi::SynchronizeComposition() {
 	// Modal cards outrank an open menu. Drop menu state so it does not linger
 	// after the card closes or paint under the card.
-	if ((!fileErrors.empty() || workspace->PromptActive()) &&
+	if ((!fileErrors.empty() || workspace->LargeFilePromptActive() ||
+			workspace->PromptActive()) &&
 		menuModel.openMenu.has_value()) {
 		CloseMenuBar(menuModel);
 	}
@@ -632,6 +668,11 @@ void ApplicationUi::PaintActiveOverlay(
 			subtitle, cardFocus);
 		return;
 	}
+	case BoundOverlay::LargeFile:
+		largeFilePainter.Paint(surface, layout.largeFileCard,
+			"File larger than 64 MiB", workspace->LargeFilePromptPath(),
+			cardFocus);
+		return;
 	case BoundOverlay::FileError:
 		if (fileErrors.empty()) {
 			return;
@@ -661,6 +702,17 @@ ApplicationPointerResult ApplicationUi::HandlePointer(
 		DismissApplicationContextMenu();
 		HandleFileErrorPointer(input, layout.fileErrorCard, fileErrors, *editor,
 			fileErrorPressHit);
+		pointerCursor = CursorBelowModal(input, layout);
+	} else if (workspace->LargeFilePromptActive()) {
+		result.owner = ApplicationPointerOwner::LargeFile;
+		result.consumed = true;
+		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
+		BlurFindField();
+		DismissApplicationContextMenu();
+		(void)UpdateTabStripPointerState(input, layout, stripModel, *editor,
+			pointerOverChrome);
+		HandleLargeFilePointer(input, layout.largeFileCard, largeFilePressHit,
+			*workspace, *editor, cardFocus);
 		pointerCursor = CursorBelowModal(input, layout);
 	} else if (workspace->PromptActive()) {
 		result.owner = ApplicationPointerOwner::UnsavedPrompt;
@@ -797,7 +849,8 @@ ApplicationPointerResult ApplicationUi::HandlePointer(
 }
 
 ApplicationPointerCursor ApplicationUi::CurrentPointerCursor() const noexcept {
-	if (!fileErrors.empty() || workspace->PromptActive()) {
+	if (!fileErrors.empty() || workspace->LargeFilePromptActive() ||
+		workspace->PromptActive()) {
 		return ApplicationPointerCursor::Arrow;
 	}
 	return pointerCursor;
@@ -857,6 +910,52 @@ void HandleFileErrorKeyboard(const KeyboardInput &input,
 		input.text == " ") {
 		DismissFileError(errors, editor, pressHit);
 	}
+}
+
+void HandleLargeFileKeyboard(const KeyboardInput &input,
+	DocumentWorkspace &workspace, ApplicationEditor &editor, int &cardFocus) {
+	if (!input.pressed) {
+		return;
+	}
+	if (input.key == Scintilla::Keys::Escape) {
+		workspace.ChooseLargeFile(LargeFileChoice::Cancel);
+		return;
+	}
+	if (input.key == Scintilla::Keys::Tab) {
+		const int delta =
+			(input.modifiers == Scintilla::KeyMod::Shift) ? -1 : 1;
+		cardFocus = CycleLargeFileCardFocus(cardFocus, delta);
+		editor.InvalidateClient();
+		return;
+	}
+	if (input.key == Scintilla::Keys::Left) {
+		cardFocus = CycleLargeFileCardFocus(cardFocus, -1);
+		editor.InvalidateClient();
+		return;
+	}
+	if (input.key == Scintilla::Keys::Right) {
+		cardFocus = CycleLargeFileCardFocus(cardFocus, 1);
+		editor.InvalidateClient();
+		return;
+	}
+	if (input.key == Scintilla::Keys::Return ||
+		input.key == static_cast<Scintilla::Keys>(' ') ||
+		input.text == " ") {
+		const LargeFileChoice choice = cardFocus == 0 ?
+			LargeFileChoice::Open :
+			LargeFileChoice::Cancel;
+		workspace.ChooseLargeFile(choice);
+		return;
+	}
+	if (IsLetterKey(input, 'O', 'o')) {
+		workspace.ChooseLargeFile(LargeFileChoice::Open);
+		return;
+	}
+	if (IsLetterKey(input, 'C', 'c')) {
+		workspace.ChooseLargeFile(LargeFileChoice::Cancel);
+		return;
+	}
+	// Ignore other keys while the large-file card owns input.
 }
 
 void HandlePromptKeyboard(const KeyboardInput &input,
@@ -954,6 +1053,12 @@ ApplicationKeyboardResult ApplicationUi::HandleKeyboard(
 		BlurFindField();
 		DismissApplicationContextMenu();
 		HandleFileErrorKeyboard(input, fileErrors, *editor, fileErrorPressHit);
+	} else if (workspace->LargeFilePromptActive()) {
+		result.owner = ApplicationKeyboardOwner::LargeFile;
+		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
+		BlurFindField();
+		DismissApplicationContextMenu();
+		HandleLargeFileKeyboard(input, *workspace, *editor, cardFocus);
 	} else if (workspace->PromptActive()) {
 		result.owner = ApplicationKeyboardOwner::UnsavedPrompt;
 		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
@@ -1067,13 +1172,15 @@ void ApplicationUi::HandleFocus(bool focused) {
 	CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
 	fileErrorPressHit = false;
 	promptPressHit.reset();
+	largeFilePressHit.reset();
 	// Keep the bar and query; only drop field focus and presses.
 	BlurFindField();
 }
 
 bool ApplicationUi::ChromeOwnsInput() const noexcept {
-	return !fileErrors.empty() || workspace->PromptActive() ||
-		menuModel.openMenu.has_value() || contextMenuModel.open;
+	return !fileErrors.empty() || workspace->LargeFilePromptActive() ||
+		workspace->PromptActive() || menuModel.openMenu.has_value() ||
+		contextMenuModel.open;
 }
 
 void ApplicationUi::NotifyContextPopupDone() {
@@ -1090,6 +1197,7 @@ void ApplicationUi::NotifyPromptBegan() {
 	CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
 	cardFocus = 0;
 	promptPressHit.reset();
+	largeFilePressHit.reset();
 }
 
 void ApplicationUi::AppendFileErrors(std::vector<DocumentFileError> errors) {
@@ -1111,9 +1219,10 @@ void ApplicationUi::AppendFileErrors(std::vector<DocumentFileError> errors) {
 	BlurFindField();
 	CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
 	fileErrorPressHit = false;
-	// The higher-priority card must not leave a press armed on the prompt
+	// The higher-priority card must not leave a press armed on another modal
 	// underneath it. Otherwise a later release could activate that button.
 	promptPressHit.reset();
+	largeFilePressHit.reset();
 	editor->InvalidateFrame();
 }
 
@@ -1200,7 +1309,8 @@ void ApplicationUi::RequestClose() {
 void ApplicationUi::SynchronizeInteraction() {
 	const DocumentId activeDocument = editor->ActiveDocument();
 	const bool documentChanged = activeDocument != lastActiveDocument;
-	if (documentChanged || !fileErrors.empty() || workspace->PromptActive() ||
+	if (documentChanged || !fileErrors.empty() ||
+		workspace->LargeFilePromptActive() || workspace->PromptActive() ||
 		menuModel.openMenu.has_value() || contextMenuModel.open) {
 		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
 	}
@@ -1532,11 +1642,12 @@ void ApplicationUi::HandleFrameSizeChange() {
 	findBarModel.pressOrigin.reset();
 	fileErrorPressHit = false;
 	promptPressHit.reset();
+	largeFilePressHit.reset();
 	(void)SynchronizeTabs(true);
 	editor->InvalidateTopChrome();
 	editor->InvalidateScrollBars();
-	if (!fileErrors.empty() || workspace->PromptActive() ||
-		menuModel.openMenu.has_value()) {
+	if (!fileErrors.empty() || workspace->LargeFilePromptActive() ||
+		workspace->PromptActive() || menuModel.openMenu.has_value()) {
 		// Full frame so the card or dropdown cannot leave stale pixels.
 		editor->InvalidateFrame();
 	}

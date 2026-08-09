@@ -76,6 +76,19 @@ target_compile_options(fileErrorCardTest PRIVATE -Wall -Wextra)
 
 add_test(NAME file-error-card COMMAND fileErrorCardTest)
 
+add_executable(largeFileCardTest
+  LargeFileCardTest.cxx
+  ApplicationTestMain.cxx
+)
+target_include_directories(largeFileCardTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(largeFileCardTest PRIVATE scalpel_application)
+target_compile_options(largeFileCardTest PRIVATE -Wall -Wextra)
+
+add_test(NAME large-file-card COMMAND largeFileCardTest)
+
 add_executable(recentFilesTest
   RecentFilesTest.cxx
   ApplicationTestMain.cxx

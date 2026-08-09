@@ -182,6 +182,7 @@ add_library(scalpel_application OBJECT
   DocumentWorkspace.cxx
   FileErrorCard.cxx
   FindBar.cxx
+  LargeFileCard.cxx
   MenuBar.cxx
   RecentFiles.cxx
   ScrollBar.cxx
