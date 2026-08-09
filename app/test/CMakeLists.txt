@@ -89,6 +89,19 @@ target_compile_options(largeFileCardTest PRIVATE -Wall -Wextra)
 
 add_test(NAME large-file-card COMMAND largeFileCardTest)
 
+add_executable(externalChangeCardTest
+  ExternalChangeCardTest.cxx
+  ApplicationTestMain.cxx
+)
+target_include_directories(externalChangeCardTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(externalChangeCardTest PRIVATE scalpel_application)
+target_compile_options(externalChangeCardTest PRIVATE -Wall -Wextra)
+
+add_test(NAME external-change-card COMMAND externalChangeCardTest)
+
 add_executable(recentFilesTest
   RecentFilesTest.cxx
   ApplicationTestMain.cxx

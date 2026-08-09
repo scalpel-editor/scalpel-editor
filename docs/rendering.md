@@ -94,7 +94,7 @@ Colour attachments are linear `GL_RGBA8`. Internal alpha is premultiplied and bl
 
 ## Application composition
 
-Scintilla paints the editor client. A permanent-chrome callback paints the menu bar, tab strip, scrollbars, and scrollbar junction without forcing full-frame damage. A post-paint overlay callback paints exactly one open menu, large-file confirmation card, unsaved-changes card, or file-error card; transparent overlays expand painting to the full frame and use a full swap so preserved pixels cannot accumulate blending. Overlay selection priority is file-error card, large-file confirmation, unsaved-changes prompt, open menu, then none.
+Scintilla paints the editor client. A permanent-chrome callback paints the menu bar, tab strip, scrollbars, and scrollbar junction without forcing full-frame damage. A post-paint overlay callback paints exactly one open menu, external-change confirmation card, large-file confirmation card, unsaved-changes card, or file-error card; transparent overlays expand painting to the full frame and use a full swap so preserved pixels cannot accumulate blending. Overlay selection priority is file-error card, external-change confirmation, large-file confirmation, unsaved-changes prompt, open menu, then none.
 
 `ApplicationUi` owns the chrome models and painters, binds both application paint callbacks, selects the active overlay, and unbinds callbacks that capture it when it is destroyed. Individual controls own their layout, hit testing, interaction state, and paint operations without a widget hierarchy. The complete composition and input boundary is described in [application-ui.md](application-ui.md).
 

@@ -35,21 +35,22 @@ Focus loss is one `ApplicationUi` transition: it cancels editor focus and tentat
 `ApplicationUi::HandlePointer` is the only application pointer-priority decision. It resolves one owner in this order:
 
 1. File-error card.
-2. Large-file confirmation.
-3. Unsaved-changes prompt.
-4. Active scrollbar drag.
-5. Editor selection capture.
-6. Open menu bar, including an outside click that dismisses it.
-7. Open context menu (popup-local coordinates, or a toplevel outside press that dismisses without click-through).
-8. Visible find bar band (field, Previous, Next, Close, or empty chrome).
-9. Permanent chrome: menu bar, tab strip, or a scrollbar hit.
-10. Editor client (including a right press that opens the context menu when eligible).
+2. External-change confirmation.
+3. Large-file confirmation.
+4. Unsaved-changes prompt.
+5. Active scrollbar drag.
+6. Editor selection capture.
+7. Open menu bar, including an outside click that dismisses it.
+8. Open context menu (popup-local coordinates, or a toplevel outside press that dismisses without click-through).
+9. Visible find bar band (field, Previous, Next, Close, or empty chrome).
+10. Permanent chrome: menu bar, tab strip, or a scrollbar hit.
+11. Editor client (including a right press that opens the context menu when eligible).
 
 Modal owners consume pointer input. Editor selection capture and surface leave remain deliverable to `ApplicationEditor` so Scintilla can finish its interaction. A click that dismisses a menu does not also activate the control underneath it. A pointer press in the editor client while the find bar is visible leaves the bar open but transfers keyboard focus back to the editor. Each routing entry point applies actions, invalidation, and interaction cleanup before returning.
 
 The same coordinator chooses the pointer cursor. Chrome and modal interaction select the arrow; editor interaction defers to the Scintilla cursor. `CurrentPointerCursor` also forces the arrow when a modal appears without a pointer event, so the Wayland runner only applies the resolved choice.
 
-Keyboard priority is file-error card, large-file confirmation, unsaved-changes prompt, open context menu, Shift+F10 context-menu open, menu-bar navigation or accelerator, the global Find action (`Ctrl+F` / Edit > Find), a focused find field for query editing and field-local clipboard or select-all keys, other application shortcuts or tab cycle, then editor input. Unmatched application shortcuts (for example Save or Close Tab) and Ctrl+Tab still run while the find field is focused; field-local Ctrl+A/C/X/V stay on the query. Overlay paint priority is file-error card, large-file confirmation, unsaved-changes prompt, open menu bar dropdown, then no overlay. The context menu paints on its own popup surface rather than the in-window overlay. A higher-priority modal closes an open menu or context menu, and every overlay change invalidates the full frame. When a higher-priority card becomes active, any armed press on a lower-priority card is cleared so a later release cannot activate it.
+Keyboard priority is file-error card, external-change confirmation, large-file confirmation, unsaved-changes prompt, open context menu, Shift+F10 context-menu open, menu-bar navigation or accelerator, the global Find action (`Ctrl+F` / Edit > Find), a focused find field for query editing and field-local clipboard or select-all keys, other application shortcuts or tab cycle, then editor input. Unmatched application shortcuts (for example Save or Close Tab) and Ctrl+Tab still run while the find field is focused; field-local Ctrl+A/C/X/V stay on the query. Overlay paint priority is file-error card, external-change confirmation, large-file confirmation, unsaved-changes prompt, open menu bar dropdown, then no overlay. The context menu paints on its own popup surface rather than the in-window overlay. A higher-priority modal closes an open menu or context menu, and every overlay change invalidates the full frame. When a higher-priority card becomes active, any armed press on a lower-priority card is cleared so a later release cannot activate it.
 
 ## Layout and paint authority
 
@@ -96,6 +97,10 @@ Whole-file document loads are hard-capped at 256 MiB (`DocumentFileHardLimitByte
 
 Interactive Open and Recent first try the 64 MiB warning threshold (`DocumentFileWarningThresholdBytes`). Files at or below that size open normally. Files above it queue a two-choice large-file confirmation card (title `File larger than 64 MiB`, path, Open / Cancel) instead of creating a tab. Open retries under the 256 MiB hard limit; Cancel drops the path. Multi-path Open keeps remaining paths and resumes them in order after each choice. The large-file decision does not overlap a dirty-close prompt: either modal owns tab, dialog, save, and close actions until it finishes. Escape cancels; Enter or Space activates the focused choice; Tab and arrow keys move focus between Open and Cancel.
 
+A successful open or save records a file stamp (device, inode, byte size, and nanosecond modification time) for the followed regular file that supplied or received the bytes. A later Save to that tab's currently bound path compares the destination against the remembered stamp inside the atomic writer. When the destination is missing, replaced, resized, retimed, or uninspectable, the write does not run and the workspace queues an external-change card (title `File changed on disk`, path, Overwrite / Reload / Save As / Cancel). Overwrite writes without an expected stamp. Reload rereads under the 256 MiB hard limit into the same tab through the clean buffer-load path. Save As queues a dialog for the captured tab. Cancel leaves the dirty buffer and baseline stamp unchanged. Detection runs only at the save boundary; the editor does not watch files, poll on focus, or check on each keystroke. Save As to a different path remains an explicit unconditional replacement and then binds the returned stamp. The final destination stat and rename are not a perfect cross-process compare-and-swap on ordinary POSIX files; another writer can still race the last check.
+
+When a dirty-close Save finds a conflict, the external-change card keeps the initiating close prompt generation. Successful Overwrite or Reload completes or advances that close; successful Save As does the same through the captured generation; Cancel or a failed resolution leaves the close prompt active. A failed overwrite or reload queues a file-error card above the still-pending conflict so dismissing the error returns to the decision. Escape cancels; Enter or Space activates the focused choice; Tab and arrow keys cycle the four buttons.
+
 Process startup may load an ordered path list through `LoadStartupFiles`. Distinct paths become tabs in argument order; the first reuses the pristine initial document, later paths create sibling documents, and the tab named by the last supplied path becomes active. Startup paths are bound for save and are not recorded as recent files, so temporary editor paths such as Git's `COMMIT_EDITMSG` stay out of the Recent menu. Every distinct path is read before any tab mutation; an empty, unreadable, or oversized path leaves the initial workspace coherent and fails the process startup. Oversized startup paths print a distinct `file too large` diagnostic on stderr. Command-line paths are treated as explicit intent for the hard limit and do not use an interactive size warning. Interactive Open and Recent continue to record successful paths.
 
 The recent-files state file is loaded with a 1 MiB bound enforced during the read, so a corrupt or hostile state file cannot allocate more than that maximum.
@@ -114,10 +119,10 @@ Invalid UTF-8 in file contents is separate from path encoding, I/O failures, lin
 
 | Workspace work or outcome | `ApplicationUi` action |
 | --- | --- |
-| Prompt began | Activates modal input state for a dirty-close or large-file card, closes the menu, cancels IME and scrollbar interaction, blurs the find field, and resets card focus and armed presses. |
+| Prompt began | Activates modal input state for a dirty-close, large-file, or external-change card, closes the menu, cancels IME and scrollbar interaction, blurs the find field, and resets card focus and armed presses. |
 | Refresh tabs | Rebuilds the tab-strip model and invalidates top chrome. |
 | Recent path | Records and persists the recent-file list, then refreshes the menu model. |
-| File error | Queues and activates the file-error card, outranking large-file and unsaved cards and clearing any armed press on them. |
+| File error | Queues and activates the file-error card, outranking external-change, large-file, and unsaved cards and clearing any armed press on them. |
 | Show Open or Show Save As | Returns a typed dialog effect containing a stable application dialog ID and copied document path. |
 | Accept close | Returns a typed close effect. |
 | Context menu open / close / invalidate | Returns typed popup effects with parent-relative anchor and grab serial for show; close and invalidate drive popup lifecycle without recreating dialog state. |

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <fcntl.h>
 #include <string>
 #include <string_view>
 #include <unistd.h>
@@ -13,6 +14,7 @@
 #include "ContextMenu.h"
 #include "DocumentFile.h"
 #include "DocumentWorkspace.h"
+#include "ExternalChangeCard.h"
 #include "FileErrorCard.h"
 #include "LargeFileCard.h"
 #include "MenuBar.h"
@@ -38,6 +40,8 @@ using Scalpel::BuildApplicationLayout;
 using Scalpel::DocumentFileError;
 using Scalpel::DocumentFileOperation;
 using Scalpel::DocumentWorkspace;
+using Scalpel::ExternalChangeCardHit;
+using Scalpel::ExternalChangeChoice;
 using Scalpel::KeyboardInput;
 using Scalpel::LargeFileCardHit;
 using Scalpel::LargeFileChoice;
@@ -182,6 +186,26 @@ void BeginLargeFilePrompt(ApplicationUi &ui, DocumentWorkspace &workspace,
 	// Drain PromptBegan so composition and input ownership match production.
 	(void)ui.TakeShellEffects();
 	CHECK(ui.SynchronizeComposition() == BoundOverlay::LargeFile);
+}
+
+void ExternallyRewrite(const std::string &path, std::string_view contents) {
+	const int fd = ::open(path.c_str(), O_WRONLY | O_TRUNC | O_CLOEXEC);
+	REQUIRE(fd >= 0);
+	const ssize_t written = write(fd, contents.data(), contents.size());
+	REQUIRE(written == static_cast<ssize_t>(contents.size()));
+	REQUIRE(close(fd) == 0);
+}
+
+void BeginExternalChangePrompt(ApplicationUi &ui, DocumentWorkspace &workspace,
+	ApplicationEditor &editor, const std::string &path) {
+	REQUIRE(workspace.OpenPath(path));
+	(void)ui.TakeShellEffects();
+	DirtyBuffer(editor);
+	ExternallyRewrite(path, "external-on-disk-long");
+	workspace.RequestSave();
+	REQUIRE(workspace.ExternalChangePromptActive());
+	(void)ui.TakeShellEffects();
+	CHECK(ui.SynchronizeComposition() == BoundOverlay::ExternalChange);
 }
 
 TEST_CASE("application UI state owns chrome and overlay defaults") {
@@ -2659,4 +2683,199 @@ TEST_CASE("application UI large file suppresses editor and menu while active") {
 	CHECK(client.consumed);
 	CHECK(client.owner == ApplicationPointerOwner::LargeFile);
 	CHECK_FALSE(editor.WindowState().mouseCaptured);
+}
+
+TEST_CASE("application UI external change overlay owns composition and input") {
+	TempFile file("baseline");
+	ApplicationEditor editor(400, 280);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	ui.BindPainters();
+
+	ui.MenuModel().openMenu = Scalpel::ApplicationMenu::File;
+	BeginExternalChangePrompt(ui, workspace, editor, file.path);
+	CHECK(ui.Overlay() == BoundOverlay::ExternalChange);
+	CHECK_FALSE(ui.MenuModel().openMenu.has_value());
+	CHECK(ui.ChromeOwnsInput());
+	CHECK(ui.CurrentPointerCursor() == ApplicationPointerCursor::Arrow);
+	CHECK(ui.CardFocus() == 0);
+
+	const ApplicationKeyboardResult key =
+		ui.HandleKeyboard(MakeKey(Keys::Right));
+	CHECK(key.owner == ApplicationKeyboardOwner::ExternalChange);
+	CHECK(ui.CardFocus() == 1);
+
+	(void)ui.HandleKeyboard(MakeKey(Keys::Escape));
+	CHECK_FALSE(workspace.ExternalChangePromptActive());
+	CHECK(ui.SynchronizeComposition() == BoundOverlay::None);
+	CHECK_FALSE(ui.ChromeOwnsInput());
+}
+
+TEST_CASE("application UI external change pointer and keyboard choices") {
+	TempFile file("baseline");
+	ApplicationEditor editor(400, 280);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	BeginExternalChangePrompt(ui, workspace, editor, file.path);
+	const std::string editorText = editor.Text();
+
+	ApplicationLayout layout = ui.Layout();
+	const Point onCancel = Point::FromInts(
+		static_cast<int>(layout.externalChangeCard.cancelButton.left + 2),
+		static_cast<int>(layout.externalChangeCard.cancelButton.top + 2));
+	(void)ui.HandlePointer(
+		MakePointer(PointerAction::Press, onCancel.x, onCancel.y, 0));
+	REQUIRE(ui.ExternalChangePressHit() == ExternalChangeCardHit::Cancel);
+	const ApplicationPointerResult cancel = ui.HandlePointer(
+		MakePointer(PointerAction::Release, onCancel.x, onCancel.y, 0));
+	CHECK(cancel.owner == ApplicationPointerOwner::ExternalChange);
+	CHECK(cancel.consumed);
+	CHECK_FALSE(workspace.ExternalChangePromptActive());
+	CHECK(editor.Modified());
+	CHECK_FALSE(ui.ExternalChangePressHit().has_value());
+
+	// Reopen the conflict and overwrite via keyboard.
+	ExternallyRewrite(file.path, "still-external-longer");
+	workspace.RequestSave();
+	REQUIRE(workspace.ExternalChangePromptActive());
+	(void)ui.TakeShellEffects();
+	CHECK(ui.SynchronizeComposition() == BoundOverlay::ExternalChange);
+	ui.CardFocus() = 0;
+	CHECK(ui.HandleKeyboard(MakeLetter('O')).owner ==
+		ApplicationKeyboardOwner::ExternalChange);
+	CHECK_FALSE(workspace.ExternalChangePromptActive());
+	CHECK_FALSE(editor.Modified());
+	CHECK(editor.Text() == editorText);
+	(void)ui.TakeShellEffects();
+}
+
+TEST_CASE("application UI external change keyboard focus cycle and Save As") {
+	TempFile file("baseline");
+	TempFile other("");
+	ApplicationEditor editor(400, 280);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	BeginExternalChangePrompt(ui, workspace, editor, file.path);
+
+	CHECK(ui.HandleKeyboard(MakeKey(Keys::Tab)).owner ==
+		ApplicationKeyboardOwner::ExternalChange);
+	CHECK(ui.CardFocus() == 1);
+	CHECK(ui.HandleKeyboard(MakeKey(Keys::Tab)).owner ==
+		ApplicationKeyboardOwner::ExternalChange);
+	CHECK(ui.CardFocus() == 2);
+	CHECK(ui.HandleKeyboard(MakeLetter('S')).owner ==
+		ApplicationKeyboardOwner::ExternalChange);
+	CHECK_FALSE(workspace.ExternalChangePromptActive());
+	const auto effects = ui.TakeShellEffects();
+	CHECK(HasShellEffect(effects, ApplicationShellEffectKind::ShowSaveAs));
+
+	// Complete Save As through the workspace path used by portal results.
+	workspace.HandleSaveResult(true, other.path);
+	(void)ui.TakeShellEffects();
+	CHECK(workspace.Path() == other.path);
+	CHECK_FALSE(editor.Modified());
+}
+
+TEST_CASE("application UI external change file error outranks and returns") {
+	TempFile file("baseline");
+	ApplicationEditor editor(400, 280);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	BeginExternalChangePrompt(ui, workspace, editor, file.path);
+
+	const ApplicationLayout layout = ui.Layout();
+	const Point onOverwrite = Point::FromInts(
+		static_cast<int>(layout.externalChangeCard.overwriteButton.left + 2),
+		static_cast<int>(layout.externalChangeCard.overwriteButton.top + 2));
+	(void)ui.HandlePointer(
+		MakePointer(PointerAction::Press, onOverwrite.x, onOverwrite.y, 0));
+	REQUIRE(ui.ExternalChangePressHit() == ExternalChangeCardHit::Overwrite);
+
+	ui.AppendFileErrors({DocumentFileError{
+		DocumentFileOperation::Save, "/tmp/conflict-write-failed"}});
+	CHECK_FALSE(ui.ExternalChangePressHit().has_value());
+	CHECK(ui.SynchronizeComposition() == BoundOverlay::FileError);
+	CHECK(workspace.ExternalChangePromptActive());
+	CHECK(ui.HandleKeyboard(MakeKey(Keys::Escape)).owner ==
+		ApplicationKeyboardOwner::FileError);
+	CHECK(ui.FileErrors().empty());
+	CHECK(ui.SynchronizeComposition() == BoundOverlay::ExternalChange);
+	CHECK(workspace.ExternalChangePromptActive());
+
+	const ApplicationPointerResult release = ui.HandlePointer(
+		MakePointer(PointerAction::Release, onOverwrite.x, onOverwrite.y, 0));
+	CHECK(release.owner == ApplicationPointerOwner::ExternalChange);
+	// Cleared press must not activate Overwrite after the file-error interruption.
+	CHECK(workspace.ExternalChangePromptActive());
+}
+
+TEST_CASE("application UI external change outranks dirty-close card") {
+	TempFile file("baseline");
+	ApplicationEditor editor(400, 280);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+
+	REQUIRE(workspace.OpenPath(file.path));
+	(void)ui.TakeShellEffects();
+	DirtyBuffer(editor);
+	ExternallyRewrite(file.path, "external-for-close");
+	workspace.RequestClose();
+	REQUIRE(workspace.PromptActive());
+	(void)ui.TakeShellEffects();
+	CHECK(ui.SynchronizeComposition() == BoundOverlay::UnsavedChanges);
+
+	workspace.Choose(Scalpel::UnsavedChoice::Save);
+	REQUIRE(workspace.ExternalChangePromptActive());
+	CHECK(workspace.PromptActive());
+	(void)ui.TakeShellEffects();
+	CHECK(ui.SynchronizeComposition() == BoundOverlay::ExternalChange);
+
+	// Overwrite continues the dirty-close walk to AcceptClose.
+	(void)ui.HandleKeyboard(MakeLetter('O'));
+	CHECK_FALSE(workspace.ExternalChangePromptActive());
+	CHECK_FALSE(workspace.PromptActive());
+	const auto effects = ui.TakeShellEffects();
+	CHECK(HasShellEffect(effects, ApplicationShellEffectKind::AcceptClose));
+}
+
+TEST_CASE("application UI external change focus loss clears armed press") {
+	TempFile file("baseline");
+	ApplicationEditor editor(400, 280);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	BeginExternalChangePrompt(ui, workspace, editor, file.path);
+
+	const ApplicationLayout layout = ui.Layout();
+	const Point onReload = Point::FromInts(
+		static_cast<int>(layout.externalChangeCard.reloadButton.left + 2),
+		static_cast<int>(layout.externalChangeCard.reloadButton.top + 2));
+	(void)ui.HandlePointer(
+		MakePointer(PointerAction::Press, onReload.x, onReload.y, 0));
+	REQUIRE(ui.ExternalChangePressHit() == ExternalChangeCardHit::Reload);
+
+	ui.HandleFocus(false);
+	CHECK_FALSE(ui.ExternalChangePressHit().has_value());
+	CHECK(workspace.ExternalChangePromptActive());
+	const ApplicationPointerResult release = ui.HandlePointer(
+		MakePointer(PointerAction::Release, onReload.x, onReload.y, 0));
+	CHECK(release.owner == ApplicationPointerOwner::ExternalChange);
+	CHECK(workspace.ExternalChangePromptActive());
 }

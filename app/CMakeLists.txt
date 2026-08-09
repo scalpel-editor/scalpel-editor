@@ -180,6 +180,7 @@ add_library(scalpel_application OBJECT
   ContextMenu.cxx
   DocumentFile.cxx
   DocumentWorkspace.cxx
+  ExternalChangeCard.cxx
   FileErrorCard.cxx
   FindBar.cxx
   LargeFileCard.cxx

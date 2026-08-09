@@ -6,7 +6,7 @@ The editor has no GTK, Qt, or general-purpose UI toolkit dependency. Its applica
 
 ## Current scope
 
-The application supports multiple tabs, desktop-portal open and save dialogs, atomic whole-file saves, dirty-buffer close prompts, recent files, menu and keyboard actions, two-axis scrollbars, clipboard and primary selection, text-input-v3 IME, compositor-driven key repeat, cursor themes, fractional scaling, damage-aware frame pacing, and optional presentation feedback.
+The application supports multiple tabs, desktop-portal open and save dialogs, atomic whole-file saves with save-time external-change detection, dirty-buffer close prompts, recent files, menu and keyboard actions, two-axis scrollbars, clipboard and primary selection, text-input-v3 IME, compositor-driven key repeat, cursor themes, fractional scaling, damage-aware frame pacing, and optional presentation feedback.
 
 With no arguments, `scalpel-editor` opens an untitled interactive workspace. With one or more paths, it opens those files as the initial tab set in argument order, reuses the first document for the first distinct path, activates the tab named by the last supplied path, binds each path for save, and does not add any of them to recent files. Startup is all-or-nothing: if any path is empty, unreadable, or larger than 256 MiB, the process reports failure (with a distinct diagnostic for oversized files) and does not enter the event loop. Whole-file document loads never exceed 256 MiB. Interactive Open and Recent warn before loading a file larger than 64 MiB and require confirmation up to the 256 MiB hard limit. Use `--` before paths that begin with `-`. The process stays in the foreground until the window closes. A Wayland session is required for every launch form.
 

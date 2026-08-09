@@ -33,6 +33,7 @@
 #include "ContextMenu.h"
 #include "DocumentId.h"
 #include "DocumentWorkspace.h"
+#include "ExternalChangeCard.h"
 #include "FileErrorCard.h"
 #include "FindBar.h"
 #include "Geometry.h"
@@ -53,6 +54,7 @@ enum class BoundOverlay {
 	Menu,
 	UnsavedChanges,
 	LargeFile,
+	ExternalChange,
 	FileError,
 };
 
@@ -76,6 +78,7 @@ struct ApplicationLayout {
 	Scintilla::Internal::PRectangle client;
 	UnsavedChangesCardLayout unsavedCard;
 	LargeFileCardLayout largeFileCard;
+	ExternalChangeCardLayout externalChangeCard;
 	FileErrorCardLayout fileErrorCard;
 };
 
@@ -94,12 +97,14 @@ struct ApplicationLayout {
 
 /**
  * Who owns the pointer for one event after priority resolution.
- * Order when deciding: file error, large-file confirmation, unsaved prompt,
- * active scrollbar drag, editor selection capture, open menu bar, open context
- * menu, permanent chrome (including scrollbar hits), then editor.
+ * Order when deciding: file error, external-change confirmation, large-file
+ * confirmation, unsaved prompt, active scrollbar drag, editor selection
+ * capture, open menu bar, open context menu, permanent chrome (including
+ * scrollbar hits), then editor.
  */
 enum class ApplicationPointerOwner {
 	FileError,
+	ExternalChange,
 	LargeFile,
 	UnsavedPrompt,
 	Menu,
@@ -130,14 +135,16 @@ struct ApplicationPointerResult {
 
 /**
  * Who owns keyboard handling for one event after priority resolution.
- * Order when deciding: file error, large-file confirmation, unsaved prompt,
- * open context menu, Shift+F10 context-menu open, open menu bar (including
- * open accelerators while closed), global Find (Ctrl+F), a focused find field
- * for editing and field-local clipboard keys, other application shortcuts and
- * tab cycling, then editor delivery. Bare F10 / Menu still opens the menu bar.
+ * Order when deciding: file error, external-change confirmation, large-file
+ * confirmation, unsaved prompt, open context menu, Shift+F10 context-menu open,
+ * open menu bar (including open accelerators while closed), global Find
+ * (Ctrl+F), a focused find field for editing and field-local clipboard keys,
+ * other application shortcuts and tab cycling, then editor delivery. Bare
+ * F10 / Menu still opens the menu bar.
  */
 enum class ApplicationKeyboardOwner {
 	FileError,
+	ExternalChange,
 	LargeFile,
 	UnsavedPrompt,
 	ContextMenu,
@@ -307,9 +314,9 @@ public:
 	void HandleFocus(bool focused);
 
 	/**
-	 * True while a file-error card, unsaved prompt, open menu bar, or open
-	 * context menu owns input. The platform host drops IME batches while this
-	 * is true; protocol conversion stays in the adapter.
+	 * True while a file-error, external-change, large-file, or unsaved card,
+	 * open menu bar, or open context menu owns input. The platform host drops
+	 * IME batches while this is true; protocol conversion stays in the adapter.
 	 */
 	[[nodiscard]] bool ChromeOwnsInput() const noexcept;
 
@@ -532,6 +539,15 @@ public:
 		return largeFilePressHit;
 	}
 
+	[[nodiscard]] std::optional<ExternalChangeCardHit> &ExternalChangePressHit()
+		noexcept {
+		return externalChangePressHit;
+	}
+	[[nodiscard]] const std::optional<ExternalChangeCardHit> &
+	ExternalChangePressHit() const noexcept {
+		return externalChangePressHit;
+	}
+
 	[[nodiscard]] const std::deque<DocumentFileError> &FileErrors()
 		const noexcept {
 		return fileErrors;
@@ -592,6 +608,7 @@ private:
 	FindBarPainter findBarPainter;
 	UnsavedChangesCardPainter cardPainter;
 	LargeFileCardPainter largeFilePainter;
+	ExternalChangeCardPainter externalChangePainter;
 	FileErrorCardPainter fileErrorPainter;
 	int cardFocus = 0;
 	BoundOverlay overlay = BoundOverlay::None;
@@ -600,6 +617,7 @@ private:
 	bool fileErrorPressHit = false;
 	std::optional<UnsavedCardHit> promptPressHit;
 	std::optional<LargeFileCardHit> largeFilePressHit;
+	std::optional<ExternalChangeCardHit> externalChangePressHit;
 	std::deque<DocumentFileError> fileErrors;
 	std::optional<ApplicationLayout> frameLayout;
 	DocumentId lastActiveDocument = 0;

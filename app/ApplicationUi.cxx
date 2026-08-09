@@ -247,6 +247,46 @@ void HandleLargeFilePointer(const PointerInput &input,
 	}
 }
 
+void HandleExternalChangePointer(const PointerInput &input,
+	const ExternalChangeCardLayout &layout,
+	std::optional<ExternalChangeCardHit> &pressHit, DocumentWorkspace &workspace,
+	ApplicationEditor &editor, int &cardFocus) {
+	const Scintilla::Internal::Point point(input.x, input.y);
+	if (input.action == PointerAction::Press && input.button == 0) {
+		pressHit = HitTestExternalChangeCard(layout, point);
+		if (*pressHit == ExternalChangeCardHit::Overwrite) {
+			cardFocus = 0;
+			editor.InvalidateClient();
+		} else if (*pressHit == ExternalChangeCardHit::Reload) {
+			cardFocus = 1;
+			editor.InvalidateClient();
+		} else if (*pressHit == ExternalChangeCardHit::SaveAs) {
+			cardFocus = 2;
+			editor.InvalidateClient();
+		} else if (*pressHit == ExternalChangeCardHit::Cancel) {
+			cardFocus = 3;
+			editor.InvalidateClient();
+		}
+		return;
+	}
+	if (input.action == PointerAction::Release && input.button == 0) {
+		const ExternalChangeCardHit hit =
+			HitTestExternalChangeCard(layout, point);
+		if (pressHit && *pressHit == hit) {
+			if (hit == ExternalChangeCardHit::Overwrite) {
+				workspace.ChooseExternalChange(ExternalChangeChoice::Overwrite);
+			} else if (hit == ExternalChangeCardHit::Reload) {
+				workspace.ChooseExternalChange(ExternalChangeChoice::Reload);
+			} else if (hit == ExternalChangeCardHit::SaveAs) {
+				workspace.ChooseExternalChange(ExternalChangeChoice::SaveAs);
+			} else if (hit == ExternalChangeCardHit::Cancel) {
+				workspace.ChooseExternalChange(ExternalChangeChoice::Cancel);
+			}
+		}
+		pressHit.reset();
+	}
+}
+
 void HandlePromptPointer(const PointerInput &input,
 	const UnsavedChangesCardLayout &layout,
 	std::optional<UnsavedCardHit> &pressHit, DocumentWorkspace &workspace,
@@ -534,6 +574,8 @@ ApplicationLayout BuildApplicationLayout(int frameWidth, int frameHeight,
 	layout.client = client;
 	layout.unsavedCard = LayoutUnsavedChangesCard(frameWidth, frameHeight);
 	layout.largeFileCard = LayoutLargeFileCard(frameWidth, frameHeight);
+	layout.externalChangeCard =
+		LayoutExternalChangeCard(frameWidth, frameHeight);
 	layout.fileErrorCard = LayoutFileErrorCard(frameWidth, frameHeight);
 	return layout;
 }
@@ -591,6 +633,11 @@ BoundOverlay ApplicationUi::DesiredOverlay() const noexcept {
 	if (!fileErrors.empty()) {
 		return BoundOverlay::FileError;
 	}
+	// External-change sits above large-file and dirty-close cards because it
+	// may resolve a save that either modal initiated.
+	if (workspace->ExternalChangePromptActive()) {
+		return BoundOverlay::ExternalChange;
+	}
 	if (workspace->LargeFilePromptActive()) {
 		return BoundOverlay::LargeFile;
 	}
@@ -616,8 +663,8 @@ void ApplicationUi::BindPainters() {
 BoundOverlay ApplicationUi::SynchronizeComposition() {
 	// Modal cards outrank an open menu. Drop menu state so it does not linger
 	// after the card closes or paint under the card.
-	if ((!fileErrors.empty() || workspace->LargeFilePromptActive() ||
-			workspace->PromptActive()) &&
+	if ((!fileErrors.empty() || workspace->ExternalChangePromptActive() ||
+			workspace->LargeFilePromptActive() || workspace->PromptActive()) &&
 		menuModel.openMenu.has_value()) {
 		CloseMenuBar(menuModel);
 	}
@@ -673,6 +720,11 @@ void ApplicationUi::PaintActiveOverlay(
 			"File larger than 64 MiB", workspace->LargeFilePromptPath(),
 			cardFocus);
 		return;
+	case BoundOverlay::ExternalChange:
+		externalChangePainter.Paint(surface, layout.externalChangeCard,
+			"File changed on disk", workspace->ExternalChangePromptPath(),
+			cardFocus);
+		return;
 	case BoundOverlay::FileError:
 		if (fileErrors.empty()) {
 			return;
@@ -702,6 +754,17 @@ ApplicationPointerResult ApplicationUi::HandlePointer(
 		DismissApplicationContextMenu();
 		HandleFileErrorPointer(input, layout.fileErrorCard, fileErrors, *editor,
 			fileErrorPressHit);
+		pointerCursor = CursorBelowModal(input, layout);
+	} else if (workspace->ExternalChangePromptActive()) {
+		result.owner = ApplicationPointerOwner::ExternalChange;
+		result.consumed = true;
+		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
+		BlurFindField();
+		DismissApplicationContextMenu();
+		(void)UpdateTabStripPointerState(input, layout, stripModel, *editor,
+			pointerOverChrome);
+		HandleExternalChangePointer(input, layout.externalChangeCard,
+			externalChangePressHit, *workspace, *editor, cardFocus);
 		pointerCursor = CursorBelowModal(input, layout);
 	} else if (workspace->LargeFilePromptActive()) {
 		result.owner = ApplicationPointerOwner::LargeFile;
@@ -849,8 +912,8 @@ ApplicationPointerResult ApplicationUi::HandlePointer(
 }
 
 ApplicationPointerCursor ApplicationUi::CurrentPointerCursor() const noexcept {
-	if (!fileErrors.empty() || workspace->LargeFilePromptActive() ||
-		workspace->PromptActive()) {
+	if (!fileErrors.empty() || workspace->ExternalChangePromptActive() ||
+		workspace->LargeFilePromptActive() || workspace->PromptActive()) {
 		return ApplicationPointerCursor::Arrow;
 	}
 	return pointerCursor;
@@ -958,6 +1021,65 @@ void HandleLargeFileKeyboard(const KeyboardInput &input,
 	// Ignore other keys while the large-file card owns input.
 }
 
+void HandleExternalChangeKeyboard(const KeyboardInput &input,
+	DocumentWorkspace &workspace, ApplicationEditor &editor, int &cardFocus) {
+	if (!input.pressed) {
+		return;
+	}
+	if (input.key == Scintilla::Keys::Escape) {
+		workspace.ChooseExternalChange(ExternalChangeChoice::Cancel);
+		return;
+	}
+	if (input.key == Scintilla::Keys::Tab) {
+		const int delta =
+			(input.modifiers == Scintilla::KeyMod::Shift) ? -1 : 1;
+		cardFocus = CycleExternalChangeCardFocus(cardFocus, delta);
+		editor.InvalidateClient();
+		return;
+	}
+	if (input.key == Scintilla::Keys::Left) {
+		cardFocus = CycleExternalChangeCardFocus(cardFocus, -1);
+		editor.InvalidateClient();
+		return;
+	}
+	if (input.key == Scintilla::Keys::Right) {
+		cardFocus = CycleExternalChangeCardFocus(cardFocus, 1);
+		editor.InvalidateClient();
+		return;
+	}
+	if (input.key == Scintilla::Keys::Return ||
+		input.key == static_cast<Scintilla::Keys>(' ') ||
+		input.text == " ") {
+		ExternalChangeChoice choice = ExternalChangeChoice::Overwrite;
+		if (cardFocus == 1) {
+			choice = ExternalChangeChoice::Reload;
+		} else if (cardFocus == 2) {
+			choice = ExternalChangeChoice::SaveAs;
+		} else if (cardFocus == 3) {
+			choice = ExternalChangeChoice::Cancel;
+		}
+		workspace.ChooseExternalChange(choice);
+		return;
+	}
+	if (IsLetterKey(input, 'O', 'o')) {
+		workspace.ChooseExternalChange(ExternalChangeChoice::Overwrite);
+		return;
+	}
+	if (IsLetterKey(input, 'R', 'r')) {
+		workspace.ChooseExternalChange(ExternalChangeChoice::Reload);
+		return;
+	}
+	if (IsLetterKey(input, 'S', 's')) {
+		workspace.ChooseExternalChange(ExternalChangeChoice::SaveAs);
+		return;
+	}
+	if (IsLetterKey(input, 'C', 'c')) {
+		workspace.ChooseExternalChange(ExternalChangeChoice::Cancel);
+		return;
+	}
+	// Ignore other keys while the external-change card owns input.
+}
+
 void HandlePromptKeyboard(const KeyboardInput &input,
 	DocumentWorkspace &workspace, ApplicationEditor &editor, int &cardFocus) {
 	if (!input.pressed) {
@@ -1053,6 +1175,12 @@ ApplicationKeyboardResult ApplicationUi::HandleKeyboard(
 		BlurFindField();
 		DismissApplicationContextMenu();
 		HandleFileErrorKeyboard(input, fileErrors, *editor, fileErrorPressHit);
+	} else if (workspace->ExternalChangePromptActive()) {
+		result.owner = ApplicationKeyboardOwner::ExternalChange;
+		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
+		BlurFindField();
+		DismissApplicationContextMenu();
+		HandleExternalChangeKeyboard(input, *workspace, *editor, cardFocus);
 	} else if (workspace->LargeFilePromptActive()) {
 		result.owner = ApplicationKeyboardOwner::LargeFile;
 		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
@@ -1173,14 +1301,15 @@ void ApplicationUi::HandleFocus(bool focused) {
 	fileErrorPressHit = false;
 	promptPressHit.reset();
 	largeFilePressHit.reset();
+	externalChangePressHit.reset();
 	// Keep the bar and query; only drop field focus and presses.
 	BlurFindField();
 }
 
 bool ApplicationUi::ChromeOwnsInput() const noexcept {
-	return !fileErrors.empty() || workspace->LargeFilePromptActive() ||
-		workspace->PromptActive() || menuModel.openMenu.has_value() ||
-		contextMenuModel.open;
+	return !fileErrors.empty() || workspace->ExternalChangePromptActive() ||
+		workspace->LargeFilePromptActive() || workspace->PromptActive() ||
+		menuModel.openMenu.has_value() || contextMenuModel.open;
 }
 
 void ApplicationUi::NotifyContextPopupDone() {
@@ -1198,6 +1327,7 @@ void ApplicationUi::NotifyPromptBegan() {
 	cardFocus = 0;
 	promptPressHit.reset();
 	largeFilePressHit.reset();
+	externalChangePressHit.reset();
 }
 
 void ApplicationUi::AppendFileErrors(std::vector<DocumentFileError> errors) {
@@ -1223,6 +1353,7 @@ void ApplicationUi::AppendFileErrors(std::vector<DocumentFileError> errors) {
 	// underneath it. Otherwise a later release could activate that button.
 	promptPressHit.reset();
 	largeFilePressHit.reset();
+	externalChangePressHit.reset();
 	editor->InvalidateFrame();
 }
 
@@ -1310,6 +1441,7 @@ void ApplicationUi::SynchronizeInteraction() {
 	const DocumentId activeDocument = editor->ActiveDocument();
 	const bool documentChanged = activeDocument != lastActiveDocument;
 	if (documentChanged || !fileErrors.empty() ||
+		workspace->ExternalChangePromptActive() ||
 		workspace->LargeFilePromptActive() || workspace->PromptActive() ||
 		menuModel.openMenu.has_value() || contextMenuModel.open) {
 		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
@@ -1643,11 +1775,13 @@ void ApplicationUi::HandleFrameSizeChange() {
 	fileErrorPressHit = false;
 	promptPressHit.reset();
 	largeFilePressHit.reset();
+	externalChangePressHit.reset();
 	(void)SynchronizeTabs(true);
 	editor->InvalidateTopChrome();
 	editor->InvalidateScrollBars();
-	if (!fileErrors.empty() || workspace->LargeFilePromptActive() ||
-		workspace->PromptActive() || menuModel.openMenu.has_value()) {
+	if (!fileErrors.empty() || workspace->ExternalChangePromptActive() ||
+		workspace->LargeFilePromptActive() || workspace->PromptActive() ||
+		menuModel.openMenu.has_value()) {
 		// Full frame so the card or dropdown cannot leave stale pixels.
 		editor->InvalidateFrame();
 	}

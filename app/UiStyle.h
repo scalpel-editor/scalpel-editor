@@ -138,6 +138,13 @@ struct UiStyle {
 	const int largeFileTitlePathGap = 8;
 	const int largeFileButtonGap = 8;
 
+	// External-change save card (Overwrite / Reload / Save As / Cancel).
+	const int externalChangeCardMaxWidth = 560;
+	const int externalChangeCardMinWidth = 280;
+	const int externalChangePathHeight = 24;
+	const int externalChangeTitlePathGap = 8;
+	const int externalChangeButtonGap = 6;
+
 private:
 	UiStyle() = default;
 	friend const UiStyle &DefaultUiStyle() noexcept;

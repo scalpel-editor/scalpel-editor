@@ -98,8 +98,9 @@ protected:
  * scroll until activated again. DocumentWorkspace maps tabs and file paths onto
  * these IDs. ApplicationUi owns chrome and overlay selection state; the shell
  * paints the menu bar and tab strip as permanent top chrome and binds the
- * file-error card, unsaved-changes card, or open menu dropdown into the
- * post-paint overlay slot (file error first, then unsaved card, then menu).
+ * file-error card, external-change card, large-file card, unsaved-changes card,
+ * or open menu dropdown into the post-paint overlay slot (file error first,
+ * then external-change, large-file, unsaved card, then menu).
  */
 class ApplicationEditor final : private ApplicationResources, public Scintilla::Internal::ScintillaBase {
 public:
@@ -339,8 +340,9 @@ public:
 	 * (editor client plus top chrome) and PresentFrame uses a full buffer swap
 	 * so alpha overlays do not darken preserved pixels outside partial damage.
 	 * Call InvalidateFrame when overlay pixels above the client can change.
-	 * ApplicationUi binds exactly one of the open menu dropdown, unsaved-
-	 * changes card, or file-error card here; modal cards outrank the menu.
+	 * ApplicationUi binds exactly one of the open menu dropdown, external-
+	 * change card, large-file card, unsaved-changes card, or file-error card
+	 * here; modal cards outrank the menu.
 	 */
 	using OverlayPainter = std::function<void(Scintilla::Internal::Surface &surface,
 		int width, int height)>;
