@@ -15,6 +15,7 @@ using Scalpel::DocumentFileOperation;
 using Scalpel::DocumentId;
 using Scalpel::DocumentShellRequest;
 using Scalpel::DocumentWorkspace;
+using Scalpel::LargeFileChoice;
 using Scalpel::UnsavedChoice;
 using Scalpel::UnsavedPending;
 
@@ -1584,27 +1585,6 @@ TEST_CASE("document workspace startup files does not overwrite dirty text") {
 	CHECK(workspace.TakeFileErrors().empty());
 }
 
-TEST_CASE("document workspace file size open rejects hard-limit files") {
-	SparseTempFile oversized(
-		static_cast<off_t>(Scalpel::DocumentFileHardLimitBytes + 1));
-	ApplicationEditor editor(320, 180);
-	editor.LoadInitialBuffer("startup\n");
-	DocumentWorkspace workspace(editor);
-	const DocumentId startup = workspace.ActiveTab();
-	const std::string startupText = editor.Text();
-
-	CHECK_FALSE(workspace.OpenPath(oversized.path));
-	CHECK(workspace.ActiveTab() == startup);
-	CHECK(editor.Text() == startupText);
-	CHECK(workspace.TabCount() == 1);
-	const auto errors = workspace.TakeFileErrors();
-	REQUIRE(errors.size() == 1);
-	CHECK(errors[0].operation == DocumentFileOperation::Open);
-	CHECK(errors[0].path == oversized.path);
-	CHECK(errors[0].reason == DocumentFileErrorReason::TooLarge);
-	CHECK(workspace.TakeRecentPaths().empty());
-}
-
 TEST_CASE("document workspace file size startup rejects hard-limit files") {
 	SparseTempFile oversized(
 		static_cast<off_t>(Scalpel::DocumentFileHardLimitBytes + 1));
@@ -1627,7 +1607,136 @@ TEST_CASE("document workspace file size startup rejects hard-limit files") {
 		DocumentShellRequest::RefreshTabs));
 }
 
-TEST_CASE("document workspace file size multi-open keeps other paths") {
+TEST_CASE("document workspace large file open queues confirmation") {
+	SparseTempFile large(
+		static_cast<off_t>(Scalpel::DocumentFileWarningThresholdBytes + 1));
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("startup\n");
+	DocumentWorkspace workspace(editor);
+	const DocumentId startup = workspace.ActiveTab();
+	const std::string startupText = editor.Text();
+
+	CHECK_FALSE(workspace.OpenPath(large.path));
+	CHECK(workspace.LargeFilePromptActive());
+	CHECK(workspace.LargeFilePromptPath() == large.path);
+	CHECK_FALSE(workspace.PromptActive());
+	CHECK(workspace.ActiveTab() == startup);
+	CHECK(editor.Text() == startupText);
+	CHECK(workspace.TabCount() == 1);
+	CHECK(workspace.TakeFileErrors().empty());
+	CHECK(workspace.TakeRecentPaths().empty());
+	CHECK(HasRequest(workspace.TakeRequests(),
+		DocumentShellRequest::PromptBegan));
+}
+
+TEST_CASE("document workspace large file cancel drops path") {
+	SparseTempFile large(
+		static_cast<off_t>(Scalpel::DocumentFileWarningThresholdBytes + 1));
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("startup\n");
+	DocumentWorkspace workspace(editor);
+	const DocumentId startup = workspace.ActiveTab();
+
+	CHECK_FALSE(workspace.OpenPath(large.path));
+	REQUIRE(workspace.LargeFilePromptActive());
+	(void)workspace.TakeRequests();
+
+	workspace.ChooseLargeFile(LargeFileChoice::Cancel);
+	CHECK_FALSE(workspace.LargeFilePromptActive());
+	CHECK(workspace.LargeFilePromptPath().empty());
+	CHECK(workspace.ActiveTab() == startup);
+	CHECK(workspace.TabCount() == 1);
+	CHECK(workspace.TakeFileErrors().empty());
+	CHECK(workspace.TakeRecentPaths().empty());
+}
+
+TEST_CASE("document workspace large file accept loads under hard limit") {
+	// Sparse file above the warning threshold but within the hard cap. Reading
+	// materializes zeros up to warning+1 bytes (~64 MiB).
+	SparseTempFile large(
+		static_cast<off_t>(Scalpel::DocumentFileWarningThresholdBytes + 1));
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("startup\n");
+	DocumentWorkspace workspace(editor);
+
+	CHECK_FALSE(workspace.OpenPath(large.path));
+	REQUIRE(workspace.LargeFilePromptActive());
+	(void)workspace.TakeRequests();
+	(void)workspace.TakeRecentPaths();
+
+	workspace.ChooseLargeFile(LargeFileChoice::Open);
+	CHECK_FALSE(workspace.LargeFilePromptActive());
+	CHECK(workspace.TabCount() == 2);
+	CHECK(workspace.Path() == large.path);
+	CHECK(editor.Text().size() ==
+		Scalpel::DocumentFileWarningThresholdBytes + 1);
+	CHECK_FALSE(editor.Modified());
+	CHECK(workspace.TakeFileErrors().empty());
+	const auto recent = workspace.TakeRecentPaths();
+	REQUIRE(recent.size() == 1);
+	CHECK(recent.front() == large.path);
+	CHECK(HasRequest(workspace.TakeRequests(),
+		DocumentShellRequest::RefreshTabs));
+}
+
+TEST_CASE("document workspace large file accept hard-limit failure") {
+	// Above the hard cap: confirmation still appears from the warning read,
+	// then Open fails without creating a tab.
+	SparseTempFile oversized(
+		static_cast<off_t>(Scalpel::DocumentFileHardLimitBytes + 1));
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("startup\n");
+	DocumentWorkspace workspace(editor);
+	const DocumentId startup = workspace.ActiveTab();
+
+	CHECK_FALSE(workspace.OpenPath(oversized.path));
+	REQUIRE(workspace.LargeFilePromptActive());
+	CHECK(workspace.LargeFilePromptPath() == oversized.path);
+	(void)workspace.TakeRequests();
+
+	workspace.ChooseLargeFile(LargeFileChoice::Open);
+	CHECK_FALSE(workspace.LargeFilePromptActive());
+	CHECK(workspace.ActiveTab() == startup);
+	CHECK(workspace.TabCount() == 1);
+	CHECK(workspace.TakeRecentPaths().empty());
+	const auto errors = workspace.TakeFileErrors();
+	REQUIRE(errors.size() == 1);
+	CHECK(errors[0].path == oversized.path);
+	CHECK(errors[0].reason == DocumentFileErrorReason::TooLarge);
+}
+
+TEST_CASE("document workspace large file multi-path resumes after cancel") {
+	TempFile first("first\n");
+	SparseTempFile large(
+		static_cast<off_t>(Scalpel::DocumentFileWarningThresholdBytes + 1));
+	TempFile second("second\n");
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("startup\n");
+	DocumentWorkspace workspace(editor);
+
+	workspace.HandleOpenResult(true, {first.path, large.path, second.path});
+	REQUIRE(workspace.LargeFilePromptActive());
+	CHECK(workspace.LargeFilePromptPath() == large.path);
+	// First path opened before the pause; second waits on the remaining list.
+	CHECK(workspace.TabCount() == 2);
+	CHECK(workspace.Path() == first.path);
+	const auto recentBefore = workspace.TakeRecentPaths();
+	REQUIRE(recentBefore.size() == 1);
+	CHECK(recentBefore.front() == first.path);
+	(void)workspace.TakeRequests();
+
+	workspace.ChooseLargeFile(LargeFileChoice::Cancel);
+	CHECK_FALSE(workspace.LargeFilePromptActive());
+	CHECK(workspace.TabCount() == 3);
+	CHECK(workspace.Path() == second.path);
+	CHECK(editor.Text() == "second\n");
+	CHECK(workspace.TakeFileErrors().empty());
+	const auto recentAfter = workspace.TakeRecentPaths();
+	REQUIRE(recentAfter.size() == 1);
+	CHECK(recentAfter.front() == second.path);
+}
+
+TEST_CASE("document workspace large file multi-path resumes after hard-limit open") {
 	TempFile first("first\n");
 	SparseTempFile oversized(
 		static_cast<off_t>(Scalpel::DocumentFileHardLimitBytes + 1));
@@ -1638,10 +1747,12 @@ TEST_CASE("document workspace file size multi-open keeps other paths") {
 
 	workspace.HandleOpenResult(true,
 		{first.path, oversized.path, second.path});
-	const std::vector<std::string> opened = workspace.TakeRecentPaths();
-	REQUIRE(opened.size() == 2);
-	CHECK(opened[0] == first.path);
-	CHECK(opened[1] == second.path);
+	REQUIRE(workspace.LargeFilePromptActive());
+	(void)workspace.TakeRecentPaths();
+	(void)workspace.TakeRequests();
+
+	workspace.ChooseLargeFile(LargeFileChoice::Open);
+	CHECK_FALSE(workspace.LargeFilePromptActive());
 	CHECK(workspace.TabCount() == 3);
 	CHECK(workspace.Path() == second.path);
 	CHECK(editor.Text() == "second\n");
@@ -1649,4 +1760,59 @@ TEST_CASE("document workspace file size multi-open keeps other paths") {
 	REQUIRE(errors.size() == 1);
 	CHECK(errors[0].path == oversized.path);
 	CHECK(errors[0].reason == DocumentFileErrorReason::TooLarge);
+	const auto recent = workspace.TakeRecentPaths();
+	REQUIRE(recent.size() == 1);
+	CHECK(recent.front() == second.path);
+}
+
+TEST_CASE("document workspace large file blocks dirty-close and tab actions") {
+	SparseTempFile large(
+		static_cast<off_t>(Scalpel::DocumentFileWarningThresholdBytes + 1));
+	TempFile other("other\n");
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("startup\n");
+	DocumentWorkspace workspace(editor);
+	const DocumentId startup = workspace.ActiveTab();
+	REQUIRE(workspace.OpenPath(other.path));
+	const DocumentId otherId = workspace.ActiveTab();
+	(void)workspace.TakeRecentPaths();
+	(void)workspace.TakeRequests();
+
+	CHECK_FALSE(workspace.OpenPath(large.path));
+	REQUIRE(workspace.LargeFilePromptActive());
+	(void)workspace.TakeRequests();
+
+	workspace.NewTab();
+	workspace.ActivateTab(startup);
+	workspace.CloseTab(otherId);
+	workspace.RequestOpen();
+	workspace.RequestSave();
+	workspace.RequestClose();
+	CHECK(workspace.LargeFilePromptActive());
+	CHECK(workspace.TabCount() == 2);
+	CHECK(workspace.ActiveTab() == otherId);
+	CHECK_FALSE(workspace.PromptActive());
+	CHECK(workspace.TakeRequests().empty());
+
+	workspace.ChooseLargeFile(LargeFileChoice::Cancel);
+	CHECK_FALSE(workspace.LargeFilePromptActive());
+}
+
+TEST_CASE("document workspace large file open is no-op while dirty prompt active") {
+	SparseTempFile large(
+		static_cast<off_t>(Scalpel::DocumentFileWarningThresholdBytes + 1));
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("dirty\n");
+	DirtyBuffer(editor);
+	DocumentWorkspace workspace(editor);
+
+	workspace.RequestClose();
+	REQUIRE(workspace.PromptActive());
+	(void)workspace.TakeRequests();
+
+	CHECK_FALSE(workspace.OpenPath(large.path));
+	CHECK_FALSE(workspace.LargeFilePromptActive());
+	CHECK(workspace.PromptActive());
+	CHECK(workspace.TakeFileErrors().empty());
+	CHECK(workspace.TakeRecentPaths().empty());
 }

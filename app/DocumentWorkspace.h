@@ -44,6 +44,12 @@ enum class DocumentFileErrorReason {
 	TooLarge,
 };
 
+/** Open / Cancel for the interactive large-file confirmation. */
+enum class LargeFileChoice {
+	Open,
+	Cancel,
+};
+
 /** One failed document read or write for the shell to present to the user. */
 struct DocumentFileError {
 	DocumentFileOperation operation = DocumentFileOperation::Open;
@@ -98,6 +104,12 @@ struct DocumentDialogIntent {
  * Dirty CloseTab prompts remove one tab after Save or Discard. Dirty window
  * close walks dirty tabs in strip order; Save or Discard advances, and Cancel
  * aborts without removing tabs.
+ *
+ * Interactive Open and Recent first try the 64 MiB warning threshold. A file
+ * larger than that threshold queues a large-file confirmation instead of a tab;
+ * Open retries under the 256 MiB hard limit, and Cancel drops the path. The
+ * large-file decision does not overlap a dirty-close prompt: either modal owns
+ * tab, dialog, save, and close actions until it finishes.
  */
 class DocumentWorkspace final {
 public:
@@ -118,11 +130,20 @@ public:
 	[[nodiscard]] bool AwaitingSaveAs() const noexcept {
 		return prompt.AwaitingSaveAs();
 	}
+	/** True while Open / Cancel is required for an oversized interactive open. */
+	[[nodiscard]] bool LargeFilePromptActive() const noexcept {
+		return pendingLargeOpen.has_value();
+	}
+	/** Path awaiting large-file confirmation; empty when inactive. */
+	[[nodiscard]] const std::string &LargeFilePromptPath() const noexcept;
 	[[nodiscard]] bool BufferModified() const noexcept;
 
 	/** Create an empty untitled tab and activate it. */
 	void NewTab();
-	/** Make id active when it is a retained tab. No-op while a prompt is active. */
+	/**
+	 * Make id active when it is a retained tab. No-op while a dirty-close or
+	 * large-file decision owns the workspace.
+	 */
 	void ActivateTab(DocumentId id);
 	/** Cycle the active tab by delta steps (wraps). */
 	void CycleTab(int delta);
@@ -144,12 +165,18 @@ public:
 	 * clean; otherwise activates the first dirty tab in strip order and starts
 	 * a CloseWindow prompt. Save or Discard advances through remaining dirty
 	 * tabs; Cancel aborts the sequence without removing tabs. No-op while a
-	 * prompt is already active.
+	 * dirty-close or large-file decision is already active.
 	 */
 	void RequestClose();
 
 	/** Save / Discard / Cancel from the card or its keyboard shortcuts. */
 	void Choose(UnsavedChoice choice);
+	/**
+	 * Open or Cancel from the large-file confirmation. Open retries the path
+	 * under the hard document size limit; Cancel drops it. Either choice then
+	 * continues any remaining multi-path Open entries in order.
+	 */
+	void ChooseLargeFile(LargeFileChoice choice);
 
 	/** Capture an Open intent and its current document path. */
 	[[nodiscard]] DocumentDialogIntent BeginOpenDialog();
@@ -183,8 +210,9 @@ public:
 	void HandleOpenResult(bool accepted, const std::vector<std::string> &paths);
 	/**
 	 * Open one path without a portal. Returns true when it selected an existing
-	 * tab or loaded a new one. No-op while a dirty-close prompt is active.
-	 * Used by the Recent menu.
+	 * tab or loaded a new one. No-op while a dirty-close or large-file decision
+	 * is active. A path above the warning threshold queues confirmation and
+	 * returns false until Open is chosen. Used by the Recent menu.
 	 */
 	[[nodiscard]] bool OpenPath(std::string_view path);
 	/**
@@ -241,6 +269,11 @@ private:
 		uint64_t promptGeneration = 0;
 	};
 
+	struct PendingLargeOpen {
+		std::string path;
+		std::vector<std::string> remaining;
+	};
+
 	void Queue(DocumentShellRequest request);
 	void QueueShowSaveAs();
 	[[nodiscard]] DocumentDialogId NextDialogId();
@@ -264,7 +297,19 @@ private:
 	/** Remove the tab at index; keeps at least one tab via a fresh untitled. */
 	void RemoveTabAt(std::size_t index);
 	void EnsureActiveMatchesEditor();
+	/** True while dirty-close or large-file confirmation owns decisions. */
+	[[nodiscard]] bool DecisionActive() const noexcept;
+	void BeginLargeFilePrompt(std::string path,
+		std::vector<std::string> remaining);
 	[[nodiscard]] bool ApplyOpenPaths(const std::vector<std::string> &paths);
+	/**
+	 * Process interactive open paths in order. May queue large-file confirmation
+	 * and leave remaining paths for after Open or Cancel.
+	 */
+	[[nodiscard]] bool OpenPathList(const std::vector<std::string> &paths);
+	/** Create and activate a tab for a successfully read path. */
+	DocumentId LoadOpenedDocument(const std::string &pathString,
+		std::string text);
 	void ApplySaveResult(DocumentId tabId, bool accepted,
 		std::string_view savedPath, uint64_t promptGeneration);
 
@@ -295,6 +340,8 @@ private:
 	uint64_t lastDialogId = 0;
 	std::vector<ActiveDialogIntent> activeDialogs;
 	UnsavedChangesPrompt prompt;
+	/** Interactive path waiting on large-file Open / Cancel, if any. */
+	std::optional<PendingLargeOpen> pendingLargeOpen;
 	std::vector<DocumentShellRequest> requests;
 	std::vector<std::string> recentPaths;
 	std::vector<DocumentFileError> fileErrors;

@@ -114,7 +114,37 @@ void DocumentWorkspace::ClearDirtyCloseState() noexcept {
 	activePromptGeneration = 0;
 }
 
+bool DocumentWorkspace::DecisionActive() const noexcept {
+	return prompt.Active() || pendingLargeOpen.has_value();
+}
+
+const std::string &DocumentWorkspace::LargeFilePromptPath() const noexcept {
+	if (pendingLargeOpen) {
+		return pendingLargeOpen->path;
+	}
+	static const std::string empty;
+	return empty;
+}
+
+void DocumentWorkspace::BeginLargeFilePrompt(std::string path,
+	std::vector<std::string> remaining) {
+	if (DecisionActive() || path.empty()) {
+		return;
+	}
+	PendingLargeOpen pending;
+	pending.path = std::move(path);
+	pending.remaining = std::move(remaining);
+	pendingLargeOpen = std::move(pending);
+	editor.CancelActiveTextInput();
+	editor.InvalidateClient();
+	Queue(DocumentShellRequest::PromptBegan);
+}
+
 void DocumentWorkspace::BeginPrompt(UnsavedPending pending, DocumentId tabId) {
+	// Large-file confirmation already owns the modal decision.
+	if (pendingLargeOpen.has_value()) {
+		return;
+	}
 	if (!prompt.TryBegin(pending, tabId)) {
 		return;
 	}
@@ -197,7 +227,7 @@ void DocumentWorkspace::ApplyOutcome(UnsavedOutcome outcome,
 }
 
 void DocumentWorkspace::NewTab() {
-	if (prompt.Active()) {
+	if (DecisionActive()) {
 		return;
 	}
 	const DocumentId id = editor.CreateDocument();
@@ -208,7 +238,7 @@ void DocumentWorkspace::NewTab() {
 }
 
 void DocumentWorkspace::ActivateTab(DocumentId id) {
-	if (prompt.Active()) {
+	if (DecisionActive()) {
 		return;
 	}
 	if (id == activeId) {
@@ -223,7 +253,7 @@ void DocumentWorkspace::ActivateTab(DocumentId id) {
 }
 
 void DocumentWorkspace::CycleTab(int delta) {
-	if (prompt.Active() || tabs.empty() || delta == 0) {
+	if (DecisionActive() || tabs.empty() || delta == 0) {
 		return;
 	}
 	const std::size_t count = tabs.size();
@@ -239,7 +269,7 @@ void DocumentWorkspace::CycleTab(int delta) {
 }
 
 void DocumentWorkspace::CloseTab(DocumentId id) {
-	if (prompt.Active()) {
+	if (DecisionActive()) {
 		return;
 	}
 	const std::optional<std::size_t> index = FindIndex(id);
@@ -254,14 +284,14 @@ void DocumentWorkspace::CloseTab(DocumentId id) {
 }
 
 void DocumentWorkspace::RequestOpen() {
-	if (prompt.Active()) {
+	if (DecisionActive()) {
 		return;
 	}
 	Queue(DocumentShellRequest::ShowOpen);
 }
 
 void DocumentWorkspace::RequestSave() {
-	if (prompt.Active()) {
+	if (DecisionActive()) {
 		return;
 	}
 	if (Path().empty()) {
@@ -272,14 +302,14 @@ void DocumentWorkspace::RequestSave() {
 }
 
 void DocumentWorkspace::RequestSaveAs() {
-	if (prompt.Active()) {
+	if (DecisionActive()) {
 		return;
 	}
 	QueueShowSaveAs();
 }
 
 void DocumentWorkspace::RequestClose() {
-	if (prompt.Active()) {
+	if (DecisionActive()) {
 		// Pending action already owns the close decision.
 		return;
 	}
@@ -307,6 +337,47 @@ void DocumentWorkspace::Choose(UnsavedChoice choice) {
 		return;
 	}
 	ApplyOutcome(prompt.Choose(choice, !path.empty()), kind, tabId);
+}
+
+void DocumentWorkspace::ChooseLargeFile(LargeFileChoice choice) {
+	if (!pendingLargeOpen) {
+		return;
+	}
+	PendingLargeOpen pending = std::move(*pendingLargeOpen);
+	pendingLargeOpen.reset();
+	editor.InvalidateClient();
+
+	if (choice == LargeFileChoice::Open) {
+		// Retry under the hard limit; confirmation only covered the warning band.
+		const DocumentFileReadResult text =
+			ReadDocumentFile(pending.path, DocumentFileHardLimitBytes);
+		if (text.status == DocumentFileReadStatus::TooLarge) {
+			std::cerr << "scalpel-editor: file too large: " << pending.path
+				<< '\n';
+			fileErrors.push_back({DocumentFileOperation::Open, pending.path,
+				DocumentFileErrorReason::TooLarge});
+		} else if (text.status != DocumentFileReadStatus::Success) {
+			std::cerr << "scalpel-editor: failed to read " << pending.path
+				<< '\n';
+			fileErrors.push_back({DocumentFileOperation::Open, pending.path});
+		} else if (const std::optional<std::size_t> existing =
+					   FindIndexByPath(pending.path)) {
+			// Path appeared while the card was up; activate without a second tab.
+			editor.ActivateDocument(tabs[*existing].id);
+			activeId = tabs[*existing].id;
+			recentPaths.push_back(pending.path);
+			Queue(DocumentShellRequest::RefreshTabs);
+		} else {
+			(void)LoadOpenedDocument(pending.path, std::move(text.bytes));
+			recentPaths.push_back(pending.path);
+			Queue(DocumentShellRequest::RefreshTabs);
+		}
+	}
+	// Cancel drops the path: no tab, no recent entry, no file error.
+
+	if (!pending.remaining.empty()) {
+		(void)OpenPathList(pending.remaining);
+	}
 }
 
 DocumentDialogId DocumentWorkspace::NextDialogId() {
@@ -412,7 +483,7 @@ void DocumentWorkspace::HandleOpenResult(bool accepted,
 }
 
 bool DocumentWorkspace::OpenPath(std::string_view path) {
-	if (path.empty() || prompt.Active()) {
+	if (path.empty() || DecisionActive()) {
 		return false;
 	}
 	return ApplyOpenPaths({std::string(path)});
@@ -421,7 +492,7 @@ bool DocumentWorkspace::OpenPath(std::string_view path) {
 bool DocumentWorkspace::LoadStartupFiles(
 	const std::vector<std::string> &paths) {
 	// Only the pristine constructor workspace may adopt startup paths.
-	if (prompt.Active() || tabs.size() != 1 || !tabs[0].path.empty() ||
+	if (DecisionActive() || tabs.size() != 1 || !tabs[0].path.empty() ||
 		tabs[0].untitledNumber != 1 || nextUntitledNumber != 2 ||
 		editor.Modified(tabs[0].id) || !editor.Text(tabs[0].id).empty()) {
 		return false;
@@ -526,45 +597,70 @@ void DocumentWorkspace::HandleSaveResult(DocumentId tabId, bool accepted,
 }
 
 bool DocumentWorkspace::ApplyOpenPaths(const std::vector<std::string> &paths) {
-	// Tab open must not move activeId away from a dirty-close prompt.
-	if (prompt.Active()) {
+	// Tab open must not move activeId away from an active decision modal.
+	if (DecisionActive()) {
 		return false;
 	}
+	return OpenPathList(paths);
+}
+
+DocumentId DocumentWorkspace::LoadOpenedDocument(const std::string &pathString,
+	std::string text) {
+	const DocumentId id = editor.CreateDocument();
+	Tab tab;
+	tab.id = id;
+	tab.path = pathString;
+	tab.untitledNumber = 0;
+	tabs.push_back(std::move(tab));
+	editor.ActivateDocument(id);
+	activeId = id;
+	editor.LoadInitialBuffer(std::move(text));
+	return id;
+}
+
+bool DocumentWorkspace::OpenPathList(const std::vector<std::string> &paths) {
 	std::optional<DocumentId> lastActivated;
-	for (const std::string &path : paths) {
+	for (std::size_t index = 0; index < paths.size(); ++index) {
+		const std::string &path = paths[index];
 		if (path.empty()) {
 			continue;
 		}
 		const std::string pathString = NormalizePath(path);
+		if (pathString.empty()) {
+			continue;
+		}
 		if (const std::optional<std::size_t> existing =
 				FindIndexByPath(pathString)) {
 			lastActivated = tabs[*existing].id;
 			recentPaths.push_back(pathString);
 			continue;
 		}
+		// Interactive opens use the warning threshold first. Oversized paths
+		// pause for confirmation; remaining multi-path entries wait in order.
 		const DocumentFileReadResult text =
-			ReadDocumentFile(pathString, DocumentFileHardLimitBytes);
+			ReadDocumentFile(pathString, DocumentFileWarningThresholdBytes);
 		if (text.status == DocumentFileReadStatus::TooLarge) {
-			std::cerr << "scalpel-editor: file too large: " << pathString << '\n';
-			fileErrors.push_back({DocumentFileOperation::Open, pathString,
-				DocumentFileErrorReason::TooLarge});
-			continue;
+			std::vector<std::string> remaining;
+			remaining.reserve(paths.size() - index - 1);
+			for (std::size_t rest = index + 1; rest < paths.size(); ++rest) {
+				remaining.push_back(paths[rest]);
+			}
+			if (lastActivated) {
+				if (*lastActivated != activeId) {
+					editor.ActivateDocument(*lastActivated);
+					activeId = *lastActivated;
+				}
+				Queue(DocumentShellRequest::RefreshTabs);
+			}
+			BeginLargeFilePrompt(pathString, std::move(remaining));
+			return lastActivated.has_value();
 		}
 		if (text.status != DocumentFileReadStatus::Success) {
 			std::cerr << "scalpel-editor: failed to read " << pathString << '\n';
 			fileErrors.push_back({DocumentFileOperation::Open, pathString});
 			continue;
 		}
-		const DocumentId id = editor.CreateDocument();
-		Tab tab;
-		tab.id = id;
-		tab.path = pathString;
-		tab.untitledNumber = 0;
-		tabs.push_back(std::move(tab));
-		editor.ActivateDocument(id);
-		activeId = id;
-		editor.LoadInitialBuffer(text.bytes);
-		lastActivated = id;
+		lastActivated = LoadOpenedDocument(pathString, std::move(text.bytes));
 		recentPaths.push_back(pathString);
 	}
 	if (!lastActivated) {
