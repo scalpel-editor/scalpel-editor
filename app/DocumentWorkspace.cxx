@@ -75,7 +75,8 @@ std::vector<DocumentShellRequest> DocumentWorkspace::TakeRequests() {
 }
 
 bool DocumentWorkspace::SaveToPath(DocumentId tabId,
-	const std::string &destination) {
+	const std::string &destination, bool unconditional,
+	uint64_t conflictPromptGeneration) {
 	const std::optional<std::size_t> index = FindIndex(tabId);
 	if (!index) {
 		return false;
@@ -96,8 +97,23 @@ bool DocumentWorkspace::SaveToPath(DocumentId tabId,
 			return false;
 		}
 	}
+
+	// Guard only a save to the tab's currently bound path. Save As to a
+	// different path is an explicit unconditional replacement.
+	const DocumentFileStamp *expected = nullptr;
+	DocumentFileStamp expectedStorage;
+	if (!unconditional && tabs[*index].path == pathString &&
+		tabs[*index].stamp.has_value()) {
+		expectedStorage = *tabs[*index].stamp;
+		expected = &expectedStorage;
+	}
+
 	const DocumentFileWriteResult written =
-		WriteDocumentFile(pathString, editor.Text(tabId));
+		WriteDocumentFile(pathString, editor.Text(tabId), expected);
+	if (written.status == DocumentFileWriteStatus::Changed) {
+		BeginExternalChange(tabId, pathString, conflictPromptGeneration);
+		return false;
+	}
 	if (written.status != DocumentFileWriteStatus::Success) {
 		std::cerr << "scalpel-editor: failed to write " << pathString << '\n';
 		fileErrors.push_back({DocumentFileOperation::Save, pathString});
@@ -106,7 +122,43 @@ bool DocumentWorkspace::SaveToPath(DocumentId tabId,
 	editor.MarkSaved(tabId);
 	tabs[*index].path = pathString;
 	tabs[*index].untitledNumber = 0;
+	tabs[*index].stamp = written.stamp;
 	Queue(DocumentShellRequest::RefreshTabs);
+	return true;
+}
+
+void DocumentWorkspace::BeginExternalChange(DocumentId tabId, std::string path,
+	uint64_t promptGeneration) {
+	if (pendingExternalChange.has_value() || path.empty() || tabId == 0) {
+		return;
+	}
+	PendingExternalChange pending;
+	pending.tabId = tabId;
+	pending.path = std::move(path);
+	pending.promptGeneration = promptGeneration;
+	pendingExternalChange = std::move(pending);
+	// Name the conflicted buffer while the user decides.
+	if (activeId != tabId && FindIndex(tabId)) {
+		editor.ActivateDocument(tabId);
+		activeId = tabId;
+		Queue(DocumentShellRequest::RefreshTabs);
+	}
+	editor.CancelActiveTextInput();
+	editor.InvalidateClient();
+	Queue(DocumentShellRequest::PromptBegan);
+}
+
+bool DocumentWorkspace::ContinueDirtyCloseAfterExternalChange(
+	const PendingExternalChange &pending, UnsavedChoice choice) {
+	if (pending.promptGeneration == 0 ||
+		pending.promptGeneration != activePromptGeneration ||
+		!prompt.Active() || prompt.TabId() != pending.tabId) {
+		return false;
+	}
+	const UnsavedPending kind = prompt.Pending();
+	const DocumentId completedTabId = prompt.TabId();
+	const bool hasPath = !PathOf(completedTabId).empty();
+	ApplyOutcome(prompt.Choose(choice, hasPath), kind, completedTabId);
 	return true;
 }
 
@@ -117,7 +169,8 @@ void DocumentWorkspace::ClearDirtyCloseState() noexcept {
 }
 
 bool DocumentWorkspace::DecisionActive() const noexcept {
-	return prompt.Active() || pendingLargeOpen.has_value();
+	return prompt.Active() || pendingLargeOpen.has_value() ||
+		pendingExternalChange.has_value();
 }
 
 const std::string &DocumentWorkspace::LargeFilePromptPath() const noexcept {
@@ -126,6 +179,21 @@ const std::string &DocumentWorkspace::LargeFilePromptPath() const noexcept {
 	}
 	static const std::string empty;
 	return empty;
+}
+
+const std::string &DocumentWorkspace::ExternalChangePromptPath() const noexcept {
+	if (pendingExternalChange) {
+		return pendingExternalChange->path;
+	}
+	static const std::string empty;
+	return empty;
+}
+
+DocumentId DocumentWorkspace::ExternalChangePromptTab() const noexcept {
+	if (pendingExternalChange) {
+		return pendingExternalChange->tabId;
+	}
+	return 0;
 }
 
 void DocumentWorkspace::BeginLargeFilePrompt(std::string path,
@@ -143,8 +211,8 @@ void DocumentWorkspace::BeginLargeFilePrompt(std::string path,
 }
 
 void DocumentWorkspace::BeginPrompt(UnsavedPending pending, DocumentId tabId) {
-	// Large-file confirmation already owns the modal decision.
-	if (pendingLargeOpen.has_value()) {
+	// Large-file or external-change confirmation already owns the modal decision.
+	if (pendingLargeOpen.has_value() || pendingExternalChange.has_value()) {
 		return;
 	}
 	if (!prompt.TryBegin(pending, tabId)) {
@@ -299,7 +367,7 @@ void DocumentWorkspace::RequestSave() {
 	if (Path().empty()) {
 		QueueShowSaveAs();
 	} else {
-		(void)SaveToPath(activeId, Path());
+		(void)SaveToPath(activeId, Path(), false, 0);
 	}
 }
 
@@ -324,15 +392,17 @@ void DocumentWorkspace::RequestClose() {
 }
 
 void DocumentWorkspace::Choose(UnsavedChoice choice) {
-	if (!prompt.Active()) {
+	// External-change resolution sits above the dirty-close card until settled.
+	if (!prompt.Active() || pendingExternalChange.has_value()) {
 		return;
 	}
 	const UnsavedPending kind = prompt.Pending();
 	const DocumentId tabId = prompt.TabId();
 	const std::string &path = PathOf(tabId);
 	if (choice == UnsavedChoice::Save && !path.empty()) {
-		// Write before clearing the prompt so a failed write keeps the card.
-		if (!SaveToPath(tabId, path)) {
+		// Write before clearing the prompt so a failed write or external-change
+		// decision keeps the dirty-close card underneath.
+		if (!SaveToPath(tabId, path, false, activePromptGeneration)) {
 			return;
 		}
 		ApplyOutcome(prompt.Choose(UnsavedChoice::Save, true), kind, tabId);
@@ -342,7 +412,7 @@ void DocumentWorkspace::Choose(UnsavedChoice choice) {
 }
 
 void DocumentWorkspace::ChooseLargeFile(LargeFileChoice choice) {
-	if (!pendingLargeOpen) {
+	if (!pendingLargeOpen || pendingExternalChange.has_value()) {
 		return;
 	}
 	PendingLargeOpen pending = std::move(*pendingLargeOpen);
@@ -370,7 +440,8 @@ void DocumentWorkspace::ChooseLargeFile(LargeFileChoice choice) {
 			recentPaths.push_back(pending.path);
 			Queue(DocumentShellRequest::RefreshTabs);
 		} else {
-			(void)LoadOpenedDocument(pending.path, std::move(text.bytes));
+			(void)LoadOpenedDocument(pending.path, std::move(text.bytes),
+				text.stamp);
 			recentPaths.push_back(pending.path);
 			Queue(DocumentShellRequest::RefreshTabs);
 		}
@@ -379,6 +450,101 @@ void DocumentWorkspace::ChooseLargeFile(LargeFileChoice choice) {
 
 	if (!pending.remaining.empty()) {
 		(void)OpenPathList(pending.remaining);
+	}
+}
+
+void DocumentWorkspace::ChooseExternalChange(ExternalChangeChoice choice) {
+	if (!pendingExternalChange) {
+		return;
+	}
+	const PendingExternalChange pending = *pendingExternalChange;
+
+	switch (choice) {
+	case ExternalChangeChoice::Cancel:
+		pendingExternalChange.reset();
+		// A Save As that hit this conflict may still be marked awaiting; clear
+		// that so the dirty-close card accepts Save / Discard / Cancel again.
+		if (prompt.AwaitingSaveAs() && pending.promptGeneration != 0 &&
+			pending.promptGeneration == activePromptGeneration &&
+			prompt.TabId() == pending.tabId) {
+			prompt.NotifySaveIncomplete();
+		}
+		editor.InvalidateClient();
+		// Leave any initiating dirty-close prompt active otherwise.
+		return;
+
+	case ExternalChangeChoice::SaveAs:
+		pendingExternalChange.reset();
+		if (pending.promptGeneration != 0 &&
+			pending.promptGeneration == activePromptGeneration &&
+			prompt.Active() && prompt.TabId() == pending.tabId) {
+			// Enter awaiting Save As so cancel and success continue the close.
+			const UnsavedPending kind = prompt.Pending();
+			ApplyOutcome(prompt.Choose(UnsavedChoice::Save, false), kind,
+				pending.tabId);
+		} else {
+			pendingSaveAsTab = pending.tabId;
+			pendingSaveAsPromptGeneration = 0;
+			Queue(DocumentShellRequest::ShowSaveAs);
+		}
+		editor.InvalidateClient();
+		return;
+
+	case ExternalChangeChoice::Overwrite: {
+		// Keep the conflict pending until the write succeeds so a failure
+		// leaves the decision in place under any queued file error.
+		if (!SaveToPath(pending.tabId, pending.path, true, 0)) {
+			editor.InvalidateClient();
+			return;
+		}
+		pendingExternalChange.reset();
+		if (!ContinueDirtyCloseAfterExternalChange(pending,
+				UnsavedChoice::Save)) {
+			editor.InvalidateClient();
+		}
+		return;
+	}
+
+	case ExternalChangeChoice::Reload: {
+		DocumentFileReadResult text =
+			ReadDocumentFile(pending.path, DocumentFileHardLimitBytes);
+		if (text.status != DocumentFileReadStatus::Success) {
+			std::cerr << "scalpel-editor: failed to read " << pending.path
+				<< '\n';
+			const DocumentFileErrorReason reason =
+				text.status == DocumentFileReadStatus::TooLarge ?
+				DocumentFileErrorReason::TooLarge :
+				DocumentFileErrorReason::Failed;
+			fileErrors.push_back(
+				{DocumentFileOperation::Open, pending.path, reason});
+			// Keep the external-change decision so dismissing the error returns
+			// to Overwrite / Reload / Save As / Cancel.
+			editor.InvalidateClient();
+			return;
+		}
+		const std::optional<std::size_t> index = FindIndex(pending.tabId);
+		if (!index || tabs[*index].path != pending.path) {
+			// Tab closed or rebound while the card was up; drop the decision.
+			pendingExternalChange.reset();
+			editor.InvalidateClient();
+			return;
+		}
+		if (activeId != pending.tabId) {
+			editor.ActivateDocument(pending.tabId);
+			activeId = pending.tabId;
+		}
+		editor.LoadInitialBuffer(std::move(text.bytes));
+		tabs[*index].stamp = text.stamp;
+		Queue(DocumentShellRequest::RefreshTabs);
+		pendingExternalChange.reset();
+		// Reload discards editor bytes for the on-disk file, then advances any
+		// initiating dirty-close the same way Discard would.
+		if (!ContinueDirtyCloseAfterExternalChange(pending,
+				UnsavedChoice::Discard)) {
+			editor.InvalidateClient();
+		}
+		return;
+	}
 	}
 }
 
@@ -525,8 +691,12 @@ bool DocumentWorkspace::LoadStartupFiles(
 	}
 
 	// Stage every distinct read before mutating tabs so failure is all-or-nothing.
-	std::vector<std::string> texts;
-	texts.reserve(distinct.size());
+	struct StagedRead {
+		std::string bytes;
+		DocumentFileStamp stamp;
+	};
+	std::vector<StagedRead> staged;
+	staged.reserve(distinct.size());
 	bool readFailed = false;
 	for (const std::string &pathString : distinct) {
 		DocumentFileReadResult text =
@@ -544,7 +714,7 @@ bool DocumentWorkspace::LoadStartupFiles(
 			readFailed = true;
 			continue;
 		}
-		texts.push_back(std::move(text.bytes));
+		staged.push_back({std::move(text.bytes), text.stamp});
 	}
 	if (readFailed) {
 		return false;
@@ -554,9 +724,10 @@ bool DocumentWorkspace::LoadStartupFiles(
 	Tab &first = tabs[0];
 	first.path = distinct[0];
 	first.untitledNumber = 0;
+	first.stamp = staged[0].stamp;
 	editor.ActivateDocument(first.id);
 	activeId = first.id;
-	editor.LoadInitialBuffer(texts[0]);
+	editor.LoadInitialBuffer(staged[0].bytes);
 	// lastActive is always among distinct; start as the first tab and update
 	// when a later distinct path is the last supplied path.
 	DocumentId finalActive = first.id;
@@ -567,10 +738,11 @@ bool DocumentWorkspace::LoadStartupFiles(
 		tab.id = id;
 		tab.path = distinct[i];
 		tab.untitledNumber = 0;
+		tab.stamp = staged[i].stamp;
 		tabs.push_back(std::move(tab));
 		editor.ActivateDocument(id);
 		activeId = id;
-		editor.LoadInitialBuffer(texts[i]);
+		editor.LoadInitialBuffer(staged[i].bytes);
 		if (distinct[i] == lastActive) {
 			finalActive = id;
 		}
@@ -607,12 +779,13 @@ bool DocumentWorkspace::ApplyOpenPaths(const std::vector<std::string> &paths) {
 }
 
 DocumentId DocumentWorkspace::LoadOpenedDocument(const std::string &pathString,
-	std::string text) {
+	std::string text, const DocumentFileStamp &stamp) {
 	const DocumentId id = editor.CreateDocument();
 	Tab tab;
 	tab.id = id;
 	tab.path = pathString;
 	tab.untitledNumber = 0;
+	tab.stamp = stamp;
 	tabs.push_back(std::move(tab));
 	editor.ActivateDocument(id);
 	activeId = id;
@@ -662,7 +835,8 @@ bool DocumentWorkspace::OpenPathList(const std::vector<std::string> &paths) {
 			fileErrors.push_back({DocumentFileOperation::Open, pathString});
 			continue;
 		}
-		lastActivated = LoadOpenedDocument(pathString, std::move(text.bytes));
+		lastActivated = LoadOpenedDocument(pathString, std::move(text.bytes),
+			text.stamp);
 		recentPaths.push_back(pathString);
 	}
 	if (!lastActivated) {
@@ -694,13 +868,20 @@ void DocumentWorkspace::ApplySaveResult(DocumentId tabId, bool accepted,
 		return;
 	}
 	const std::string pathString = NormalizePath(savedPath);
-	if (SaveToPath(tabId, pathString)) {
+	// Save As to the same bound path uses the guard; a different path does not.
+	// conflictPromptGeneration carries any initiating dirty-close generation so
+	// a same-path conflict still continues that close after resolution.
+	if (SaveToPath(tabId, pathString, false, promptGeneration)) {
 		recentPaths.push_back(pathString);
 		if (continuePrompt) {
 			const UnsavedPending kind = prompt.Pending();
 			const DocumentId completedTabId = prompt.TabId();
 			ApplyOutcome(prompt.NotifySaved(), kind, completedTabId);
 		}
+	} else if (pendingExternalChange.has_value()) {
+		// Conflict card owns the decision; leave AwaitingSaveAs as-is so a
+		// later successful Save As from the card can still continue the close.
+		editor.InvalidateClient();
 	} else if (continuePrompt) {
 		prompt.NotifySaveIncomplete();
 		editor.InvalidateClient();

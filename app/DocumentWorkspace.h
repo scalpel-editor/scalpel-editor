@@ -13,6 +13,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "DocumentFile.h"
 #include "DocumentId.h"
 #include "UnsavedChangesPrompt.h"
 
@@ -47,6 +48,19 @@ enum class DocumentFileErrorReason {
 /** Open / Cancel for the interactive large-file confirmation. */
 enum class LargeFileChoice {
 	Open,
+	Cancel,
+};
+
+/**
+ * Overwrite / Reload / Save As / Cancel for a save-time external file change.
+ * Overwrite writes without an expected stamp. Reload rereads under the hard
+ * limit into the captured tab. Save As queues a dialog for that tab. Cancel
+ * leaves the dirty buffer and baseline stamp unchanged.
+ */
+enum class ExternalChangeChoice {
+	Overwrite,
+	Reload,
+	SaveAs,
 	Cancel,
 };
 
@@ -110,6 +124,12 @@ struct DocumentDialogIntent {
  * Open retries under the 256 MiB hard limit, and Cancel drops the path. The
  * large-file decision does not overlap a dirty-close prompt: either modal owns
  * tab, dialog, save, and close actions until it finishes.
+ *
+ * A Save to a tab's currently bound path compares the on-disk file stamp with
+ * the tab's last successful read or write stamp. A mismatch queues an
+ * external-change decision (Overwrite, Reload, Save As, Cancel) without writing.
+ * Save As to a different path remains an unconditional replacement. Detection
+ * runs only at the save boundary, never on a timer or focus change.
  */
 class DocumentWorkspace final {
 public:
@@ -136,13 +156,24 @@ public:
 	}
 	/** Path awaiting large-file confirmation; empty when inactive. */
 	[[nodiscard]] const std::string &LargeFilePromptPath() const noexcept;
+	/**
+	 * True while Overwrite / Reload / Save As / Cancel is required for a
+	 * save-time external file change.
+	 */
+	[[nodiscard]] bool ExternalChangePromptActive() const noexcept {
+		return pendingExternalChange.has_value();
+	}
+	/** Path named by the external-change card; empty when inactive. */
+	[[nodiscard]] const std::string &ExternalChangePromptPath() const noexcept;
+	/** Tab named by the external-change card; zero when inactive. */
+	[[nodiscard]] DocumentId ExternalChangePromptTab() const noexcept;
 	[[nodiscard]] bool BufferModified() const noexcept;
 
 	/** Create an empty untitled tab and activate it. */
 	void NewTab();
 	/**
-	 * Make id active when it is a retained tab. No-op while a dirty-close or
-	 * large-file decision owns the workspace.
+	 * Make id active when it is a retained tab. No-op while a dirty-close,
+	 * large-file, or external-change decision owns the workspace.
 	 */
 	void ActivateTab(DocumentId id);
 	/** Cycle the active tab by delta steps (wraps). */
@@ -165,7 +196,7 @@ public:
 	 * clean; otherwise activates the first dirty tab in strip order and starts
 	 * a CloseWindow prompt. Save or Discard advances through remaining dirty
 	 * tabs; Cancel aborts the sequence without removing tabs. No-op while a
-	 * dirty-close or large-file decision is already active.
+	 * dirty-close, large-file, or external-change decision is already active.
 	 */
 	void RequestClose();
 
@@ -177,6 +208,12 @@ public:
 	 * continues any remaining multi-path Open entries in order.
 	 */
 	void ChooseLargeFile(LargeFileChoice choice);
+	/**
+	 * Overwrite, Reload, Save As, or Cancel from the external-change card.
+	 * Acts on the tab and dirty-close prompt generation captured when the
+	 * conflict was found.
+	 */
+	void ChooseExternalChange(ExternalChangeChoice choice);
 
 	/** Capture an Open intent and its current document path. */
 	[[nodiscard]] DocumentDialogIntent BeginOpenDialog();
@@ -210,9 +247,10 @@ public:
 	void HandleOpenResult(bool accepted, const std::vector<std::string> &paths);
 	/**
 	 * Open one path without a portal. Returns true when it selected an existing
-	 * tab or loaded a new one. No-op while a dirty-close or large-file decision
-	 * is active. A path above the warning threshold queues confirmation and
-	 * returns false until Open is chosen. Used by the Recent menu.
+	 * tab or loaded a new one. No-op while a dirty-close, large-file, or
+	 * external-change decision is active. A path above the warning threshold
+	 * queues confirmation and returns false until Open is chosen. Used by the
+	 * Recent menu.
 	 */
 	[[nodiscard]] bool OpenPath(std::string_view path);
 	/**
@@ -252,6 +290,11 @@ private:
 		DocumentId id = 0;
 		std::string path;
 		int untitledNumber = 0;
+		/**
+		 * Last successful read or write stamp for path. Empty when the tab is
+		 * untitled or has never completed a stamped open or save.
+		 */
+		std::optional<DocumentFileStamp> stamp;
 	};
 
 	enum class DialogIntentKind {
@@ -274,6 +317,16 @@ private:
 		std::vector<std::string> remaining;
 	};
 
+	struct PendingExternalChange {
+		DocumentId tabId = 0;
+		std::string path;
+		/**
+		 * Non-zero when Overwrite, Reload, or a successful Save As may advance
+		 * one exact dirty-close prompt generation.
+		 */
+		uint64_t promptGeneration = 0;
+	};
+
 	void Queue(DocumentShellRequest request);
 	void QueueShowSaveAs();
 	[[nodiscard]] DocumentDialogId NextDialogId();
@@ -283,7 +336,18 @@ private:
 		DocumentId completedTabId);
 	void AdvanceOrAcceptWindowClose();
 	[[nodiscard]] std::optional<DocumentId> NextWindowCloseDirty() const;
-	[[nodiscard]] bool SaveToPath(DocumentId tabId, const std::string &destination);
+	/**
+	 * Write destination for tabId. When unconditional is false and destination
+	 * is the tab's currently bound path with a remembered stamp, the write is
+	 * guarded. A Changed result queues an external-change decision with
+	 * conflictPromptGeneration and returns false without writing.
+	 */
+	[[nodiscard]] bool SaveToPath(DocumentId tabId, const std::string &destination,
+		bool unconditional = false, uint64_t conflictPromptGeneration = 0);
+	void BeginExternalChange(DocumentId tabId, std::string path,
+		uint64_t promptGeneration);
+	[[nodiscard]] bool ContinueDirtyCloseAfterExternalChange(
+		const PendingExternalChange &pending, UnsavedChoice choice);
 	[[nodiscard]] std::size_t IndexOf(DocumentId id) const;
 	[[nodiscard]] std::optional<std::size_t> FindIndex(DocumentId id) const;
 	[[nodiscard]] std::optional<std::size_t> FindIndexByPath(
@@ -297,7 +361,7 @@ private:
 	/** Remove the tab at index; keeps at least one tab via a fresh untitled. */
 	void RemoveTabAt(std::size_t index);
 	void EnsureActiveMatchesEditor();
-	/** True while dirty-close or large-file confirmation owns decisions. */
+	/** True while dirty-close, large-file, or external-change owns decisions. */
 	[[nodiscard]] bool DecisionActive() const noexcept;
 	void BeginLargeFilePrompt(std::string path,
 		std::vector<std::string> remaining);
@@ -309,7 +373,7 @@ private:
 	[[nodiscard]] bool OpenPathList(const std::vector<std::string> &paths);
 	/** Create and activate a tab for a successfully read path. */
 	DocumentId LoadOpenedDocument(const std::string &pathString,
-		std::string text);
+		std::string text, const DocumentFileStamp &stamp);
 	void ApplySaveResult(DocumentId tabId, bool accepted,
 		std::string_view savedPath, uint64_t promptGeneration);
 
@@ -342,6 +406,8 @@ private:
 	UnsavedChangesPrompt prompt;
 	/** Interactive path waiting on large-file Open / Cancel, if any. */
 	std::optional<PendingLargeOpen> pendingLargeOpen;
+	/** Save conflict waiting on Overwrite / Reload / Save As / Cancel. */
+	std::optional<PendingExternalChange> pendingExternalChange;
 	std::vector<DocumentShellRequest> requests;
 	std::vector<std::string> recentPaths;
 	std::vector<DocumentFileError> fileErrors;

@@ -1,7 +1,9 @@
 #include "catch.hpp"
 
 #include <cstdio>
+#include <fcntl.h>
 #include <string>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -15,6 +17,7 @@ using Scalpel::DocumentFileOperation;
 using Scalpel::DocumentId;
 using Scalpel::DocumentShellRequest;
 using Scalpel::DocumentWorkspace;
+using Scalpel::ExternalChangeChoice;
 using Scalpel::LargeFileChoice;
 using Scalpel::UnsavedChoice;
 using Scalpel::UnsavedPending;
@@ -85,6 +88,475 @@ bool HasRequest(const std::vector<DocumentShellRequest> &requests,
 	return false;
 }
 
+/** In-place rewrite that changes size so save stamps always diverge. */
+void ExternallyRewrite(const std::string &path, std::string_view contents) {
+	const int fd = ::open(path.c_str(), O_WRONLY | O_TRUNC | O_CLOEXEC);
+	REQUIRE(fd >= 0);
+	const ssize_t written = write(fd, contents.data(), contents.size());
+	REQUIRE(written == static_cast<ssize_t>(contents.size()));
+	REQUIRE(close(fd) == 0);
+}
+
+/** Open a known path, dirty the buffer, and change the file on disk. */
+void OpenDirtyAndConflict(DocumentWorkspace &workspace,
+	ApplicationEditor &editor, const std::string &path,
+	std::string_view externalContents = "external-on-disk") {
+	REQUIRE(workspace.OpenPath(path));
+	(void)workspace.TakeRequests();
+	(void)workspace.TakeRecentPaths();
+	DirtyBuffer(editor);
+	ExternallyRewrite(path, externalContents);
+}
+
+}
+
+TEST_CASE("document workspace external change save detects conflict without overwrite") {
+	TempFile file("baseline");
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	OpenDirtyAndConflict(workspace, editor, file.path);
+	const std::string editorText = editor.Text();
+
+	workspace.RequestSave();
+	CHECK(workspace.ExternalChangePromptActive());
+	CHECK(workspace.ExternalChangePromptPath() == file.path);
+	CHECK(workspace.ExternalChangePromptTab() == workspace.ActiveTab());
+	CHECK(editor.Modified());
+	CHECK(editor.Text() == editorText);
+	CHECK(HasRequest(workspace.TakeRequests(), DocumentShellRequest::PromptBegan));
+
+	const auto onDisk =
+		Scalpel::ReadDocumentFile(file.path, Scalpel::DocumentFileHardLimitBytes);
+	REQUIRE(onDisk.status == Scalpel::DocumentFileReadStatus::Success);
+	CHECK(onDisk.bytes == "external-on-disk");
+	CHECK(workspace.TakeFileErrors().empty());
+}
+
+TEST_CASE("document workspace external change overwrite writes without expected stamp") {
+	TempFile file("baseline");
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	OpenDirtyAndConflict(workspace, editor, file.path);
+	const std::string editorText = editor.Text();
+
+	workspace.RequestSave();
+	REQUIRE(workspace.ExternalChangePromptActive());
+	(void)workspace.TakeRequests();
+
+	workspace.ChooseExternalChange(ExternalChangeChoice::Overwrite);
+	CHECK_FALSE(workspace.ExternalChangePromptActive());
+	CHECK_FALSE(editor.Modified());
+	CHECK(editor.Text() == editorText);
+
+	const auto onDisk =
+		Scalpel::ReadDocumentFile(file.path, Scalpel::DocumentFileHardLimitBytes);
+	REQUIRE(onDisk.status == Scalpel::DocumentFileReadStatus::Success);
+	CHECK(onDisk.bytes == editorText);
+}
+
+TEST_CASE("document workspace external change reload replaces buffer from disk") {
+	TempFile file("baseline");
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	OpenDirtyAndConflict(workspace, editor, file.path, "fresh-external");
+
+	workspace.RequestSave();
+	REQUIRE(workspace.ExternalChangePromptActive());
+	(void)workspace.TakeRequests();
+
+	workspace.ChooseExternalChange(ExternalChangeChoice::Reload);
+	CHECK_FALSE(workspace.ExternalChangePromptActive());
+	CHECK_FALSE(editor.Modified());
+	CHECK(editor.Text() == "fresh-external");
+	CHECK(HasRequest(workspace.TakeRequests(), DocumentShellRequest::RefreshTabs));
+}
+
+TEST_CASE("document workspace external change cancel leaves buffer and disk") {
+	TempFile file("baseline");
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	OpenDirtyAndConflict(workspace, editor, file.path);
+	const std::string editorText = editor.Text();
+
+	workspace.RequestSave();
+	REQUIRE(workspace.ExternalChangePromptActive());
+	(void)workspace.TakeRequests();
+
+	workspace.ChooseExternalChange(ExternalChangeChoice::Cancel);
+	CHECK_FALSE(workspace.ExternalChangePromptActive());
+	CHECK(editor.Modified());
+	CHECK(editor.Text() == editorText);
+
+	const auto onDisk =
+		Scalpel::ReadDocumentFile(file.path, Scalpel::DocumentFileHardLimitBytes);
+	REQUIRE(onDisk.status == Scalpel::DocumentFileReadStatus::Success);
+	CHECK(onDisk.bytes == "external-on-disk");
+}
+
+TEST_CASE("document workspace external change Save As to another path") {
+	TempFile file("baseline");
+	TempFile other("");
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	OpenDirtyAndConflict(workspace, editor, file.path);
+	const std::string editorText = editor.Text();
+
+	workspace.RequestSave();
+	REQUIRE(workspace.ExternalChangePromptActive());
+	(void)workspace.TakeRequests();
+
+	workspace.ChooseExternalChange(ExternalChangeChoice::SaveAs);
+	CHECK_FALSE(workspace.ExternalChangePromptActive());
+	CHECK(HasRequest(workspace.TakeRequests(), DocumentShellRequest::ShowSaveAs));
+
+	workspace.HandleSaveResult(true, other.path);
+	CHECK(workspace.Path() == other.path);
+	CHECK_FALSE(editor.Modified());
+	CHECK(editor.Text() == editorText);
+
+	const auto original =
+		Scalpel::ReadDocumentFile(file.path, Scalpel::DocumentFileHardLimitBytes);
+	REQUIRE(original.status == Scalpel::DocumentFileReadStatus::Success);
+	CHECK(original.bytes == "external-on-disk");
+	const auto saved =
+		Scalpel::ReadDocumentFile(other.path, Scalpel::DocumentFileHardLimitBytes);
+	REQUIRE(saved.status == Scalpel::DocumentFileReadStatus::Success);
+	CHECK(saved.bytes == editorText);
+}
+
+TEST_CASE("document workspace external change Save As back to the guarded path") {
+	TempFile file("baseline");
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	OpenDirtyAndConflict(workspace, editor, file.path);
+	const std::string editorText = editor.Text();
+
+	workspace.RequestSave();
+	REQUIRE(workspace.ExternalChangePromptActive());
+	(void)workspace.TakeRequests();
+
+	workspace.ChooseExternalChange(ExternalChangeChoice::SaveAs);
+	CHECK(HasRequest(workspace.TakeRequests(), DocumentShellRequest::ShowSaveAs));
+
+	// Same bound path is still guarded.
+	workspace.HandleSaveResult(true, file.path);
+	CHECK(workspace.ExternalChangePromptActive());
+	CHECK(workspace.ExternalChangePromptPath() == file.path);
+	CHECK(editor.Modified());
+	CHECK(editor.Text() == editorText);
+
+	const auto onDisk =
+		Scalpel::ReadDocumentFile(file.path, Scalpel::DocumentFileHardLimitBytes);
+	REQUIRE(onDisk.status == Scalpel::DocumentFileReadStatus::Success);
+	CHECK(onDisk.bytes == "external-on-disk");
+}
+
+TEST_CASE("document workspace external change second change while card is open") {
+	TempFile file("baseline");
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	OpenDirtyAndConflict(workspace, editor, file.path, "first-external");
+
+	workspace.RequestSave();
+	REQUIRE(workspace.ExternalChangePromptActive());
+	(void)workspace.TakeRequests();
+
+	// Disk changes again while the user is deciding.
+	ExternallyRewrite(file.path, "second-external");
+
+	workspace.ChooseExternalChange(ExternalChangeChoice::Reload);
+	CHECK_FALSE(workspace.ExternalChangePromptActive());
+	CHECK(editor.Text() == "second-external");
+	CHECK_FALSE(editor.Modified());
+}
+
+TEST_CASE("document workspace external change dirty-close overwrite continues close") {
+	TempFile file("baseline");
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	OpenDirtyAndConflict(workspace, editor, file.path);
+	const std::string editorText = editor.Text();
+
+	workspace.RequestClose();
+	REQUIRE(workspace.PromptActive());
+	(void)workspace.TakeRequests();
+
+	workspace.Choose(UnsavedChoice::Save);
+	REQUIRE(workspace.ExternalChangePromptActive());
+	CHECK(workspace.PromptActive());
+	(void)workspace.TakeRequests();
+
+	workspace.ChooseExternalChange(ExternalChangeChoice::Overwrite);
+	CHECK_FALSE(workspace.ExternalChangePromptActive());
+	CHECK_FALSE(workspace.PromptActive());
+	CHECK(HasRequest(workspace.TakeRequests(), DocumentShellRequest::AcceptClose));
+
+	const auto onDisk =
+		Scalpel::ReadDocumentFile(file.path, Scalpel::DocumentFileHardLimitBytes);
+	REQUIRE(onDisk.status == Scalpel::DocumentFileReadStatus::Success);
+	CHECK(onDisk.bytes == editorText);
+}
+
+TEST_CASE("document workspace external change dirty-close reload continues close") {
+	TempFile file("baseline");
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	REQUIRE(workspace.OpenPath(file.path));
+	(void)workspace.TakeRecentPaths();
+	DirtyBuffer(editor);
+	ExternallyRewrite(file.path, "disk-wins");
+
+	workspace.CloseTab(workspace.ActiveTab());
+	REQUIRE(workspace.PromptActive());
+	REQUIRE(workspace.Pending() == UnsavedPending::CloseTab);
+	(void)workspace.TakeRequests();
+
+	workspace.Choose(UnsavedChoice::Save);
+	REQUIRE(workspace.ExternalChangePromptActive());
+	(void)workspace.TakeRequests();
+
+	workspace.ChooseExternalChange(ExternalChangeChoice::Reload);
+	CHECK_FALSE(workspace.ExternalChangePromptActive());
+	CHECK_FALSE(workspace.PromptActive());
+	// CloseTab after reload removes the tab (last tab becomes untitled).
+	CHECK(workspace.Path().empty());
+	CHECK_FALSE(editor.Modified());
+}
+
+TEST_CASE("document workspace external change dirty-close cancel keeps close prompt") {
+	TempFile file("baseline");
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	OpenDirtyAndConflict(workspace, editor, file.path);
+
+	workspace.RequestClose();
+	REQUIRE(workspace.PromptActive());
+	(void)workspace.TakeRequests();
+
+	workspace.Choose(UnsavedChoice::Save);
+	REQUIRE(workspace.ExternalChangePromptActive());
+	(void)workspace.TakeRequests();
+
+	workspace.ChooseExternalChange(ExternalChangeChoice::Cancel);
+	CHECK_FALSE(workspace.ExternalChangePromptActive());
+	CHECK(workspace.PromptActive());
+	CHECK(workspace.Pending() == UnsavedPending::CloseWindow);
+	CHECK(editor.Modified());
+}
+
+TEST_CASE("document workspace external change dirty-close Save As continues close") {
+	TempFile file("baseline");
+	TempFile other("");
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	OpenDirtyAndConflict(workspace, editor, file.path);
+	const std::string editorText = editor.Text();
+
+	workspace.RequestClose();
+	REQUIRE(workspace.PromptActive());
+	(void)workspace.TakeRequests();
+
+	workspace.Choose(UnsavedChoice::Save);
+	REQUIRE(workspace.ExternalChangePromptActive());
+	(void)workspace.TakeRequests();
+
+	workspace.ChooseExternalChange(ExternalChangeChoice::SaveAs);
+	CHECK_FALSE(workspace.ExternalChangePromptActive());
+	CHECK(workspace.AwaitingSaveAs());
+	CHECK(HasRequest(workspace.TakeRequests(), DocumentShellRequest::ShowSaveAs));
+
+	workspace.HandleSaveResult(true, other.path);
+	CHECK_FALSE(workspace.PromptActive());
+	CHECK(workspace.Path() == other.path);
+	CHECK_FALSE(editor.Modified());
+	CHECK(HasRequest(workspace.TakeRequests(), DocumentShellRequest::AcceptClose));
+	CHECK(editor.Text() == editorText);
+}
+
+TEST_CASE("document workspace external change delayed Save As targets captured tab") {
+	TempFile first("first-body");
+	TempFile second("second-body");
+	TempFile saveAsTarget("");
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	REQUIRE(workspace.OpenPath(first.path));
+	REQUIRE(workspace.OpenPath(second.path));
+	(void)workspace.TakeRecentPaths();
+	(void)workspace.TakeRequests();
+
+	DocumentId firstId = 0;
+	for (const auto &tab : workspace.Tabs()) {
+		if (tab.path == first.path) {
+			firstId = tab.id;
+		}
+	}
+	REQUIRE(firstId != 0);
+	// second remains open so path-already-open rules stay realistic.
+	CHECK(workspace.TabCount() >= 2);
+	(void)second;
+
+	workspace.ActivateTab(firstId);
+	DirtyBuffer(editor);
+	ExternallyRewrite(first.path, "first-external-long");
+
+	workspace.RequestSave();
+	REQUIRE(workspace.ExternalChangePromptActive());
+	CHECK(workspace.ExternalChangePromptTab() == firstId);
+	(void)workspace.TakeRequests();
+
+	workspace.ChooseExternalChange(ExternalChangeChoice::SaveAs);
+	CHECK_FALSE(workspace.ExternalChangePromptActive());
+	CHECK(HasRequest(workspace.TakeRequests(), DocumentShellRequest::ShowSaveAs));
+
+	// Capture the intent before any other shell work so the dialog still names
+	// the conflicted tab even if focus would otherwise move later.
+	const auto intent = workspace.BeginSaveAsDialog();
+	CHECK(intent.documentPath == first.path);
+
+	workspace.HandleDialogResult(intent.id, true, {saveAsTarget.path});
+	bool foundFirst = false;
+	for (const auto &tab : workspace.Tabs()) {
+		if (tab.id == firstId) {
+			foundFirst = true;
+			CHECK(tab.path == saveAsTarget.path);
+			CHECK_FALSE(tab.dirty);
+		}
+	}
+	CHECK(foundFirst);
+
+	const auto saved = Scalpel::ReadDocumentFile(saveAsTarget.path,
+		Scalpel::DocumentFileHardLimitBytes);
+	REQUIRE(saved.status == Scalpel::DocumentFileReadStatus::Success);
+	CHECK(saved.bytes.find('x') != std::string::npos);
+}
+
+TEST_CASE("document workspace external change missing destination") {
+	TempFile file("baseline");
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	REQUIRE(workspace.OpenPath(file.path));
+	(void)workspace.TakeRecentPaths();
+	DirtyBuffer(editor);
+	REQUIRE(std::remove(file.path.c_str()) == 0);
+	file.path.clear();
+
+	// Path string still bound on the tab from OpenPath.
+	const std::string bound = workspace.Path();
+	REQUIRE_FALSE(bound.empty());
+	workspace.RequestSave();
+	CHECK(workspace.ExternalChangePromptActive());
+	CHECK(workspace.ExternalChangePromptPath() == bound);
+	CHECK(editor.Modified());
+	CHECK(access(bound.c_str(), F_OK) != 0);
+}
+
+TEST_CASE("document workspace external change unreadable destination") {
+	TempFile file("baseline");
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	REQUIRE(workspace.OpenPath(file.path));
+	(void)workspace.TakeRecentPaths();
+	DirtyBuffer(editor);
+
+	// Replace the regular file with a directory so inspection fails the stamp match.
+	REQUIRE(std::remove(file.path.c_str()) == 0);
+	REQUIRE(mkdir(file.path.c_str(), 0755) == 0);
+
+	workspace.RequestSave();
+	CHECK(workspace.ExternalChangePromptActive());
+	CHECK(workspace.ExternalChangePromptPath() == file.path);
+	CHECK(editor.Modified());
+
+	REQUIRE(rmdir(file.path.c_str()) == 0);
+	file.path.clear();
+}
+
+TEST_CASE("document workspace external change blocks other decisions") {
+	TempFile file("baseline");
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	OpenDirtyAndConflict(workspace, editor, file.path);
+
+	workspace.RequestSave();
+	REQUIRE(workspace.ExternalChangePromptActive());
+	(void)workspace.TakeRequests();
+
+	const std::size_t tabCount = workspace.TabCount();
+	const DocumentId active = workspace.ActiveTab();
+	workspace.NewTab();
+	CHECK(workspace.TabCount() == tabCount);
+	CHECK(workspace.ActiveTab() == active);
+	workspace.RequestOpen();
+	CHECK(workspace.TakeRequests().empty());
+	workspace.RequestClose();
+	CHECK_FALSE(HasRequest(workspace.TakeRequests(),
+		DocumentShellRequest::AcceptClose));
+	CHECK(workspace.ExternalChangePromptActive());
+}
+
+TEST_CASE("document workspace external change startup stamps guard later saves") {
+	TempFile file("startup-body");
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	REQUIRE(workspace.LoadStartupFiles({file.path}));
+	(void)workspace.TakeRequests();
+
+	DirtyBuffer(editor);
+	ExternallyRewrite(file.path, "changed-after-startup");
+	workspace.RequestSave();
+	CHECK(workspace.ExternalChangePromptActive());
+	CHECK(workspace.ExternalChangePromptPath() == file.path);
+
+	const auto onDisk =
+		Scalpel::ReadDocumentFile(file.path, Scalpel::DocumentFileHardLimitBytes);
+	REQUIRE(onDisk.status == Scalpel::DocumentFileReadStatus::Success);
+	CHECK(onDisk.bytes == "changed-after-startup");
+}
+
+TEST_CASE("document workspace external change large-file open stamps guard later saves") {
+	// Sparse file above the warning threshold but within the hard cap.
+	SparseTempFile large(
+		static_cast<off_t>(Scalpel::DocumentFileWarningThresholdBytes + 1));
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+
+	CHECK_FALSE(workspace.OpenPath(large.path));
+	REQUIRE(workspace.LargeFilePromptActive());
+	(void)workspace.TakeRequests();
+	workspace.ChooseLargeFile(LargeFileChoice::Open);
+	REQUIRE(workspace.Path() == large.path);
+	(void)workspace.TakeRecentPaths();
+	(void)workspace.TakeRequests();
+
+	DirtyBuffer(editor);
+	// Grow the sparse file so size no longer matches the open stamp.
+	REQUIRE(truncate(large.path.c_str(),
+		static_cast<off_t>(Scalpel::DocumentFileWarningThresholdBytes + 100)) == 0);
+
+	workspace.RequestSave();
+	CHECK(workspace.ExternalChangePromptActive());
+	CHECK(workspace.ExternalChangePromptPath() == large.path);
+}
+
+TEST_CASE("document workspace external change failed reload keeps decision") {
+	TempFile file("baseline");
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	OpenDirtyAndConflict(workspace, editor, file.path);
+
+	workspace.RequestSave();
+	REQUIRE(workspace.ExternalChangePromptActive());
+	(void)workspace.TakeRequests();
+
+	REQUIRE(std::remove(file.path.c_str()) == 0);
+	file.path.clear();
+
+	workspace.ChooseExternalChange(ExternalChangeChoice::Reload);
+	CHECK(workspace.ExternalChangePromptActive());
+	const auto errors = workspace.TakeFileErrors();
+	REQUIRE(errors.size() == 1);
+	CHECK(errors[0].operation == DocumentFileOperation::Open);
+	CHECK(editor.Modified());
 }
 
 TEST_CASE("document workspace single-document clean close accepts") {
