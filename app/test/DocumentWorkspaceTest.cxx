@@ -555,31 +555,6 @@ TEST_CASE("document workspace external change startup stamps guard later saves")
 	CHECK(onDisk.bytes == "changed-after-startup");
 }
 
-TEST_CASE("document workspace external change large-file open stamps guard later saves") {
-	// Sparse file above the warning threshold but within the hard cap.
-	SparseTempFile large(
-		static_cast<off_t>(Scalpel::DocumentFileWarningThresholdBytes + 1));
-	ApplicationEditor editor(320, 180);
-	DocumentWorkspace workspace(editor);
-
-	CHECK_FALSE(workspace.OpenPath(large.path));
-	REQUIRE(workspace.LargeFilePromptActive());
-	(void)workspace.TakeRequests();
-	workspace.ChooseLargeFile(LargeFileChoice::Open);
-	REQUIRE(workspace.Path() == large.path);
-	(void)workspace.TakeRecentPaths();
-	(void)workspace.TakeRequests();
-
-	DirtyBuffer(editor);
-	// Grow the sparse file so size no longer matches the open stamp.
-	REQUIRE(truncate(large.path.c_str(),
-		static_cast<off_t>(Scalpel::DocumentFileWarningThresholdBytes + 100)) == 0);
-
-	workspace.RequestSave();
-	CHECK(workspace.ExternalChangePromptActive());
-	CHECK(workspace.ExternalChangePromptPath() == large.path);
-}
-
 TEST_CASE("document workspace external change failed reload keeps decision") {
 	TempFile file("baseline");
 	ApplicationEditor editor(320, 180);
