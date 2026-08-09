@@ -458,6 +458,14 @@ void DocumentWorkspace::ChooseExternalChange(ExternalChangeChoice choice) {
 		return;
 	}
 	const PendingExternalChange pending = *pendingExternalChange;
+	const std::optional<std::size_t> pendingIndex = FindIndex(pending.tabId);
+	if (!pendingIndex || tabs[*pendingIndex].path != pending.path) {
+		// A delayed dialog result can close or rebind the captured tab while the
+		// card is visible. Its old path must not receive a later card action.
+		pendingExternalChange.reset();
+		editor.InvalidateClient();
+		return;
+	}
 
 	switch (choice) {
 	case ExternalChangeChoice::Cancel:
@@ -522,19 +530,12 @@ void DocumentWorkspace::ChooseExternalChange(ExternalChangeChoice choice) {
 			editor.InvalidateClient();
 			return;
 		}
-		const std::optional<std::size_t> index = FindIndex(pending.tabId);
-		if (!index || tabs[*index].path != pending.path) {
-			// Tab closed or rebound while the card was up; drop the decision.
-			pendingExternalChange.reset();
-			editor.InvalidateClient();
-			return;
-		}
 		if (activeId != pending.tabId) {
 			editor.ActivateDocument(pending.tabId);
 			activeId = pending.tabId;
 		}
 		editor.LoadInitialBuffer(std::move(text.bytes));
-		tabs[*index].stamp = text.stamp;
+		tabs[*pendingIndex].stamp = text.stamp;
 		Queue(DocumentShellRequest::RefreshTabs);
 		pendingExternalChange.reset();
 		// Reload discards editor bytes for the on-disk file, then advances any
@@ -872,6 +873,12 @@ void DocumentWorkspace::ApplySaveResult(DocumentId tabId, bool accepted,
 	// conflictPromptGeneration carries any initiating dirty-close generation so
 	// a same-path conflict still continues that close after resolution.
 	if (SaveToPath(tabId, pathString, false, promptGeneration)) {
+		// More than one portal dialog may be in flight. A successful delayed
+		// Save As for this tab supersedes any conflict decision it left behind.
+		if (pendingExternalChange &&
+			pendingExternalChange->tabId == tabId) {
+			pendingExternalChange.reset();
+		}
 		recentPaths.push_back(pathString);
 		if (continuePrompt) {
 			const UnsavedPending kind = prompt.Pending();

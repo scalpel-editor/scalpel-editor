@@ -430,6 +430,48 @@ TEST_CASE("document workspace external change delayed Save As targets captured t
 	CHECK(saved.bytes.find('x') != std::string::npos);
 }
 
+TEST_CASE("document workspace external change drops a stale decision after Save As") {
+	TempFile original("baseline");
+	TempFile saveAsTarget("");
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	REQUIRE(workspace.OpenPath(original.path));
+	(void)workspace.TakeRecentPaths();
+	(void)workspace.TakeRequests();
+	DirtyBuffer(editor);
+	const std::string editorText = editor.Text();
+
+	// A portal result may still arrive after another save discovers a conflict.
+	workspace.RequestSaveAs();
+	REQUIRE(HasRequest(workspace.TakeRequests(),
+		DocumentShellRequest::ShowSaveAs));
+	const auto delayedSaveAs = workspace.BeginSaveAsDialog();
+	ExternallyRewrite(original.path, "external-on-disk");
+	workspace.RequestSave();
+	REQUIRE(workspace.ExternalChangePromptActive());
+	(void)workspace.TakeRequests();
+
+	workspace.HandleDialogResult(
+		delayedSaveAs.id, true, {saveAsTarget.path});
+	REQUIRE(workspace.Path() == saveAsTarget.path);
+	REQUIRE_FALSE(editor.Modified());
+	CHECK_FALSE(workspace.ExternalChangePromptActive());
+
+	// The delayed result superseded the decision, so its old action is inert.
+	workspace.ChooseExternalChange(ExternalChangeChoice::Overwrite);
+	CHECK(workspace.Path() == saveAsTarget.path);
+	CHECK(editor.Text() == editorText);
+
+	const auto originalText = Scalpel::ReadDocumentFile(
+		original.path, Scalpel::DocumentFileHardLimitBytes);
+	REQUIRE(originalText.status == Scalpel::DocumentFileReadStatus::Success);
+	CHECK(originalText.bytes == "external-on-disk");
+	const auto savedText = Scalpel::ReadDocumentFile(
+		saveAsTarget.path, Scalpel::DocumentFileHardLimitBytes);
+	REQUIRE(savedText.status == Scalpel::DocumentFileReadStatus::Success);
+	CHECK(savedText.bytes == editorText);
+}
+
 TEST_CASE("document workspace external change missing destination") {
 	TempFile file("baseline");
 	ApplicationEditor editor(320, 180);
