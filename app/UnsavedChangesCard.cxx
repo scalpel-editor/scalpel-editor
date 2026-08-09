@@ -63,7 +63,7 @@ UnsavedChangesCardLayout LayoutUnsavedChangesCard(int width, int height) noexcep
 
 	layout.scrim = Scintilla::Internal::PRectangle::FromInts(0, 0, width, height);
 
-	const int usedHeight = CardContentHeight(style);
+	const int usedHeight = std::min(CardContentHeight(style), height);
 	// Prefer the design width; shrink only when the client cannot hold it.
 	const int maxByClient = std::max(0, width - 2 * style.cardMargin);
 	int usedWidth = style.unsavedCardMaxWidth;
@@ -89,39 +89,53 @@ UnsavedChangesCardLayout LayoutUnsavedChangesCard(int width, int height) noexcep
 	if (cardLeft + usedWidth > width) {
 		cardLeft = std::max(0, width - usedWidth);
 	}
-	if (cardTop + usedHeight > height && height >= usedHeight) {
-		cardTop = height - usedHeight;
-	}
-
 	layout.card = Scintilla::Internal::PRectangle::FromInts(
 		cardLeft, cardTop, cardLeft + usedWidth, cardTop + usedHeight);
 
-	const int innerLeft = cardLeft + style.cardPad;
-	const int innerRight = cardLeft + usedWidth - style.cardPad;
+	const int horizontalPad = std::min(style.cardPad, usedWidth / 2);
+	const int innerLeft = cardLeft + horizontalPad;
+	const int innerRight = cardLeft + usedWidth - horizontalPad;
 	const int innerWidth = std::max(0, innerRight - innerLeft);
 
-	int y = cardTop + style.cardPad;
+	const int naturalSubtitleTop = cardTop + style.cardPad +
+		style.cardTitleHeight + style.unsavedTitleSubtitleGap;
+	const int naturalButtonTop = naturalSubtitleTop +
+		style.unsavedSubtitleHeight + style.cardButtonTopGap;
+	const int cardBottom = cardTop + usedHeight;
+	const int buttonHeight = std::min(style.cardButtonHeight, usedHeight);
+	const int buttonTop = std::min(naturalButtonTop, cardBottom - buttonHeight);
+
+	int subtitleTop = naturalSubtitleTop;
+	int titleTop = cardTop + style.cardPad;
+	if (subtitleTop + style.unsavedSubtitleHeight > buttonTop) {
+		const int textBottom =
+			std::max(cardTop, buttonTop - style.cardButtonTopGap);
+		subtitleTop = std::max(cardTop,
+			textBottom - style.unsavedSubtitleHeight);
+		titleTop = std::max(cardTop,
+			subtitleTop - style.unsavedTitleSubtitleGap - style.cardTitleHeight);
+	}
 	layout.title = Scintilla::Internal::PRectangle::FromInts(
-		innerLeft, y, innerRight, y + style.cardTitleHeight);
-	y += style.cardTitleHeight + style.unsavedTitleSubtitleGap;
+		innerLeft, titleTop, innerRight,
+		std::min(cardBottom, titleTop + style.cardTitleHeight));
 	layout.subtitle = Scintilla::Internal::PRectangle::FromInts(
-		innerLeft, y, innerRight, y + style.unsavedSubtitleHeight);
-	y += style.unsavedSubtitleHeight + style.cardButtonTopGap;
+		innerLeft, subtitleTop, innerRight,
+		std::min(cardBottom, subtitleTop + style.unsavedSubtitleHeight));
 
 	const int totalGaps = style.unsavedButtonGap * (kButtonCount - 1);
 	const int buttonWidth = innerWidth > totalGaps
 		? (innerWidth - totalGaps) / kButtonCount
-		: std::max(1, innerWidth / kButtonCount);
+		: innerWidth / kButtonCount;
 	const int usedButtonsWidth = buttonWidth * kButtonCount +
 		(innerWidth > totalGaps ? totalGaps : 0);
 	const int leftover = std::max(0, innerWidth - usedButtonsWidth);
 
 	int x = innerLeft;
 	const auto makeButton = [&](int extraWidth) {
-		const int w = std::max(1, buttonWidth + extraWidth);
+		const int w = buttonWidth + extraWidth;
 		Scintilla::Internal::PRectangle rect =
 			Scintilla::Internal::PRectangle::FromInts(
-				x, y, x + w, y + style.cardButtonHeight);
+				x, buttonTop, x + w, buttonTop + buttonHeight);
 		x += w + (innerWidth > totalGaps ? style.unsavedButtonGap : 0);
 		return rect;
 	};

@@ -101,11 +101,29 @@ TEST_CASE("UnsavedChangesCard layout on a narrow client still has buttons") {
 
 TEST_CASE("UnsavedChangesCard layout on a short client still has buttons") {
 	const UnsavedChangesCardLayout layout = LayoutUnsavedChangesCard(800, 100);
+	CHECK(layout.card.top >= 0);
+	CHECK(layout.card.bottom <= 100);
 	CHECK(NonEmpty(layout.saveButton));
 	CHECK(NonEmpty(layout.discardButton));
 	CHECK(NonEmpty(layout.cancelButton));
+	CHECK(layout.card.Contains(layout.saveButton));
+	CHECK(layout.card.Contains(layout.discardButton));
+	CHECK(layout.card.Contains(layout.cancelButton));
 	CHECK(HitTestUnsavedChangesCard(layout, Center(layout.saveButton)) ==
 		UnsavedCardHit::Save);
+}
+
+TEST_CASE("UnsavedChangesCard tiny client keeps layout bounds inside the card") {
+	const UnsavedChangesCardLayout layout = LayoutUnsavedChangesCard(1, 1);
+	CHECK(layout.card.left >= 0);
+	CHECK(layout.card.top >= 0);
+	CHECK(layout.card.right <= 1);
+	CHECK(layout.card.bottom <= 1);
+	CHECK(layout.card.Contains(layout.title));
+	CHECK(layout.card.Contains(layout.subtitle));
+	CHECK(layout.card.Contains(layout.saveButton));
+	CHECK(layout.card.Contains(layout.discardButton));
+	CHECK(layout.card.Contains(layout.cancelButton));
 }
 
 TEST_CASE("UnsavedChangesCard zero-size client yields empty layout") {

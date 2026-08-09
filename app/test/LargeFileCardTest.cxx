@@ -85,6 +85,30 @@ TEST_CASE("large file card layout on a narrow client still has buttons") {
 	CHECK(Disjoint(layout.openButton, layout.cancelButton));
 }
 
+TEST_CASE("large file card short client keeps buttons inside the card") {
+	const LargeFileCardLayout layout = LayoutLargeFileCard(800, 100);
+	CHECK(layout.card.top >= 0);
+	CHECK(layout.card.bottom <= 100);
+	CHECK(NonEmpty(layout.openButton));
+	CHECK(NonEmpty(layout.cancelButton));
+	CHECK(layout.card.Contains(layout.openButton));
+	CHECK(layout.card.Contains(layout.cancelButton));
+	CHECK(HitTestLargeFileCard(layout, Center(layout.openButton)) ==
+		LargeFileCardHit::Open);
+}
+
+TEST_CASE("large file card tiny client keeps layout bounds inside the card") {
+	const LargeFileCardLayout layout = LayoutLargeFileCard(1, 1);
+	CHECK(layout.card.left >= 0);
+	CHECK(layout.card.top >= 0);
+	CHECK(layout.card.right <= 1);
+	CHECK(layout.card.bottom <= 1);
+	CHECK(layout.card.Contains(layout.title));
+	CHECK(layout.card.Contains(layout.path));
+	CHECK(layout.card.Contains(layout.openButton));
+	CHECK(layout.card.Contains(layout.cancelButton));
+}
+
 TEST_CASE("large file card zero-size client yields empty layout") {
 	const LargeFileCardLayout layout = LayoutLargeFileCard(0, 0);
 	CHECK_FALSE(NonEmpty(layout.card));

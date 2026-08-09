@@ -55,7 +55,7 @@ LargeFileCardLayout LayoutLargeFileCard(int width, int height) noexcept {
 
 	layout.scrim = PRectangle::FromInts(0, 0, width, height);
 
-	const int usedHeight = CardContentHeight(style);
+	const int usedHeight = std::min(CardContentHeight(style), height);
 	const int maxByClient = std::max(0, width - 2 * style.cardMargin);
 	int usedWidth = style.largeFileCardMaxWidth;
 	if (maxByClient > 0) {
@@ -80,38 +80,51 @@ LargeFileCardLayout LayoutLargeFileCard(int width, int height) noexcept {
 	if (cardLeft + usedWidth > width) {
 		cardLeft = std::max(0, width - usedWidth);
 	}
-	if (cardTop + usedHeight > height && height >= usedHeight) {
-		cardTop = height - usedHeight;
-	}
-
 	layout.card = PRectangle::FromInts(
 		cardLeft, cardTop, cardLeft + usedWidth, cardTop + usedHeight);
 
-	const int innerLeft = cardLeft + style.cardPad;
-	const int innerRight = cardLeft + usedWidth - style.cardPad;
+	const int horizontalPad = std::min(style.cardPad, usedWidth / 2);
+	const int innerLeft = cardLeft + horizontalPad;
+	const int innerRight = cardLeft + usedWidth - horizontalPad;
 	const int innerWidth = std::max(0, innerRight - innerLeft);
 
-	int y = cardTop + style.cardPad;
+	const int naturalPathTop = cardTop + style.cardPad +
+		style.cardTitleHeight + style.largeFileTitlePathGap;
+	const int naturalButtonTop = naturalPathTop + style.largeFilePathHeight +
+		style.cardButtonTopGap;
+	const int cardBottom = cardTop + usedHeight;
+	const int buttonHeight = std::min(style.cardButtonHeight, usedHeight);
+	const int buttonTop = std::min(naturalButtonTop, cardBottom - buttonHeight);
+
+	int pathTop = naturalPathTop;
+	int titleTop = cardTop + style.cardPad;
+	if (pathTop + style.largeFilePathHeight > buttonTop) {
+		const int textBottom =
+			std::max(cardTop, buttonTop - style.cardButtonTopGap);
+		pathTop = std::max(cardTop, textBottom - style.largeFilePathHeight);
+		titleTop = std::max(cardTop,
+			pathTop - style.largeFileTitlePathGap - style.cardTitleHeight);
+	}
 	layout.title = PRectangle::FromInts(
-		innerLeft, y, innerRight, y + style.cardTitleHeight);
-	y += style.cardTitleHeight + style.largeFileTitlePathGap;
+		innerLeft, titleTop, innerRight,
+		std::min(cardBottom, titleTop + style.cardTitleHeight));
 	layout.path = PRectangle::FromInts(
-		innerLeft, y, innerRight, y + style.largeFilePathHeight);
-	y += style.largeFilePathHeight + style.cardButtonTopGap;
+		innerLeft, pathTop, innerRight,
+		std::min(cardBottom, pathTop + style.largeFilePathHeight));
 
 	const int totalGaps = style.largeFileButtonGap * (kButtonCount - 1);
 	const int buttonWidth = innerWidth > totalGaps
 		? (innerWidth - totalGaps) / kButtonCount
-		: std::max(1, innerWidth / kButtonCount);
+		: innerWidth / kButtonCount;
 	const int usedButtonsWidth = buttonWidth * kButtonCount +
 		(innerWidth > totalGaps ? totalGaps : 0);
 	const int leftover = std::max(0, innerWidth - usedButtonsWidth);
 
 	int x = innerLeft;
 	const auto makeButton = [&](int extraWidth) {
-		const int w = std::max(1, buttonWidth + extraWidth);
+		const int w = buttonWidth + extraWidth;
 		PRectangle rect = PRectangle::FromInts(
-			x, y, x + w, y + style.cardButtonHeight);
+			x, buttonTop, x + w, buttonTop + buttonHeight);
 		x += w + (innerWidth > totalGaps ? style.largeFileButtonGap : 0);
 		return rect;
 	};
