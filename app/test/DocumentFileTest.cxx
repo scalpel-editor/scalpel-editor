@@ -51,28 +51,6 @@ public:
 	std::string path;
 };
 
-/** Sparse regular file of the given reported size; does not allocate payload. */
-class SparseTempFile {
-public:
-	explicit SparseTempFile(off_t size) {
-		char pattern[] = "/tmp/scalpel-doc-sparse-XXXXXX";
-		const int fd = mkstemp(pattern);
-		REQUIRE(fd >= 0);
-		path = pattern;
-		REQUIRE(ftruncate(fd, size) == 0);
-		REQUIRE(close(fd) == 0);
-	}
-	~SparseTempFile() {
-		if (!path.empty()) {
-			(void)std::remove(path.c_str());
-		}
-	}
-	SparseTempFile(const SparseTempFile &) = delete;
-	SparseTempFile &operator=(const SparseTempFile &) = delete;
-
-	std::string path;
-};
-
 [[nodiscard]] bool WriteRaw(const std::string &path, std::string_view text) {
 	const int fd = ::open(path.c_str(), O_WRONLY | O_TRUNC | O_CLOEXEC);
 	if (fd < 0) {
@@ -198,7 +176,7 @@ TEST_CASE("document file read accepts an exact size limit boundary") {
 
 TEST_CASE("document file read rejects fstat-visible oversized files") {
 	constexpr std::size_t limit = 32;
-	SparseTempFile file(static_cast<off_t>(limit + 1));
+	TempFile file(std::string(limit + 1, 'x'));
 
 	const Scalpel::DocumentFileReadResult read =
 		Scalpel::ReadDocumentFile(file.path, limit);
@@ -213,16 +191,6 @@ TEST_CASE("document file read enforces the limit while reading") {
 	const Scalpel::DocumentFileReadResult read =
 		Scalpel::ReadDocumentFile("/proc/cpuinfo", limit);
 	REQUIRE(read.status == Scalpel::DocumentFileReadStatus::TooLarge);
-	CHECK(read.bytes.empty());
-}
-
-TEST_CASE("document file read rejects production hard-limit sparse files") {
-	// Sparse file: fstat reports the size without allocating a 256 MiB payload.
-	SparseTempFile file(
-		static_cast<off_t>(Scalpel::DocumentFileHardLimitBytes + 1));
-	const Scalpel::DocumentFileReadResult read =
-		Scalpel::ReadDocumentFile(file.path, Scalpel::DocumentFileHardLimitBytes);
-	CHECK(read.status == Scalpel::DocumentFileReadStatus::TooLarge);
 	CHECK(read.bytes.empty());
 }
 

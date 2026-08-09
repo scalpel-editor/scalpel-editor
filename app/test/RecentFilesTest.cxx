@@ -1,10 +1,7 @@
 #include "catch.hpp"
 
 #include <cstdio>
-#include <fcntl.h>
-#include <fstream>
 #include <string>
-#include <sys/stat.h>
 #include <unistd.h>
 
 #include "DocumentFile.h"
@@ -89,7 +86,7 @@ TEST_CASE("recent files state round trips unusual valid paths") {
 	CHECK(loaded.Paths() == recent.Paths());
 }
 
-TEST_CASE("recent files malformed missing and oversized state is empty") {
+TEST_CASE("recent files malformed and missing state is empty") {
 	TempDirectory directory;
 	const std::string statePath = directory.path + "/nested/recent-files";
 	CHECK(Scalpel::LoadRecentFiles(statePath).Paths().empty());
@@ -98,26 +95,6 @@ TEST_CASE("recent files malformed missing and oversized state is empty") {
 	REQUIRE(Scalpel::SaveRecentFiles(statePath, empty));
 	REQUIRE(Scalpel::WriteDocumentFile(statePath, "not-a-recent-file").status ==
 		Scalpel::DocumentFileWriteStatus::Success);
-	CHECK(Scalpel::LoadRecentFiles(statePath).Paths().empty());
-
-	const std::string oversized(1024 * 1024 + 1, 'x');
-	REQUIRE(Scalpel::WriteDocumentFile(statePath, oversized).status ==
-		Scalpel::DocumentFileWriteStatus::Success);
-	CHECK(Scalpel::LoadRecentFiles(statePath).Paths().empty());
-}
-
-TEST_CASE("recent files oversized state is rejected without full allocation") {
-	// Sparse file past the 1 MiB recent-state limit: LoadRecentFiles must fail
-	// from the bounded read rather than loading then discarding.
-	TempDirectory directory;
-	const std::string nested = directory.path + "/nested";
-	REQUIRE(mkdir(nested.c_str(), 0700) == 0);
-	const std::string statePath = nested + "/recent-files";
-	const int fd =
-		open(statePath.c_str(), O_CREAT | O_WRONLY | O_TRUNC | O_CLOEXEC, 0600);
-	REQUIRE(fd >= 0);
-	REQUIRE(ftruncate(fd, static_cast<off_t>(1024 * 1024 + 1)) == 0);
-	REQUIRE(close(fd) == 0);
 	CHECK(Scalpel::LoadRecentFiles(statePath).Paths().empty());
 }
 

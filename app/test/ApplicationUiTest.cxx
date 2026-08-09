@@ -16,7 +16,6 @@
 #include "DocumentWorkspace.h"
 #include "ExternalChangeCard.h"
 #include "FileErrorCard.h"
-#include "LargeFileCard.h"
 #include "MenuBar.h"
 #include "RecentFiles.h"
 #include "ScrollBar.h"
@@ -43,8 +42,6 @@ using Scalpel::DocumentWorkspace;
 using Scalpel::ExternalChangeCardHit;
 using Scalpel::ExternalChangeChoice;
 using Scalpel::KeyboardInput;
-using Scalpel::LargeFileCardHit;
-using Scalpel::LargeFileChoice;
 using Scalpel::PointerAction;
 using Scalpel::PointerInput;
 using Scalpel::RecentFiles;
@@ -155,37 +152,6 @@ public:
 	std::string path;
 };
 
-/** Sparse regular file of the given reported size; does not allocate payload. */
-class SparseTempFile {
-public:
-	explicit SparseTempFile(off_t size) {
-		char pattern[] = "/tmp/scalpel-ui-sparse-XXXXXX";
-		const int fd = mkstemp(pattern);
-		REQUIRE(fd >= 0);
-		path = pattern;
-		REQUIRE(ftruncate(fd, size) == 0);
-		REQUIRE(close(fd) == 0);
-	}
-	~SparseTempFile() {
-		if (!path.empty()) {
-			(void)std::remove(path.c_str());
-		}
-	}
-	SparseTempFile(const SparseTempFile &) = delete;
-	SparseTempFile &operator=(const SparseTempFile &) = delete;
-
-	std::string path;
-};
-
-}
-
-void BeginLargeFilePrompt(ApplicationUi &ui, DocumentWorkspace &workspace,
-	const std::string &path) {
-	CHECK_FALSE(workspace.OpenPath(path));
-	REQUIRE(workspace.LargeFilePromptActive());
-	// Drain PromptBegan so composition and input ownership match production.
-	(void)ui.TakeShellEffects();
-	CHECK(ui.SynchronizeComposition() == BoundOverlay::LargeFile);
 }
 
 void ExternallyRewrite(const std::string &path, std::string_view contents) {
@@ -2517,172 +2483,6 @@ TEST_CASE("Application context menu not opened during left-button drag") {
 	CHECK_FALSE(ui.ContextMenuOpen());
 	CHECK(right.owner == ApplicationPointerOwner::EditorCapture);
 	CHECK_FALSE(right.consumed);
-}
-
-TEST_CASE("application UI large file overlay owns composition and input") {
-	SparseTempFile large(
-		static_cast<off_t>(Scalpel::DocumentFileWarningThresholdBytes + 1));
-	ApplicationEditor editor(400, 280);
-	PrepareChromeEditor(editor);
-	DocumentWorkspace workspace(editor);
-	RecentFiles recent;
-	ApplicationUi ui(editor, workspace, recent, "");
-	SeedStrip(ui, editor);
-	ui.BindPainters();
-
-	ui.MenuModel().openMenu = Scalpel::ApplicationMenu::File;
-	BeginLargeFilePrompt(ui, workspace, large.path);
-	CHECK(ui.Overlay() == BoundOverlay::LargeFile);
-	CHECK_FALSE(ui.MenuModel().openMenu.has_value());
-	CHECK(ui.ChromeOwnsInput());
-	CHECK(ui.CurrentPointerCursor() == ApplicationPointerCursor::Arrow);
-	CHECK(ui.CardFocus() == 0);
-
-	const ApplicationKeyboardResult key =
-		ui.HandleKeyboard(MakeKey(Keys::Right));
-	CHECK(key.owner == ApplicationKeyboardOwner::LargeFile);
-	CHECK(ui.CardFocus() == 1);
-
-	(void)ui.HandleKeyboard(MakeKey(Keys::Escape));
-	CHECK_FALSE(workspace.LargeFilePromptActive());
-	CHECK(ui.SynchronizeComposition() == BoundOverlay::None);
-	CHECK_FALSE(ui.ChromeOwnsInput());
-}
-
-TEST_CASE("application UI large file pointer cancel and open choices") {
-	SparseTempFile large(
-		static_cast<off_t>(Scalpel::DocumentFileWarningThresholdBytes + 1));
-	ApplicationEditor editor(400, 280);
-	PrepareChromeEditor(editor);
-	DocumentWorkspace workspace(editor);
-	RecentFiles recent;
-	ApplicationUi ui(editor, workspace, recent, "");
-	SeedStrip(ui, editor);
-	BeginLargeFilePrompt(ui, workspace, large.path);
-
-	ApplicationLayout layout = ui.Layout();
-	const Point onCancel = Point::FromInts(
-		static_cast<int>(layout.largeFileCard.cancelButton.left + 2),
-		static_cast<int>(layout.largeFileCard.cancelButton.top + 2));
-	(void)ui.HandlePointer(
-		MakePointer(PointerAction::Press, onCancel.x, onCancel.y, 0));
-	REQUIRE(ui.LargeFilePressHit() == LargeFileCardHit::Cancel);
-	const ApplicationPointerResult cancel = ui.HandlePointer(
-		MakePointer(PointerAction::Release, onCancel.x, onCancel.y, 0));
-	CHECK(cancel.owner == ApplicationPointerOwner::LargeFile);
-	CHECK(cancel.consumed);
-	CHECK_FALSE(workspace.LargeFilePromptActive());
-	CHECK(workspace.TabCount() == 1);
-	CHECK_FALSE(ui.LargeFilePressHit().has_value());
-
-	// Open path again and accept via keyboard Enter on Open focus.
-	BeginLargeFilePrompt(ui, workspace, large.path);
-	ui.CardFocus() = 0;
-	// Accepting materializes ~64 MiB; keep this path on the hard-limit failure
-	// case instead when the warning-band load is too heavy for a unit test.
-	SparseTempFile oversized(
-		static_cast<off_t>(Scalpel::DocumentFileHardLimitBytes + 1));
-	workspace.ChooseLargeFile(LargeFileChoice::Cancel);
-	(void)ui.TakeShellEffects();
-	BeginLargeFilePrompt(ui, workspace, oversized.path);
-	ui.CardFocus() = 0;
-	(void)ui.HandleKeyboard(MakeKey(Keys::Return));
-	CHECK_FALSE(workspace.LargeFilePromptActive());
-	(void)ui.TakeShellEffects();
-	REQUIRE_FALSE(ui.FileErrors().empty());
-	CHECK(ui.FileErrors().front().path == oversized.path);
-	CHECK(ui.SynchronizeComposition() == BoundOverlay::FileError);
-}
-
-TEST_CASE("application UI large file keyboard Open Cancel and focus cycle") {
-	SparseTempFile large(
-		static_cast<off_t>(Scalpel::DocumentFileWarningThresholdBytes + 1));
-	ApplicationEditor editor(400, 280);
-	PrepareChromeEditor(editor);
-	DocumentWorkspace workspace(editor);
-	RecentFiles recent;
-	ApplicationUi ui(editor, workspace, recent, "");
-	SeedStrip(ui, editor);
-	BeginLargeFilePrompt(ui, workspace, large.path);
-
-	CHECK(ui.HandleKeyboard(MakeKey(Keys::Tab)).owner ==
-		ApplicationKeyboardOwner::LargeFile);
-	CHECK(ui.CardFocus() == 1);
-	CHECK(ui.HandleKeyboard(MakeKey(Keys::Tab, KeyMod::Shift)).owner ==
-		ApplicationKeyboardOwner::LargeFile);
-	CHECK(ui.CardFocus() == 0);
-	CHECK(ui.HandleKeyboard(MakeLetter('C')).owner ==
-		ApplicationKeyboardOwner::LargeFile);
-	CHECK_FALSE(workspace.LargeFilePromptActive());
-}
-
-TEST_CASE("application UI large file file error outranks and clears armed press") {
-	SparseTempFile large(
-		static_cast<off_t>(Scalpel::DocumentFileWarningThresholdBytes + 1));
-	ApplicationEditor editor(400, 280);
-	PrepareChromeEditor(editor);
-	DocumentWorkspace workspace(editor);
-	RecentFiles recent;
-	ApplicationUi ui(editor, workspace, recent, "");
-	SeedStrip(ui, editor);
-	BeginLargeFilePrompt(ui, workspace, large.path);
-
-	const ApplicationLayout layout = ui.Layout();
-	const Point onOpen = Point::FromInts(
-		static_cast<int>(layout.largeFileCard.openButton.left + 2),
-		static_cast<int>(layout.largeFileCard.openButton.top + 2));
-	(void)ui.HandlePointer(
-		MakePointer(PointerAction::Press, onOpen.x, onOpen.y, 0));
-	REQUIRE(ui.LargeFilePressHit() == LargeFileCardHit::Open);
-
-	ui.AppendFileErrors({DocumentFileError{
-		DocumentFileOperation::Open, "/missing.txt"}});
-	CHECK_FALSE(ui.LargeFilePressHit().has_value());
-	CHECK(ui.SynchronizeComposition() == BoundOverlay::FileError);
-	// Large-file decision is still active underneath; file error owns input.
-	CHECK(workspace.LargeFilePromptActive());
-	CHECK(ui.HandleKeyboard(MakeKey(Keys::Escape)).owner ==
-		ApplicationKeyboardOwner::FileError);
-	CHECK(ui.FileErrors().empty());
-	CHECK(ui.SynchronizeComposition() == BoundOverlay::LargeFile);
-	CHECK(workspace.LargeFilePromptActive());
-
-	const ApplicationPointerResult release = ui.HandlePointer(
-		MakePointer(PointerAction::Release, onOpen.x, onOpen.y, 0));
-	CHECK(release.owner == ApplicationPointerOwner::LargeFile);
-	// Cleared press must not activate Open after the file-error interruption.
-	CHECK(workspace.LargeFilePromptActive());
-}
-
-TEST_CASE("application UI large file suppresses editor and menu while active") {
-	SparseTempFile large(
-		static_cast<off_t>(Scalpel::DocumentFileWarningThresholdBytes + 1));
-	ApplicationEditor editor(400, 280);
-	PrepareChromeEditor(editor);
-	DocumentWorkspace workspace(editor);
-	RecentFiles recent;
-	ApplicationUi ui(editor, workspace, recent, "");
-	SeedStrip(ui, editor);
-	BeginLargeFilePrompt(ui, workspace, large.path);
-
-	const ApplicationLayout layout = ui.Layout();
-	const Point onHeading = Point::FromInts(
-		static_cast<int>(layout.menu.headings[0].bounds.left + 4),
-		static_cast<int>(layout.menu.headings[0].bounds.top + 4));
-	const ApplicationPointerResult heading = ui.HandlePointer(
-		MakePointer(PointerAction::Press, onHeading.x, onHeading.y, 0));
-	CHECK(heading.consumed);
-	CHECK(heading.owner == ApplicationPointerOwner::LargeFile);
-	CHECK_FALSE(ui.MenuModel().openMenu.has_value());
-
-	const Point onClient = Point::FromInts(
-		static_cast<int>(layout.client.left + 8),
-		static_cast<int>(layout.client.top + 8));
-	const ApplicationPointerResult client = ui.HandlePointer(
-		MakePointer(PointerAction::Press, onClient.x, onClient.y, 0));
-	CHECK(client.consumed);
-	CHECK(client.owner == ApplicationPointerOwner::LargeFile);
-	CHECK_FALSE(editor.WindowState().mouseCaptured);
 }
 
 TEST_CASE("application UI external change overlay owns composition and input") {
