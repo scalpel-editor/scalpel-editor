@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <string>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include "ApplicationEditor.h"
@@ -9,8 +10,9 @@
 #include "DocumentWorkspace.h"
 
 using Scalpel::ApplicationEditor;
-using Scalpel::DocumentId;
+using Scalpel::DocumentFileErrorReason;
 using Scalpel::DocumentFileOperation;
+using Scalpel::DocumentId;
 using Scalpel::DocumentShellRequest;
 using Scalpel::DocumentWorkspace;
 using Scalpel::UnsavedChoice;
@@ -38,6 +40,28 @@ public:
 	}
 	TempFile(const TempFile &) = delete;
 	TempFile &operator=(const TempFile &) = delete;
+
+	std::string path;
+};
+
+/** Sparse regular file of the given reported size; does not allocate payload. */
+class SparseTempFile {
+public:
+	explicit SparseTempFile(off_t size) {
+		char pattern[] = "/tmp/scalpel-workspace-sparse-XXXXXX";
+		const int fd = mkstemp(pattern);
+		REQUIRE(fd >= 0);
+		path = pattern;
+		REQUIRE(ftruncate(fd, size) == 0);
+		REQUIRE(close(fd) == 0);
+	}
+	~SparseTempFile() {
+		if (!path.empty()) {
+			(void)std::remove(path.c_str());
+		}
+	}
+	SparseTempFile(const SparseTempFile &) = delete;
+	SparseTempFile &operator=(const SparseTempFile &) = delete;
 
 	std::string path;
 };
@@ -138,9 +162,9 @@ TEST_CASE("document workspace single-document close save with path") {
 	CHECK(HasRequest(requests, DocumentShellRequest::AcceptClose));
 	CHECK_FALSE(workspace.PromptActive());
 	CHECK_FALSE(editor.Modified());
-	const auto read = Scalpel::ReadDocumentFile(file.path);
-	REQUIRE(read.has_value());
-	CHECK(*read == editor.Text());
+	const auto read = Scalpel::ReadDocumentFile(file.path, Scalpel::DocumentFileHardLimitBytes);
+	REQUIRE(read.status == Scalpel::DocumentFileReadStatus::Success);
+	CHECK(read.bytes == editor.Text());
 }
 
 TEST_CASE("document workspace single-document close Save As then accept") {
@@ -254,9 +278,9 @@ TEST_CASE("document workspace preserves invalid UTF-8 file bytes through open ed
 	CHECK_FALSE(editor.Modified());
 	CHECK(workspace.TakeFileErrors().empty());
 	{
-		const auto read = Scalpel::ReadDocumentFile(file.path);
-		REQUIRE(read.has_value());
-		CHECK(*read == fixture);
+		const auto read = Scalpel::ReadDocumentFile(file.path, Scalpel::DocumentFileHardLimitBytes);
+		REQUIRE(read.status == Scalpel::DocumentFileReadStatus::Success);
+		CHECK(read.bytes == fixture);
 	}
 
 	// Normal text edit adjacent to the trailing malformed range; untouched bytes stay exact.
@@ -267,9 +291,9 @@ TEST_CASE("document workspace preserves invalid UTF-8 file bytes through open ed
 	CHECK_FALSE(editor.Modified());
 	CHECK(workspace.TakeFileErrors().empty());
 	{
-		const auto read = Scalpel::ReadDocumentFile(file.path);
-		REQUIRE(read.has_value());
-		CHECK(*read == afterEdit);
+		const auto read = Scalpel::ReadDocumentFile(file.path, Scalpel::DocumentFileHardLimitBytes);
+		REQUIRE(read.status == Scalpel::DocumentFileReadStatus::Success);
+		CHECK(read.bytes == afterEdit);
 	}
 	CHECK(workspace.TakeRecentPaths().empty());
 }
@@ -407,9 +431,9 @@ TEST_CASE("document workspace single-document save and save as requests") {
 		CHECK_FALSE(HasRequest(workspace.TakeRequests(),
 			DocumentShellRequest::ShowSaveAs));
 		CHECK_FALSE(editor.Modified());
-		const auto read = Scalpel::ReadDocumentFile(file.path);
-		REQUIRE(read.has_value());
-		CHECK(*read == editor.Text());
+		const auto read = Scalpel::ReadDocumentFile(file.path, Scalpel::DocumentFileHardLimitBytes);
+		REQUIRE(read.status == Scalpel::DocumentFileReadStatus::Success);
+		CHECK(read.bytes == editor.Text());
 	}
 	SECTION("explicit Save As always requests dialog") {
 		TempFile file("old");
@@ -589,9 +613,9 @@ TEST_CASE("document workspace Save As refuses a path already open in another tab
 	CHECK(workspace.Path() == first.path);
 	CHECK(editor.Text() == "first body\n");
 	CHECK_FALSE(editor.Modified());
-	const auto onDisk = Scalpel::ReadDocumentFile(first.path);
-	REQUIRE(onDisk.has_value());
-	CHECK(*onDisk == "first body\n");
+	const auto onDisk = Scalpel::ReadDocumentFile(first.path, Scalpel::DocumentFileHardLimitBytes);
+	REQUIRE(onDisk.status == Scalpel::DocumentFileReadStatus::Success);
+	CHECK(onDisk.bytes == "first body\n");
 }
 
 TEST_CASE("document workspace tabs close clean tab") {
@@ -697,9 +721,9 @@ TEST_CASE("document workspace tabs close dirty save with path") {
 	CHECK_FALSE(workspace.PromptActive());
 	CHECK(workspace.TabCount() == 1);
 	CHECK(workspace.ActiveTab() == other);
-	const auto read = Scalpel::ReadDocumentFile(file.path);
-	REQUIRE(read.has_value());
-	CHECK(read->find('x') != std::string::npos);
+	const auto read = Scalpel::ReadDocumentFile(file.path, Scalpel::DocumentFileHardLimitBytes);
+	REQUIRE(read.status == Scalpel::DocumentFileReadStatus::Success);
+	CHECK(read.bytes.find('x') != std::string::npos);
 }
 
 TEST_CASE("document workspace tabs untitled numbers stay stable") {
@@ -817,9 +841,9 @@ TEST_CASE("document workspace dialog routing Save As targets initiating tab") {
 	CHECK(workspace.Path() == file.path);
 	CHECK(editor.Text() == dirtyText);
 	CHECK_FALSE(editor.Modified());
-	const auto read = Scalpel::ReadDocumentFile(file.path);
-	REQUIRE(read.has_value());
-	CHECK(*read == dirtyText);
+	const auto read = Scalpel::ReadDocumentFile(file.path, Scalpel::DocumentFileHardLimitBytes);
+	REQUIRE(read.status == Scalpel::DocumentFileReadStatus::Success);
+	CHECK(read.bytes == dirtyText);
 }
 
 TEST_CASE("document workspace dialog routing Save As ignores closed tab") {
@@ -841,10 +865,10 @@ TEST_CASE("document workspace dialog routing Save As ignores closed tab") {
 	workspace.HandleDialogResult(dialog.id, true, {file.path});
 	CHECK(workspace.Path().empty());
 	CHECK(workspace.TabCount() == 1);
-	const auto read = Scalpel::ReadDocumentFile(file.path);
+	const auto read = Scalpel::ReadDocumentFile(file.path, Scalpel::DocumentFileHardLimitBytes);
 	// No write should have occurred for a tab that no longer exists.
-	REQUIRE(read.has_value());
-	CHECK(read->empty());
+	REQUIRE(read.status == Scalpel::DocumentFileReadStatus::Success);
+	CHECK(read.bytes.empty());
 }
 
 TEST_CASE("document workspace dialog routing delayed Save As continues prompt") {
@@ -865,9 +889,9 @@ TEST_CASE("document workspace dialog routing delayed Save As continues prompt") 
 	CHECK_FALSE(workspace.PromptActive());
 	CHECK_FALSE(editor.HasDocument(dirty));
 	CHECK(workspace.TabCount() == 1);
-	const auto read = Scalpel::ReadDocumentFile(file.path);
-	REQUIRE(read.has_value());
-	CHECK(read->find('x') != std::string::npos);
+	const auto read = Scalpel::ReadDocumentFile(file.path, Scalpel::DocumentFileHardLimitBytes);
+	REQUIRE(read.status == Scalpel::DocumentFileReadStatus::Success);
+	CHECK(read.bytes.find('x') != std::string::npos);
 }
 
 TEST_CASE("document workspace dialog routing Save As cancel keeps prompt") {
@@ -1166,9 +1190,9 @@ TEST_CASE("document workspace window close delayed Save As advances walk") {
 	CHECK(workspace.ActiveTab() == second);
 	CHECK_FALSE(HasRequest(workspace.TakeRequests(),
 		DocumentShellRequest::AcceptClose));
-	const auto read = Scalpel::ReadDocumentFile(file.path);
-	REQUIRE(read.has_value());
-	CHECK(read->find('x') != std::string::npos);
+	const auto read = Scalpel::ReadDocumentFile(file.path, Scalpel::DocumentFileHardLimitBytes);
+	REQUIRE(read.status == Scalpel::DocumentFileReadStatus::Success);
+	CHECK(read.bytes.find('x') != std::string::npos);
 }
 
 // Combined multi-document flows exercise several operations in one session,
@@ -1218,9 +1242,9 @@ TEST_CASE("document workspace multi-document open-many edit switch and inactive 
 	workspace.ActivateTab(betaId);
 	CHECK(workspace.Path() == saveAsTarget.path);
 	CHECK_FALSE(editor.Modified());
-	const auto saved = Scalpel::ReadDocumentFile(saveAsTarget.path);
-	REQUIRE(saved.has_value());
-	CHECK(*saved == dirtyBeta);
+	const auto saved = Scalpel::ReadDocumentFile(saveAsTarget.path, Scalpel::DocumentFileHardLimitBytes);
+	REQUIRE(saved.status == Scalpel::DocumentFileReadStatus::Success);
+	CHECK(saved.bytes == dirtyBeta);
 
 	// Alpha remains as opened, still clean.
 	bool foundAlpha = false;
@@ -1393,9 +1417,9 @@ TEST_CASE("document workspace startup file saves to its known path") {
 	CHECK_FALSE(editor.Modified());
 	CHECK(workspace.Path() == file.path);
 	CHECK(workspace.TakeFileErrors().empty());
-	const auto read = Scalpel::ReadDocumentFile(file.path);
-	REQUIRE(read.has_value());
-	CHECK(*read == editor.Text());
+	const auto read = Scalpel::ReadDocumentFile(file.path, Scalpel::DocumentFileHardLimitBytes);
+	REQUIRE(read.status == Scalpel::DocumentFileReadStatus::Success);
+	CHECK(read.bytes == editor.Text());
 	// Interactive Open still records recent paths; startup load must not.
 	CHECK(workspace.TakeRecentPaths().empty());
 }
@@ -1558,4 +1582,71 @@ TEST_CASE("document workspace startup files does not overwrite dirty text") {
 	CHECK(editor.Modified());
 	CHECK(workspace.TakeRecentPaths().empty());
 	CHECK(workspace.TakeFileErrors().empty());
+}
+
+TEST_CASE("document workspace file size open rejects hard-limit files") {
+	SparseTempFile oversized(
+		static_cast<off_t>(Scalpel::DocumentFileHardLimitBytes + 1));
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("startup\n");
+	DocumentWorkspace workspace(editor);
+	const DocumentId startup = workspace.ActiveTab();
+	const std::string startupText = editor.Text();
+
+	CHECK_FALSE(workspace.OpenPath(oversized.path));
+	CHECK(workspace.ActiveTab() == startup);
+	CHECK(editor.Text() == startupText);
+	CHECK(workspace.TabCount() == 1);
+	const auto errors = workspace.TakeFileErrors();
+	REQUIRE(errors.size() == 1);
+	CHECK(errors[0].operation == DocumentFileOperation::Open);
+	CHECK(errors[0].path == oversized.path);
+	CHECK(errors[0].reason == DocumentFileErrorReason::TooLarge);
+	CHECK(workspace.TakeRecentPaths().empty());
+}
+
+TEST_CASE("document workspace file size startup rejects hard-limit files") {
+	SparseTempFile oversized(
+		static_cast<off_t>(Scalpel::DocumentFileHardLimitBytes + 1));
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	const DocumentId only = workspace.ActiveTab();
+
+	CHECK_FALSE(workspace.LoadStartupFiles({oversized.path}));
+	CHECK(workspace.TabCount() == 1);
+	CHECK(workspace.ActiveTab() == only);
+	CHECK(workspace.Path().empty());
+	CHECK(editor.Text().empty());
+	const auto errors = workspace.TakeFileErrors();
+	REQUIRE(errors.size() == 1);
+	CHECK(errors[0].operation == DocumentFileOperation::Open);
+	CHECK(errors[0].path == oversized.path);
+	CHECK(errors[0].reason == DocumentFileErrorReason::TooLarge);
+	CHECK(workspace.TakeRecentPaths().empty());
+	CHECK_FALSE(HasRequest(workspace.TakeRequests(),
+		DocumentShellRequest::RefreshTabs));
+}
+
+TEST_CASE("document workspace file size multi-open keeps other paths") {
+	TempFile first("first\n");
+	SparseTempFile oversized(
+		static_cast<off_t>(Scalpel::DocumentFileHardLimitBytes + 1));
+	TempFile second("second\n");
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("startup\n");
+	DocumentWorkspace workspace(editor);
+
+	workspace.HandleOpenResult(true,
+		{first.path, oversized.path, second.path});
+	const std::vector<std::string> opened = workspace.TakeRecentPaths();
+	REQUIRE(opened.size() == 2);
+	CHECK(opened[0] == first.path);
+	CHECK(opened[1] == second.path);
+	CHECK(workspace.TabCount() == 3);
+	CHECK(workspace.Path() == second.path);
+	CHECK(editor.Text() == "second\n");
+	const auto errors = workspace.TakeFileErrors();
+	REQUIRE(errors.size() == 1);
+	CHECK(errors[0].path == oversized.path);
+	CHECK(errors[0].reason == DocumentFileErrorReason::TooLarge);
 }

@@ -50,32 +50,61 @@ public:
 	std::string path;
 };
 
+/** Sparse regular file of the given reported size; does not allocate payload. */
+class SparseTempFile {
+public:
+	explicit SparseTempFile(off_t size) {
+		char pattern[] = "/tmp/scalpel-doc-sparse-XXXXXX";
+		const int fd = mkstemp(pattern);
+		REQUIRE(fd >= 0);
+		path = pattern;
+		REQUIRE(ftruncate(fd, size) == 0);
+		REQUIRE(close(fd) == 0);
+	}
+	~SparseTempFile() {
+		if (!path.empty()) {
+			(void)std::remove(path.c_str());
+		}
+	}
+	SparseTempFile(const SparseTempFile &) = delete;
+	SparseTempFile &operator=(const SparseTempFile &) = delete;
+
+	std::string path;
+};
+
 }
 
 TEST_CASE("document file round-trips bytes including invalid UTF-8") {
 	const std::string payload = "line\n\xFFx\xC0\x80";
 	TempFile file(payload);
-	const std::optional<std::string> read = Scalpel::ReadDocumentFile(file.path);
-	REQUIRE(read.has_value());
-	CHECK(*read == payload);
+	const Scalpel::DocumentFileReadResult read =
+		Scalpel::ReadDocumentFile(file.path, Scalpel::DocumentFileHardLimitBytes);
+	REQUIRE(read.status == Scalpel::DocumentFileReadStatus::Success);
+	CHECK(read.bytes == payload);
 
 	const std::string rewritten = "save\xFF";
 	REQUIRE(Scalpel::WriteDocumentFile(file.path, rewritten));
-	const std::optional<std::string> again = Scalpel::ReadDocumentFile(file.path);
-	REQUIRE(again.has_value());
-	CHECK(*again == rewritten);
+	const Scalpel::DocumentFileReadResult again =
+		Scalpel::ReadDocumentFile(file.path, Scalpel::DocumentFileHardLimitBytes);
+	REQUIRE(again.status == Scalpel::DocumentFileReadStatus::Success);
+	CHECK(again.bytes == rewritten);
 }
 
 TEST_CASE("document file read fails for a missing path") {
-	CHECK_FALSE(Scalpel::ReadDocumentFile(
-		"/tmp/scalpel-document-file-missing-path").has_value());
+	CHECK(Scalpel::ReadDocumentFile("/tmp/scalpel-document-file-missing-path",
+			  Scalpel::DocumentFileHardLimitBytes)
+			  .status == Scalpel::DocumentFileReadStatus::ReadFailure);
 }
 
 TEST_CASE("document file read fails for empty path directory and non-regular") {
-	CHECK_FALSE(Scalpel::ReadDocumentFile({}).has_value());
+	CHECK(Scalpel::ReadDocumentFile({}, Scalpel::DocumentFileHardLimitBytes)
+			  .status == Scalpel::DocumentFileReadStatus::ReadFailure);
 	// Directories must not throw from iostream filebuf (libstdc++ EISDIR).
-	CHECK_FALSE(Scalpel::ReadDocumentFile("/tmp").has_value());
-	CHECK_FALSE(Scalpel::ReadDocumentFile("/dev/null").has_value());
+	CHECK(Scalpel::ReadDocumentFile("/tmp", Scalpel::DocumentFileHardLimitBytes)
+			  .status == Scalpel::DocumentFileReadStatus::ReadFailure);
+	CHECK(Scalpel::ReadDocumentFile("/dev/null",
+			  Scalpel::DocumentFileHardLimitBytes)
+			  .status == Scalpel::DocumentFileReadStatus::ReadFailure);
 }
 
 TEST_CASE("document file write fails for an empty path") {
@@ -96,9 +125,10 @@ TEST_CASE("document file rewrite preserves mode bits") {
 	REQUIRE(stat(file.path.c_str(), &after) == 0);
 	CHECK((after.st_mode & 0777) == 0600);
 
-	const std::optional<std::string> read = Scalpel::ReadDocumentFile(file.path);
-	REQUIRE(read.has_value());
-	CHECK(*read == "rewritten");
+	const Scalpel::DocumentFileReadResult read =
+		Scalpel::ReadDocumentFile(file.path, Scalpel::DocumentFileHardLimitBytes);
+	REQUIRE(read.status == Scalpel::DocumentFileReadStatus::Success);
+	CHECK(read.bytes == "rewritten");
 }
 
 TEST_CASE("document file write follows a symlink to the target file") {
@@ -108,10 +138,10 @@ TEST_CASE("document file write follows a symlink to the target file") {
 
 	REQUIRE(Scalpel::WriteDocumentFile(linkPath, "through-link"));
 
-	const std::optional<std::string> targetText =
-		Scalpel::ReadDocumentFile(target.path);
-	REQUIRE(targetText.has_value());
-	CHECK(*targetText == "through-link");
+	const Scalpel::DocumentFileReadResult targetText =
+		Scalpel::ReadDocumentFile(target.path, Scalpel::DocumentFileHardLimitBytes);
+	REQUIRE(targetText.status == Scalpel::DocumentFileReadStatus::Success);
+	CHECK(targetText.bytes == "through-link");
 
 	struct stat linkStat {};
 	REQUIRE(lstat(linkPath.c_str(), &linkStat) == 0);
@@ -124,4 +154,46 @@ TEST_CASE("document file path helpers split directories") {
 	CHECK(Scalpel::DocumentDirectory("note.txt").empty());
 	CHECK(Scalpel::DocumentBaseName("/home/user/note.txt") == "note.txt");
 	CHECK(Scalpel::DocumentBaseName("note.txt") == "note.txt");
+}
+
+TEST_CASE("document file read accepts an exact size limit boundary") {
+	constexpr std::size_t limit = 32;
+	const std::string payload(limit, 'a');
+	TempFile file(payload);
+
+	const Scalpel::DocumentFileReadResult read =
+		Scalpel::ReadDocumentFile(file.path, limit);
+	REQUIRE(read.status == Scalpel::DocumentFileReadStatus::Success);
+	CHECK(read.bytes == payload);
+	CHECK(read.bytes.size() == limit);
+}
+
+TEST_CASE("document file read rejects fstat-visible oversized files") {
+	constexpr std::size_t limit = 32;
+	SparseTempFile file(static_cast<off_t>(limit + 1));
+
+	const Scalpel::DocumentFileReadResult read =
+		Scalpel::ReadDocumentFile(file.path, limit);
+	CHECK(read.status == Scalpel::DocumentFileReadStatus::TooLarge);
+	CHECK(read.bytes.empty());
+}
+
+TEST_CASE("document file read enforces the limit while reading") {
+	// /proc regular files often report st_size 0, so the size check runs only
+	// against accumulated read bytes rather than fstat.
+	constexpr std::size_t limit = 16;
+	const Scalpel::DocumentFileReadResult read =
+		Scalpel::ReadDocumentFile("/proc/cpuinfo", limit);
+	REQUIRE(read.status == Scalpel::DocumentFileReadStatus::TooLarge);
+	CHECK(read.bytes.empty());
+}
+
+TEST_CASE("document file read rejects production hard-limit sparse files") {
+	// Sparse file: fstat reports the size without allocating a 256 MiB payload.
+	SparseTempFile file(
+		static_cast<off_t>(Scalpel::DocumentFileHardLimitBytes + 1));
+	const Scalpel::DocumentFileReadResult read =
+		Scalpel::ReadDocumentFile(file.path, Scalpel::DocumentFileHardLimitBytes);
+	CHECK(read.status == Scalpel::DocumentFileReadStatus::TooLarge);
+	CHECK(read.bytes.empty());
 }

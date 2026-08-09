@@ -126,9 +126,13 @@ void CancelScrollBarShellInteraction(ScrollBarInteraction &interaction,
 
 [[nodiscard]] std::string_view FileErrorTitle(
 	const DocumentFileError &error) noexcept {
-	return error.operation == DocumentFileOperation::Open ?
-		"Could not open file" :
-		"Could not save file";
+	if (error.operation == DocumentFileOperation::Open) {
+		if (error.reason == DocumentFileErrorReason::TooLarge) {
+			return "File is too large";
+		}
+		return "Could not open file";
+	}
+	return "Could not save file";
 }
 
 void ApplyScrollBarShellRequest(ApplicationEditor &editor,

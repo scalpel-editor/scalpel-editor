@@ -456,14 +456,22 @@ bool DocumentWorkspace::LoadStartupFiles(
 	texts.reserve(distinct.size());
 	bool readFailed = false;
 	for (const std::string &pathString : distinct) {
-		const std::optional<std::string> text = ReadDocumentFile(pathString);
-		if (!text) {
+		const DocumentFileReadResult text =
+			ReadDocumentFile(pathString, DocumentFileHardLimitBytes);
+		if (text.status == DocumentFileReadStatus::TooLarge) {
+			std::cerr << "scalpel-editor: file too large: " << pathString << '\n';
+			fileErrors.push_back({DocumentFileOperation::Open, pathString,
+				DocumentFileErrorReason::TooLarge});
+			readFailed = true;
+			continue;
+		}
+		if (text.status != DocumentFileReadStatus::Success) {
 			std::cerr << "scalpel-editor: failed to read " << pathString << '\n';
 			fileErrors.push_back({DocumentFileOperation::Open, pathString});
 			readFailed = true;
 			continue;
 		}
-		texts.push_back(*text);
+		texts.push_back(std::move(text.bytes));
 	}
 	if (readFailed) {
 		return false;
@@ -534,8 +542,15 @@ bool DocumentWorkspace::ApplyOpenPaths(const std::vector<std::string> &paths) {
 			recentPaths.push_back(pathString);
 			continue;
 		}
-		const std::optional<std::string> text = ReadDocumentFile(pathString);
-		if (!text) {
+		const DocumentFileReadResult text =
+			ReadDocumentFile(pathString, DocumentFileHardLimitBytes);
+		if (text.status == DocumentFileReadStatus::TooLarge) {
+			std::cerr << "scalpel-editor: file too large: " << pathString << '\n';
+			fileErrors.push_back({DocumentFileOperation::Open, pathString,
+				DocumentFileErrorReason::TooLarge});
+			continue;
+		}
+		if (text.status != DocumentFileReadStatus::Success) {
 			std::cerr << "scalpel-editor: failed to read " << pathString << '\n';
 			fileErrors.push_back({DocumentFileOperation::Open, pathString});
 			continue;
@@ -548,7 +563,7 @@ bool DocumentWorkspace::ApplyOpenPaths(const std::vector<std::string> &paths) {
 		tabs.push_back(std::move(tab));
 		editor.ActivateDocument(id);
 		activeId = id;
-		editor.LoadInitialBuffer(*text);
+		editor.LoadInitialBuffer(text.bytes);
 		lastActivated = id;
 		recentPaths.push_back(pathString);
 	}

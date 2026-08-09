@@ -1402,9 +1402,9 @@ TEST_CASE("application UI shell effects portal Save As continues dirty close") {
 	// Closing the last dirty tab replaces it with a fresh untitled.
 	CHECK(workspace.Path().empty());
 	CHECK_FALSE(editor.Modified());
-	const auto read = Scalpel::ReadDocumentFile(file.path);
-	REQUIRE(read.has_value());
-	CHECK(*read == dirtyText);
+	const auto read = Scalpel::ReadDocumentFile(file.path, Scalpel::DocumentFileHardLimitBytes);
+	REQUIRE(read.status == Scalpel::DocumentFileReadStatus::Success);
+	CHECK(read.bytes == dirtyText);
 }
 
 TEST_CASE("application UI workflow menu portal edit dirty close cancel editor") {

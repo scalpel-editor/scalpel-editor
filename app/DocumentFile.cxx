@@ -1,7 +1,9 @@
 #include "DocumentFile.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <climits>
+#include <cstdint>
 #include <vector>
 
 #include <fcntl.h>
@@ -58,38 +60,78 @@ namespace {
 	return close(fd) == 0;
 }
 
+[[nodiscard]] DocumentFileReadResult MakeReadFailure() {
+	return {DocumentFileReadStatus::ReadFailure, {}};
 }
 
-std::optional<std::string> ReadDocumentFile(const std::string &path) {
+[[nodiscard]] DocumentFileReadResult MakeTooLarge() {
+	return {DocumentFileReadStatus::TooLarge, {}};
+}
+
+}
+
+DocumentFileReadResult ReadDocumentFile(const std::string &path,
+	std::size_t maximumBytes) {
 	// Use POSIX open/read rather than iostream so directories and other
-	// non-regular paths return nullopt instead of throwing from filebuf.
+	// non-regular paths return a failure instead of throwing from filebuf.
 	if (path.empty()) {
-		return std::nullopt;
+		return MakeReadFailure();
 	}
 	const int fd = ::open(path.c_str(), O_RDONLY | O_CLOEXEC);
 	if (fd < 0) {
-		return std::nullopt;
+		return MakeReadFailure();
 	}
 	struct stat st {};
 	if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode)) {
 		(void)close(fd);
-		return std::nullopt;
+		return MakeReadFailure();
+	}
+
+	// Reject a reported size above the caller's limit before reserving. Exact
+	// equality remains allowed; only a greater size is too large.
+	if (st.st_size > 0) {
+		if (static_cast<std::uintmax_t>(st.st_size) >
+			static_cast<std::uintmax_t>(maximumBytes)) {
+			(void)close(fd);
+			return MakeTooLarge();
+		}
 	}
 
 	std::string bytes;
 	if (st.st_size > 0) {
 		bytes.reserve(static_cast<std::size_t>(st.st_size));
 	}
-	constexpr std::size_t chunkSize = 64 * 1024;
+	constexpr std::size_t chunkSize = 64U * 1024U;
 	char buffer[chunkSize];
 	for (;;) {
-		const ssize_t n = ::read(fd, buffer, chunkSize);
+		// bytes.size() never exceeds maximumBytes, so remaining cannot wrap.
+		const std::size_t remaining = maximumBytes - bytes.size();
+		if (remaining == 0) {
+			// Already at the caller's limit: one more readable byte is too large.
+			char extra = 0;
+			const ssize_t n = ::read(fd, &extra, 1);
+			if (n < 0) {
+				if (errno == EINTR) {
+					continue;
+				}
+				(void)close(fd);
+				return MakeReadFailure();
+			}
+			if (n == 0) {
+				break;
+			}
+			(void)close(fd);
+			return MakeTooLarge();
+		}
+
+		const std::size_t toRead = std::min(chunkSize, remaining);
+		const ssize_t n = ::read(fd, buffer, toRead);
 		if (n < 0) {
 			if (errno == EINTR) {
 				continue;
 			}
 			(void)close(fd);
-			return std::nullopt;
+			return MakeReadFailure();
 		}
 		if (n == 0) {
 			break;
@@ -97,9 +139,9 @@ std::optional<std::string> ReadDocumentFile(const std::string &path) {
 		bytes.append(buffer, static_cast<std::size_t>(n));
 	}
 	if (close(fd) != 0) {
-		return std::nullopt;
+		return MakeReadFailure();
 	}
-	return bytes;
+	return {DocumentFileReadStatus::Success, std::move(bytes)};
 }
 
 bool WriteDocumentFile(const std::string &path, std::string_view text) {

@@ -42,8 +42,9 @@ private:
 [[nodiscard]] std::string RecentFilesStatePath();
 
 /**
- * Load a versioned NUL-delimited state file. Missing, oversized, or malformed
- * files yield an empty list.
+ * Load a versioned NUL-delimited state file. The read is bounded to 1 MiB so
+ * an oversized file is rejected without allocating past that limit. Missing,
+ * oversized, or malformed files yield an empty list.
  */
 [[nodiscard]] RecentFiles LoadRecentFiles(const std::string &statePath);
 

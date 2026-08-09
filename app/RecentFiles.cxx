@@ -92,27 +92,30 @@ RecentFiles LoadRecentFiles(const std::string &statePath) {
 	if (statePath.empty()) {
 		return recent;
 	}
-	const std::optional<std::string> bytes = ReadDocumentFile(statePath);
-	if (!bytes || bytes->size() > kMaximumStateBytes) {
+	// Enforce the 1 MiB state-file limit during the read so a corrupt or
+	// hostile file cannot allocate more than the stated maximum.
+	const DocumentFileReadResult bytes =
+		ReadDocumentFile(statePath, kMaximumStateBytes);
+	if (bytes.status != DocumentFileReadStatus::Success) {
 		return recent;
 	}
 
 	const std::string prefix = std::string(kHeader) + '\0';
-	if (bytes->size() < prefix.size() ||
-		bytes->compare(0, prefix.size(), prefix) != 0 ||
-		(!bytes->empty() && bytes->back() != '\0')) {
+	if (bytes.bytes.size() < prefix.size() ||
+		bytes.bytes.compare(0, prefix.size(), prefix) != 0 ||
+		(!bytes.bytes.empty() && bytes.bytes.back() != '\0')) {
 		return recent;
 	}
 
 	std::vector<std::string_view> stored;
 	std::size_t start = prefix.size();
-	while (start < bytes->size() && stored.size() < MaximumRecentFiles) {
-		const std::size_t end = bytes->find('\0', start);
+	while (start < bytes.bytes.size() && stored.size() < MaximumRecentFiles) {
+		const std::size_t end = bytes.bytes.find('\0', start);
 		if (end == std::string::npos) {
 			return RecentFiles{};
 		}
 		if (end > start) {
-			stored.emplace_back(bytes->data() + start, end - start);
+			stored.emplace_back(bytes.bytes.data() + start, end - start);
 		}
 		start = end + 1;
 	}

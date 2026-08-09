@@ -36,10 +36,19 @@ enum class DocumentFileOperation {
 	Save,
 };
 
+/** Why a document file operation failed, for user-facing titles and diagnostics. */
+enum class DocumentFileErrorReason {
+	/** Open or save could not complete (missing path, I/O, permissions, …). */
+	Failed,
+	/** Open refused because the file exceeds the hard document size limit. */
+	TooLarge,
+};
+
 /** One failed document read or write for the shell to present to the user. */
 struct DocumentFileError {
 	DocumentFileOperation operation = DocumentFileOperation::Open;
 	std::string path;
+	DocumentFileErrorReason reason = DocumentFileErrorReason::Failed;
 };
 
 /** Snapshot of one tab for the strip and tests. */
@@ -185,9 +194,10 @@ public:
 	 * occurrence of each distinct path as a tab in argument order, reuses the
 	 * initial document for the first path, creates sibling documents for the
 	 * rest, and activates the tab named by the last supplied path. Reads every
-	 * distinct path before mutating tabs; any empty path or read failure leaves
-	 * the initial workspace coherent and returns false. Leaves each buffer at
-	 * its save point, queues one tab refresh, and does not record recent paths.
+	 * distinct path before mutating tabs under the hard document size limit; any
+	 * empty path, read failure, or oversized file leaves the initial workspace
+	 * coherent and returns false. Leaves each buffer at its save point, queues
+	 * one tab refresh, and does not record recent paths.
 	 */
 	[[nodiscard]] bool LoadStartupFiles(const std::vector<std::string> &paths);
 	/**
