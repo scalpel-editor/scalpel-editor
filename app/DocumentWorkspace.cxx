@@ -96,7 +96,9 @@ bool DocumentWorkspace::SaveToPath(DocumentId tabId,
 			return false;
 		}
 	}
-	if (!WriteDocumentFile(pathString, editor.Text(tabId))) {
+	const DocumentFileWriteResult written =
+		WriteDocumentFile(pathString, editor.Text(tabId));
+	if (written.status != DocumentFileWriteStatus::Success) {
 		std::cerr << "scalpel-editor: failed to write " << pathString << '\n';
 		fileErrors.push_back({DocumentFileOperation::Save, pathString});
 		return false;

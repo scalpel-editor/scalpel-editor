@@ -145,7 +145,8 @@ bool SaveRecentFiles(const std::string &statePath, const RecentFiles &recent) {
 		bytes.append(path);
 		bytes.push_back('\0');
 	}
-	return WriteDocumentFile(statePath, bytes);
+	return WriteDocumentFile(statePath, bytes).status ==
+		DocumentFileWriteStatus::Success;
 }
 
 }

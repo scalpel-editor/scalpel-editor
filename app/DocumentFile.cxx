@@ -13,6 +13,28 @@
 namespace Scalpel {
 namespace {
 
+[[nodiscard]] DocumentFileStamp StampFromStat(const struct stat &st) noexcept {
+	DocumentFileStamp stamp;
+	stamp.device = static_cast<std::uint64_t>(st.st_dev);
+	stamp.inode = static_cast<std::uint64_t>(st.st_ino);
+	if (st.st_size > 0) {
+		stamp.sizeBytes = static_cast<std::uint64_t>(st.st_size);
+	}
+	stamp.modificationSeconds = static_cast<std::int64_t>(st.st_mtim.tv_sec);
+	stamp.modificationNanoseconds =
+		static_cast<std::int64_t>(st.st_mtim.tv_nsec);
+	return stamp;
+}
+
+[[nodiscard]] bool DestinationMatches(const std::string &destination,
+	const DocumentFileStamp &expected) {
+	struct stat st {};
+	if (stat(destination.c_str(), &st) != 0 || !S_ISREG(st.st_mode)) {
+		return false;
+	}
+	return StampFromStat(st) == expected;
+}
+
 [[nodiscard]] std::string ResolveWriteDestination(const std::string &path,
 	struct stat &existing, bool &haveExisting) {
 	haveExisting = false;
@@ -52,20 +74,25 @@ namespace {
 	return true;
 }
 
-[[nodiscard]] bool FinishTemporaryFile(int fd) {
-	if (fsync(fd) != 0) {
-		(void)close(fd);
-		return false;
-	}
-	return close(fd) == 0;
-}
-
 [[nodiscard]] DocumentFileReadResult MakeReadFailure() {
-	return {DocumentFileReadStatus::ReadFailure, {}};
+	return {DocumentFileReadStatus::ReadFailure, {}, {}};
 }
 
 [[nodiscard]] DocumentFileReadResult MakeTooLarge() {
-	return {DocumentFileReadStatus::TooLarge, {}};
+	return {DocumentFileReadStatus::TooLarge, {}, {}};
+}
+
+[[nodiscard]] DocumentFileWriteResult MakeWriteFailure() {
+	return {DocumentFileWriteStatus::WriteFailure, {}};
+}
+
+[[nodiscard]] DocumentFileWriteResult MakeWriteChanged() {
+	return {DocumentFileWriteStatus::Changed, {}};
+}
+
+[[nodiscard]] DocumentFileWriteResult MakeWriteSuccess(
+	const DocumentFileStamp &stamp) {
+	return {DocumentFileWriteStatus::Success, stamp};
 }
 
 }
@@ -81,16 +108,16 @@ DocumentFileReadResult ReadDocumentFile(const std::string &path,
 	if (fd < 0) {
 		return MakeReadFailure();
 	}
-	struct stat st {};
-	if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode)) {
+	struct stat before {};
+	if (fstat(fd, &before) != 0 || !S_ISREG(before.st_mode)) {
 		(void)close(fd);
 		return MakeReadFailure();
 	}
 
 	// Reject a reported size above the caller's limit before reserving. Exact
 	// equality remains allowed; only a greater size is too large.
-	if (st.st_size > 0) {
-		if (static_cast<std::uintmax_t>(st.st_size) >
+	if (before.st_size > 0) {
+		if (static_cast<std::uintmax_t>(before.st_size) >
 			static_cast<std::uintmax_t>(maximumBytes)) {
 			(void)close(fd);
 			return MakeTooLarge();
@@ -98,8 +125,8 @@ DocumentFileReadResult ReadDocumentFile(const std::string &path,
 	}
 
 	std::string bytes;
-	if (st.st_size > 0) {
-		bytes.reserve(static_cast<std::size_t>(st.st_size));
+	if (before.st_size > 0) {
+		bytes.reserve(static_cast<std::size_t>(before.st_size));
 	}
 	constexpr std::size_t chunkSize = 64U * 1024U;
 	char buffer[chunkSize];
@@ -138,21 +165,41 @@ DocumentFileReadResult ReadDocumentFile(const std::string &path,
 		}
 		bytes.append(buffer, static_cast<std::size_t>(n));
 	}
+
+	// Reject a stamp change during the read so the buffer is not accepted with
+	// identity fields that may describe different bytes.
+	struct stat after {};
+	if (fstat(fd, &after) != 0 || !S_ISREG(after.st_mode)) {
+		(void)close(fd);
+		return MakeReadFailure();
+	}
+	const DocumentFileStamp stamp = StampFromStat(before);
+	if (stamp != StampFromStat(after)) {
+		(void)close(fd);
+		return MakeReadFailure();
+	}
 	if (close(fd) != 0) {
 		return MakeReadFailure();
 	}
-	return {DocumentFileReadStatus::Success, std::move(bytes)};
+	return {DocumentFileReadStatus::Success, std::move(bytes), stamp};
 }
 
-bool WriteDocumentFile(const std::string &path, std::string_view text) {
+DocumentFileWriteResult WriteDocumentFile(const std::string &path,
+	std::string_view text, const DocumentFileStamp *expected) {
 	if (path.empty()) {
-		return false;
+		return MakeWriteFailure();
 	}
 
 	struct stat existing {};
 	bool haveExisting = false;
 	const std::string destination =
 		ResolveWriteDestination(path, existing, haveExisting);
+
+	// Guarded saves compare the followed regular file before expensive
+	// temporary-file work so a known conflict never creates a temp file.
+	if (expected != nullptr && !DestinationMatches(destination, *expected)) {
+		return MakeWriteChanged();
+	}
 
 	const std::string directory = DocumentDirectory(destination);
 	const std::string tempDirectory = directory.empty() ? "." : directory;
@@ -162,7 +209,7 @@ bool WriteDocumentFile(const std::string &path, std::string_view text) {
 
 	const int fd = mkstemp(mutablePattern.data());
 	if (fd < 0) {
-		return false;
+		return MakeWriteFailure();
 	}
 	const std::string temporaryPath(mutablePattern.data());
 
@@ -172,18 +219,46 @@ bool WriteDocumentFile(const std::string &path, std::string_view text) {
 		if (fchmod(fd, existing.st_mode & 0777) != 0) {
 			(void)close(fd);
 			(void)unlink(temporaryPath.c_str());
-			return false;
+			return MakeWriteFailure();
 		}
 	}
 
-	if (!WriteAll(fd, text) || !FinishTemporaryFile(fd)) {
+	if (!WriteAll(fd, text)) {
+		(void)close(fd);
 		(void)unlink(temporaryPath.c_str());
-		return false;
+		return MakeWriteFailure();
+	}
+	if (fsync(fd) != 0) {
+		(void)close(fd);
+		(void)unlink(temporaryPath.c_str());
+		return MakeWriteFailure();
+	}
+
+	// Stamp the temporary descriptor before close so a later path replacement
+	// cannot be mistaken for this save's identity.
+	struct stat written {};
+	if (fstat(fd, &written) != 0 || !S_ISREG(written.st_mode)) {
+		(void)close(fd);
+		(void)unlink(temporaryPath.c_str());
+		return MakeWriteFailure();
+	}
+	const DocumentFileStamp stamp = StampFromStat(written);
+
+	if (close(fd) != 0) {
+		(void)unlink(temporaryPath.c_str());
+		return MakeWriteFailure();
+	}
+
+	// Re-check immediately before rename. A mismatch leaves the destination
+	// untouched and discards the temporary file.
+	if (expected != nullptr && !DestinationMatches(destination, *expected)) {
+		(void)unlink(temporaryPath.c_str());
+		return MakeWriteChanged();
 	}
 
 	if (rename(temporaryPath.c_str(), destination.c_str()) != 0) {
 		(void)unlink(temporaryPath.c_str());
-		return false;
+		return MakeWriteFailure();
 	}
 
 	// Best-effort directory durability for the rename; failure here still leaves
@@ -194,7 +269,7 @@ bool WriteDocumentFile(const std::string &path, std::string_view text) {
 		(void)fsync(directoryFd);
 		(void)close(directoryFd);
 	}
-	return true;
+	return MakeWriteSuccess(stamp);
 }
 
 std::string DocumentDirectory(std::string_view path) {

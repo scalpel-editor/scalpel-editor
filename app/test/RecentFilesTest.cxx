@@ -96,11 +96,13 @@ TEST_CASE("recent files malformed missing and oversized state is empty") {
 
 	Scalpel::RecentFiles empty;
 	REQUIRE(Scalpel::SaveRecentFiles(statePath, empty));
-	REQUIRE(Scalpel::WriteDocumentFile(statePath, "not-a-recent-file"));
+	REQUIRE(Scalpel::WriteDocumentFile(statePath, "not-a-recent-file").status ==
+		Scalpel::DocumentFileWriteStatus::Success);
 	CHECK(Scalpel::LoadRecentFiles(statePath).Paths().empty());
 
 	const std::string oversized(1024 * 1024 + 1, 'x');
-	REQUIRE(Scalpel::WriteDocumentFile(statePath, oversized));
+	REQUIRE(Scalpel::WriteDocumentFile(statePath, oversized).status ==
+		Scalpel::DocumentFileWriteStatus::Success);
 	CHECK(Scalpel::LoadRecentFiles(statePath).Paths().empty());
 }
 
