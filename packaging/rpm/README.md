@@ -26,7 +26,7 @@ Install the locally built, unsigned package with `zypper`; the architecture dire
 
 ```sh
 sudo zypper install --allow-unsigned-rpm \
-  .rpm-build/RPMS/*/scalpel-editor-0.1.0-1.*.rpm
+  .rpm-build/RPMS/*/scalpel-editor-1.0.0-1.*.rpm
 ```
 
 `zypper` resolves and installs the runtime dependencies. Start the editor from the desktop application menu or run `scalpel-editor` in a Wayland session.
@@ -41,7 +41,7 @@ Rebuilding the same version and release does not make it newer from RPM's point 
 
 ```sh
 sudo zypper install --force --allow-unsigned-rpm \
-  .rpm-build/RPMS/*/scalpel-editor-0.1.0-1.*.rpm
+  .rpm-build/RPMS/*/scalpel-editor-1.0.0-1.*.rpm
 ```
 
 ## Distribution metadata still needed

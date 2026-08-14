@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(scalpel-editor LANGUAGES C CXX)
+project(scalpel-editor VERSION 1.0.0 LANGUAGES C CXX)
 
 include(GNUInstallDirs)
 include(CTest)
