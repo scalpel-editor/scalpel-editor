@@ -4,53 +4,19 @@ scalpel-editor is a Wayland-only plain-text editor built from the Scintilla 5.6.
 
 The editor has no GTK, Qt, or general-purpose UI toolkit dependency. Its application chrome is a small fixed set of controls composed directly with the editor.
 
-## Current scope
-
 The application supports multiple tabs, desktop-portal open and save dialogs, atomic whole-file saves with save-time external-change detection, dirty-buffer close prompts, recent files, menu and keyboard actions, two-axis scrollbars, clipboard and primary selection, text-input-v3 IME, compositor-driven key repeat, cursor themes, fractional scaling, damage-aware frame pacing, and optional presentation feedback.
 
-With no arguments, `scalpel-editor` opens an untitled interactive workspace. With one or more paths, it opens those files as the initial tab set in argument order, reuses the first document for the first distinct path, activates the tab named by the last supplied path, binds each path for save, and does not add any of them to recent files. Startup is all-or-nothing: if any path is empty, unreadable, or larger than 256 MiB, the process reports failure (with a distinct diagnostic for oversized files) and does not enter the event loop. Whole-file document loads never exceed 256 MiB. Interactive Open and Recent warn before loading a file larger than 64 MiB and require confirmation up to the 256 MiB hard limit. Use `--` before paths that begin with `-`. The process stays in the foreground until the window closes. A Wayland session is required for every launch form.
-
-The project is still under active development. Text shaping currently targets left-to-right English. Autocomplete, call tips, and the Scintilla context menu remain compiled but do not yet have real Wayland popup surfaces. Lexilla integration, Markdown styling, bidirectional layout, drag and drop, and a system accessibility caret are outside the current application scope.
+**This app will not appear with a titlebar on any compositor that does not support server-side decorations (e.g. GNOME/mutter).** It was developed on KDE Plasma (KWin), which does support server-side decorations. The app is also usable with compositors with automated window placement (e.g. hyprland). Pull-requests adding direct support for client-side decorations will be considered. **Pull-requests that add libdecor support will be rejected**, because using libdecor would add various dependencies and require a refactor that undermines this app's direct design.
 
 ## Building
 
-See [BUILDING.md](BUILDING.md) for the openSUSE and NixOS build environments. The normal development build is:
-
-```sh
-cmake --preset dev
-cmake --build build --target scalpel-editor
-```
-
-## As a Git commit message editor
-
-Git can open `scalpel-editor` for `COMMIT_EDITMSG` and similar one-file editor paths. Configure either:
-
-```sh
-git config --global core.editor scalpel-editor
-```
-
-or:
-
-```sh
-export GIT_EDITOR=scalpel-editor
-```
-
-Git supplies one path. That one-path launch stays compatible with the multi-path rules above: the editor loads the file into the sole initial tab, leaves Git's template comments unchanged, does not record the path as recent, and writes saves back to the same path (including Ctrl+S and the dirty-close Save choice). There is no `--wait` flag: the process remains in the foreground until the window closes.
-
-Exit status:
-
-| Outcome | Status |
-| --- | --- |
-| Accepted window close after a normal session | 0 |
-| Invalid command line or failure to read any startup path | non-zero |
-| Forced shell or compositor shutdown during a pathname edit | non-zero |
-| Uncaught failure after a path or interactive launch is ready | non-zero |
-
-Interactive (no-argument) forced shutdown still returns success, matching the previous process behavior. Git treats a non-zero editor status as an aborted commit.
+See [BUILDING.md](BUILDING.md) for the openSUSE and NixOS build environments.
 
 ## Installing on openSUSE Leap 16
 
 See [packaging/rpm/README.md](packaging/rpm/README.md) to build an RPM and install it with `zypper`.
+
+For local installation you can use `./install.sh`.
 
 ## Design documentation
 
