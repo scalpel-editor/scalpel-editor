@@ -6,9 +6,17 @@ The editor has no GTK, Qt, or general-purpose UI toolkit dependency. Its applica
 
 The application supports multiple tabs, desktop-portal open and save dialogs, atomic whole-file saves with save-time external-change detection, dirty-buffer close prompts, recent files, menu and keyboard actions, two-axis scrollbars, clipboard and primary selection, text-input-v3 IME, compositor-driven key repeat, cursor themes, fractional scaling, damage-aware frame pacing, and optional presentation feedback.
 
-## Compositior support
+## Compositor support
 
-**This app will not appear with a titlebar on any compositor that does not support server-side decorations (e.g. GNOME/mutter).** It was developed on KDE Plasma (KWin), which does support server-side decorations. The app is also usable with compositors that feature automated window placement (e.g. hyprland). Pull-requests adding direct support for client-side decorations will be considered. **Pull-requests that add libdecor support will be rejected**, because using libdecor would add various dependencies and require a refactor that undermines this app's direct design.
+The app requests server-side decorations when the compositor provides them. It does not draw a titlebar, window buttons, or resize borders of its own, and it does not start a move or resize from its chrome.
+
+It was developed on KDE Plasma (KWin). KWin draws the titlebar and resize borders, so the window can be moved, resized, and closed in the usual way.
+
+On a tiling compositor such as Hyprland, the compositor assigns size and position, so the missing titlebar is not a barrier to use.
+
+GNOME (Mutter) does not draw server-side decorations. The window still appears: on Wayland the compositor always chooses the initial position. GNOME is a floating desktop, not a tiling layout, so after that first placement you move and size the window with compositor controls rather than a titlebar. Super+drag moves it, Super+middle-click drag or Alt+F8 resizes it, Super+arrows tile or maximize it, and Alt+F4 or File → Quit closes it. Mutter can center new windows (`gsettings set org.gnome.mutter center-new-windows true`); it has no built-in always-tile mode.
+
+Pull requests that add direct client-side decorations will be considered. **Pull requests that add libdecor will be rejected**, because libdecor would add dependencies and force a refactor that works against this app's direct design.
 
 ## Building
 
