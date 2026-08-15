@@ -17,7 +17,7 @@ enum class ApplicationStartupResult {
 	ReadyEditPath,
 	/** Path launch could not load every path; do not enter the event loop. */
 	FileLoadFailed,
-	/** Invocation was Help or UsageError and is not a session start. */
+	/** Invocation was Help, Version, or UsageError and is not a session start. */
 	InvalidInvocation,
 };
 
@@ -45,8 +45,8 @@ public:
 	/**
 	 * Apply startup policy. Interactive launch leaves the workspace alone.
 	 * EditPath calls DocumentWorkspace::LoadStartupFiles with the full path
-	 * list. Help and UsageError return InvalidInvocation without touching the
-	 * workspace.
+	 * list. Help, Version, and UsageError return InvalidInvocation without
+	 * touching the workspace.
 	 */
 	[[nodiscard]] ApplicationStartupResult Start(DocumentWorkspace &workspace);
 

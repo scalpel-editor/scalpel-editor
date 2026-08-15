@@ -1686,6 +1686,18 @@ TEST_CASE("application command line help options alone request help") {
 	}
 }
 
+TEST_CASE("application command line version options alone request version") {
+	for (const char *option : {"-v", "--version"}) {
+		ArgvImage args({"scalpel-editor", option});
+		const Scalpel::ApplicationInvocation invocation =
+			Scalpel::ParseApplicationCommandLine(args.argc(), args.argv());
+		CHECK(invocation.kind == Scalpel::ApplicationInvocationKind::Version);
+		CHECK(invocation.paths.empty());
+		CHECK(invocation.message.empty());
+	}
+	CHECK(Scalpel::ApplicationCommandLineVersion() == "1.0.0");
+}
+
 TEST_CASE("application command line rejects unknown options") {
 	ArgvImage args({"scalpel-editor", "--wait"});
 	const Scalpel::ApplicationInvocation invocation =
@@ -1735,11 +1747,20 @@ TEST_CASE("application command line rejects help with extra arguments") {
 	CHECK(invocation.message == "unexpected arguments after help");
 }
 
+TEST_CASE("application command line rejects version with extra arguments") {
+	ArgvImage args({"scalpel-editor", "--version", "extra"});
+	const Scalpel::ApplicationInvocation invocation =
+		Scalpel::ParseApplicationCommandLine(args.argc(), args.argv());
+	CHECK(invocation.kind == Scalpel::ApplicationInvocationKind::UsageError);
+	CHECK(invocation.message == "unexpected arguments after version");
+}
+
 TEST_CASE("application command line usage text names the program") {
 	const std::string usage = Scalpel::ApplicationCommandLineUsage();
 	CHECK(usage.find("scalpel-editor") != std::string::npos);
 	CHECK(usage.find("[path...]") != std::string::npos);
 	CHECK(usage.find("--help") != std::string::npos);
+	CHECK(usage.find("--version") != std::string::npos);
 }
 
 namespace {
@@ -1872,6 +1893,7 @@ TEST_CASE("application session pathname start fails all-or-nothing on bad path")
 TEST_CASE("application session rejects help and usage-error starts") {
 	for (const auto kind : {
 			Scalpel::ApplicationInvocationKind::Help,
+			Scalpel::ApplicationInvocationKind::Version,
 			Scalpel::ApplicationInvocationKind::UsageError}) {
 		Scalpel::ApplicationInvocation invocation;
 		invocation.kind = kind;

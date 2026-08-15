@@ -14,6 +14,11 @@ int main(int argc, char **argv) {
 		std::cout << Scalpel::ApplicationCommandLineUsage();
 		return 0;
 	}
+	if (invocation.kind == Scalpel::ApplicationInvocationKind::Version) {
+		std::cout << "scalpel-editor " << Scalpel::ApplicationCommandLineVersion()
+			<< '\n';
+		return 0;
+	}
 	if (invocation.kind == Scalpel::ApplicationInvocationKind::UsageError) {
 		std::cerr << "scalpel-editor: " << invocation.message << '\n';
 		std::cerr << Scalpel::ApplicationCommandLineUsage();

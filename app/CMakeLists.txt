@@ -202,6 +202,9 @@ target_link_libraries(scalpel_application PUBLIC
   scintilla_platform_popups
 )
 target_compile_options(scalpel_application PRIVATE -Wall -Wextra)
+target_compile_definitions(scalpel_application PRIVATE
+  SCALPEL_EDITOR_VERSION="${PROJECT_VERSION}"
+)
 
 add_executable(scalpel-editor
   main.cxx

@@ -21,6 +21,7 @@ ApplicationStartupResult ApplicationSession::Start(
 		}
 		return ApplicationStartupResult::ReadyEditPath;
 	case ApplicationInvocationKind::Help:
+	case ApplicationInvocationKind::Version:
 	case ApplicationInvocationKind::UsageError:
 		return ApplicationStartupResult::InvalidInvocation;
 	}

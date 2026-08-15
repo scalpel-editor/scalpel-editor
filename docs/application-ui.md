@@ -12,7 +12,7 @@ The application UI is a fixed composition of the Scintilla editor, a menu bar, a
 | `ApplicationSession` | Process-lifetime startup and exit-status policy for interactive and pathname launches, independent of the compositor. |
 | `ApplicationUi` | Chrome models and painters (including the find bar and context menu), top-chrome inset, modal-card and error state, hover and press state, scrollbar interaction, input priority, cursor choice, overlay selection, application layout snapshots, recent-file updates, and conversion of workspace work into host effects (including context-popup show/close/invalidate). |
 | `WaylandApplicationRunner` | Construction and the platform pump. It applies session startup, moves copied events and external-service results across the boundary, performs host effects (including the grabbed context-menu `xdg_popup`), submits frames, waits, and returns a typed termination reason. |
-| `main.cxx` | Command-line parsing, help and usage reporting, invoking the Wayland runner, mapping the termination reason through session policy, and returning the process status. |
+| `main.cxx` | Command-line parsing, help, version, and usage reporting, invoking the Wayland runner, mapping the termination reason through session policy, and returning the process status. |
 
 `ApplicationUi` receives references to `ApplicationEditor`, `DocumentWorkspace`, and `RecentFiles`; it does not replace their ownership. The Wayland runner keeps those objects alive in dependency order and contains no application input-priority or overlay-selection policy. The top-chrome inset (menu plus tab strip, plus the find bar when visible) is established by `ApplicationUi`, not by the runner or `main.cxx`.
 

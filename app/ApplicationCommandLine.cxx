@@ -17,6 +17,10 @@ namespace {
 	return argument == "-h" || argument == "--help";
 }
 
+[[nodiscard]] bool IsVersionOption(std::string_view argument) noexcept {
+	return argument == "-v" || argument == "--version";
+}
+
 [[nodiscard]] bool LooksLikeOption(std::string_view argument) noexcept {
 	return !argument.empty() && argument.front() == '-';
 }
@@ -27,7 +31,16 @@ std::string ApplicationCommandLineUsage() {
 	return
 		"usage: scalpel-editor [path...]\n"
 		"       scalpel-editor -- path...\n"
-		"       scalpel-editor -h|--help\n";
+		"       scalpel-editor -h|--help\n"
+		"       scalpel-editor -v|--version\n";
+}
+
+std::string_view ApplicationCommandLineVersion() noexcept {
+#ifdef SCALPEL_EDITOR_VERSION
+	return SCALPEL_EDITOR_VERSION;
+#else
+	return {};
+#endif
 }
 
 ApplicationInvocation ParseApplicationCommandLine(int argc, char *const *argv) {
@@ -47,6 +60,15 @@ ApplicationInvocation ParseApplicationCommandLine(int argc, char *const *argv) {
 			return invocation;
 		}
 		return UsageError("unexpected arguments after help");
+	}
+
+	if (IsVersionOption(first)) {
+		if (argumentCount == 1) {
+			ApplicationInvocation invocation;
+			invocation.kind = ApplicationInvocationKind::Version;
+			return invocation;
+		}
+		return UsageError("unexpected arguments after version");
 	}
 
 	std::vector<std::string> paths;
