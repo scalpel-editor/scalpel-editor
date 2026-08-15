@@ -2,6 +2,10 @@
 
 ## Pull requests
 
+### Broadcast intent to do work
+
+Before starting work, check the issues page. If a relevant issue exists, but isn't tagged "work-in-progress", then add a comment asserting your desire to do the work. Otherwise, create an issue.
+
 ### PR descriptions
 
 Use phrasing and terminology that translates into other languages more easily. Avoid jargon and lots of code symbol references.
