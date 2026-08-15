@@ -120,9 +120,13 @@ bool DocumentWorkspace::SaveToPath(DocumentId tabId,
 		return false;
 	}
 	editor.MarkSaved(tabId);
+	const bool pathChanged = tabs[*index].path != pathString;
 	tabs[*index].path = pathString;
 	tabs[*index].untitledNumber = 0;
 	tabs[*index].stamp = written.stamp;
+	if (pathChanged) {
+		BindPathLanguage(tabId, pathString);
+	}
 	Queue(DocumentShellRequest::RefreshTabs);
 	return true;
 }
@@ -729,6 +733,7 @@ bool DocumentWorkspace::LoadStartupFiles(
 	editor.ActivateDocument(first.id);
 	activeId = first.id;
 	editor.LoadInitialBuffer(staged[0].bytes);
+	BindPathLanguage(first.id, first.path);
 	// lastActive is always among distinct; start as the first tab and update
 	// when a later distinct path is the last supplied path.
 	DocumentId finalActive = first.id;
@@ -744,6 +749,7 @@ bool DocumentWorkspace::LoadStartupFiles(
 		editor.ActivateDocument(id);
 		activeId = id;
 		editor.LoadInitialBuffer(staged[i].bytes);
+		BindPathLanguage(id, distinct[i]);
 		if (distinct[i] == lastActive) {
 			finalActive = id;
 		}
@@ -791,7 +797,12 @@ DocumentId DocumentWorkspace::LoadOpenedDocument(const std::string &pathString,
 	editor.ActivateDocument(id);
 	activeId = id;
 	editor.LoadInitialBuffer(std::move(text));
+	BindPathLanguage(id, pathString);
 	return id;
+}
+
+void DocumentWorkspace::BindPathLanguage(DocumentId id, std::string_view path) {
+	editor.SetDocumentLanguage(id, DocumentLanguageFromPath(path));
 }
 
 bool DocumentWorkspace::OpenPathList(const std::vector<std::string> &paths) {

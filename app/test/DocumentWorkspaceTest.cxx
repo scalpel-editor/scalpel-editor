@@ -26,7 +26,7 @@ namespace {
 
 class TempFile {
 public:
-	explicit TempFile(std::string_view contents) {
+	explicit TempFile(std::string_view contents, std::string_view suffix = {}) {
 		char pattern[] = "/tmp/scalpel-workspace-XXXXXX";
 		const int fd = mkstemp(pattern);
 		REQUIRE(fd >= 0);
@@ -36,6 +36,12 @@ public:
 			REQUIRE(written == static_cast<ssize_t>(contents.size()));
 		}
 		REQUIRE(close(fd) == 0);
+		if (!suffix.empty()) {
+			std::string renamed = path;
+			renamed.append(suffix);
+			REQUIRE(std::rename(path.c_str(), renamed.c_str()) == 0);
+			path = std::move(renamed);
+		}
 	}
 	~TempFile() {
 		if (!path.empty()) {
@@ -114,6 +120,199 @@ TEST_CASE("document language from path selects Markdown suffixes only") {
 	CHECK(DocumentLanguageFromPath("/home/user/notes.txt") ==
 		DocumentLanguage::PlainText);
 	CHECK(DocumentLanguageFromPath("notes.md/") == DocumentLanguage::PlainText);
+}
+
+TEST_CASE("document workspace language follows open path suffixes") {
+	TempFile markdown("# Heading\n", ".md");
+	TempFile longMarkdown("# Heading\n", ".markdown");
+	TempFile mixed("# Heading\n", ".MD");
+	TempFile text("plain\n", ".txt");
+	TempFile unnamed("no suffix\n");
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	const DocumentId untitled = workspace.ActiveTab();
+	CHECK(editor.Language() == DocumentLanguage::PlainText);
+
+	REQUIRE(workspace.OpenPath(markdown.path));
+	CHECK(editor.Language() == DocumentLanguage::Markdown);
+	CHECK(editor.LexerLanguage() == "markdown");
+	CHECK(editor.Language(untitled) == DocumentLanguage::PlainText);
+
+	REQUIRE(workspace.OpenPath(longMarkdown.path));
+	CHECK(editor.Language() == DocumentLanguage::Markdown);
+	CHECK(editor.LexerLanguage() == "markdown");
+
+	REQUIRE(workspace.OpenPath(mixed.path));
+	CHECK(editor.Language() == DocumentLanguage::Markdown);
+
+	REQUIRE(workspace.OpenPath(text.path));
+	CHECK(editor.Language() == DocumentLanguage::PlainText);
+	CHECK(editor.LexerLanguage().empty());
+
+	REQUIRE(workspace.OpenPath(unnamed.path));
+	CHECK(editor.Language() == DocumentLanguage::PlainText);
+	CHECK(editor.LexerLanguage().empty());
+}
+
+TEST_CASE("document workspace language follows startup paths") {
+	TempFile first("# one\n", ".md");
+	TempFile second("two\n", ".txt");
+	TempFile third("# three\n", ".markdown");
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	const DocumentId initial = workspace.ActiveTab();
+
+	REQUIRE(workspace.LoadStartupFiles({first.path, second.path, third.path}));
+	CHECK(workspace.TabCount() == 3);
+	CHECK(workspace.Path() == third.path);
+	CHECK(editor.Language() == DocumentLanguage::Markdown);
+	CHECK(editor.LexerLanguage() == "markdown");
+	CHECK(editor.Language(initial) == DocumentLanguage::Markdown);
+
+	const auto tabs = workspace.Tabs();
+	REQUIRE(tabs.size() == 3);
+	CHECK(editor.Language(tabs[1].id) == DocumentLanguage::PlainText);
+	workspace.ActivateTab(tabs[1].id);
+	CHECK(editor.Language() == DocumentLanguage::PlainText);
+	CHECK(editor.LexerLanguage().empty());
+}
+
+TEST_CASE("document workspace language follows Save As in both directions") {
+	TempFile source("body\n", ".txt");
+	TempFile markdownTarget("", ".md");
+	TempFile textTarget("", ".txt");
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	REQUIRE(workspace.OpenPath(source.path));
+	CHECK(editor.Language() == DocumentLanguage::PlainText);
+
+	workspace.HandleSaveResult(true, markdownTarget.path);
+	CHECK(workspace.Path() == markdownTarget.path);
+	CHECK(editor.Language() == DocumentLanguage::Markdown);
+	CHECK(editor.LexerLanguage() == "markdown");
+
+	workspace.HandleSaveResult(true, textTarget.path);
+	CHECK(workspace.Path() == textTarget.path);
+	CHECK(editor.Language() == DocumentLanguage::PlainText);
+	CHECK(editor.LexerLanguage().empty());
+}
+
+TEST_CASE("document workspace delayed Save As reclassifies an inactive tab") {
+	TempFile source("body\n", ".txt");
+	TempFile markdownTarget("", ".md");
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	REQUIRE(workspace.OpenPath(source.path));
+	const DocumentId markdownTab = workspace.ActiveTab();
+	workspace.RequestSaveAs();
+	REQUIRE(HasRequest(workspace.TakeRequests(), DocumentShellRequest::ShowSaveAs));
+	const auto saveDialog = workspace.BeginSaveAsDialog();
+
+	workspace.NewTab();
+	const DocumentId untitled = workspace.ActiveTab();
+	REQUIRE(untitled != markdownTab);
+	CHECK(editor.Language() == DocumentLanguage::PlainText);
+
+	workspace.HandleDialogResult(saveDialog.id, true, {markdownTarget.path});
+	CHECK(workspace.ActiveTab() == untitled);
+	CHECK(editor.Language() == DocumentLanguage::PlainText);
+	CHECK(editor.LexerLanguage().empty());
+	CHECK(editor.Language(markdownTab) == DocumentLanguage::Markdown);
+
+	workspace.ActivateTab(markdownTab);
+	CHECK(workspace.Path() == markdownTarget.path);
+	CHECK(editor.Language() == DocumentLanguage::Markdown);
+	CHECK(editor.LexerLanguage() == "markdown");
+}
+
+TEST_CASE("document workspace same-path save and reload keep language") {
+	TempFile file("# heading\n", ".md");
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	REQUIRE(workspace.OpenPath(file.path));
+	CHECK(editor.Language() == DocumentLanguage::Markdown);
+	editor.SetDocumentLanguage(workspace.ActiveTab(), DocumentLanguage::PlainText);
+	CHECK(editor.Language() == DocumentLanguage::PlainText);
+	CHECK(editor.LexerLanguage().empty());
+
+	DirtyBuffer(editor);
+	workspace.RequestSave();
+	CHECK(workspace.Path() == file.path);
+	CHECK(editor.Language() == DocumentLanguage::PlainText);
+	CHECK(editor.LexerLanguage().empty());
+
+	DirtyBuffer(editor);
+	ExternallyRewrite(file.path, "# changed\n");
+	workspace.RequestSave();
+	REQUIRE(workspace.ExternalChangePromptActive());
+	workspace.ChooseExternalChange(ExternalChangeChoice::Reload);
+	CHECK(editor.Text() == "# changed\n");
+	CHECK(editor.Language() == DocumentLanguage::PlainText);
+	CHECK(editor.LexerLanguage().empty());
+}
+
+TEST_CASE("document workspace duplicate-path open keeps language") {
+	TempFile file("# heading\n", ".md");
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	REQUIRE(workspace.OpenPath(file.path));
+	const DocumentId opened = workspace.ActiveTab();
+	editor.SetDocumentLanguage(opened, DocumentLanguage::PlainText);
+	workspace.NewTab();
+	REQUIRE(workspace.ActiveTab() != opened);
+	const auto tabCount = workspace.TabCount();
+
+	REQUIRE(workspace.OpenPath(file.path));
+	CHECK(workspace.ActiveTab() == opened);
+	CHECK(workspace.TabCount() == tabCount);
+	CHECK(editor.Language() == DocumentLanguage::PlainText);
+	CHECK(editor.LexerLanguage().empty());
+}
+
+TEST_CASE("document workspace cancelled and failed operations keep language") {
+	TempFile file("# heading\n", ".md");
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	REQUIRE(workspace.OpenPath(file.path));
+	CHECK(editor.Language() == DocumentLanguage::Markdown);
+
+	workspace.HandleSaveResult(false, {});
+	CHECK(workspace.Path() == file.path);
+	CHECK(editor.Language() == DocumentLanguage::Markdown);
+	CHECK(editor.LexerLanguage() == "markdown");
+
+	const std::string unwritable = "/no-such-directory/scalpel/notes.md";
+	workspace.HandleSaveResult(true, unwritable);
+	CHECK(workspace.Path() == file.path);
+	CHECK(editor.Language() == DocumentLanguage::Markdown);
+	CHECK(editor.LexerLanguage() == "markdown");
+
+	const DocumentId markdownTab = workspace.ActiveTab();
+	const std::string missing =
+		"/tmp/scalpel-missing-" + std::to_string(getpid());
+	(void)std::remove(missing.c_str());
+	CHECK_FALSE(workspace.OpenPath(missing));
+	CHECK(workspace.ActiveTab() == markdownTab);
+	CHECK(editor.Language() == DocumentLanguage::Markdown);
+}
+
+TEST_CASE("document workspace close and reopen classifies again") {
+	TempFile file("# heading\n", ".md");
+	ApplicationEditor editor(320, 180);
+	DocumentWorkspace workspace(editor);
+	REQUIRE(workspace.OpenPath(file.path));
+	const DocumentId opened = workspace.ActiveTab();
+	CHECK(editor.Language() == DocumentLanguage::Markdown);
+
+	workspace.CloseTab(opened);
+	CHECK(workspace.Path().empty());
+	CHECK(editor.Language() == DocumentLanguage::PlainText);
+	CHECK(editor.LexerLanguage().empty());
+	CHECK_FALSE(editor.HasDocument(opened));
+
+	REQUIRE(workspace.OpenPath(file.path));
+	CHECK(editor.Language() == DocumentLanguage::Markdown);
+	CHECK(editor.LexerLanguage() == "markdown");
 }
 
 TEST_CASE("document workspace external change save detects conflict without overwrite") {

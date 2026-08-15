@@ -374,6 +374,8 @@ private:
 	/** Create and activate a tab for a successfully read path. */
 	DocumentId LoadOpenedDocument(const std::string &pathString,
 		std::string text, const DocumentFileStamp &stamp);
+	/** Apply the path classifier after a successful path bind change. */
+	void BindPathLanguage(DocumentId id, std::string_view path);
 	void ApplySaveResult(DocumentId tabId, bool accepted,
 		std::string_view savedPath, uint64_t promptGeneration);
 
