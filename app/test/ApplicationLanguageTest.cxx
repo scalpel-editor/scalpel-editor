@@ -146,7 +146,7 @@ void CheckAllStylesZero(const ApplicationEditor &editor) {
 
 void CheckLanguageSampleStyles(const ApplicationEditor &editor) {
 	const std::string text = editor.Text();
-	CHECK(editor.StyleAt(RequireFind(text, "# Heading")) == MarkdownStyleHeader1);
+	CheckStyleRun(editor, RequireFind(text, "# Heading"), 9, MarkdownStyleHeader1);
 	CheckStyleRun(editor, RequireFind(text, "plain"), 5, MarkdownStyleDefault);
 	CheckStyleRun(editor, RequireFind(text, "**strong**"), 10, MarkdownStyleStrong1);
 	CheckStyleRun(editor, RequireFind(text, "*em*"), 4, MarkdownStyleEm1);

@@ -369,6 +369,9 @@ void ApplicationEditor::ApplyActiveDocumentLanguage() {
 				"ApplicationEditor could not create the Markdown lexer");
 		}
 		SetILexer(lexer);
+		// LexMarkdown otherwise styles only the leading and trailing '#'
+		// markers, leaving the heading text in the default style.
+		SetProperty("lexer.markdown.header.eolfill", "1");
 		Colourise(0, -1);
 		return;
 	}
