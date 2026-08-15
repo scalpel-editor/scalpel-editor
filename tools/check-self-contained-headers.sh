@@ -46,6 +46,8 @@ header = Path(sys.argv[2])
 if header.parts[0] == "app":
     candidates = [header.with_suffix(".cxx").name]
     candidates.append("WaylandWindow.cxx" if header.name.startswith("Wayland") else "ApplicationEditor.cxx")
+elif header.parts[0] == "lexilla-compat":
+    candidates = [header.with_suffix(".cxx").name, "CreateLexer.cxx"]
 else:
     candidates = ["Editor.cxx"]
 entry = next(
@@ -74,6 +76,7 @@ PY
 # Every application, Scintilla, and Lexilla-facing production header.
 list_default_headers() {
 	find app -maxdepth 1 -name '*.h' | sort
+	find lexilla-compat -maxdepth 1 -name '*.h' | sort
 	find scintilla/src -maxdepth 1 -name '*.h' | sort
 	find scintilla/include -maxdepth 1 -name '*.h' | sort
 }
@@ -81,9 +84,9 @@ list_default_headers() {
 # Production headers modified, staged, or untracked relative to HEAD.
 list_changed_headers() {
 	{
-		git -C "$root" diff --name-only HEAD -- app scintilla/src scintilla/include
-		git -C "$root" ls-files --others --exclude-standard -- app scintilla/src scintilla/include
-	} | grep -E '^(app|scintilla/src|scintilla/include)/[^/]+\.h$' | sort -u | while IFS= read -r path; do
+		git -C "$root" diff --name-only HEAD -- app lexilla-compat scintilla/src scintilla/include
+		git -C "$root" ls-files --others --exclude-standard -- app lexilla-compat scintilla/src scintilla/include
+	} | grep -E '^(app|lexilla-compat|scintilla/src|scintilla/include)/[^/]+\.h$' | sort -u | while IFS= read -r path; do
 		[ -f "$path" ] && printf '%s\n' "$path"
 	done
 }

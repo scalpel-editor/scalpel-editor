@@ -4,7 +4,9 @@
 
 set(LEXILLA_ROOT "${PROJECT_SOURCE_DIR}/lexilla")
 
-add_library(lexilla STATIC
+# Lexilla is currently consumed only by tests. Keep it out of production-only
+# default builds; linking a future application target will still build it.
+add_library(lexilla STATIC EXCLUDE_FROM_ALL
 	CreateLexer.cxx
 	"${LEXILLA_ROOT}/lexers/LexMarkdown.cxx"
 	"${LEXILLA_ROOT}/lexlib/Accessor.cxx"
@@ -35,7 +37,6 @@ if(BUILD_TESTING)
 		LexillaFactoryTest.cxx
 	)
 	target_include_directories(lexillaFactoryTest PRIVATE
-		${CMAKE_CURRENT_SOURCE_DIR}/private
 		${PROJECT_SOURCE_DIR}/scintilla/test/unit
 	)
 	target_link_libraries(lexillaFactoryTest PRIVATE lexilla)
