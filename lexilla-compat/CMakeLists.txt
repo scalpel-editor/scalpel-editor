@@ -4,8 +4,8 @@
 
 set(LEXILLA_ROOT "${PROJECT_SOURCE_DIR}/lexilla")
 
-# Lexilla is currently consumed only by tests. Keep it out of production-only
-# default builds; linking a future application target will still build it.
+# Keep Lexilla out of the default `all` target so a unit-only build does not
+# compile it. Linking scalpel_application or a test consumer still builds it.
 add_library(lexilla STATIC EXCLUDE_FROM_ALL
 	CreateLexer.cxx
 	"${LEXILLA_ROOT}/lexers/LexMarkdown.cxx"

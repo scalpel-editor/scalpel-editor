@@ -10,6 +10,7 @@
 #include <utility>
 
 #include "ApplicationEditor.h"
+#include "CreateLexer.h"
 #include "Document.h"
 #include "MarkdownStyles.h"
 #include "DrawSurface.h"
@@ -295,6 +296,7 @@ void ApplicationEditor::ActivateDocument(DocumentId id) {
 	SetDocPointer(incoming->document);
 	activeDocumentId = id;
 	RestoreActiveView();
+	ApplyActiveDocumentLanguage();
 	UpdateLineNumberWidth();
 	textInputStateDirty = true;
 	textInputChangeCause = ApplicationTextChangeCause::Other;
@@ -315,6 +317,66 @@ void ApplicationEditor::CloseDocument(DocumentId id) {
 		it->second.document = nullptr;
 	}
 	retainedDocuments.erase(it);
+}
+
+void ApplicationEditor::SetDocumentLanguage(DocumentId id, DocumentLanguage language) {
+	RetainedDocument *entry = FindRetained(id);
+	if (!entry || !entry->document) {
+		throw std::invalid_argument(
+			"ApplicationEditor::SetDocumentLanguage requires a retained document");
+	}
+	if (entry->language == language) {
+		return;
+	}
+	entry->language = language;
+	if (id == activeDocumentId) {
+		ApplyActiveDocumentLanguage();
+	}
+}
+
+DocumentLanguage ApplicationEditor::Language() const noexcept {
+	const RetainedDocument *entry = FindRetained(activeDocumentId);
+	return entry ? entry->language : DocumentLanguage::PlainText;
+}
+
+DocumentLanguage ApplicationEditor::Language(DocumentId id) const {
+	const RetainedDocument *entry = FindRetained(id);
+	if (!entry || !entry->document) {
+		throw std::invalid_argument(
+			"ApplicationEditor::Language requires a retained document");
+	}
+	return entry->language;
+}
+
+std::string ApplicationEditor::LexerLanguage() {
+	const char *name = GetLexerLanguage();
+	return name ? name : "";
+}
+
+void ApplicationEditor::ApplyActiveDocumentLanguage() {
+	const RetainedDocument *entry = FindRetained(activeDocumentId);
+	if (!entry) {
+		return;
+	}
+	const bool markdownAttached = LexerLanguage() == "markdown";
+	if (entry->language == DocumentLanguage::Markdown) {
+		if (markdownAttached) {
+			return;
+		}
+		Scintilla::ILexer5 *lexer = CreateLexer("markdown");
+		if (!lexer) {
+			throw std::runtime_error(
+				"ApplicationEditor could not create the Markdown lexer");
+		}
+		SetILexer(lexer);
+		Colourise(0, -1);
+		return;
+	}
+	if (!markdownAttached) {
+		return;
+	}
+	SetILexer(nullptr);
+	ClearDocumentStyle();
 }
 
 void ApplicationEditor::ConfigureLineNumberMargins() {
@@ -418,6 +480,9 @@ void ApplicationEditor::LoadInitialBuffer(std::string_view text) {
 	SetText(text);
 	EmptyUndoBuffer();
 	SetSavePoint();
+	if (Language() == DocumentLanguage::Markdown) {
+		Colourise(0, -1);
+	}
 	UpdateLineNumberWidth();
 	textInputStateDirty = true;
 }
@@ -512,6 +577,10 @@ int ApplicationEditor::StyleBack(int style) {
 
 int ApplicationEditor::StyleSize(int style) {
 	return StyleGetSize(style);
+}
+
+int ApplicationEditor::StyleAt(Scintilla::Position pos) const noexcept {
+	return GetStyleAt(pos);
 }
 
 const char *EditorFontFamilyName(EditorFont font) noexcept {

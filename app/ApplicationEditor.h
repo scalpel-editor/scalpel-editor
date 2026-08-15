@@ -49,6 +49,15 @@ enum class EditorFont {
 [[nodiscard]] const char *EditorFontFamilyName(EditorFont font) noexcept;
 
 /**
+ * Per-document language. Lexer instances and style bytes belong to the
+ * document; the Markdown palette belongs to the one editor view.
+ */
+enum class DocumentLanguage {
+	PlainText,
+	Markdown,
+};
+
+/**
  * Outcome of a plain-text find that may wrap once. Found is a match in the
  * first directional range; Wrapped is a match only after the complementary
  * range; NotFound leaves the selection unchanged.
@@ -94,9 +103,9 @@ protected:
  *
  * Multiple Scintilla documents can be retained and switched without
  * constructing another host: one document is active for input and paint; the
- * rest keep their text, undo, save point, and a snapshot of selection and
- * scroll until activated again. DocumentWorkspace maps tabs and file paths onto
- * these IDs. ApplicationUi owns chrome and overlay selection state; the shell
+ * rest keep their text, undo, save point, language, and a snapshot of
+ * selection and scroll until activated again. DocumentWorkspace maps tabs and
+ * file paths onto these IDs. ApplicationUi owns chrome and overlay selection state; the shell
  * paints the menu bar and tab strip as permanent top chrome and binds the
  * file-error card, external-change card, large-file card, unsaved-changes card,
  * or open menu dropdown into the post-paint overlay slot (file error first,
@@ -128,8 +137,9 @@ public:
 	/**
 	 * Make id active. Cancels tentative IME on the outgoing document,
 	 * snapshots its selection and scroll, bumps the paste generation, switches
-	 * the watched document, restores the incoming view, updates the line-number
-	 * margin, and marks text-input state dirty. No-op when already active.
+	 * the watched document, restores the incoming view, applies a stored
+	 * language change, updates the line-number margin, and marks text-input
+	 * state dirty. No-op when already active.
 	 */
 	void ActivateDocument(DocumentId id);
 	/**
@@ -137,11 +147,24 @@ public:
 	 * activate another first. Releases exactly the retained reference.
 	 */
 	void CloseDocument(DocumentId id);
+	/**
+	 * Set one retained document's language. No-op when unchanged. Applies
+	 * immediately when id is active; stores the request for an inactive
+	 * document and applies it on the next activation. Markdown attaches a
+	 * fresh Lexilla lexer and recolours; plain text releases the lexer and
+	 * clears lexer-produced style bytes. Does not alter document bytes, save
+	 * point, undo history, or selection.
+	 */
+	void SetDocumentLanguage(DocumentId id, DocumentLanguage language);
+	[[nodiscard]] DocumentLanguage Language() const noexcept;
+	[[nodiscard]] DocumentLanguage Language(DocumentId id) const;
+	/** Attached lexer name for the active document, or empty when none. */
+	[[nodiscard]] std::string LexerLanguage();
 
 	/**
 	 * Replace the whole active document for open or startup. Cancels text
 	 * input, bumps the document generation used by asynchronous paste, clears
-	 * undo, and marks the buffer clean.
+	 * undo, and marks the buffer clean. Recolours when Markdown is attached.
 	 */
 	void LoadInitialBuffer(std::string_view text);
 	[[nodiscard]] std::string Text() const;
@@ -165,6 +188,8 @@ public:
 	[[nodiscard]] int StyleFore(int style);
 	[[nodiscard]] int StyleBack(int style);
 	[[nodiscard]] int StyleSize(int style);
+	/** Style byte at pos in the active document, or 0 past the end. */
+	[[nodiscard]] int StyleAt(Scintilla::Position pos) const noexcept;
 	/**
 	 * Current generic editor text face. Startup default is System (system-ui),
 	 * matching Platform::DefaultFont(). Styles belong to this view; the choice
@@ -455,6 +480,7 @@ protected:
 private:
 	struct RetainedDocument {
 		Scintilla::Internal::Document *document = nullptr;
+		DocumentLanguage language = DocumentLanguage::PlainText;
 		std::string selection;
 		Scintilla::Line firstVisibleLine = 0;
 		Scintilla::Line firstVisibleDocumentLine = 0;
@@ -466,6 +492,7 @@ private:
 	void ApplyViewStyles();
 	void ApplyMarkdownStyles();
 	void ApplyLineNumberStyle();
+	void ApplyActiveDocumentLanguage();
 	void UpdateLineNumberWidth();
 	void RetainInitialDocument();
 	void ReleaseRetainedDocuments();

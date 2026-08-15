@@ -200,6 +200,7 @@ target_link_libraries(scalpel_application PUBLIC
   scintilla_core
   scintilla_render
   scintilla_platform_popups
+  lexilla
 )
 target_compile_options(scalpel_application PRIVATE -Wall -Wextra)
 target_compile_definitions(scalpel_application PRIVATE
