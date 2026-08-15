@@ -4,45 +4,50 @@ The flake provides an x86-64 Linux package containing `scalpel-editor`, its desk
 
 The package uses the host's EGL vendor selection during normal application runs. It does not force the Mesa test configuration used by the development test presets.
 
+## Build from a source checkout
+
+From the repository root, build the default Release package with:
+
+```sh
+nix build .
+```
+
+The installed package is available through the `result` link created in the checkout:
+
+```sh
+./result/bin/scalpel-editor
+```
+
+No GitHub release is involved. Nix builds the files in the checkout using the exact Nixpkgs revision recorded in `flake.lock`.
+
 ## Run without installing
 
-From a local checkout, build and run the default app with:
+Build and run directly from the source checkout with:
 
 ```sh
 nix run .
-```
-
-After the `1.0.0` tag is published, run that release directly from GitHub with:
-
-```sh
-nix run github:scalpel-editor/scalpel-editor/1.0.0
-```
-
-Place arguments for scalpel-editor after `--`, for example:
-
-```sh
-nix run github:scalpel-editor/scalpel-editor/1.0.0 -- notes.txt
+nix run . -- notes.txt
 ```
 
 ## Install into a user profile
 
-Install the tagged release for the current user with:
+Build the source checkout and install it for the current user with:
 
 ```sh
-nix profile install github:scalpel-editor/scalpel-editor/1.0.0
+nix profile install .
 ```
 
 This adds the executable to the profile and makes the packaged desktop entry and icon available through the profile's shared-data directories.
 
 ## Add to a NixOS configuration
 
-Add scalpel-editor as an input to the system flake and include its default package in `environment.systemPackages`:
+Add the source checkout as a path input to the system flake and include its default package in `environment.systemPackages`:
 
 ```nix
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
-    scalpel-editor.url = "github:scalpel-editor/scalpel-editor/1.0.0";
+    scalpel-editor.url = "path:/absolute/path/to/scalpel-editor";
   };
 
   outputs = { nixpkgs, scalpel-editor, ... }: {
@@ -60,7 +65,11 @@ Add scalpel-editor as an input to the system flake and include its default packa
 }
 ```
 
-Replace `hostname` with the configuration name used by the system. The desktop environment must provide a working Wayland session and desktop portal; scalpel-editor uses the portal for Open and Save dialogs.
+Replace the example path and `hostname` with the checkout path and configuration name used by the system. When the checkout changes, update the system flake's lock entry with `nix flake update scalpel-editor` before rebuilding the system. The desktop environment must provide a working Wayland session and desktop portal; scalpel-editor uses the portal for Open and Save dialogs.
+
+## Use a published release instead
+
+Once a release tag exists, replace `.` in the run or profile commands with `github:scalpel-editor/scalpel-editor/1.0.0`, or use that URL instead of the `path:` URL in a system flake. A published release is optional; it provides a stable remote source when a local checkout is not desired.
 
 ## Verify the package
 
