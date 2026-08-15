@@ -125,6 +125,43 @@ constexpr int StyleRgb(int red, int green, int blue) noexcept {
 	return red | (green << 8) | (blue << 16);
 }
 
+[[nodiscard]] unsigned char AsciiFold(unsigned char c) noexcept {
+	return (c >= 'A' && c <= 'Z') ?
+		static_cast<unsigned char>(c - 'A' + 'a') : c;
+}
+
+[[nodiscard]] bool AsciiEndsWithIgnoreCase(std::string_view text,
+	std::string_view suffix) noexcept {
+	if (text.size() < suffix.size()) {
+		return false;
+	}
+	const std::string_view tail = text.substr(text.size() - suffix.size());
+	for (std::size_t i = 0; i < suffix.size(); ++i) {
+		if (AsciiFold(static_cast<unsigned char>(tail[i])) !=
+			AsciiFold(static_cast<unsigned char>(suffix[i]))) {
+			return false;
+		}
+	}
+	return true;
+}
+
+}
+
+DocumentLanguage DocumentLanguageFromPath(std::string_view path) noexcept {
+	if (path.empty()) {
+		return DocumentLanguage::PlainText;
+	}
+	const std::size_t slash = path.find_last_of('/');
+	const std::string_view name = slash == std::string_view::npos ?
+		path : path.substr(slash + 1);
+	if (name.empty()) {
+		return DocumentLanguage::PlainText;
+	}
+	if (AsciiEndsWithIgnoreCase(name, ".markdown") ||
+		AsciiEndsWithIgnoreCase(name, ".md")) {
+		return DocumentLanguage::Markdown;
+	}
+	return DocumentLanguage::PlainText;
 }
 
 ApplicationResources::ApplicationResources(int width, int height) :

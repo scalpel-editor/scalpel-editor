@@ -14,6 +14,8 @@
 using Scalpel::ApplicationEditor;
 using Scalpel::DocumentFileOperation;
 using Scalpel::DocumentId;
+using Scalpel::DocumentLanguage;
+using Scalpel::DocumentLanguageFromPath;
 using Scalpel::DocumentShellRequest;
 using Scalpel::DocumentWorkspace;
 using Scalpel::ExternalChangeChoice;
@@ -84,6 +86,34 @@ void OpenDirtyAndConflict(DocumentWorkspace &workspace,
 	ExternallyRewrite(path, externalContents);
 }
 
+}
+
+TEST_CASE("document language from path selects Markdown suffixes only") {
+	CHECK(DocumentLanguageFromPath("") == DocumentLanguage::PlainText);
+	CHECK(DocumentLanguageFromPath("notes") == DocumentLanguage::PlainText);
+	CHECK(DocumentLanguageFromPath("notes.txt") == DocumentLanguage::PlainText);
+	CHECK(DocumentLanguageFromPath("notes.mdx") == DocumentLanguage::PlainText);
+	CHECK(DocumentLanguageFromPath("notes.md.txt") == DocumentLanguage::PlainText);
+	CHECK(DocumentLanguageFromPath("notes.md.bak") == DocumentLanguage::PlainText);
+	CHECK(DocumentLanguageFromPath("README") == DocumentLanguage::PlainText);
+
+	CHECK(DocumentLanguageFromPath("notes.md") == DocumentLanguage::Markdown);
+	CHECK(DocumentLanguageFromPath("notes.markdown") == DocumentLanguage::Markdown);
+	CHECK(DocumentLanguageFromPath("notes.MD") == DocumentLanguage::Markdown);
+	CHECK(DocumentLanguageFromPath("notes.Md") == DocumentLanguage::Markdown);
+	CHECK(DocumentLanguageFromPath("notes.MARKDOWN") == DocumentLanguage::Markdown);
+	CHECK(DocumentLanguageFromPath("notes.MarkDown") == DocumentLanguage::Markdown);
+	CHECK(DocumentLanguageFromPath(".md") == DocumentLanguage::Markdown);
+	CHECK(DocumentLanguageFromPath(".markdown") == DocumentLanguage::Markdown);
+
+	CHECK(DocumentLanguageFromPath("/home/user/notes.md") ==
+		DocumentLanguage::Markdown);
+	CHECK(DocumentLanguageFromPath("/home/user/notes.markdown") ==
+		DocumentLanguage::Markdown);
+	CHECK(DocumentLanguageFromPath("/tmp/notes.MD") == DocumentLanguage::Markdown);
+	CHECK(DocumentLanguageFromPath("/home/user/notes.txt") ==
+		DocumentLanguage::PlainText);
+	CHECK(DocumentLanguageFromPath("notes.md/") == DocumentLanguage::PlainText);
 }
 
 TEST_CASE("document workspace external change save detects conflict without overwrite") {

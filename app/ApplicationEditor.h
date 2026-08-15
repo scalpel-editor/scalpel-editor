@@ -58,6 +58,14 @@ enum class DocumentLanguage {
 };
 
 /**
+ * Language implied by a document path. Empty paths and every suffix except
+ * ASCII case-insensitive .md and .markdown are plain text. Uses the last
+ * suffix of the last path component.
+ */
+[[nodiscard]] DocumentLanguage DocumentLanguageFromPath(
+	std::string_view path) noexcept;
+
+/**
  * Outcome of a plain-text find that may wrap once. Found is a match in the
  * first directional range; Wrapped is a match only after the complementary
  * range; NotFound leaves the selection unchanged.
