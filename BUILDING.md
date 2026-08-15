@@ -41,7 +41,7 @@ Use the Release preset when investigating optimization-sensitive behavior or run
 cmake --workflow --preset release-nixos
 ```
 
-`nix flake check` also builds and runs the complete test suite with the package's Release configuration. This keeps optimized coverage in the repeatable package verification path instead of relying only on a developer build tree.
+The package derivation builds and runs the complete test suite with its Release configuration before installing the artifact. This keeps optimized coverage in `nix flake check`, `nix build`, and `nix run` without relying only on a developer build tree or compiling separate package and test derivations.
 
 Run the full NixOS matrix only when required by [TESTING.md](TESTING.md):
 
