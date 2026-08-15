@@ -19,6 +19,9 @@ cmake --build build --target applicationHostTest
 cmake --build build --target waylandFrameTest
 ./build/app/test/waylandFrameTest "Wayland frame*"
 
+cmake --build build --target lexillaFactoryTest
+./build/lexilla-compat/lexillaFactoryTest
+
 cmake --build build --target scalpel-editor
 ```
 
@@ -51,6 +54,7 @@ For failure details, run the relevant test binary directly with a Catch2 v2 name
 
 - `build/scintilla/test/unit/unitTest` contains upstream platform-free tests.
 - `build/scintilla/test/editor/editorTest` contains concrete editor tests.
+- `build/lexilla-compat/lexillaFactoryTest` creates the in-tree Markdown lexer through `CreateLexer` and releases it.
 - Concern-named executables under `build/app/test/` cover application and Wayland behavior. Application targets separate host, IME, transfer, and direct-input behavior. Wayland targets separate cursor, scale, frame, window, registry, text-input, keyboard, pointer, byte-transfer, clipboard, primary-selection, poll, D-Bus, portal, and cross-concern integration behavior.
 - `fontTest` and `rendererTest` each retain one component executable, but their sources are split by concern so editing one case does not rebuild the entire suite translation unit.
 

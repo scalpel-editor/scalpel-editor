@@ -30,7 +30,9 @@ Screen measurement and drawing use the shaped-run path described in [rendering.m
 
 `lexilla/` is a Markdown-only extract of Lexilla 5.5.3: `License.txt`, `version.txt`, `lexers/LexMarkdown.cxx`, and the `lexlib` files that lexer compiles against. Those files are unmodified upstream sources. Replace them from the matching paths in an official Lexilla zip when updating; do not edit them, and do not import the rest of the catalogue.
 
-Lexilla is not currently linked into the application. Future lexer integration must attach through these retained interfaces and must not recreate the removed message surface.
+The static `lexilla` target is built from that extract plus project-owned glue in `lexilla-compat/`. A private `Scintilla.h` supplies the fold-level, property-type, line-end, and `KEYWORDSET_MAX` constants used while compiling Lexilla. A private `SciLexer.h` supplies `SCLEX_MARKDOWN`, `SCLEX_AUTOMATIC`, and the `SCE_MARKDOWN_*` style numbers. Neither header is the generated message interface, and neither is on the application include path.
+
+`CreateLexer("markdown")` returns a fresh Markdown `ILexer5`. Any other name returns null. The factory smoke test creates that lexer, checks its name and numeric identifier, and calls `Release`. The application and the editor-core tests do not link Lexilla yet. Lexer attachment must use these retained interfaces and must not recreate the removed message surface.
 
 ## Verification boundary
 
