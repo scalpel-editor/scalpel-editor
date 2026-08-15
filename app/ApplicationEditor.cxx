@@ -409,7 +409,8 @@ void ApplicationEditor::ApplyActiveDocumentLanguage() {
 		// LexMarkdown otherwise styles only the leading and trailing '#'
 		// markers, leaving the heading text in the default style.
 		SetProperty("lexer.markdown.header.eolfill", "1");
-		Colourise(0, -1);
+		StartStyling(0);
+		InvalidateClient();
 		return;
 	}
 	if (!markdownAttached) {
@@ -417,6 +418,7 @@ void ApplicationEditor::ApplyActiveDocumentLanguage() {
 	}
 	SetILexer(nullptr);
 	ClearDocumentStyle();
+	InvalidateClient();
 }
 
 void ApplicationEditor::ConfigureLineNumberMargins() {
@@ -520,9 +522,6 @@ void ApplicationEditor::LoadInitialBuffer(std::string_view text) {
 	SetText(text);
 	EmptyUndoBuffer();
 	SetSavePoint();
-	if (Language() == DocumentLanguage::Markdown) {
-		Colourise(0, -1);
-	}
 	UpdateLineNumberWidth();
 	textInputStateDirty = true;
 }

@@ -155,6 +155,11 @@ void CheckLanguageSampleStyles(const ApplicationEditor &editor) {
 		MarkdownStyleLink);
 }
 
+void PaintLanguageSample(ApplicationEditor &editor) {
+	REQUIRE(editor.RenderFrame());
+	CheckLanguageSampleStyles(editor);
+}
+
 }
 
 TEST_CASE("production editor applies Markdown styles at startup") {
@@ -207,11 +212,11 @@ TEST_CASE("production editor attaches and detaches the Markdown lexer") {
 	CHECK(editor.GetSelectionEnd() == selectionEnd);
 	CHECK(editor.Modified());
 	CHECK(editor.CanUndoEdit());
-	CheckLanguageSampleStyles(editor);
+	PaintLanguageSample(editor);
 
 	editor.SetDocumentLanguage(editor.ActiveDocument(), DocumentLanguage::Markdown);
 	CHECK(editor.LexerLanguage() == "markdown");
-	CheckLanguageSampleStyles(editor);
+	PaintLanguageSample(editor);
 
 	editor.SetDocumentLanguage(editor.ActiveDocument(), DocumentLanguage::PlainText);
 	CHECK(editor.Language() == DocumentLanguage::PlainText);
@@ -244,7 +249,7 @@ TEST_CASE("production editor defers inactive language until activation") {
 	editor.ActivateDocument(second);
 	CHECK(editor.Language() == DocumentLanguage::Markdown);
 	CHECK(editor.LexerLanguage() == "markdown");
-	CheckLanguageSampleStyles(editor);
+	PaintLanguageSample(editor);
 
 	editor.SetDocumentLanguage(first, DocumentLanguage::Markdown);
 	editor.SetDocumentLanguage(second, DocumentLanguage::PlainText);
@@ -256,7 +261,7 @@ TEST_CASE("production editor defers inactive language until activation") {
 	editor.ActivateDocument(first);
 	CHECK(editor.Language() == DocumentLanguage::Markdown);
 	CHECK(editor.LexerLanguage() == "markdown");
-	CheckLanguageSampleStyles(editor);
+	PaintLanguageSample(editor);
 
 	editor.ActivateDocument(second);
 	CHECK(editor.Language() == DocumentLanguage::PlainText);
@@ -264,30 +269,30 @@ TEST_CASE("production editor defers inactive language until activation") {
 	CheckAllStylesZero(editor);
 }
 
-TEST_CASE("production editor recolourises Markdown after buffer load") {
+TEST_CASE("production editor restyles Markdown after buffer load") {
 	ApplicationEditor editor(320, 180);
 	editor.LoadInitialBuffer(std::string(kLanguageSample));
 	editor.SetDocumentLanguage(editor.ActiveDocument(), DocumentLanguage::Markdown);
-	CheckLanguageSampleStyles(editor);
+	PaintLanguageSample(editor);
 
 	editor.LoadInitialBuffer(std::string(kLanguageSample));
 	CHECK(editor.Language() == DocumentLanguage::Markdown);
 	CHECK(editor.LexerLanguage() == "markdown");
 	CHECK_FALSE(editor.Modified());
-	CheckLanguageSampleStyles(editor);
+	PaintLanguageSample(editor);
 }
 
 TEST_CASE("production editor Markdown styles survive font changes after lexing") {
 	ApplicationEditor editor(320, 180);
 	editor.LoadInitialBuffer(std::string(kLanguageSample));
 	editor.SetDocumentLanguage(editor.ActiveDocument(), DocumentLanguage::Markdown);
-	CheckLanguageSampleStyles(editor);
+	PaintLanguageSample(editor);
 
 	for (std::size_t i = 0; i < std::size(kFonts); ++i) {
 		INFO("font=" << kFamilies[i]);
 		editor.SetEditorFont(kFonts[i]);
 		CheckMarkdownPalette(editor, kFamilies[i]);
-		CheckLanguageSampleStyles(editor);
+		PaintLanguageSample(editor);
 	}
 }
 
@@ -299,7 +304,7 @@ TEST_CASE("production editor paints Markdown style runs") {
 	REQUIRE(plainPixels.size() == 320U * 180U * 4U);
 
 	editor.SetDocumentLanguage(editor.ActiveDocument(), DocumentLanguage::Markdown);
-	CheckLanguageSampleStyles(editor);
+	PaintLanguageSample(editor);
 	REQUIRE(editor.RenderFrame());
 	const std::vector<uint8_t> markdownPixels = editor.FramePixels();
 	REQUIRE(markdownPixels.size() == plainPixels.size());

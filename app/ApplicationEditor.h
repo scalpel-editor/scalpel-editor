@@ -159,9 +159,10 @@ public:
 	 * Set one retained document's language. No-op when unchanged. Applies
 	 * immediately when id is active; stores the request for an inactive
 	 * document and applies it on the next activation. Markdown attaches a
-	 * fresh Lexilla lexer and recolours; plain text releases the lexer and
-	 * clears lexer-produced style bytes. Does not alter document bytes, save
-	 * point, undo history, or selection.
+	 * fresh Lexilla lexer; the next paint styles the range the editor
+	 * requests. Plain text releases the lexer and clears lexer-produced style
+	 * bytes. Does not alter document bytes, save point, undo history, or
+	 * selection.
 	 */
 	void SetDocumentLanguage(DocumentId id, DocumentLanguage language);
 	[[nodiscard]] DocumentLanguage Language() const noexcept;
@@ -172,7 +173,7 @@ public:
 	/**
 	 * Replace the whole active document for open or startup. Cancels text
 	 * input, bumps the document generation used by asynchronous paste, clears
-	 * undo, and marks the buffer clean. Recolours when Markdown is attached.
+	 * undo, and marks the buffer clean. Markdown restyling waits for paint.
 	 */
 	void LoadInitialBuffer(std::string_view text);
 	[[nodiscard]] std::string Text() const;
