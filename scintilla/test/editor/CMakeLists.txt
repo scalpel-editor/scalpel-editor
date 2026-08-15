@@ -13,6 +13,7 @@ add_executable(editorTest
   EditorHistoryTest.cxx
   EditorHostTest.cxx
   EditorInputTest.cxx
+  EditorLexillaMarkdownTest.cxx
   EditorLexingTest.cxx
   EditorLinesTest.cxx
   EditorMarginsTest.cxx
@@ -33,7 +34,7 @@ add_executable(editorTest
 )
 
 target_include_directories(editorTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ../unit)
-target_link_libraries(editorTest PRIVATE scintilla_core scintilla_render)
+target_link_libraries(editorTest PRIVATE scintilla_core scintilla_render lexilla)
 target_compile_definitions(editorTest PRIVATE
   SCALPEL_TEST_FONT_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../fonts"
 )

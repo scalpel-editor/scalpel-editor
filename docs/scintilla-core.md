@@ -32,7 +32,7 @@ Screen measurement and drawing use the shaped-run path described in [rendering.m
 
 The static `lexilla` target is built from that extract plus project-owned glue in `lexilla-compat/`. A private `Scintilla.h` supplies the fold-level, property-type, line-end, and `KEYWORDSET_MAX` constants used while compiling Lexilla. A private `SciLexer.h` supplies `SCLEX_MARKDOWN`, `SCLEX_AUTOMATIC`, and the `SCE_MARKDOWN_*` style numbers. Neither header is the generated message interface, and neither is on the application include path.
 
-`CreateLexer("markdown")` returns a fresh Markdown `ILexer5`. Any other name returns null. The factory smoke test creates that lexer, checks its name and numeric identifier, and calls `Release`. The application and the editor-core tests do not link Lexilla yet. Lexer attachment must use these retained interfaces and must not recreate the removed message surface.
+`CreateLexer("markdown")` returns a fresh Markdown `ILexer5`. Any other name returns null. The factory smoke test creates that lexer, checks its name and numeric identifier, and calls `Release`. `editorTest` links Lexilla so focused cases can attach that lexer through `SetILexer` and inspect document style bytes. The application does not link Lexilla yet. Lexer attachment must use these retained interfaces and must not recreate the removed message surface.
 
 ## Verification boundary
 
