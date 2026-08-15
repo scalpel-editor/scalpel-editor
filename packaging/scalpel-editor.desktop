@@ -7,5 +7,6 @@ Exec=scalpel-editor %F
 Icon=scalpel-editor
 Terminal=false
 Categories=Utility;TextEditor;
+MimeType=text/plain;text/markdown;
 StartupNotify=false
 Keywords=text;editor;plain;wayland;

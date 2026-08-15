@@ -1,6 +1,6 @@
 # Installing the RPM on openSUSE Leap 16
 
-The RPM installs `scalpel-editor` under `/usr/bin` together with its desktop launcher and icon. Runtime library dependencies are generated from the linked executable, and the package requires the desktop portal service used by the editor's Open and Save dialogs.
+The RPM installs `scalpel-editor` under `/usr/bin` together with its desktop launcher and icon. The desktop entry advertises `text/plain` and `text/markdown` so file managers can open those files with the editor. Runtime library dependencies are generated from the linked executable, and the package requires the desktop portal service used by the editor's Open and Save dialogs.
 
 ## Install the package-building tools
 
