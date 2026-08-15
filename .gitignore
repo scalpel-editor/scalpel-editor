@@ -6,6 +6,7 @@
 /build-nixos/
 /build-asan-nixos/
 /build-ubsan-nixos/
+/result
 /.rpm-build/
 /.review/
 /.scalps/
