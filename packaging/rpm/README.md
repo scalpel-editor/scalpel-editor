@@ -8,7 +8,7 @@ On openSUSE Leap 16, install the compiler, RPM tools, and development packages u
 
 ```sh
 sudo zypper install \
-  git rpm-build cmake gcc-c++ make desktop-file-utils pkgconf-pkg-config \
+  git rpm-build cmake gcc-c++ binutils make desktop-file-utils pkgconf-pkg-config \
   wayland-devel wayland-protocols-devel libxkbcommon-devel dbus-1-devel \
   freetype2-devel fontconfig-devel harfbuzz-devel \
   Mesa-libGL-devel Mesa-libEGL-devel
@@ -46,4 +46,4 @@ sudo zypper install --force --allow-unsigned-rpm \
 
 The spec `URL` is the GitHub project, and `Source0` is the `1.0.0` GitHub tag archive (not a `v1.0.0` prefix). `./packaging/rpm/build.sh` still packs the current checkout under that archive name so a local rebuild does not need the tag to exist yet.
 
-The spec uses `BlueOak-1.0.0 AND HPND` because the package combines project-owned work under the Blue Oak Model License 1.0.0 with the Scintilla-derived core under the Scintilla license. Both license texts are installed in the binary RPM.
+The spec uses `BlueOak-1.0.0 AND HPND` because the package combines project-owned work under the Blue Oak Model License 1.0.0 with the Scintilla-derived core and the in-tree Lexilla Markdown extract under the Scintilla/Lexilla license. The Blue Oak text and both HPND notices are installed in the binary RPM. The packaged executable links Lexilla statically and does not depend on a Lexilla shared library.

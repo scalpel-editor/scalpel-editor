@@ -41,12 +41,14 @@
             "$out/share/licenses/scalpel-editor/LICENSE.md"
           install -Dm644 "$src/scintilla/License.txt" \
             "$out/share/licenses/scalpel-editor/Scintilla-License.txt"
+          install -Dm644 "$src/lexilla/License.txt" \
+            "$out/share/licenses/scalpel-editor/Lexilla-License.txt"
         '';
 
         cmakeFlags = [ "-DBUILD_TESTING=OFF" ];
 
         doInstallCheck = true;
-        nativeInstallCheckInputs = [ pkgs.desktop-file-utils ];
+        nativeInstallCheckInputs = with pkgs; [ binutils desktop-file-utils ];
         installCheckPhase = ''
           runHook preInstallCheck
 
@@ -56,6 +58,13 @@
             "$out/share/applications/scalpel-editor.desktop"
           test -f \
             "$out/share/icons/hicolor/256x256/apps/scalpel-editor.png"
+          test -f "$out/share/licenses/scalpel-editor/LICENSE.md"
+          test -f "$out/share/licenses/scalpel-editor/Scintilla-License.txt"
+          test -f "$out/share/licenses/scalpel-editor/Lexilla-License.txt"
+          if readelf -d "$out/bin/scalpel-editor" | grep NEEDED | grep -qi lexilla; then
+            echo "installed executable links a Lexilla shared library" >&2
+            exit 1
+          fi
 
           runHook postInstallCheck
         '';

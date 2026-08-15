@@ -5,6 +5,7 @@ Summary:        Wayland-only plain-text editor
 License:        BlueOak-1.0.0 AND HPND
 URL:            https://github.com/scalpel-editor/scalpel-editor
 Source0:        %{url}/archive/refs/tags/%{version}.tar.gz#/%{name}-%{version}.tar.gz
+BuildRequires:  binutils
 BuildRequires:  cmake >= 3.25
 BuildRequires:  desktop-file-utils
 BuildRequires:  gcc-c++
@@ -41,10 +42,15 @@ Fontconfig directly instead of a general-purpose user-interface toolkit.
 %check
 desktop-file-validate \
   %{buildroot}%{_datadir}/applications/%{name}.desktop
+if readelf -d %{buildroot}%{_bindir}/%{name} | grep NEEDED | grep -qi lexilla; then
+  echo "installed executable links a Lexilla shared library" >&2
+  exit 1
+fi
 
 %files
 %license LICENSE.md
 %license scintilla/License.txt
+%license lexilla/License.txt
 %doc README.md
 %{_bindir}/%{name}
 %{_datadir}/applications/%{name}.desktop

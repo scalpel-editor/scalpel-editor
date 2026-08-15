@@ -1,10 +1,10 @@
 # scalpel-editor
 
-scalpel-editor is a Wayland-only plain-text editor built from the Scintilla 5.6.4 core (markdown highlighting coming soon). The core has been substantially refactored for a standalone application: application features use named typed operations instead of Scintilla's generated numeric message interface, and the platform layer is a direct Wayland, EGL, OpenGL, FreeType, HarfBuzz, and Fontconfig implementation.
+scalpel-editor is a Wayland-only plain-text editor built from the Scintilla 5.6.4 core. The core has been substantially refactored for a standalone application: application features use named typed operations instead of Scintilla's generated numeric message interface, and the platform layer is a direct Wayland, EGL, OpenGL, FreeType, HarfBuzz, and Fontconfig implementation.
 
 The editor has no GTK, Qt, or general-purpose UI toolkit dependency. Its application chrome is a small fixed set of controls composed directly with the editor.
 
-The application supports multiple tabs, desktop-portal open and save dialogs, file-manager open for plain text and Markdown, atomic whole-file saves with save-time external-change detection, dirty-buffer close prompts, recent files, menu and keyboard actions, two-axis scrollbars, clipboard and primary selection, text-input-v3 IME, compositor-driven key repeat, cursor themes, fractional scaling, damage-aware frame pacing, and optional presentation feedback.
+The application supports multiple tabs, desktop-portal open and save dialogs, file-manager open for plain text and Markdown, Markdown token highlighting for `.md` and `.markdown` files, atomic whole-file saves with save-time external-change detection, dirty-buffer close prompts, recent files, menu and keyboard actions, two-axis scrollbars, clipboard and primary selection, text-input-v3 IME, compositor-driven key repeat, cursor themes, fractional scaling, damage-aware frame pacing, and optional presentation feedback.
 
 ## Compositor support
 

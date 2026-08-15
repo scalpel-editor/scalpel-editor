@@ -1,6 +1,6 @@
 # Installing on NixOS
 
-The flake provides an x86-64 Linux package containing `scalpel-editor`, its desktop entry, icon, and license files. Other architectures, including AArch64, are not currently supported by this package.
+The flake provides an x86-64 Linux package containing `scalpel-editor`, its desktop entry, icon, and the Blue Oak, Scintilla, and Lexilla license files. Other architectures, including AArch64, are not currently supported by this package. The packaged executable links Lexilla statically and does not depend on a Lexilla shared library.
 
 The package uses the host's EGL vendor selection during normal application runs. It does not force the Mesa test configuration used by the development test presets.
 
@@ -79,4 +79,4 @@ From a checkout, evaluate and build all flake checks with:
 nix flake check
 ```
 
-The Release check builds and runs the complete optimized test suite, then validates the executable's reported version, desktop entry, and installed icon. This check is separate from the default package, so ordinary `nix build` and `nix run` do not compile tests. The broader Debug, AddressSanitizer, and UndefinedBehaviorSanitizer development matrix remains `nix develop --command ./check.sh nixos`.
+The Release check builds and runs the complete optimized test suite, then validates the executable's reported version, desktop entry, installed icon, installed license files, and the absence of a Lexilla shared-library dependency. This check is separate from the default package, so ordinary `nix build` and `nix run` do not compile tests. The broader Debug, AddressSanitizer, and UndefinedBehaviorSanitizer development matrix remains `nix develop --command ./check.sh nixos`.
