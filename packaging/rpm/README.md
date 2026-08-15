@@ -44,8 +44,6 @@ sudo zypper install --force --allow-unsigned-rpm \
   .rpm-build/RPMS/*/scalpel-editor-1.0.0-1.*.rpm
 ```
 
-## Distribution metadata still needed
-
-This checkout has no configured upstream URL, so the local-source spec intentionally has no `URL` tag. Add the project's canonical public URL and use its release archive for `Source0` before submitting the package to the Open Build Service.
+The spec `URL` is the GitHub project, and `Source0` is the `1.0.0` GitHub tag archive (not a `v1.0.0` prefix). `./packaging/rpm/build.sh` still packs the current checkout under that archive name so a local rebuild does not need the tag to exist yet.
 
 The spec uses `BlueOak-1.0.0 AND HPND` because the package combines project-owned work under the Blue Oak Model License 1.0.0 with the Scintilla-derived core under the Scintilla license. Both license texts are installed in the binary RPM.
