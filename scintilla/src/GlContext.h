@@ -15,11 +15,12 @@ namespace Scintilla::Internal {
 /**
  * Desktop OpenGL context for the offscreen test path or a native window.
  *
- * Creation prefers the Mesa surfaceless EGL platform so tests do not open a
- * compositor. The context is made current with EGL_NO_SURFACE when the
- * implementation allows it; otherwise a 1x1 pbuffer is used only to satisfy
- * MakeCurrent. The window constructor instead makes an EGL window surface
- * current so the renderer can target its default framebuffer.
+ * Headless creation selects the Mesa software EGL device directly so tests do
+ * not open a compositor or probe host GPUs. The context is made current with
+ * EGL_NO_SURFACE when the implementation allows it; otherwise a 1x1 pbuffer is
+ * used only to satisfy MakeCurrent. The window constructor instead makes an
+ * EGL window surface current so the renderer can target its default
+ * framebuffer.
  *
  * Destroy order: release current, destroy the EGL surface (if any), destroy
  * the context, then terminate the EGL display.
@@ -28,9 +29,9 @@ class GlContext {
 public:
 	/**
 	 * Create and initialize a headless GL 3.3 core context.
-	 * Throws std::runtime_error with a clear message if headless EGL or the
-	 * required GL version is unavailable. Never falls back to
-	 * eglGetDisplay(EGL_DEFAULT_DISPLAY).
+	 * Throws std::runtime_error with a clear message if Mesa's software EGL
+	 * device or the required GL version is unavailable. Never falls back to a
+	 * native display or hardware device.
 	 */
 	GlContext();
 	/** Create a GL 3.3 context and EGL window surface for native handles. */

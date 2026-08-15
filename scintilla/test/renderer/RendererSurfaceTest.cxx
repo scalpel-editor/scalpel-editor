@@ -2,7 +2,7 @@
 
 #include <utility>
 
-TEST_CASE("headless GlContext creates OpenGL 3.3 without a window system display") {
+TEST_CASE("headless GlContext creates OpenGL 3.3 on a software EGL device") {
 	GlContext context;
 	REQUIRE(context.IsCurrent());
 	CHECK_FALSE(context.HasWindowSurface());
@@ -20,7 +20,9 @@ TEST_CASE("headless GlContext creates OpenGL 3.3 without a window system display
 	if (major == 3) {
 		REQUIRE(minor >= 3);
 	}
-	REQUIRE_FALSE(context.RendererString().empty());
+	const std::string renderer = context.RendererString();
+	REQUIRE((renderer.find("llvmpipe") != std::string::npos ||
+		renderer.find("softpipe") != std::string::npos));
 }
 
 TEST_CASE("GlContext MakeCurrent restores after ReleaseCurrent") {

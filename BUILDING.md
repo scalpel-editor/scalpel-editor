@@ -31,7 +31,7 @@ cmake --preset dev-nixos
 cmake --build --preset dev-nixos --target scalpel-editor
 ```
 
-The Nix shell supplies CMake, GCC, Clang, Python, Ninja, pkg-config, wayland-scanner, and all library development outputs required by the project and its verification scripts. The NixOS CTest presets select the pinned Mesa EGL vendor and drivers for deterministic headless renderer tests, regardless of the host GPU vendor configuration; normal application runs retain the host's EGL vendor selection. The shell does not require project-specific additions to `/etc/nixos/configuration.nix`.
+The Nix shell supplies CMake, GCC, Clang, Python, Ninja, pkg-config, wayland-scanner, and all library development outputs required by the project and its verification scripts. The NixOS CTest presets select the pinned Mesa EGL vendor and drivers, and the headless context selects Mesa's software EGL device directly. Renderer-backed tests therefore use llvmpipe without probing host GPUs; normal application runs retain the host's EGL vendor and hardware selection. The shell does not require project-specific additions to `/etc/nixos/configuration.nix`.
 
 The NixOS development, optimized Release, AddressSanitizer, and UndefinedBehaviorSanitizer trees are `build-nixos/`, `build-release-nixos/`, `build-asan-nixos/`, and `build-ubsan-nixos/`. The corresponding presets are `dev-nixos`, `release-nixos`, `asan-nixos`, and `ubsan-nixos`.
 

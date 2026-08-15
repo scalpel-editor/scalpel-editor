@@ -7,6 +7,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -50,30 +51,52 @@ namespace {
 
 GlContext::GlContext() {
 	const char *clientExt = eglQueryString(EGL_NO_DISPLAY, EGL_EXTENSIONS);
-	if (!ClientExtensionPresent(clientExt, "EGL_MESA_platform_surfaceless")) {
+	if (!ClientExtensionPresent(clientExt, "EGL_EXT_device_enumeration") ||
+		!ClientExtensionPresent(clientExt, "EGL_EXT_device_query") ||
+		!ClientExtensionPresent(clientExt, "EGL_EXT_platform_base") ||
+		!ClientExtensionPresent(clientExt, "EGL_EXT_platform_device")) {
 		throw std::runtime_error(
-			"headless GL requires EGL_MESA_platform_surfaceless; "
-			"client extensions do not list it");
-	}
-	if (!ClientExtensionPresent(clientExt, "EGL_EXT_platform_base") &&
-		!ClientExtensionPresent(clientExt, "EGL_KHR_platform_base")) {
-		// eglGetPlatformDisplay is core in EGL 1.5; EXT entry point is the common path.
+			"headless GL requires EGL device enumeration, query, and platform extensions");
 	}
 
-	PFNEGLGETPLATFORMDISPLAYEXTPROC getPlatformDisplayEXT =
+	const PFNEGLQUERYDEVICESEXTPROC queryDevices =
+		reinterpret_cast<PFNEGLQUERYDEVICESEXTPROC>(eglGetProcAddress("eglQueryDevicesEXT"));
+	const PFNEGLQUERYDEVICESTRINGEXTPROC queryDeviceString =
+		reinterpret_cast<PFNEGLQUERYDEVICESTRINGEXTPROC>(
+			eglGetProcAddress("eglQueryDeviceStringEXT"));
+	const PFNEGLGETPLATFORMDISPLAYEXTPROC getPlatformDisplay =
 		reinterpret_cast<PFNEGLGETPLATFORMDISPLAYEXTPROC>(
 			eglGetProcAddress("eglGetPlatformDisplayEXT"));
-	EGLDisplay dpy = EGL_NO_DISPLAY;
-	if (getPlatformDisplayEXT) {
-		dpy = getPlatformDisplayEXT(EGL_PLATFORM_SURFACELESS_MESA, EGL_DEFAULT_DISPLAY, nullptr);
+	if (!queryDevices || !queryDeviceString || !getPlatformDisplay) {
+		throw std::runtime_error("headless GL could not load required EGL extension entry points");
 	}
-	if (dpy == EGL_NO_DISPLAY) {
-		// EGL 1.5 core entry (same platform enum).
-		dpy = eglGetPlatformDisplay(EGL_PLATFORM_SURFACELESS_MESA, EGL_DEFAULT_DISPLAY, nullptr);
+
+	EGLint deviceCount = 0;
+	if (!queryDevices(0, nullptr, &deviceCount) || deviceCount < 1) {
+		throw std::runtime_error(
+			"eglQueryDevicesEXT found no EGL devices (egl error " + EglErrorHex() + ")");
 	}
+	std::vector<EGLDeviceEXT> devices(static_cast<size_t>(deviceCount));
+	if (!queryDevices(deviceCount, devices.data(), &deviceCount)) {
+		throw std::runtime_error("eglQueryDevicesEXT failed (egl error " + EglErrorHex() + ")");
+	}
+	devices.resize(static_cast<size_t>(deviceCount));
+	EGLDeviceEXT softwareDevice = EGL_NO_DEVICE_EXT;
+	for (const EGLDeviceEXT device : devices) {
+		const char *extensions = queryDeviceString(device, EGL_EXTENSIONS);
+		if (ClientExtensionPresent(extensions, "EGL_MESA_device_software")) {
+			softwareDevice = device;
+			break;
+		}
+	}
+	if (softwareDevice == EGL_NO_DEVICE_EXT) {
+		throw std::runtime_error("headless GL requires an EGL_MESA_device_software device");
+	}
+
+	EGLDisplay dpy = getPlatformDisplay(EGL_PLATFORM_DEVICE_EXT, softwareDevice, nullptr);
 	if (dpy == EGL_NO_DISPLAY) {
 		throw std::runtime_error(
-			"eglGetPlatformDisplay(EGL_PLATFORM_SURFACELESS_MESA) failed (egl error " +
+			"eglGetPlatformDisplayEXT(EGL_PLATFORM_DEVICE_EXT) failed (egl error " +
 			EglErrorHex() + ")");
 	}
 	display = dpy;
