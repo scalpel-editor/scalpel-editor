@@ -42,6 +42,8 @@ path_excluded() {
 	case $path in
 	./build/*|build/*|./build-asan/*|build-asan/*|./build-ubsan/*|build-ubsan/*|./build-nixos/*|build-nixos/*|./build-asan-nixos/*|build-asan-nixos/*|./build-ubsan-nixos/*|build-ubsan-nixos/*|./.git/*|.git/*)
 		return 0 ;;
+	./lexilla|./lexilla/*|lexilla|lexilla/*)
+		return 0 ;;
 	./tools/check-no-message-layer.sh|tools/check-no-message-layer.sh)
 		return 0 ;;
 	esac
@@ -64,6 +66,7 @@ check() {
 	tmp=${TMPDIR:-/tmp}/message-layer-check.$$
 	rg -n -e "$pattern" \
 		--glob '!build*/**' \
+		--glob '!lexilla/**' \
 		--glob '!.git/**' \
 		. >"$tmp" 2>/dev/null || true
 
@@ -120,6 +123,7 @@ check_message_constants() {
 	tmp=${TMPDIR:-/tmp}/message-layer-constants.$$
 	rg -n -o -e '\bSCI_[A-Z0-9_]+\b|\bSCN_[A-Z0-9_]+\b' \
 		--glob '!build*/**' \
+		--glob '!lexilla/**' \
 		--glob '!.git/**' \
 		. >"$tmp" 2>/dev/null || true
 
@@ -194,11 +198,16 @@ check 'client parameter packing types' '\b(CharacterRange(Full)?|TextRange(Full)
 tmp=${TMPDIR:-/tmp}/message-layer-docs.$$
 rg -n -e 'send the SCI_|SendMessage|call WndProc|through the message (number|layer|interface)' \
 	--glob '*.md' \
+	--glob '!lexilla/**' \
 	. >"$tmp" 2>/dev/null || true
 count=0
 shown=0
 while IFS= read -r line || [ -n "$line" ]; do
 	[ -z "$line" ] && continue
+	path=${line%%:*}
+	if path_excluded "$path"; then
+		continue
+	fi
 	count=$((count + 1))
 	if [ "$shown" -lt 40 ]; then
 		if [ "$shown" -eq 0 ]; then

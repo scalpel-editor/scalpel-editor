@@ -28,6 +28,8 @@ Screen measurement and drawing use the shaped-run path described in [rendering.m
 
 `Sci_Position.h`, `ILexer.h`, and `ILoader.h` remain the external lexer and loader contract. Their `SCI_METHOD`, position types, and interface version values keep the definitions required by Lexilla. `IDocument::CodePage()` reports UTF-8 and `IsDBCSLeadByte()` reports false.
 
+`lexilla/` is a Markdown-only extract of Lexilla 5.5.3: `License.txt`, `version.txt`, `lexers/LexMarkdown.cxx`, and the `lexlib` files that lexer compiles against. Those files are unmodified upstream sources. Replace them from the matching paths in an official Lexilla zip when updating; do not edit them, and do not import the rest of the catalogue.
+
 Lexilla is not currently linked into the application. Future lexer integration must attach through these retained interfaces and must not recreate the removed message surface.
 
 ## Verification boundary
