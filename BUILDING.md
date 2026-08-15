@@ -41,6 +41,8 @@ Use the Release preset when investigating optimization-sensitive behavior or run
 cmake --workflow --preset release-nixos
 ```
 
+`nix flake check` also builds and runs the complete test suite with the package's Release configuration. This keeps optimized coverage in the repeatable package verification path instead of relying only on a developer build tree.
+
 Run the full NixOS matrix only when required by [TESTING.md](TESTING.md):
 
 ```sh

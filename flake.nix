@@ -66,6 +66,19 @@
           platforms = [ "x86_64-linux" ];
         };
       };
+      optimizedTests = scalpel-editor.overrideAttrs (old: {
+        doCheck = true;
+        cmakeFlags = (old.cmakeFlags or [ ]) ++ [ "-DBUILD_TESTING=ON" ];
+        checkPhase = ''
+          runHook preCheck
+
+          export __EGL_VENDOR_LIBRARY_FILENAMES="${pkgs.mesa}/share/glvnd/egl_vendor.d/50_mesa.json"
+          export LIBGL_DRIVERS_PATH="${pkgs.mesa}/lib/dri"
+          ctest --output-on-failure
+
+          runHook postCheck
+        '';
+      });
     in
     {
       packages.${system}.default = scalpel-editor;
@@ -76,7 +89,10 @@
         meta.description = "Run scalpel-editor";
       };
 
-      checks.${system}.package = scalpel-editor;
+      checks.${system} = {
+        package = scalpel-editor;
+        optimized-tests = optimizedTests;
+      };
 
       devShells.${system}.default = pkgs.mkShell {
         nativeBuildInputs = with pkgs; [

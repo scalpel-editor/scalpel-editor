@@ -43,6 +43,8 @@ The full matrix configures, builds, and tests the normal, AddressSanitizer, and 
 
 There is no hosted CI. The matrix is a deliberate local gate, not the daily development loop. Do not run it merely because a session is ending or a handoff is large.
 
+For a NixOS release gate, also run `nix flake check --print-build-logs`. Its `optimized-tests` check runs the complete suite in the same Release configuration used by the package, while its `package` check validates the installed artifact.
+
 ## Test targets
 
 For failure details, run the relevant test binary directly with a Catch2 v2 name pattern:
