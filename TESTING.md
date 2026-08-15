@@ -32,7 +32,7 @@ Widen verification only for a concrete reason:
 
 - Run the whole suite of one relevant test binary when a change crosses several cases in that binary or no focused pattern is broad enough.
 - Run `cmake --workflow --preset dev` once when handing off compiled code that changes shared infrastructure, CMake or compiler settings, multiple concerns, or the link surface of more than one test binary.
-- On NixOS, run `cmake --workflow --preset release-nixos` when a change concerns optimization-sensitive behavior or as part of the release gate.
+- On NixOS, run `cmake --workflow --preset release-test-nixos` when a change concerns optimization-sensitive behavior or as part of the release gate. The `release-nixos` workflow builds only the optimized application.
 - Run one sanitizer tree with `cmake --workflow --preset asan` or `cmake --workflow --preset ubsan` only when the change concerns memory lifetime, undefined behavior, or sanitizer/compiler settings and one tree covers the risk.
 
 Do not widen checks in anticipation of a later gate. Do not stack focused, full-suite, and workflow checks for the same edit when the smaller check already covers it.
@@ -43,7 +43,7 @@ The full matrix configures, builds, and tests the normal, AddressSanitizer, and 
 
 There is no hosted CI. The matrix is a deliberate local gate, not the daily development loop. Do not run it merely because a session is ending or a handoff is large.
 
-For a NixOS release gate, also run `nix flake check --print-build-logs`. Its package check runs the complete suite in the package's Release configuration and then validates the installed artifact.
+For a NixOS release gate, also run `nix flake check --print-build-logs`. Its Release check builds and runs the complete suite in a separate Release derivation and then validates the installed artifact; the default package does not compile tests.
 
 ## Test targets
 

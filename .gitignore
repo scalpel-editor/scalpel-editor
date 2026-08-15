@@ -5,6 +5,7 @@
 /build-ubsan/
 /build-nixos/
 /build-release-nixos/
+/build-release-test-nixos/
 /build-asan-nixos/
 /build-ubsan-nixos/
 /result

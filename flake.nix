@@ -43,17 +43,7 @@
             "$out/share/licenses/scalpel-editor/Scintilla-License.txt"
         '';
 
-        doCheck = true;
-        cmakeFlags = [ "-DBUILD_TESTING=ON" ];
-        checkPhase = ''
-          runHook preCheck
-
-          export __EGL_VENDOR_LIBRARY_FILENAMES="${pkgs.mesa}/share/glvnd/egl_vendor.d/50_mesa.json"
-          export LIBGL_DRIVERS_PATH="${pkgs.mesa}/lib/dri"
-          ctest --output-on-failure
-
-          runHook postCheck
-        '';
+        cmakeFlags = [ "-DBUILD_TESTING=OFF" ];
 
         doInstallCheck = true;
         nativeInstallCheckInputs = [ pkgs.desktop-file-utils ];
@@ -78,6 +68,20 @@
           platforms = [ "x86_64-linux" ];
         };
       };
+      scalpel-editor-release-check = scalpel-editor.overrideAttrs (_: {
+        pname = "scalpel-editor-release-check";
+        doCheck = true;
+        cmakeFlags = [ "-DBUILD_TESTING=ON" ];
+        checkPhase = ''
+          runHook preCheck
+
+          export __EGL_VENDOR_LIBRARY_FILENAMES="${pkgs.mesa}/share/glvnd/egl_vendor.d/50_mesa.json"
+          export LIBGL_DRIVERS_PATH="${pkgs.mesa}/lib/dri"
+          ctest --output-on-failure
+
+          runHook postCheck
+        '';
+      });
     in
     {
       packages.${system}.default = scalpel-editor;
@@ -88,7 +92,7 @@
         meta.description = "Run scalpel-editor";
       };
 
-      checks.${system}.package = scalpel-editor;
+      checks.${system}.release = scalpel-editor-release-check;
 
       devShells.${system}.default = pkgs.mkShell {
         nativeBuildInputs = with pkgs; [

@@ -79,4 +79,4 @@ From a checkout, evaluate and build all flake checks with:
 nix flake check
 ```
 
-The package check builds the Release executable and validates its reported version, desktop entry, and installed icon. The broader Debug, AddressSanitizer, and UndefinedBehaviorSanitizer development matrix remains `nix develop --command ./check.sh nixos`.
+The Release check builds and runs the complete optimized test suite, then validates the executable's reported version, desktop entry, and installed icon. This check is separate from the default package, so ordinary `nix build` and `nix run` do not compile tests. The broader Debug, AddressSanitizer, and UndefinedBehaviorSanitizer development matrix remains `nix develop --command ./check.sh nixos`.
