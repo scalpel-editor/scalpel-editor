@@ -22,6 +22,10 @@ Pull requests that add direct client-side decorations will be considered. **Pull
 
 See [BUILDING.md](BUILDING.md) for the openSUSE and NixOS build environments.
 
+## Installing on NixOS
+
+See [packaging/nix/README.md](packaging/nix/README.md) to run scalpel-editor directly, install it into a user profile, or add it to a declarative NixOS configuration.
+
 ## Installing on openSUSE Leap 16
 
 See [packaging/rpm/README.md](packaging/rpm/README.md) to build an RPM and install it with `zypper`.
