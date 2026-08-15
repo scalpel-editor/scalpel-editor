@@ -189,3 +189,106 @@ TEST_CASE("Lexilla Markdown Colourise styles representative UTF-8 tokens") {
 
 	CheckStyleRun(editor, RequireFind(text, "---"), 3, kMarkdownHRule);
 }
+
+TEST_CASE("Lexilla Markdown restyles after insert delete undo and redo") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.SetText("plain text\n");
+	AttachMarkdownLexer(editor);
+	editor.EmptyUndoBuffer();
+	editor.PaintAll();
+	CHECK(editor.GetEndStyled() >= editor.GetTextLength());
+	CheckStyleRun(editor, RequireFind(editor.GetText(), "plain text"), 10, kMarkdownDefault);
+
+	editor.GotoPos(0);
+	editor.InsertInput("**hi** ");
+	editor.PaintAll();
+	CHECK(editor.GetEndStyled() >= editor.GetTextLength());
+	{
+		const std::string text = editor.GetText();
+		CHECK(text.find("**hi** plain text") == 0);
+		CheckStyleRun(editor, RequireFind(text, "**hi**"), 6, kMarkdownStrong1);
+		CheckStyleRun(editor, RequireFind(text, "plain text"), 10, kMarkdownDefault);
+	}
+
+	editor.DeleteRange(0, 2);
+	editor.PaintAll();
+	{
+		const std::string text = editor.GetText();
+		CHECK(text.find("hi** plain text") == 0);
+		CheckStyleRun(editor, RequireFind(text, "hi**"), 4, kMarkdownDefault);
+		CheckStyleRun(editor, RequireFind(text, "plain text"), 10, kMarkdownDefault);
+	}
+
+	editor.RunCommand(EditorCommand::Undo);
+	editor.PaintAll();
+	{
+		const std::string text = editor.GetText();
+		CheckStyleRun(editor, RequireFind(text, "**hi**"), 6, kMarkdownStrong1);
+	}
+
+	editor.RunCommand(EditorCommand::Redo);
+	editor.PaintAll();
+	{
+		const std::string text = editor.GetText();
+		CheckStyleRun(editor, RequireFind(text, "hi**"), 4, kMarkdownDefault);
+	}
+}
+
+TEST_CASE("Lexilla Markdown restyles across fenced code boundaries") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.SetText("before\n\n~~~\ncode\n~~~\n\nafter\n");
+	AttachMarkdownLexer(editor);
+	editor.EmptyUndoBuffer();
+	editor.PaintAll();
+	CHECK(editor.GetEndStyled() >= editor.GetTextLength());
+
+	std::string text = editor.GetText();
+	CheckStyleRun(editor, RequireFind(text, "before"), 6, kMarkdownDefault);
+	CheckStyleRun(editor, RequireFind(text, "code"), 4, kMarkdownCodeBlock);
+	CheckStyleRun(editor, RequireFind(text, "after"), 5, kMarkdownDefault);
+
+	const Sci::Position openingFence = RequireFind(text, "~~~\n");
+	editor.DeleteRange(openingFence, 4);
+	editor.PaintAll();
+	text = editor.GetText();
+	CHECK(text.find("~~~\ncode") == std::string::npos);
+	CheckStyleRun(editor, RequireFind(text, "code"), 4, kMarkdownDefault);
+	CheckStyleRun(editor, RequireFind(text, "after"), 5, kMarkdownDefault);
+
+	editor.RunCommand(EditorCommand::Undo);
+	editor.PaintAll();
+	text = editor.GetText();
+	CheckStyleRun(editor, RequireFind(text, "code"), 4, kMarkdownCodeBlock);
+
+	editor.RunCommand(EditorCommand::Redo);
+	editor.PaintAll();
+	text = editor.GetText();
+	CheckStyleRun(editor, RequireFind(text, "code"), 4, kMarkdownDefault);
+}
+
+TEST_CASE("Lexilla Markdown Colourise preserves invalid UTF-8 bytes") {
+	TestHost host;
+	TestEditor editor(host);
+	const char raw[] = {
+		'#', ' ', 'o', 'k', '\n',
+		static_cast<char>(0xff), static_cast<char>(0x80), '\n',
+		'*', '*', 'x', '*', '*', '\n',
+	};
+	const std::string bytes(raw, sizeof(raw));
+	editor.SetText(bytes);
+	AttachMarkdownLexer(editor);
+
+	editor.Colourise(0, -1);
+	CHECK(editor.GetText() == bytes);
+	CHECK(editor.GetCharAt(5) == static_cast<char>(0xff));
+	CHECK(editor.GetCharAt(6) == static_cast<char>(0x80));
+	CheckStyleAt(editor, 0, kMarkdownHeader1);
+	CheckStyleRun(editor, RequireFind(editor.GetText(), "**x**"), 5, kMarkdownStrong1);
+
+	editor.PaintAll();
+	CHECK(editor.GetText() == bytes);
+	CHECK(editor.GetCharAt(5) == static_cast<char>(0xff));
+	CHECK(editor.GetCharAt(6) == static_cast<char>(0x80));
+}

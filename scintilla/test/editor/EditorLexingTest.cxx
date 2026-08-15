@@ -78,10 +78,15 @@ public:
 	std::map<std::string, std::string> props;
 	std::string keywords;
 	int lexCalls = 0;
-	bool released = false;
+	int *releaseCount = nullptr;
 
 	int SCI_METHOD Version() const override { return lvRelease5; }
-	void SCI_METHOD Release() override { released = true; delete this; }
+	void SCI_METHOD Release() override {
+		if (releaseCount) {
+			++*releaseCount;
+		}
+		delete this;
+	}
 	const char *SCI_METHOD PropertyNames() override { return "test.prop\n"; }
 	int SCI_METHOD PropertyType(const char *) override { return static_cast<int>(TypeProperty::String); }
 	const char *SCI_METHOD DescribeProperty(const char *) override { return "test property"; }
@@ -174,4 +179,52 @@ TEST_CASE("GetLineEndTypesSupported without lexer is default") {
 	TestEditor editor(host);
 	// No ILexer attached: LexState returns Default.
 	CHECK(editor.GetLineEndTypesSupported() == LineEndType::Default);
+}
+
+TEST_CASE("SetILexer replacement and document destruction release the lexer") {
+	int firstReleases = 0;
+	int secondReleases = 0;
+	{
+		TestHost host;
+		TestEditor editor(host);
+		auto *first = new TestLexer;
+		first->releaseCount = &firstReleases;
+		editor.SetILexer(first);
+		auto *second = new TestLexer;
+		second->releaseCount = &secondReleases;
+		editor.SetILexer(second);
+		CHECK(firstReleases == 1);
+		CHECK(secondReleases == 0);
+
+		editor.SetILexer(nullptr);
+		CHECK(secondReleases == 1);
+		CHECK(editor.GetLexer() == 0);
+	}
+	CHECK(firstReleases == 1);
+	CHECK(secondReleases == 1);
+
+	int destroyedReleases = 0;
+	{
+		TestHost host;
+		TestEditor editor(host);
+		auto *lexer = new TestLexer;
+		lexer->releaseCount = &destroyedReleases;
+		editor.SetILexer(lexer);
+	}
+	CHECK(destroyedReleases == 1);
+}
+
+TEST_CASE("Container styling works without an attached lexer") {
+	TestHost host;
+	TestEditor editor(host);
+	editor.SetText("abcdef");
+	CHECK(editor.GetLexer() == 0);
+
+	editor.StartStyling(0);
+	editor.SetStyling(3, 5);
+	editor.Colourise(0, -1);
+
+	CHECK(editor.GetStyleAt(0) == 5);
+	CHECK(editor.GetStyleAt(2) == 5);
+	CHECK(editor.GetStyleAt(3) == 0);
 }
