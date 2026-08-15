@@ -8,7 +8,8 @@ PREFIX="${HOME}/.local"
 BUILD_DIR="${ROOT}/build-release"
 
 echo "Configuring Release build in ${BUILD_DIR}"
-cmake -S "${ROOT}" -B "${BUILD_DIR}" -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake -S "${ROOT}" -B "${BUILD_DIR}" -G Ninja \
+	-DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
 
 echo "Building scalpel-editor"
 cmake --build "${BUILD_DIR}" --target scalpel-editor
