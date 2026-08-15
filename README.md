@@ -41,3 +41,5 @@ For local installation you can use `./install.sh`.
 ## License
 
 Project-owned code, documentation, and artwork are licensed under the [Blue Oak Model License 1.0.0](LICENSE.md). The Scintilla-derived core remains under the [Scintilla license](scintilla/License.txt), identified by the SPDX short identifier `HPND`. Separately licensed test material retains the license identified alongside it.
+
+**As far as the law allows, this software comes as is, without any warranty or condition, and no contributor will be liable to anyone for any damages related to this software or this license, under any kind of legal claim.**
