@@ -11,6 +11,7 @@
 
 #include "ApplicationEditor.h"
 #include "Document.h"
+#include "MarkdownStyles.h"
 #include "DrawSurface.h"
 #include "GlContext.h"
 #include "Renderer.h"
@@ -117,6 +118,10 @@ const char *PrimarySelectionStatusName(
 		return "text not applied";
 	}
 	return "unknown";
+}
+
+constexpr int StyleRgb(int red, int green, int blue) noexcept {
+	return red | (green << 8) | (blue << 16);
 }
 
 }
@@ -319,20 +324,64 @@ void ApplicationEditor::ConfigureLineNumberMargins() {
 	SetMarginWidthN(2, 0);
 	// Blank gap between the gutter and the text (default is 1px).
 	SetMarginLeft(24);
-	ApplyLineNumberStyle();
+	ApplyViewStyles();
 	UpdateLineNumberWidth();
 }
 
-void ApplicationEditor::ApplyLineNumberStyle() {
-	// Unstyled buffer text uses style 0. Styles start with a null font name; on Refresh,
-	// those take fonts.begin(). StyleClearAll copies STYLE_DEFAULT (system-ui) onto every
-	// style first so a monospace gutter cannot become the accidental text face.
-	// ClearStyles also forces StyleLineNumber.back to Platform::Chrome(); colours below
-	// re-apply after that.
+void ApplicationEditor::ApplyViewStyles() {
+	// STYLE_DEFAULT is the template StyleClearAll copies onto every style.
+	// Unstyled buffer text uses style 0. Styles start with a null font name;
+	// on Refresh those take fonts.begin(). Copy the selected body face first so
+	// a monospace gutter or code face cannot become the accidental text face.
+	const int defaultStyle = static_cast<int>(Scintilla::StylesCommon::Default);
+	StyleSetFont(defaultStyle, EditorFontFamilyName(editorFont));
 	StyleClearAll();
+	ApplyMarkdownStyles();
+	ApplyLineNumberStyle();
+}
 
+void ApplicationEditor::ApplyMarkdownStyles() {
 	// Colours are Scintilla RGB integers: R | (G << 8) | (B << 16).
-	// Muted digits on a light gutter near Platform::Chrome.
+	constexpr int muted = StyleRgb(0x6b, 0x7f, 0x8a);
+	constexpr int quote = StyleRgb(0x4a, 0x6b, 0x52);
+	constexpr int strike = StyleRgb(0x80, 0x80, 0x80);
+	constexpr int link = StyleRgb(0x30, 0x70, 0xb0);
+	constexpr int codeBack = StyleRgb(0xee, 0xea, 0xe6);
+
+	StyleSetBold(MarkdownStyleStrong1, true);
+	StyleSetBold(MarkdownStyleStrong2, true);
+	StyleSetItalic(MarkdownStyleEm1, true);
+	StyleSetItalic(MarkdownStyleEm2, true);
+	StyleSetBold(MarkdownStyleHeader1, true);
+	StyleSetBold(MarkdownStyleHeader2, true);
+	StyleSetBold(MarkdownStyleHeader3, true);
+	StyleSetBold(MarkdownStyleHeader4, true);
+	StyleSetBold(MarkdownStyleHeader5, true);
+	StyleSetBold(MarkdownStyleHeader6, true);
+
+	StyleSetFore(MarkdownStylePrechar, muted);
+	StyleSetFore(MarkdownStyleUListItem, muted);
+	StyleSetFore(MarkdownStyleOListItem, muted);
+	StyleSetFore(MarkdownStyleBlockQuote, quote);
+	StyleSetFore(MarkdownStyleStrikeout, strike);
+	StyleSetFore(MarkdownStyleHRule, strike);
+	StyleSetFore(MarkdownStyleLink, link);
+
+	const int codeStyles[] = {
+		MarkdownStyleCode,
+		MarkdownStyleCode2,
+		MarkdownStyleCodeBlock,
+	};
+	for (int style : codeStyles) {
+		StyleSetFont(style, "monospace");
+		StyleSetCheckMonospaced(style, true);
+		StyleSetBack(style, codeBack);
+	}
+}
+
+void ApplicationEditor::ApplyLineNumberStyle() {
+	// ClearStyles forces StyleLineNumber.back to Platform::Chrome(); colours
+	// below re-apply after that.
 	constexpr int lineNumber = static_cast<int>(Scintilla::StylesCommon::LineNumber);
 	// Monospace so every digit shares one advance and right-aligned numbers line up
 	// (proportional faces make "0" wider, so 10/20/30 sit further left than 11/12/13).
@@ -445,6 +494,26 @@ std::string ApplicationEditor::StyleFontName(int style) {
 	return buffer;
 }
 
+bool ApplicationEditor::StyleBold(int style) {
+	return StyleGetBold(style);
+}
+
+bool ApplicationEditor::StyleItalic(int style) {
+	return StyleGetItalic(style);
+}
+
+int ApplicationEditor::StyleFore(int style) {
+	return StyleGetFore(style);
+}
+
+int ApplicationEditor::StyleBack(int style) {
+	return StyleGetBack(style);
+}
+
+int ApplicationEditor::StyleSize(int style) {
+	return StyleGetSize(style);
+}
+
 const char *EditorFontFamilyName(EditorFont font) noexcept {
 	switch (font) {
 	case EditorFont::Monospace:
@@ -468,11 +537,7 @@ void ApplicationEditor::SetEditorFont(EditorFont font) {
 		return;
 	}
 	editorFont = font;
-	// STYLE_DEFAULT is the template StyleClearAll copies onto every style.
-	const int defaultStyle = static_cast<int>(Scintilla::StylesCommon::Default);
-	StyleSetFont(defaultStyle, EditorFontFamilyName(font));
-	// Propagate default to plain-text styles, then restore the monospace gutter.
-	ApplyLineNumberStyle();
+	ApplyViewStyles();
 	UpdateLineNumberWidth();
 }
 

@@ -160,6 +160,11 @@ public:
 	[[nodiscard]] int TextLeftGap() const noexcept;
 	// Font family name configured for a style (empty when unset).
 	[[nodiscard]] std::string StyleFontName(int style);
+	[[nodiscard]] bool StyleBold(int style);
+	[[nodiscard]] bool StyleItalic(int style);
+	[[nodiscard]] int StyleFore(int style);
+	[[nodiscard]] int StyleBack(int style);
+	[[nodiscard]] int StyleSize(int style);
 	/**
 	 * Current generic editor text face. Startup default is System (system-ui),
 	 * matching Platform::DefaultFont(). Styles belong to this view; the choice
@@ -168,9 +173,10 @@ public:
 	[[nodiscard]] EditorFont CurrentEditorFont() const noexcept;
 	/**
 	 * Set the generic editor text face. No-op when unchanged. Updates
-	 * STYLE_DEFAULT, copies it through plain-text styles, restores the
-	 * monospace line-number gutter, and invalidates layout. Does not alter
-	 * document bytes, save point, undo history, or selection.
+	 * STYLE_DEFAULT, copies it through all styles, applies the Markdown
+	 * palette, restores the monospace line-number gutter, and invalidates
+	 * layout. Does not alter document bytes, save point, undo history, or
+	 * selection.
 	 */
 	void SetEditorFont(EditorFont font);
 	// Logical editor size and framebuffer pixel size change independently.
@@ -457,6 +463,8 @@ private:
 	};
 
 	void ConfigureLineNumberMargins();
+	void ApplyViewStyles();
+	void ApplyMarkdownStyles();
 	void ApplyLineNumberStyle();
 	void UpdateLineNumberWidth();
 	void RetainInitialDocument();

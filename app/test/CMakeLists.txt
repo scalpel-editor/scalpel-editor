@@ -13,6 +13,7 @@ add_test(NAME application-action COMMAND applicationActionTest)
 
 add_executable(applicationHostTest
   ApplicationHostTest.cxx
+  ApplicationLanguageTest.cxx
   ApplicationTestMain.cxx
 )
 target_include_directories(applicationHostTest PRIVATE

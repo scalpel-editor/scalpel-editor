@@ -81,7 +81,9 @@ Font offers exactly four process-lifetime choices. The menu stores and displays 
 | Sans | `sans-serif` |
 | System | `system-ui` |
 
-Startup default is System, matching `Platform::DefaultFont()`. `ApplicationEditor` owns the choice as view state: changing it updates `STYLE_DEFAULT`, copies it through plain-text styles, and restores the monospace line-number gutter. It does not alter document bytes, save-point state, undo history, selection, or per-document switching state. Styles belong to the one editor view, so the face applies across every retained document for the process.
+Startup default is System, matching `Platform::DefaultFont()`. `ApplicationEditor` owns the choice as view state: changing it updates `STYLE_DEFAULT`, copies it through every style, applies the fixed Markdown palette, and restores the monospace line-number gutter. It does not alter document bytes, save-point state, undo history, selection, or per-document switching state. Styles belong to the one editor view, so the face applies across every retained document for the process.
+
+Markdown token presentation is view state, not document state. Ordinary text stays on the selected body face. Strong text and headings are bold; emphasis is italic. Code uses a monospace face and a restrained background. Links, quotes, list markers, rules, and strikeout tokens have distinct colours. Point size is unchanged. The same path runs at startup and after every Font menu choice so the palette cannot be erased.
 
 Display size is adjusted with view zoom, not a separate font-size setting. When the editor owns the keyboard event, `Ctrl+=` increases zoom by one point, `Ctrl+-` decreases it by one point, and `Ctrl+0` resets it to zero. The same commands also bind to the keypad keys `Ctrl+Add`, `Ctrl+Subtract`, and `Ctrl+Divide`. Zoom is view state: it applies across every retained document for the process, does not change document bytes, undo history, save state, selection, or the chosen generic font family, and is not persisted across process restarts. Shortcut zoom is clamped to about -10 through +60 points.
 
