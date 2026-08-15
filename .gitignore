@@ -1,9 +1,10 @@
-# Build trees (one per check-matrix preset, see check.sh)
+# Managed build trees
 /build/
 /build-release/
 /build-asan/
 /build-ubsan/
 /build-nixos/
+/build-release-nixos/
 /build-asan-nixos/
 /build-ubsan-nixos/
 /result

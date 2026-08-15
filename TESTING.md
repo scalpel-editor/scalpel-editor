@@ -32,6 +32,7 @@ Widen verification only for a concrete reason:
 
 - Run the whole suite of one relevant test binary when a change crosses several cases in that binary or no focused pattern is broad enough.
 - Run `cmake --workflow --preset dev` once when handing off compiled code that changes shared infrastructure, CMake or compiler settings, multiple concerns, or the link surface of more than one test binary.
+- On NixOS, run `cmake --workflow --preset release-nixos` when a change concerns optimization-sensitive behavior or as part of the release gate.
 - Run one sanitizer tree with `cmake --workflow --preset asan` or `cmake --workflow --preset ubsan` only when the change concerns memory lifetime, undefined behavior, or sanitizer/compiler settings and one tree covers the risk.
 
 Do not widen checks in anticipation of a later gate. Do not stack focused, full-suite, and workflow checks for the same edit when the smaller check already covers it.

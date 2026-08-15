@@ -39,6 +39,15 @@
       "binaryDir": "${sourceDir}/build-nixos"
     },
     {
+      "name": "release-nixos",
+      "displayName": "NixOS release build (Release, Ninja)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-release-nixos",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
       "name": "asan-nixos",
       "inherits": "asan",
       "displayName": "NixOS AddressSanitizer build (Debug, Ninja)",
@@ -56,6 +65,7 @@
     { "name": "asan", "configurePreset": "asan" },
     { "name": "ubsan", "configurePreset": "ubsan" },
     { "name": "dev-nixos", "configurePreset": "dev-nixos" },
+    { "name": "release-nixos", "configurePreset": "release-nixos" },
     { "name": "asan-nixos", "configurePreset": "asan-nixos" },
     { "name": "ubsan-nixos", "configurePreset": "ubsan-nixos" }
   ],
@@ -71,6 +81,15 @@
     {
       "name": "dev-nixos",
       "configurePreset": "dev-nixos",
+      "environment": {
+        "__EGL_VENDOR_LIBRARY_FILENAMES": "$penv{SCALPEL_TEST_EGL_VENDOR_LIBRARY_FILENAMES}",
+        "LIBGL_DRIVERS_PATH": "$penv{SCALPEL_TEST_LIBGL_DRIVERS_PATH}"
+      },
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "release-nixos",
+      "configurePreset": "release-nixos",
       "environment": {
         "__EGL_VENDOR_LIBRARY_FILENAMES": "$penv{SCALPEL_TEST_EGL_VENDOR_LIBRARY_FILENAMES}",
         "LIBGL_DRIVERS_PATH": "$penv{SCALPEL_TEST_LIBGL_DRIVERS_PATH}"
@@ -128,6 +147,14 @@
         { "type": "configure", "name": "dev-nixos" },
         { "type": "build", "name": "dev-nixos" },
         { "type": "test", "name": "dev-nixos" }
+      ]
+    },
+    {
+      "name": "release-nixos",
+      "steps": [
+        { "type": "configure", "name": "release-nixos" },
+        { "type": "build", "name": "release-nixos" },
+        { "type": "test", "name": "release-nixos" }
       ]
     },
     {
