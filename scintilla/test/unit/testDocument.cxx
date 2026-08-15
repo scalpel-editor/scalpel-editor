@@ -52,13 +52,12 @@
 using namespace Scintilla;
 using namespace Scintilla::Internal;
 
-// set global locale to pass std::regex related tests
-// see https://gcc.gnu.org/bugzilla/show_bug.cgi?id=63776
+// Set a locale with Unicode character classes for std::regex tests.
+// C.UTF-8 is built into glibc, so it is also available in isolated Nix builds.
+// See https://gcc.gnu.org/bugzilla/show_bug.cgi?id=63776.
 struct GlobalLocaleInitializer {
 	GlobalLocaleInitializer() {
-		try {
-			std::locale::global(std::locale("en_US.UTF-8"));
-		} catch (...) {}
+		std::locale::global(std::locale("C.UTF-8"));
 	}
 } globalLocaleInitializer;
 
