@@ -9,6 +9,7 @@
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -197,7 +198,8 @@ void WaylandWindow::Initialise(const char *title) {
 	if (!toplevel || xdg_toplevel_add_listener(toplevel, &toplevelListener, this) != 0) {
 		throw std::runtime_error("could not create the xdg_toplevel");
 	}
-	xdg_toplevel_set_title(toplevel, title);
+	windowTitle = title;
+	xdg_toplevel_set_title(toplevel, windowTitle.c_str());
 	xdg_toplevel_set_app_id(toplevel, "scalpel-editor");
 	CreateDecoration();
 	CreatePortalParentExport();
@@ -476,6 +478,16 @@ void WaylandWindow::DestroyPresentationFeedback(uint64_t submission) noexcept {
 	if (found != presentationFeedback.end()) {
 		wp_presentation_feedback_destroy(found->proxy);
 		presentationFeedback.erase(found);
+	}
+}
+
+void WaylandWindow::SetTitle(std::string_view title) {
+	if (title == windowTitle) {
+		return;
+	}
+	windowTitle = std::string(title);
+	if (toplevel) {
+		xdg_toplevel_set_title(toplevel, windowTitle.c_str());
 	}
 }
 

@@ -430,6 +430,12 @@ public:
 	void SynchronizeDirtyTabs();
 
 	/**
+	 * Active tab label, including the dirty " *" suffix. The Wayland runner
+	 * copies this to xdg_toplevel.set_title.
+	 */
+	[[nodiscard]] std::string CurrentWindowTitle() const;
+
+	/**
 	 * Route a platform window-close request into workspace close policy.
 	 * Resulting portal-dialog or accept-close work is returned by the next
 	 * TakeShellEffects call.

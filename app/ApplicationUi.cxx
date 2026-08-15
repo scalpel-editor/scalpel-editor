@@ -1432,6 +1432,15 @@ void ApplicationUi::SynchronizeDirtyTabs() {
 	}
 }
 
+std::string ApplicationUi::CurrentWindowTitle() const {
+	for (const DocumentTabInfo &tab : workspace->Tabs()) {
+		if (tab.active) {
+			return tab.label;
+		}
+	}
+	return "Untitled";
+}
+
 void ApplicationUi::RequestClose() {
 	workspace->RequestClose();
 	SynchronizeInteraction();

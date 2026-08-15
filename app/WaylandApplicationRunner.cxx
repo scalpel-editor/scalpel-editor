@@ -10,8 +10,9 @@
 // portal request IDs to application dialog identities, delivers platform
 // events and unconsumed pointer input through ApplicationUi, applies
 // CurrentPointerCursor, drops IME batches while ChromeOwnsInput is true, drains
-// TakeShellEffects for portal dialogs and accept-close, submits frames, and
-// waits. Open/save policy and prompt transitions live in DocumentWorkspace.
+// TakeShellEffects for portal dialogs and accept-close, copies
+// CurrentWindowTitle onto the toplevel, submits frames, and waits. Open/save
+// policy and prompt transitions live in DocumentWorkspace.
 // Required-global loss force-closes without prompting the workspace.
 // Process argument parsing, exit-status policy, and the thin main entry live
 // outside this runner.
@@ -495,6 +496,7 @@ ApplicationTerminationReason RunWaylandApplication(ApplicationSession &session) 
 	};
 
 	(void)ui.SynchronizeTabs();
+	window.SetTitle(ui.CurrentWindowTitle());
 	editor.InvalidateTopChrome();
 	editor.InvalidateScrollBars();
 	ui.BindPainters();
@@ -572,6 +574,7 @@ ApplicationTerminationReason RunWaylandApplication(ApplicationSession &session) 
 		DispatchPrimarySelectionRequests(editor, window);
 		editor.RunPendingWork();
 		ui.SynchronizeDirtyTabs();
+		window.SetTitle(ui.CurrentWindowTitle());
 		SynchronizeTextInput(ui, window);
 		(void)ui.SynchronizeComposition();
 		applyPointerCursor();

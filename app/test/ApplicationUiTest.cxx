@@ -1262,6 +1262,29 @@ TEST_CASE("application UI shell effects apply prompt begin without accept close"
 	CHECK(ui.CurrentPointerCursor() == ApplicationPointerCursor::Arrow);
 }
 
+TEST_CASE("application UI window title follows the active tab label") {
+	ApplicationEditor editor(320, 180);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	const auto untitled = workspace.ActiveTab();
+
+	CHECK(ui.CurrentWindowTitle() == "Untitled 1");
+
+	DirtyBuffer(editor);
+	CHECK(ui.CurrentWindowTitle() == "Untitled 1 *");
+
+	TempFile file("named\n");
+	REQUIRE(workspace.OpenPath(file.path));
+	(void)ui.TakeShellEffects();
+	CHECK(ui.CurrentWindowTitle() == Scalpel::DocumentBaseName(file.path));
+
+	workspace.ActivateTab(untitled);
+	(void)ui.TakeShellEffects();
+	CHECK(ui.CurrentWindowTitle() == "Untitled 1 *");
+}
+
 TEST_CASE("application UI shell effects refresh tabs from workspace requests") {
 	ApplicationEditor editor(320, 180);
 	PrepareChromeEditor(editor);

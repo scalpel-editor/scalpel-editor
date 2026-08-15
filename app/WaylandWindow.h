@@ -160,6 +160,11 @@ public:
 	[[nodiscard]] std::vector<InputEvent> TakeInputs() { return input.TakeInputs(); }
 	void SetCursor(Scintilla::Internal::Window::Cursor cursor);
 	void SetCursorScale(int scale);
+	/**
+	 * Update xdg_toplevel.set_title when the string changes. The application
+	 * supplies the title; this only stores it and sends the request.
+	 */
+	void SetTitle(std::string_view title);
 	void CopyToClipboard(uint64_t request, std::string text);
 	void PasteFromClipboard(uint64_t request);
 	void PublishPrimarySelection(uint64_t request, std::optional<std::string> text);
@@ -377,6 +382,7 @@ private:
 	wl_egl_window *eglWindow = nullptr;
 	xdg_surface *shellSurface = nullptr;
 	xdg_toplevel *toplevel = nullptr;
+	std::string windowTitle;
 	// Context-menu popup (at most one). Created after the toplevel is mapped.
 	wl_surface *popupSurface = nullptr;
 	wl_egl_window *popupEglWindow = nullptr;
