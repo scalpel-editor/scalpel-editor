@@ -30,6 +30,7 @@ For local installation you can use `./install.sh`.
 
 ## Design documentation
 
+- [DeepWiki](https://deepwiki.com/scalpel-editor/scalpel-editor)
 - [Scintilla core boundary](docs/scintilla-core.md)
 - [Application UI](docs/application-ui.md)
 - [Rendering](docs/rendering.md)
