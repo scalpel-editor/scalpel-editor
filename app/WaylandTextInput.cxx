@@ -215,6 +215,9 @@ const zwp_text_input_v3_listener WaylandTextInput::textInputListener = {
 	WaylandTextInput::CommitString,
 	WaylandTextInput::DeleteSurroundingText,
 	WaylandTextInput::Done,
+	nullptr,
+	nullptr,
+	nullptr,
 };
 
 WaylandTextInput::~WaylandTextInput() noexcept {
