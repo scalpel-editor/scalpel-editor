@@ -42,7 +42,7 @@ Do not widen checks in anticipation of a later gate. Do not stack focused, full-
 
 ## Full matrix
 
-The full matrix configures, builds, and tests the normal, AddressSanitizer, and UndefinedBehaviorSanitizer trees. Run it only at roadmap phase gates, before a release, when explicitly requested, or when a change clearly needs all three trees, such as sanitizer or compiler settings that must pass in every configuration. The commands and OS-specific tree names are documented in [BUILDING.md](BUILDING.md).
+The full matrix configures, builds, and tests the normal, AddressSanitizer, and UndefinedBehaviorSanitizer trees. Run it only at roadmap phase gates, when explicitly requested, or when a change clearly needs all three trees, such as sanitizer or compiler settings that must pass in every configuration. The commands and OS-specific tree names are documented in [BUILDING.md](BUILDING.md).
 
 There is no hosted CI. The matrix is a deliberate local gate, not the daily development loop. Do not run it merely because a session is ending or a handoff is large.
 
