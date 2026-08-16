@@ -186,7 +186,6 @@ void DrawStyledText(Surface *surface, const ViewStyle &vs, int styleOffset, PRec
 EditView::EditView() {
 	tabWidthMinimumPixels = 2; // needed for calculating tab stops for fractional proportional fonts
 	drawOverstrikeCaret = true;
-	bufferedDraw = true;
 	phasesDraw = PhasesDraw::Two;
 	lineWidthMaxSeen = 0;
 	additionalCaretsBlink = true;
@@ -273,7 +272,6 @@ void EditView::LinesAddedOrRemoved(Sci::Line lineOfPos, Sci::Line linesAdded) {
 }
 
 void EditView::DropGraphics() noexcept {
-	pixmapLine.reset();
 	pixmapIndentGuide.reset();
 	pixmapIndentGuideHighlight.reset();
 }
@@ -2384,7 +2382,7 @@ void EditView::DrawLine(Surface *surface, const EditModel &model, const ViewStyl
 		return; // No further drawing
 	}
 
-	const bool clipLine = !bufferedDraw && !LinesOverlap();
+	const bool clipLine = !LinesOverlap();
 	if (clipLine) {
 		surface->SetClip(rcLine);
 	}
@@ -2483,12 +2481,7 @@ void EditView::PaintText(Surface *surfaceWindow, const EditModel &model, const V
 	// Do the painting
 	if (rcArea.right > vsDraw.textStart - leftTextOverlap) {
 
-		Surface *surface = surfaceWindow;
-		if (bufferedDraw) {
-			surface = pixmapLine.get();
-			PLATFORM_ASSERT(pixmapLine->Initialised());
-		}
-		surface->SetMode(model.CurrentSurfaceMode());
+		surfaceWindow->SetMode(model.CurrentSurfaceMode());
 
 		const Point ptOrigin = model.GetVisibleOriginInMain();
 		const int clientTop = static_cast<int>(rcClient.top);
@@ -2510,9 +2503,8 @@ void EditView::PaintText(Surface *surfaceWindow, const EditModel &model, const V
 			rcTextArea = rcArea;
 		}
 
-		// Remove selection margin from drawing area so text will not be drawn
-		// on it in unbuffered mode.
-		const bool clipping = !bufferedDraw && vsDraw.marginInside;
+		// Keep text off the selection margin.
+		const bool clipping = vsDraw.marginInside;
 		if (clipping) {
 			PRectangle rcClipText = rcTextArea;
 			rcClipText.left -= leftTextOverlap;
@@ -2532,12 +2524,11 @@ void EditView::PaintText(Surface *surfaceWindow, const EditModel &model, const V
 		Sci::Line lineDocPrevious = -1;	// Used to avoid laying out one document line multiple times
 		std::shared_ptr<LineLayout> ll;
 		DrawPhase phase = DrawPhase::all;
-		if ((phasesDraw == PhasesDraw::Multiple) && !bufferedDraw) {
+		if (phasesDraw == PhasesDraw::Multiple) {
 			phase = DrawPhase::back;
 		}
 		for (;;) {
 			int yposScreen = clientTop + screenLinePaintFirst * vsDraw.lineHeight;
-			int ypos = bufferedDraw ? 0 : yposScreen;
 			Sci::Line lineVisible = model.TopLineOfMain() + screenLinePaintFirst;
 			while (lineVisible < model.pcs->LinesDisplayed() && yposScreen < rcArea.bottom) {
 
@@ -2554,7 +2545,7 @@ void EditView::PaintText(Surface *surfaceWindow, const EditModel &model, const V
 #endif
 				if (lineDoc != lineDocPrevious) {
 					ll = RetrieveLineLayout(lineDoc, model);
-					LayoutLine(model, surface, vsDraw, ll.get(), model.wrapWidth);
+					LayoutLine(model, surfaceWindow, vsDraw, ll.get(), model.wrapWidth);
 					lineDocPrevious = lineDoc;
 					if (ll && model.BidirectionalEnabled()) {
 						// Fill the line bidi data
@@ -2569,8 +2560,8 @@ void EditView::PaintText(Surface *surfaceWindow, const EditModel &model, const V
 						&& (ll->lines == 1 || !vsDraw.caretLine.subLine || ll->InLine(caretOffset, subLine));
 
 					PRectangle rcLine = rcTextArea;
-					rcLine.top = static_cast<XYPOSITION>(ypos);
-					rcLine.bottom = static_cast<XYPOSITION>(ypos + vsDraw.lineHeight);
+					rcLine.top = static_cast<XYPOSITION>(yposScreen);
+					rcLine.bottom = static_cast<XYPOSITION>(yposScreen + vsDraw.lineHeight);
 
 					const Range rangeLine(model.pdoc->LineStart(lineDoc),
 						model.pdoc->LineStart(lineDoc + 1));
@@ -2579,27 +2570,15 @@ void EditView::PaintText(Surface *surfaceWindow, const EditModel &model, const V
 					ll->SetBracesHighlight(rangeLine, model.braces, static_cast<char>(model.bracesMatchStyle),
 						static_cast<int>(model.highlightGuideColumn * vsDraw.spaceWidth), bracesIgnoreStyle);
 
-					if (bufferedDraw) {
-						// The line pixmap is shared across display rows. Erase it
-						// before drawing so a prior row cannot remain when this
-						// row paints nothing (extra height slots, empty
-						// annotation rows, or a path that skips a full fill).
-						surface->FillRectangle(
-							PRectangle::FromInts(0, 0,
-								static_cast<int>(rcClient.Width()),
-								vsDraw.lineHeight),
-							Fill(vsDraw.styles[StyleDefault].back));
-					}
-
-					if (leftTextOverlap && (bufferedDraw || ((phasesDraw < PhasesDraw::Multiple) && (FlagSet(phase, DrawPhase::back))))) {
+					if (leftTextOverlap && ((phasesDraw < PhasesDraw::Multiple) && (FlagSet(phase, DrawPhase::back)))) {
 						// Clear the left margin
 						PRectangle rcSpacer = rcLine;
 						rcSpacer.right = rcSpacer.left;
 						rcSpacer.left -= 1;
-						surface->FillRectangleAligned(rcSpacer, Fill(vsDraw.styles[StyleDefault].back));
+						surfaceWindow->FillRectangleAligned(rcSpacer, Fill(vsDraw.styles[StyleDefault].back));
 					}
 
-					DrawLine(surface, model, vsDraw, ll.get(), lineDoc, lineVisible, xOrigin, rcLine, subLine, phase);
+					DrawLine(surfaceWindow, model, vsDraw, ll.get(), lineDoc, lineVisible, xOrigin, rcLine, subLine, phase);
 #if defined(TIME_PAINTING)
 					durPaint += ep.Duration(true);
 #endif
@@ -2607,30 +2586,17 @@ void EditView::PaintText(Surface *surfaceWindow, const EditModel &model, const V
 					ll->RestoreBracesHighlight(rangeLine, model.braces, bracesIgnoreStyle);
 
 					if (FlagSet(phase, DrawPhase::foldLines)) {
-						DrawFoldLines(surface, model, vsDraw, ll.get(), lineDoc, rcLine, subLine);
+						DrawFoldLines(surfaceWindow, model, vsDraw, ll.get(), lineDoc, rcLine, subLine);
 					}
 
 					if (FlagSet(phase, DrawPhase::carets)) {
-						DrawCarets(surface, model, vsDraw, ll.get(), lineDoc, xOrigin, rcLine, subLine);
-					}
-
-					if (bufferedDraw) {
-						const Point from = Point::FromInts(vsDraw.textStart - leftTextOverlap, 0);
-						const PRectangle rcCopyArea = PRectangle::FromInts(vsDraw.textStart - leftTextOverlap, yposScreen,
-							static_cast<int>(rcClient.right - vsDraw.rightMarginWidth),
-							yposScreen + vsDraw.lineHeight);
-						pixmapLine->FlushDrawing();
-						surfaceWindow->Copy(rcCopyArea, from, *pixmapLine);
+						DrawCarets(surfaceWindow, model, vsDraw, ll.get(), lineDoc, xOrigin, rcLine, subLine);
 					}
 
 					UpdateMaxWidth(ll->positions[ll->numCharsInLine]);
 #if defined(TIME_PAINTING)
 					durCopy += ep.Duration(true);
 #endif
-				}
-
-				if (!bufferedDraw) {
-					ypos += vsDraw.lineHeight;
 				}
 
 				yposScreen += vsDraw.lineHeight;

@@ -27,7 +27,6 @@ typedef void (*DrawWrapMarkerFn)(Surface *surface, PRectangle rcPlace, bool isEn
 */
 class MarginView {
 public:
-	std::unique_ptr<Surface> pixmapSelMargin;
 	std::unique_ptr<Surface> pixmapSelPattern;
 	std::unique_ptr<Surface> pixmapSelPatternOffset1;
 	// Highlight current folding block

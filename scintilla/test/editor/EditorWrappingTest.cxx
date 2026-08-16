@@ -268,10 +268,9 @@ TEST_CASE("Idle wrap invalidates the client when display heights change") {
 	CHECK(snapshot.invalidatedRectangles > 0);
 }
 
-TEST_CASE("Buffered paint clears shared line pixmap for extra display rows") {
-	// Force a display height greater than the laid-out subline count so the
-	// extra row would otherwise copy a previous pixmap. The row must not keep
-	// ink from the document line above it.
+TEST_CASE("Extra display rows do not keep ink from the line above") {
+	// Force a display height greater than the laid-out subline count.
+	// Direct painting must not leave the previous row's text in the extra slot.
 	TestHost host;
 	TestEditor editor(host, PRectangle(0, 0, 200, 120));
 	editor.SetWrapMode(Wrap::None);
@@ -291,7 +290,7 @@ TEST_CASE("Buffered paint clears shared line pixmap for extra display rows") {
 	REQUIRE(surface != nullptr);
 
 	// Sample past the margin into the text area of the first real text row and
-	// the forced extra display row that shares the buffered pixmap.
+	// the forced extra display row below it.
 	const int textX = static_cast<int>(client.left) + 24;
 	const int textY = lineHeight / 2;
 	const int extraY = lineHeight + lineHeight / 2;
@@ -299,7 +298,7 @@ TEST_CASE("Buffered paint clears shared line pixmap for extra display rows") {
 	const ColourRGBA extraPixel = surface->Buffer().ReadPixel(textX, extraY);
 	// First row has text ink (not the cleared initial green).
 	CHECK_FALSE(textPixel == initial);
-	// Extra row must not reuse the text row's ink from the shared pixmap.
+	// Extra row must not keep the text row's ink.
 	CHECK_FALSE(extraPixel == textPixel);
 }
 

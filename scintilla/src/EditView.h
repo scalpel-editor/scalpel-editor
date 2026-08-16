@@ -73,9 +73,6 @@ public:
 
 	bool drawOverstrikeCaret; // used by the curses platform
 
-	/** In bufferedDraw mode, graphics operations are drawn to a pixmap and then copied to
-	* the screen. This avoids flashing but is about 30% slower. */
-	bool bufferedDraw;
 	/** In phasesTwo mode, drawing is performed in two phases, first the background
 	* and then the foreground. This avoids chopping off characters that overlap the next run.
 	* In multiPhaseDraw mode, drawing is performed in multiple phases with each phase drawing
@@ -90,7 +87,6 @@ public:
 
 	bool imeCaretBlockOverride;
 
-	std::unique_ptr<Surface> pixmapLine;
 	std::unique_ptr<Surface> pixmapIndentGuide;
 	std::unique_ptr<Surface> pixmapIndentGuideHighlight;
 

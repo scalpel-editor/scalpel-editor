@@ -194,9 +194,9 @@ public:
 	 */
 	[[nodiscard]] unsigned FrameColourBufferName() const noexcept;
 	/**
-	 * Entries in the frame surface shaped-run cache (chrome / overlay text).
-	 * Body text painted through the buffered line pixmap uses that pixmap's
-	 * cache instead. Zero when no frame surface is retained.
+	 * Entries in the frame surface shaped-run cache. Body text, chrome, and
+	 * overlay text share this cache when they paint through the frame surface.
+	 * Zero when no frame surface is retained.
 	 */
 	[[nodiscard]] size_t FrameShapedRunCacheSize() const noexcept;
 	/**
