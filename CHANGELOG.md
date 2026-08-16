@@ -2,7 +2,7 @@
 
 User-visible changes after the 1.0.0 release.
 
-## Unreleased
+## 2.0.0 - 2026-08-15
 
 ### Added
 

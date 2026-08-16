@@ -1,5 +1,5 @@
 Name:           scalpel-editor
-Version:        1.0.0
+Version:        2.0.0
 Release:        1
 Summary:        Wayland-only plain-text editor
 License:        BlueOak-1.0.0 AND HPND
@@ -57,5 +57,8 @@ fi
 %{_datadir}/icons/hicolor/256x256/apps/%{name}.png
 
 %changelog
+* Sat Aug 15 2026 Third-Thing <219055174+Third-Thing@users.noreply.github.com> - 2.0.0-1
+- Add Markdown token highlighting for .md and .markdown files.
+- Paint editor lines directly into the window frame.
 * Fri Aug 14 2026 Third-Thing <219055174+Third-Thing@users.noreply.github.com> - 1.0.0-1
 - Add the initial openSUSE Leap 16 package.

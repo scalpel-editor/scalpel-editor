@@ -26,7 +26,7 @@ Install the locally built, unsigned package with `zypper`; the architecture dire
 
 ```sh
 sudo zypper install --allow-unsigned-rpm \
-  .rpm-build/RPMS/*/scalpel-editor-1.0.0-1.*.rpm
+  .rpm-build/RPMS/*/scalpel-editor-2.0.0-1.*.rpm
 ```
 
 `zypper` resolves and installs the runtime dependencies. Start the editor from the desktop application menu or run `scalpel-editor` in a Wayland session.
@@ -41,9 +41,9 @@ Rebuilding the same version and release does not make it newer from RPM's point 
 
 ```sh
 sudo zypper install --force --allow-unsigned-rpm \
-  .rpm-build/RPMS/*/scalpel-editor-1.0.0-1.*.rpm
+  .rpm-build/RPMS/*/scalpel-editor-2.0.0-1.*.rpm
 ```
 
-The spec `URL` is the GitHub project, and `Source0` is the `1.0.0` GitHub tag archive (not a `v1.0.0` prefix). `./packaging/rpm/build.sh` still packs the current checkout under that archive name so a local rebuild does not need the tag to exist yet.
+The spec `URL` is the GitHub project, and `Source0` is the `2.0.0` GitHub tag archive (not a `v2.0.0` prefix). `./packaging/rpm/build.sh` still packs the current checkout under that archive name so a local rebuild does not need the tag to exist yet.
 
 The spec uses `BlueOak-1.0.0 AND HPND` because the package combines project-owned work under the Blue Oak Model License 1.0.0 with the Scintilla-derived core and the in-tree Lexilla Markdown extract under the Scintilla/Lexilla license. The Blue Oak text and both HPND notices are installed in the binary RPM. The packaged executable links Lexilla statically and does not depend on a Lexilla shared library.
