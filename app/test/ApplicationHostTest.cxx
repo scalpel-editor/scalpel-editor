@@ -43,7 +43,9 @@ TEST_CASE("production editor reuses the offscreen frame colour buffer across pai
 	REQUIRE(firstFbo != 0);
 	const size_t glyphsAfterFirst = editor.GlyphTextureCacheSize();
 	REQUIRE(glyphsAfterFirst > 0);
-	// Overlay text paints on the frame surface and fills its shaped-run cache.
+	const size_t shapedAfterBody = editor.FrameShapedRunCacheSize();
+	REQUIRE(shapedAfterBody > 0);
+	// Overlay text paints on the same frame surface and adds a shaped run.
 	editor.SetOverlayPainter([](Scintilla::Internal::Surface &surface, int, int) {
 		// Use a measure-only path is insufficient; draw through the frame surface.
 		const auto font = Scintilla::Internal::Font::Allocate(
@@ -56,7 +58,7 @@ TEST_CASE("production editor reuses the offscreen frame colour buffer across pai
 	CHECK(editor.FrameColourBufferName() == firstFbo);
 	CHECK(editor.GlyphTextureCacheSize() >= glyphsAfterFirst);
 	const size_t shapedAfterOverlay = editor.FrameShapedRunCacheSize();
-	REQUIRE(shapedAfterOverlay > 0);
+	REQUIRE(shapedAfterOverlay > shapedAfterBody);
 
 	// Same logical size: colour buffer and shaped runs stay resident.
 	REQUIRE(editor.RenderFrame({Scintilla::Internal::PRectangle::FromInts(0, 0, 320, 180)}));
@@ -64,7 +66,7 @@ TEST_CASE("production editor reuses the offscreen frame colour buffer across pai
 	CHECK(editor.FrameShapedRunCacheSize() == shapedAfterOverlay);
 
 	// Logical resize drops the frame surface. GL may recycle the FBO name, so
-	// prove rebuild via new FramePixels dimensions and a cleared shaped cache
+	// prove rebuild via new FramePixels dimensions and a body-only shaped cache
 	// (overlay removed).
 	editor.SetOverlayPainter(nullptr);
 	editor.Resize(400, 220);
@@ -73,7 +75,7 @@ TEST_CASE("production editor reuses the offscreen frame colour buffer across pai
 	REQUIRE(editor.FrameColourBufferName() != 0);
 	const auto resized = editor.FramePixels();
 	REQUIRE(resized.size() == 400U * 220U * 4U);
-	CHECK(editor.FrameShapedRunCacheSize() == 0);
+	CHECK(editor.FrameShapedRunCacheSize() == shapedAfterBody);
 }
 
 TEST_CASE("production editor host shows line numbers and a text-left gap") {

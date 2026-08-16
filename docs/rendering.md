@@ -84,9 +84,9 @@ Drawing accepts logical, top-left coordinates with half-open rectangles for fill
 
 The active output scale is an exact rational `RasterScale`. `main` copies `WaylandScaleConfiguration::scaleNumerator` into `ApplicationEditor`. The frame path calls `Renderer::SetOutputRasterScale`; `SetDrawTarget` only selects the FBO and sizes so pixmap binds cannot thrash scale identity mid-paint. Outline text additionally uses buffer-pixel placement as described under device-phase outline rasterization. Both axes share the same nominal scale so buffer-dimension rounding does not create window-size-dependent font sizes.
 
-Sibling pixmaps retain logical drawing dimensions but allocate their colour buffers at the active output scale. Copies and pattern fills map logical source coordinates across those scaled buffers, so buffered editor text uses the same device-pixel glyph placement as direct window drawing.
+Sibling pixmaps retain logical drawing dimensions but allocate their colour buffers at the active output scale. Copies and pattern fills map logical source coordinates across those scaled buffers, so indent-guide and fold-margin stamps use the same device-pixel placement as direct window drawing.
 
-The frame surface keeps the prepared damage rectangle clipped for the complete editor paint. Buffered lines may be drawn in full inside their sibling pixmap, but copies, margins, and direct frame operations cannot modify preserved pixels outside that damage. Each buffered display row starts by filling the shared line pixmap with the default background so a prior row cannot remain when the current row paints nothing.
+The frame surface keeps the prepared damage rectangle clipped for the complete editor paint. Text, margins, and chrome draw directly into that surface and cannot modify preserved pixels outside the damage.
 
 When wrapping changes display heights, the editor invalidates the client even if scroll metrics are unchanged. Short documents that still fit on screen can change row layout without moving the scrollbar; without that invalidation, partial paints can leave old rows at previous Y positions.
 

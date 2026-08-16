@@ -120,7 +120,6 @@ MarginView::MarginView() noexcept {
 }
 
 void MarginView::DropGraphics() noexcept {
-	pixmapSelMargin.reset();
 	pixmapSelPattern.reset();
 	pixmapSelPatternOffset1.reset();
 }

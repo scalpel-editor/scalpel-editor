@@ -1293,13 +1293,7 @@ void Editor::PaintSelMargin(Surface *surfaceWindow, const PRectangle &rc) {
 	if (!rc.Intersects(rcMargin))
 		return;
 
-	Surface *surface;
-	if (view.bufferedDraw) {
-		surface = marginView.pixmapSelMargin.get();
-	} else {
-		surface = surfaceWindow;
-	}
-	surface->SetMode(CurrentSurfaceMode());
+	surfaceWindow->SetMode(CurrentSurfaceMode());
 
 	// Clip vertically to paint area to avoid drawing line numbers
 	if (rcMargin.bottom > rc.bottom)
@@ -1307,26 +1301,13 @@ void Editor::PaintSelMargin(Surface *surfaceWindow, const PRectangle &rc) {
 	if (rcMargin.top < rc.top)
 		rcMargin.top = rc.top;
 
-	marginView.PaintMargin(surface, topLine, rc, rcMargin, *this, vs,
+	marginView.PaintMargin(surfaceWindow, topLine, rc, rcMargin, *this, vs,
 		GetClientRectangle().top);
-
-	if (view.bufferedDraw) {
-		marginView.pixmapSelMargin->FlushDrawing();
-		surfaceWindow->Copy(rcMargin, Point(rcMargin.left, rcMargin.top), *marginView.pixmapSelMargin);
-	}
 }
 
 void Editor::RefreshPixMaps(Surface *surfaceWindow) {
 	view.RefreshPixMaps(surfaceWindow, vs);
 	marginView.RefreshPixMaps(surfaceWindow, vs);
-	if (view.bufferedDraw && !(view.pixmapLine && marginView.pixmapSelMargin)) {
-		const PRectangle rcClient = GetClientRectangle();
-		view.pixmapLine = surfaceWindow->AllocatePixMap(static_cast<int>(rcClient.Width()), vs.lineHeight);
-		// Height reaches client.bottom so absolute y (including a non-zero client
-		// top) stays inside the pixmap when copying from window coordinates.
-		marginView.pixmapSelMargin = surfaceWindow->AllocatePixMap(vs.fixedColumnWidth,
-			std::max(1, static_cast<int>(rcClient.bottom)));
-	}
 }
 
 void Editor::Paint(Surface *surfaceWindow, PRectangle rcArea) {
@@ -1370,8 +1351,7 @@ void Editor::Paint(Surface *surfaceWindow, PRectangle rcArea) {
 		return;
 	}
 
-	// The line pixmap is intentionally painted in full, but every copy and
-	// direct frame operation must stay inside the damage prepared by the host.
+	// Keep every paint operation inside the damage prepared by the host.
 	surfaceWindow->SetClip(rcArea);
 
 	if (paintState != PaintState::abandoned) {
