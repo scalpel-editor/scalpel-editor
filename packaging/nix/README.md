@@ -69,7 +69,7 @@ Replace the example path and `hostname` with the checkout path and configuration
 
 ## Use a published release instead
 
-Once a release tag exists, replace `.` in the run or profile commands with `github:scalpel-editor/scalpel-editor/1.0.0`, or use that URL instead of the `path:` URL in a system flake. A published release is optional; it provides a stable remote source when a local checkout is not desired.
+Once a release tag exists, replace `.` in the run or profile commands with `github:scalpel-editor/scalpel-editor/1.0.1`, or use that URL instead of the `path:` URL in a system flake. A published release is optional; it provides a stable remote source when a local checkout is not desired.
 
 ## Verify the package
 

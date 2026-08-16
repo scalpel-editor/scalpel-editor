@@ -1697,7 +1697,7 @@ TEST_CASE("application command line version options alone request version") {
 		CHECK(invocation.paths.empty());
 		CHECK(invocation.message.empty());
 	}
-	CHECK(Scalpel::ApplicationCommandLineVersion() == "1.0.0");
+	CHECK(Scalpel::ApplicationCommandLineVersion() == "1.0.1");
 }
 
 TEST_CASE("application command line rejects unknown options") {

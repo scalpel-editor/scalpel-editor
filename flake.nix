@@ -9,7 +9,7 @@
       pkgs = import nixpkgs { inherit system; };
       scalpel-editor = pkgs.stdenv.mkDerivation {
         pname = "scalpel-editor";
-        version = "1.0.0";
+        version = "1.0.1";
         src = ./.;
 
         strictDeps = true;
@@ -51,7 +51,7 @@
           runHook preInstallCheck
 
           version="$($out/bin/scalpel-editor --version)"
-          test "$version" = "scalpel-editor 1.0.0"
+          test "$version" = "scalpel-editor 1.0.1"
           desktop-file-validate \
             "$out/share/applications/scalpel-editor.desktop"
           test -f \
