@@ -50,6 +50,6 @@ For local installation you can use `./install.sh`.
 
 ## License
 
-Project-owned code, documentation, and artwork are licensed under the [Blue Oak Model License 1.0.0](LICENSE.md). The Scintilla-derived core and the in-tree [Lexilla Markdown extract](lexilla/License.txt) remain under the Scintilla/Lexilla license, identified by the SPDX short identifier `HPND`. Separately licensed test material retains the license identified alongside it.
+Project-owned code, documentation, and artwork are licensed under the [Blue Oak Model License 1.0.0](LICENSE.md). The Scintilla-derived core and the in-tree [Lexilla Markdown extract](lexilla/License.txt) remain under the Scintilla/Lexilla license, identified by the SPDX short identifier `HPND`. The emoji shortcode catalog in [app/EmojiCatalogData.inc](app/EmojiCatalogData.inc) is generated from [gemoji](https://github.com/github/gemoji) and keeps that project's MIT notice. Separately licensed test material retains the license identified alongside it.
 
 **As far as the law allows, this software comes as is, without any warranty or condition, and no contributor will be liable to anyone for any damages related to this software or this license, under any kind of legal claim.**

@@ -30,6 +30,29 @@ EXPECTED_SHA256 = (
 	"b174ae2aeb321b52f64adb9ff412f966a7f338839d780784dd15dcad702c2dd6"
 )
 SOURCE_URL = "https://raw.githubusercontent.com/github/gemoji/master/db/emoji.json"
+GEMOJI_MIT_NOTICE = """\
+// Copyright (c) 2019 GitHub, Inc.
+//
+// Permission is hereby granted, free of charge, to any person
+// obtaining a copy of this software and associated documentation
+// files (the "Software"), to deal in the Software without
+// restriction, including without limitation the rights to use,
+// copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the
+// Software is furnished to do so, subject to the following
+// conditions:
+//
+// The above copyright notice and this permission notice shall be
+// included in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+// OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+// NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+// HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+// WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+// OTHER DEALINGS IN THE SOFTWARE."""
 
 
 def cxx_string(value: str) -> str:
@@ -88,6 +111,9 @@ def main() -> None:
 	print(f"// SHA-256 {EXPECTED_SHA256}")
 	print(f"// {len(emoji)} emoji, {len(aliases)} aliases.")
 	print("// Regenerate: tools/generate-emoji-catalog.py <emoji.json>")
+	print("//")
+	print("// gemoji source and data are MIT-licensed:")
+	print(GEMOJI_MIT_NOTICE)
 	print("constexpr std::string_view kEmojiGlyphs[] = {")
 	for glyph, _preferred in emoji:
 		print(f"\t{cxx_string(glyph)},")
