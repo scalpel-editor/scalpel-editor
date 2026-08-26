@@ -74,16 +74,8 @@ EmojiCompletionLayout LayoutEmojiCompletion(const EmojiCompletionModel &model,
 		return layout;
 	}
 
-	int height = style.menuDropdownPadY * 2 + rows * style.menuItemHeight;
-	const int clientHeight = static_cast<int>(client.Height());
-	if (clientHeight > 0 && height > clientHeight) {
-		const int fitRows = std::max(0,
-			(clientHeight - style.menuDropdownPadY * 2) / style.menuItemHeight);
-		if (fitRows <= 0) {
-			return layout;
-		}
-		height = style.menuDropdownPadY * 2 + fitRows * style.menuItemHeight;
-	}
+	const int desiredHeight =
+		style.menuDropdownPadY * 2 + rows * style.menuItemHeight;
 
 	int left = static_cast<int>(caretX);
 	if (left + width > static_cast<int>(client.right)) {
@@ -94,16 +86,16 @@ EmojiCompletionLayout LayoutEmojiCompletion(const EmojiCompletionModel &model,
 	}
 
 	const int belowTop = static_cast<int>(caretY) + lineHeight;
-	const int aboveTop = static_cast<int>(caretY) - height;
-	const bool above = belowTop + height > static_cast<int>(client.bottom) &&
-		aboveTop >= static_cast<int>(client.top);
-	int top = above ? aboveTop : belowTop;
-	if (top < static_cast<int>(client.top)) {
-		top = static_cast<int>(client.top);
-	}
-	if (top + height > static_cast<int>(client.bottom)) {
-		height = static_cast<int>(client.bottom) - top;
-	}
+	const int caretTop = static_cast<int>(caretY);
+	const int belowSpace = std::max(0,
+		static_cast<int>(client.bottom) - belowTop);
+	const int aboveSpace = std::max(0,
+		caretTop - static_cast<int>(client.top));
+	const bool above = desiredHeight > belowSpace &&
+		(desiredHeight <= aboveSpace || aboveSpace > belowSpace);
+	const int availableHeight = above ? aboveSpace : belowSpace;
+	const int height = std::min(desiredHeight, availableHeight);
+	const int top = above ? caretTop - height : belowTop;
 	if (width <= 0 || height <= 0) {
 		return layout;
 	}

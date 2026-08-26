@@ -2782,6 +2782,48 @@ TEST_CASE("application UI emoji completion Escape leaves the typed query") {
 	CHECK(editor.Text() == ":t");
 }
 
+TEST_CASE("application UI command dismisses stale emoji completion") {
+	ApplicationEditor editor(400, 240);
+	PrepareChromeEditor(editor);
+	editor.LoadInitialBuffer("");
+	editor.SetSel(0, 0);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+
+	(void)ui.HandleKeyboard(MakeText(":"));
+	(void)ui.HandleKeyboard(MakeText("t"));
+	REQUIRE(ui.EmojiCompletionOpen());
+	const ApplicationKeyboardResult undo =
+		ui.HandleKeyboard(MakeLetter('Z', KeyMod::Ctrl));
+	CHECK(undo.owner == ApplicationKeyboardOwner::ApplicationShortcut);
+	CHECK(editor.Text().empty());
+	CHECK_FALSE(ui.EmojiCompletionOpen());
+}
+
+TEST_CASE("application UI emoji completion exposes only painted rows") {
+	ApplicationEditor editor(400, 140);
+	PrepareChromeEditor(editor);
+	editor.LoadInitialBuffer("");
+	editor.SetSel(0, 0);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+
+	(void)ui.HandleKeyboard(MakeText(":"));
+	REQUIRE(ui.EmojiCompletionOpen());
+	const PRectangle anchor = editor.AnchorRectangleAt(ui.EmojiModel().colonPos);
+	const Scalpel::EmojiCompletionLayout layout = Scalpel::LayoutEmojiCompletion(
+		ui.EmojiModel(), anchor.left, anchor.top, editor.LineHeightPixels(),
+		editor.EditorClientRectangle());
+	REQUIRE_FALSE(layout.items.empty());
+	CHECK(ui.EmojiModel().matches.size() == layout.items.size());
+	CHECK(ui.EmojiModel().matches.size() <
+		static_cast<std::size_t>(Scalpel::EmojiCompletionMaxRows()));
+}
+
 TEST_CASE("application UI emoji completion IME commit of colon opens the list") {
 	ApplicationEditor editor(400, 240);
 	PrepareChromeEditor(editor);

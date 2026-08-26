@@ -89,6 +89,17 @@ TEST_CASE("emoji completion layout flips above the caret near the bottom") {
 	CHECK(layout.panel.top >= client.top);
 }
 
+TEST_CASE("emoji completion layout uses the roomier side when neither side fits") {
+	EmojiCompletionModel model;
+	OpenWith(model, "");
+	const PRectangle client = PRectangle::FromInts(0, 0, 400, 120);
+	const EmojiCompletionLayout layout =
+		LayoutEmojiCompletion(model, 20, 80, 18, client);
+	CHECK(layout.aboveCaret);
+	CHECK(layout.panel.bottom <= 80);
+	CHECK(layout.items.size() > 1);
+}
+
 TEST_CASE("emoji completion keyboard moves, completes, and dismisses") {
 	EmojiCompletionModel model;
 	OpenWith(model, "thumb");

@@ -1342,8 +1342,7 @@ ApplicationKeyboardResult ApplicationUi::HandleKeyboard(
 	}
 
 	if (result.owner != ApplicationKeyboardOwner::Editor &&
-		result.owner != ApplicationKeyboardOwner::EmojiCompletion &&
-		result.owner != ApplicationKeyboardOwner::ApplicationShortcut) {
+		result.owner != ApplicationKeyboardOwner::EmojiCompletion) {
 		DismissEmojiCompletion();
 	}
 
@@ -1707,6 +1706,14 @@ void ApplicationUi::RefreshEmojiCompletion() {
 	emojiCompletionModel.selected = 0;
 	emojiCompletionModel.hovered.reset();
 	emojiCompletionModel.pressIndex.reset();
+	const std::size_t visibleRows = CurrentEmojiLayout().items.size();
+	if (visibleRows == 0) {
+		DismissEmojiCompletion();
+		return;
+	}
+	if (emojiCompletionModel.matches.size() > visibleRows) {
+		emojiCompletionModel.matches.resize(visibleRows);
+	}
 	for (std::size_t i = 0; i < emojiCompletionModel.matches.size(); ++i) {
 		if (emojiCompletionModel.matches[i].emoji == keepEmoji) {
 			emojiCompletionModel.selected = i;
