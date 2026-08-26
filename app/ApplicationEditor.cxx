@@ -1265,14 +1265,25 @@ bool ApplicationEditor::PrepareSelectionForContextMenu(
 	return false;
 }
 
-Scintilla::Internal::PRectangle ApplicationEditor::MainCaretAnchorRectangle() {
+Scintilla::Internal::PRectangle ApplicationEditor::AnchorRectangleAt(
+	Scintilla::Position position) {
 	RefreshStyleData();
-	const Scintilla::Internal::Point pt =
-		LocationFromPosition(sel.RangeMain().caret);
+	const Scintilla::Internal::Point pt = LocationFromPosition(position);
 	const int x = static_cast<int>(pt.x);
 	const int y = static_cast<int>(pt.y);
-	// One-pixel anchor for the xdg_positioner; compositor may flip/slide.
 	return PRectangle::FromInts(x, y, x + 1, y + 1);
+}
+
+Scintilla::Internal::PRectangle ApplicationEditor::MainCaretAnchorRectangle() {
+	return AnchorRectangleAt(sel.MainCaret());
+}
+
+int ApplicationEditor::LineHeightPixels() {
+	return TextHeightPixels();
+}
+
+bool ApplicationEditor::HasTentativeTextInput() const noexcept {
+	return pdoc->TentativeActive();
 }
 
 bool ApplicationEditor::CanSelectAll() const noexcept {

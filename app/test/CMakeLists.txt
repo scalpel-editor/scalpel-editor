@@ -38,6 +38,19 @@ target_compile_options(applicationUiTest PRIVATE -Wall -Wextra)
 
 add_test(NAME application-ui COMMAND applicationUiTest)
 
+add_executable(emojiCompletionTest
+  EmojiCompletionTest.cxx
+  ApplicationTestMain.cxx
+)
+target_include_directories(emojiCompletionTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(emojiCompletionTest PRIVATE scalpel_application)
+target_compile_options(emojiCompletionTest PRIVATE -Wall -Wextra)
+
+add_test(NAME emoji-completion COMMAND emojiCompletionTest)
+
 add_executable(emojiCatalogTest
   EmojiCatalogTest.cxx
   ApplicationTestMain.cxx

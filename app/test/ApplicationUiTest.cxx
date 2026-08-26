@@ -2702,3 +2702,148 @@ TEST_CASE("application UI external change focus loss clears armed press") {
 	CHECK(release.owner == ApplicationPointerOwner::ExternalChange);
 	CHECK(workspace.ExternalChangePromptActive());
 }
+
+TEST_CASE("application UI emoji completion inserts unicode for plus-one and thumbsup") {
+	ApplicationEditor editor(400, 240);
+	PrepareChromeEditor(editor);
+	editor.LoadInitialBuffer("");
+	editor.SetSel(0, 0);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+
+	CHECK_FALSE(ui.EmojiCompletionOpen());
+	CHECK(ui.HandleKeyboard(MakeText(":")).owner ==
+		ApplicationKeyboardOwner::Editor);
+	REQUIRE(ui.EmojiCompletionOpen());
+	CHECK(editor.Text() == ":");
+
+	CHECK(ui.HandleKeyboard(MakeText("+")).owner ==
+		ApplicationKeyboardOwner::Editor);
+	CHECK(ui.HandleKeyboard(MakeText("1")).owner ==
+		ApplicationKeyboardOwner::Editor);
+	CHECK(editor.Text() == ":+1");
+	REQUIRE(ui.EmojiCompletionOpen());
+	REQUIRE_FALSE(ui.EmojiModel().matches.empty());
+	CHECK(ui.EmojiModel().matches.front().emoji == "👍");
+
+	const ApplicationKeyboardResult enter =
+		ui.HandleKeyboard(MakeKey(Keys::Return));
+	CHECK(enter.owner == ApplicationKeyboardOwner::EmojiCompletion);
+	CHECK_FALSE(ui.EmojiCompletionOpen());
+	CHECK(editor.Text() == "👍");
+
+	editor.LoadInitialBuffer("");
+	editor.SetSel(0, 0);
+	(void)ui.HandleKeyboard(MakeText(":"));
+	for (const char letter : std::string("thumbsup")) {
+		(void)ui.HandleKeyboard(MakeText(std::string(1, letter)));
+	}
+	CHECK(editor.Text() == ":thumbsup");
+	REQUIRE(ui.EmojiCompletionOpen());
+	CHECK(ui.EmojiModel().matches.front().emoji == "👍");
+	(void)ui.HandleKeyboard(MakeKey(Keys::Return));
+	CHECK(editor.Text() == "👍");
+}
+
+TEST_CASE("application UI emoji completion ignores colon after a letter") {
+	ApplicationEditor editor(400, 240);
+	PrepareChromeEditor(editor);
+	editor.LoadInitialBuffer("https");
+	editor.SetSel(5, 5);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+
+	(void)ui.HandleKeyboard(MakeText(":"));
+	CHECK(editor.Text() == "https:");
+	CHECK_FALSE(ui.EmojiCompletionOpen());
+}
+
+TEST_CASE("application UI emoji completion Escape leaves the typed query") {
+	ApplicationEditor editor(400, 240);
+	PrepareChromeEditor(editor);
+	editor.LoadInitialBuffer("");
+	editor.SetSel(0, 0);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+
+	(void)ui.HandleKeyboard(MakeText(":"));
+	(void)ui.HandleKeyboard(MakeText("t"));
+	REQUIRE(ui.EmojiCompletionOpen());
+	const ApplicationKeyboardResult escape =
+		ui.HandleKeyboard(MakeKey(Keys::Escape));
+	CHECK(escape.owner == ApplicationKeyboardOwner::EmojiCompletion);
+	CHECK_FALSE(ui.EmojiCompletionOpen());
+	CHECK(editor.Text() == ":t");
+}
+
+TEST_CASE("application UI emoji completion IME commit of colon opens the list") {
+	ApplicationEditor editor(400, 240);
+	PrepareChromeEditor(editor);
+	editor.LoadInitialBuffer("");
+	editor.SetSel(0, 0);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+
+	ApplicationTextInputBatch commit;
+	commit.commit = ":";
+	ui.HandleTextInputBatch(commit);
+	CHECK(editor.Text() == ":");
+	CHECK(ui.EmojiCompletionOpen());
+}
+
+TEST_CASE("application UI emoji completion click selects a row") {
+	ApplicationEditor editor(400, 240);
+	PrepareChromeEditor(editor);
+	editor.LoadInitialBuffer("");
+	editor.SetSel(0, 0);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+
+	(void)ui.HandleKeyboard(MakeText(":"));
+	(void)ui.HandleKeyboard(MakeText("+"));
+	(void)ui.HandleKeyboard(MakeText("1"));
+	REQUIRE(ui.EmojiCompletionOpen());
+
+	const PRectangle anchor = editor.AnchorRectangleAt(ui.EmojiModel().colonPos);
+	const Scalpel::EmojiCompletionLayout layout = Scalpel::LayoutEmojiCompletion(
+		ui.EmojiModel(), anchor.left, anchor.top, editor.LineHeightPixels(),
+		editor.EditorClientRectangle());
+	REQUIRE_FALSE(layout.items.empty());
+	const Point onRow(
+		(layout.items[0].row.left + layout.items[0].row.right) / 2.0,
+		(layout.items[0].row.top + layout.items[0].row.bottom) / 2.0);
+	const ApplicationPointerResult press = ui.HandlePointer(
+		MakePointer(PointerAction::Press, onRow.x, onRow.y, 0));
+	CHECK(press.owner == ApplicationPointerOwner::EmojiCompletion);
+	CHECK(press.consumed);
+	const ApplicationPointerResult release = ui.HandlePointer(
+		MakePointer(PointerAction::Release, onRow.x, onRow.y, 0));
+	CHECK(release.owner == ApplicationPointerOwner::EmojiCompletion);
+	CHECK_FALSE(ui.EmojiCompletionOpen());
+	CHECK(editor.Text() == "👍");
+}
+
+TEST_CASE("application UI find field does not open emoji completion") {
+	ApplicationEditor editor(400, 240);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+	ui.OpenFindBar();
+	REQUIRE(ui.FindBarFocused());
+
+	(void)ui.HandleKeyboard(MakeText(":"));
+	CHECK_FALSE(ui.EmojiCompletionOpen());
+	CHECK(ui.FindModel().query.find(':') != std::string::npos);
+}

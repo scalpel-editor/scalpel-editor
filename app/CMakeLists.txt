@@ -181,6 +181,7 @@ add_library(scalpel_application OBJECT
   DocumentFile.cxx
   DocumentWorkspace.cxx
   EmojiCatalog.cxx
+  EmojiCompletion.cxx
   ExternalChangeCard.cxx
   FileErrorCard.cxx
   FindBar.cxx

@@ -654,6 +654,10 @@ void ApplicationUi::BindPainters() {
 	editor->SetPermanentChromePainter(
 		[this](Scintilla::Internal::Surface &surface, int, int) {
 			PaintPermanentChrome(surface);
+			if (emojiCompletionModel.open) {
+				emojiCompletionPainter.Paint(surface, CurrentEmojiLayout(),
+					emojiCompletionModel);
+			}
 		});
 	ownsEditorPainters = true;
 	// Seed the overlay path from current models without a host ladder.
@@ -849,6 +853,42 @@ ApplicationPointerResult ApplicationUi::HandlePointer(
 		pointerOverChrome = true;
 	} else {
 		const bool captured = editor->WindowState().mouseCaptured;
+		if (!captured && !scrollBarInteraction.dragging &&
+			!menuModel.openMenu.has_value() && emojiCompletionModel.open) {
+			const EmojiCompletionLayout emojiLayout = CurrentEmojiLayout();
+			const EmojiCompletionPointerResult emojiResult =
+				HandleEmojiCompletionPointer(emojiCompletionModel, emojiLayout,
+					input);
+			if (emojiResult.completed) {
+				CompleteEmoji(*emojiResult.completed);
+				result.owner = ApplicationPointerOwner::EmojiCompletion;
+				result.consumed = true;
+				pointerCursor = ApplicationPointerCursor::Arrow;
+				pointerOverChrome = true;
+				result.cursor = CurrentPointerCursor();
+				SynchronizeInteraction();
+				result.cursor = CurrentPointerCursor();
+				return result;
+			}
+			if (emojiResult.dismissed) {
+				if (emojiResult.dirty) {
+					editor->InvalidateFrame();
+				}
+			} else if (emojiResult.consumed) {
+				if (emojiResult.dirty) {
+					editor->InvalidateFrame();
+				}
+				result.owner = ApplicationPointerOwner::EmojiCompletion;
+				result.consumed = true;
+				pointerCursor = ApplicationPointerCursor::Arrow;
+				pointerOverChrome = true;
+				SynchronizeInteraction();
+				result.cursor = CurrentPointerCursor();
+				return result;
+			} else if (emojiResult.dirty) {
+				editor->InvalidateFrame();
+			}
+		}
 		// After modals, an active scrollbar drag, editor selection capture, and
 		// an open menu, a visible find bar owns its band before other chrome.
 		if (!captured && !scrollBarInteraction.dragging &&
@@ -1279,9 +1319,32 @@ ApplicationKeyboardResult ApplicationUi::HandleKeyboard(
 	} else if (IsNextTabShortcut(input)) {
 		workspace->CycleTab(1);
 		result.owner = ApplicationKeyboardOwner::ApplicationShortcut;
+	} else if (emojiCompletionModel.open) {
+		const EmojiCompletionKeyboardResult emojiResult =
+			HandleEmojiCompletionKeyboard(emojiCompletionModel, input);
+		if (emojiResult.completed) {
+			CompleteEmoji(*emojiResult.completed);
+			result.owner = ApplicationKeyboardOwner::EmojiCompletion;
+		} else if (emojiResult.consumed) {
+			if (emojiResult.dirty) {
+				editor->InvalidateFrame();
+			}
+			result.owner = ApplicationKeyboardOwner::EmojiCompletion;
+		} else {
+			editor->HandleKeyboardInput(input);
+			RefreshEmojiCompletion();
+			result.owner = ApplicationKeyboardOwner::Editor;
+		}
 	} else {
 		editor->HandleKeyboardInput(input);
+		RefreshEmojiCompletion();
 		result.owner = ApplicationKeyboardOwner::Editor;
+	}
+
+	if (result.owner != ApplicationKeyboardOwner::Editor &&
+		result.owner != ApplicationKeyboardOwner::EmojiCompletion &&
+		result.owner != ApplicationKeyboardOwner::ApplicationShortcut) {
+		DismissEmojiCompletion();
 	}
 
 	SynchronizeInteraction();
@@ -1297,6 +1360,7 @@ void ApplicationUi::HandleFocus(bool focused) {
 	// SetKeyboardFocus already cancels tentative IME on the editor.
 	DismissOpenMenu(menuModel, *editor);
 	DismissApplicationContextMenu();
+	DismissEmojiCompletion();
 	CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
 	fileErrorPressHit = false;
 	promptPressHit.reset();
@@ -1319,6 +1383,7 @@ void ApplicationUi::NotifyContextPopupDone() {
 void ApplicationUi::NotifyPromptBegan() {
 	DismissOpenMenu(menuModel, *editor);
 	DismissApplicationContextMenu();
+	DismissEmojiCompletion();
 	// Opening a modal card cancels tentative IME; batches stay dropped while
 	// the card is active.
 	editor->CancelActiveTextInput();
@@ -1343,6 +1408,7 @@ void ApplicationUi::AppendFileErrors(std::vector<DocumentFileError> errors) {
 	}
 	DismissOpenMenu(menuModel, *editor);
 	DismissApplicationContextMenu();
+	DismissEmojiCompletion();
 	// Opening a modal card cancels tentative IME; batches stay dropped while
 	// any error remains in the queue.
 	editor->CancelActiveTextInput();
@@ -1458,6 +1524,7 @@ void ApplicationUi::SynchronizeInteraction() {
 	if (documentChanged) {
 		// Context menu enablement and selection are document-local.
 		DismissApplicationContextMenu();
+		DismissEmojiCompletion();
 	}
 	if (documentChanged && findBarVisible) {
 		// Never reuse a byte origin from another retained document.
@@ -1593,6 +1660,79 @@ void ApplicationUi::BlurFindField() {
 	editor->InvalidateTopChrome();
 }
 
+void ApplicationUi::DismissEmojiCompletion() {
+	if (!emojiCompletionModel.open &&
+		!emojiCompletionModel.pressIndex.has_value()) {
+		return;
+	}
+	CloseEmojiCompletion(emojiCompletionModel);
+	editor->InvalidateFrame();
+}
+
+void ApplicationUi::RefreshEmojiCompletion() {
+	if (ChromeOwnsInput() || FindBarFocused() || editor->GetReadOnly() ||
+		editor->HasTentativeTextInput()) {
+		DismissEmojiCompletion();
+		return;
+	}
+	const Scintilla::Position caret = editor->CaretPosition();
+	constexpr Scintilla::Position lookbehind = 64;
+	const Scintilla::Position start =
+		caret > lookbehind ? caret - lookbehind : 0;
+	const std::string prefix = editor->TextRange(start, caret);
+	const std::optional<EmojiToken> token = FindEmojiToken(prefix);
+	if (!token) {
+		DismissEmojiCompletion();
+		return;
+	}
+	std::vector<EmojiMatch> matches = MatchEmojiPrefix(token->query);
+	if (matches.empty()) {
+		DismissEmojiCompletion();
+		return;
+	}
+	const std::size_t maxRows =
+		static_cast<std::size_t>(EmojiCompletionMaxRows());
+	if (matches.size() > maxRows) {
+		matches.resize(maxRows);
+	}
+	std::string_view keepEmoji;
+	if (emojiCompletionModel.open &&
+		emojiCompletionModel.selected < emojiCompletionModel.matches.size()) {
+		keepEmoji = emojiCompletionModel.matches[emojiCompletionModel.selected].emoji;
+	}
+	emojiCompletionModel.matches = std::move(matches);
+	emojiCompletionModel.colonPos =
+		start + static_cast<Scintilla::Position>(token->colonOffset);
+	emojiCompletionModel.open = true;
+	emojiCompletionModel.selected = 0;
+	emojiCompletionModel.hovered.reset();
+	emojiCompletionModel.pressIndex.reset();
+	for (std::size_t i = 0; i < emojiCompletionModel.matches.size(); ++i) {
+		if (emojiCompletionModel.matches[i].emoji == keepEmoji) {
+			emojiCompletionModel.selected = i;
+			break;
+		}
+	}
+	editor->InvalidateFrame();
+}
+
+void ApplicationUi::CompleteEmoji(const EmojiMatch &match) {
+	const Scintilla::Position start = emojiCompletionModel.colonPos;
+	const Scintilla::Position caret = editor->CaretPosition();
+	CloseEmojiCompletion(emojiCompletionModel);
+	if (caret >= start) {
+		(void)editor->ReplaceRange(start, caret - start, match.emoji);
+	}
+	editor->InvalidateFrame();
+}
+
+EmojiCompletionLayout ApplicationUi::CurrentEmojiLayout() {
+	const Scintilla::Internal::PRectangle anchor =
+		editor->AnchorRectangleAt(emojiCompletionModel.colonPos);
+	return LayoutEmojiCompletion(emojiCompletionModel, anchor.left, anchor.top,
+		editor->LineHeightPixels(), editor->EditorClientRectangle());
+}
+
 void ApplicationUi::ActivateAction(ApplicationAction action) {
 	if (action == ApplicationAction::Find) {
 		OpenFindBar();
@@ -1605,6 +1745,7 @@ void ApplicationUi::OpenFindBar() {
 	// Focus is moving away from the editor. Undo tentative document text before
 	// reading the selection for query seeding or capturing the search origin.
 	editor->CancelActiveTextInput();
+	DismissEmojiCompletion();
 
 	// Seed an empty query from a single-line selection of valid UTF-8.
 	if (findBarModel.query.empty() && editor->HasSelection()) {
@@ -1675,6 +1816,11 @@ void ApplicationUi::HandleTextInputBatch(const ApplicationTextInputBatch &batch)
 		return;
 	}
 	editor->HandleTextInputBatch(batch);
+	if (batch.preedit && !batch.preedit->text.empty()) {
+		DismissEmojiCompletion();
+	} else {
+		RefreshEmojiCompletion();
+	}
 }
 
 std::optional<ApplicationTextInputState> ApplicationUi::TakeTextInputState() {
@@ -1779,6 +1925,7 @@ void ApplicationUi::HandleFrameSizeChange() {
 	// so a later release cannot activate a control that moved under the pointer.
 	CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
 	DismissApplicationContextMenu();
+	DismissEmojiCompletion();
 	menuModel.pressOrigin.reset();
 	findBarModel.pressOrigin.reset();
 	fileErrorPressHit = false;
@@ -1814,6 +1961,7 @@ void ApplicationUi::RefreshOpenMenuActionState() {
 void ApplicationUi::PrepareForExit() {
 	DismissOpenMenu(menuModel, *editor);
 	DismissApplicationContextMenu();
+	DismissEmojiCompletion();
 	CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
 }
 
@@ -1828,6 +1976,7 @@ void ApplicationUi::OpenApplicationContextMenu(double anchorX, double anchorY,
 		DismissApplicationContextMenu();
 	}
 	DismissOpenMenu(menuModel, *editor);
+	DismissEmojiCompletion();
 	editor->CancelActiveTextInput();
 	BlurFindField();
 	CancelScrollBarShellInteraction(scrollBarInteraction, *editor);

@@ -351,6 +351,13 @@ public:
 	 * Shift+F10 context-menu placement (full-frame logical coordinates).
 	 */
 	[[nodiscard]] Scintilla::Internal::PRectangle MainCaretAnchorRectangle();
+	/** One-pixel frame-space anchor at a document position (caret line top). */
+	[[nodiscard]] Scintilla::Internal::PRectangle AnchorRectangleAt(
+		Scintilla::Position position);
+	/** Pixel height of one body text line after refreshing style data. */
+	[[nodiscard]] int LineHeightPixels();
+	/** True while compositor IME preedit / tentative input is in the document. */
+	[[nodiscard]] bool HasTentativeTextInput() const noexcept;
 	/** True when Select All would cover at least one byte. */
 	[[nodiscard]] bool CanSelectAll() const noexcept;
 	/** True when undo history is available and the document is not read-only. */

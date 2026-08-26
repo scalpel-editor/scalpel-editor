@@ -1,6 +1,7 @@
 // Application chrome and overlay selection state for the production editor.
-// Owns menu, context menu, tab-strip, scrollbar interaction, modal-card,
-// error-queue, hover, press, painters, and which overlay is bound. Holds
+// Owns menu, context menu, emoji completion, tab-strip, scrollbar interaction,
+// modal-card, error-queue, hover, press, painters, and which overlay is bound.
+// Holds
 // references to ApplicationEditor, DocumentWorkspace, and RecentFiles. Pointer
 // and keyboard routing go through HandlePointer and HandleKeyboard with
 // explicit owners; focus loss is one transition that clears menu, context
@@ -33,6 +34,7 @@
 #include "ContextMenu.h"
 #include "DocumentId.h"
 #include "DocumentWorkspace.h"
+#include "EmojiCompletion.h"
 #include "ExternalChangeCard.h"
 #include "FileErrorCard.h"
 #include "FindBar.h"
@@ -99,8 +101,8 @@ struct ApplicationLayout {
  * Who owns the pointer for one event after priority resolution.
  * Order when deciding: file error, external-change confirmation, large-file
  * confirmation, unsaved prompt, active scrollbar drag, editor selection
- * capture, open menu bar, open context menu, permanent chrome (including
- * scrollbar hits), then editor.
+ * capture, open menu bar, open context menu, open emoji list, permanent chrome
+ * (including scrollbar hits), then editor.
  */
 enum class ApplicationPointerOwner {
 	FileError,
@@ -109,6 +111,7 @@ enum class ApplicationPointerOwner {
 	UnsavedPrompt,
 	Menu,
 	ContextMenu,
+	EmojiCompletion,
 	ScrollBarDrag,
 	EditorCapture,
 	PermanentChrome,
@@ -139,8 +142,9 @@ struct ApplicationPointerResult {
  * confirmation, unsaved prompt, open context menu, Shift+F10 context-menu open,
  * open menu bar (including open accelerators while closed), global Find
  * (Ctrl+F), a focused find field for editing and field-local clipboard keys,
- * other application shortcuts and tab cycling, then editor delivery. Bare
- * F10 / Menu still opens the menu bar.
+ * other application shortcuts and tab cycling, then an open emoji list for
+ * Up/Down/Enter/Tab/Escape, then editor delivery. Bare F10 / Menu still opens
+ * the menu bar.
  */
 enum class ApplicationKeyboardOwner {
 	FileError,
@@ -151,6 +155,7 @@ enum class ApplicationKeyboardOwner {
 	Menu,
 	ApplicationShortcut,
 	FindBar,
+	EmojiCompletion,
 	Editor,
 };
 
@@ -297,10 +302,10 @@ public:
 	/**
 	 * Route one keyboard event through modal cards, menu navigation, open
 	 * accelerators, the global Find action, a focused find field, application
-	 * shortcuts, tab cycling, and editor delivery. Modal owners and an open menu
-	 * consume every key; shortcuts and editor typing apply inside this method.
-	 * Any document or modal change leaves scrollbar interaction consistent
-	 * before this method returns.
+	 * shortcuts, tab cycling, an open emoji list, and editor delivery. Modal
+	 * owners and an open menu consume every key; shortcuts and editor typing
+	 * apply inside this method. Any document or modal change leaves scrollbar
+	 * interaction consistent before this method returns.
 	 */
 	[[nodiscard]] ApplicationKeyboardResult HandleKeyboard(
 		const KeyboardInput &input);
@@ -500,6 +505,16 @@ public:
 		return contextMenuModel;
 	}
 
+	[[nodiscard]] bool EmojiCompletionOpen() const noexcept {
+		return emojiCompletionModel.open;
+	}
+	[[nodiscard]] EmojiCompletionModel &EmojiModel() noexcept {
+		return emojiCompletionModel;
+	}
+	[[nodiscard]] const EmojiCompletionModel &EmojiModel() const noexcept {
+		return emojiCompletionModel;
+	}
+
 	[[nodiscard]] TabStripModel &StripModel() noexcept { return stripModel; }
 	[[nodiscard]] const TabStripModel &StripModel() const noexcept {
 		return stripModel;
@@ -572,6 +587,10 @@ private:
 	void RunFindForward();
 	void RunFindBackward();
 	void BlurFindField();
+	void DismissEmojiCompletion();
+	void RefreshEmojiCompletion();
+	void CompleteEmoji(const EmojiMatch &match);
+	[[nodiscard]] EmojiCompletionLayout CurrentEmojiLayout();
 	/** Activate a matched action; Find is UI-local, everything else dispatches. */
 	void ActivateAction(ApplicationAction action);
 	void QueueShellEffect(ApplicationShellEffect effect);
@@ -582,6 +601,8 @@ private:
 	std::string recentStatePath;
 	MenuBarModel menuModel;
 	ContextMenuModel contextMenuModel;
+	EmojiCompletionModel emojiCompletionModel;
+	EmojiCompletionPainter emojiCompletionPainter;
 	/** True after ShowContextMenu until Close or NotifyContextPopupDone. */
 	bool contextMenuShellOpen = false;
 	std::vector<ApplicationShellEffect> pendingShellEffects;
