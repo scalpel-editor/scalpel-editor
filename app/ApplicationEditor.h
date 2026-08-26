@@ -178,6 +178,18 @@ public:
 	void LoadInitialBuffer(std::string_view text);
 	[[nodiscard]] std::string Text() const;
 	[[nodiscard]] std::string Text(DocumentId id) const;
+	/** Active-document bytes in [start, end). Empty when start >= end. */
+	[[nodiscard]] std::string TextRange(Scintilla::Position start,
+		Scintilla::Position end) const;
+	/** Main caret byte offset in the active document. */
+	[[nodiscard]] Scintilla::Position CaretPosition() const noexcept;
+	/**
+	 * Replace length bytes at start with text as one undo action and place
+	 * the caret after the insert. Returns false when the document is
+	 * read-only, the range is protected, or the range is out of bounds.
+	 */
+	bool ReplaceRange(Scintilla::Position start, Scintilla::Position length,
+		std::string_view text);
 	/** True when the active document is not at its save point. */
 	[[nodiscard]] bool Modified() const noexcept;
 	[[nodiscard]] bool Modified(DocumentId id) const;

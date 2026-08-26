@@ -55,6 +55,32 @@ namespace {
 
 }
 
+bool IsEmojiShortcodeChar(char c) noexcept {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+		(c >= '0' && c <= '9') || c == '_' || c == '+' || c == '-';
+}
+
+std::optional<EmojiToken> FindEmojiToken(std::string_view textBeforeCaret) {
+	std::size_t queryStart = textBeforeCaret.size();
+	while (queryStart > 0 &&
+		IsEmojiShortcodeChar(textBeforeCaret[queryStart - 1])) {
+		--queryStart;
+	}
+	if (queryStart == 0 || textBeforeCaret[queryStart - 1] != ':') {
+		return std::nullopt;
+	}
+	const std::size_t colonOffset = queryStart - 1;
+	if (colonOffset > 0) {
+		const unsigned char previous = static_cast<unsigned char>(
+			textBeforeCaret[colonOffset - 1]);
+		if (IsEmojiShortcodeChar(static_cast<char>(previous)) ||
+			previous >= 0x80) {
+			return std::nullopt;
+		}
+	}
+	return EmojiToken{colonOffset, textBeforeCaret.substr(queryStart)};
+}
+
 std::vector<EmojiMatch> MatchEmojiPrefix(std::string_view query) {
 	const std::size_t emojiCount =
 		sizeof(kEmojiGlyphs) / sizeof(kEmojiGlyphs[0]);

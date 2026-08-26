@@ -1524,6 +1524,35 @@ TEST_CASE("production editor find origin search supports incremental extension")
 	CHECK(editor.GetSelectionEnd() == 12);
 }
 
+TEST_CASE("production editor replaces a document range as one undo action") {
+	Scalpel::ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer(":thumb");
+	editor.SetSel(6, 6);
+	CHECK(editor.CaretPosition() == 6);
+	CHECK(editor.TextRange(0, 6) == ":thumb");
+	CHECK(editor.TextRange(1, 6) == "thumb");
+	CHECK(editor.TextRange(6, 6).empty());
+	CHECK_FALSE(editor.Modified());
+
+	REQUIRE(editor.ReplaceRange(0, 6, "👍"));
+	CHECK(editor.Text() == "👍");
+	CHECK(editor.Modified());
+	CHECK(editor.CaretPosition() ==
+		static_cast<Scintilla::Position>(std::string("👍").size()));
+	REQUIRE(editor.CanUndoEdit());
+	editor.RequestUndo();
+	CHECK(editor.Text() == ":thumb");
+	CHECK_FALSE(editor.Modified());
+
+	editor.SetReadOnly(true);
+	CHECK_FALSE(editor.ReplaceRange(0, 6, "x"));
+	CHECK(editor.Text() == ":thumb");
+	editor.SetReadOnly(false);
+	CHECK_FALSE(editor.ReplaceRange(-1, 1, "x"));
+	CHECK_FALSE(editor.ReplaceRange(0, 99, "x"));
+	CHECK(editor.Text() == ":thumb");
+}
+
 TEST_CASE("production editor context menu selection placement and caret anchor") {
 	using Scintilla::Internal::Point;
 	using Scintilla::Internal::PRectangle;

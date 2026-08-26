@@ -5,6 +5,8 @@
 #ifndef EMOJICATALOG_H
 #define EMOJICATALOG_H
 
+#include <cstddef>
+#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -27,6 +29,27 @@ struct EmojiMatch {
  * wins, then the shortest alias, then the alphabetically earlier alias.
  */
 [[nodiscard]] std::vector<EmojiMatch> MatchEmojiPrefix(std::string_view query);
+
+/**
+ * ASCII letters, digits, underscore, plus, and minus: the live shortcode
+ * query after a triggering colon.
+ */
+[[nodiscard]] bool IsEmojiShortcodeChar(char c) noexcept;
+
+/** Colon and following query at the end of textBeforeCaret. */
+struct EmojiToken {
+	std::size_t colonOffset = 0;
+	std::string_view query;
+};
+
+/**
+ * Live `:query` at the end of textBeforeCaret. The colon must be at the start
+ * of the view or after a byte that is not a shortcode character and not a
+ * UTF-8 continuation or lead byte, so `https:` and `12:00` are rejected.
+ * query may be empty (`:` alone).
+ */
+[[nodiscard]] std::optional<EmojiToken> FindEmojiToken(
+	std::string_view textBeforeCaret);
 
 }
 

@@ -547,6 +547,59 @@ std::string ApplicationEditor::Text(DocumentId id) const {
 	return text;
 }
 
+std::string ApplicationEditor::TextRange(Scintilla::Position start,
+	Scintilla::Position end) const {
+	if (start < 0) {
+		start = 0;
+	}
+	if (end <= start) {
+		return {};
+	}
+	const Scintilla::Position length = pdoc->Length();
+	if (start >= length) {
+		return {};
+	}
+	if (end > length) {
+		end = length;
+	}
+	return RangeText(start, end);
+}
+
+Scintilla::Position ApplicationEditor::CaretPosition() const noexcept {
+	return sel.MainCaret();
+}
+
+bool ApplicationEditor::ReplaceRange(Scintilla::Position start,
+	Scintilla::Position length, std::string_view text) {
+	if (GetReadOnly() || start < 0 || length < 0) {
+		return false;
+	}
+	const Scintilla::Position documentLength = pdoc->Length();
+	if (start > documentLength || length > documentLength - start) {
+		return false;
+	}
+	const Scintilla::Position end = start + length;
+	if (RangeContainsProtected(start, end)) {
+		return false;
+	}
+	if (pdoc->TentativeActive()) {
+		CancelTextInput();
+	}
+	{
+		Scintilla::Internal::UndoGroup undoGroup(pdoc);
+		if (length != 0) {
+			pdoc->DeleteChars(start, length);
+		}
+		const Scintilla::Position inserted = pdoc->InsertString(start, text);
+		SetEmptySelection(start + inserted);
+	}
+	SetLastXChosen();
+	EnsureCaretVisible();
+	textInputStateDirty = true;
+	textInputChangeCause = ApplicationTextChangeCause::Other;
+	return true;
+}
+
 bool ApplicationEditor::Modified() const noexcept {
 	return GetModify();
 }

@@ -3,6 +3,8 @@
 #include "EmojiCatalog.h"
 
 using Scalpel::EmojiMatch;
+using Scalpel::FindEmojiToken;
+using Scalpel::IsEmojiShortcodeChar;
 using Scalpel::MatchEmojiPrefix;
 
 namespace {
@@ -69,4 +71,48 @@ TEST_CASE("empty query returns every catalog emoji with its preferred alias") {
 	REQUIRE(up != nullptr);
 	CHECK(up->preferredAlias == "+1");
 	CHECK(up->alias == "+1");
+}
+
+TEST_CASE("shortcode characters are ASCII letters digits plus minus underscore") {
+	CHECK(IsEmojiShortcodeChar('a'));
+	CHECK(IsEmojiShortcodeChar('Z'));
+	CHECK(IsEmojiShortcodeChar('0'));
+	CHECK(IsEmojiShortcodeChar('+'));
+	CHECK(IsEmojiShortcodeChar('-'));
+	CHECK(IsEmojiShortcodeChar('_'));
+	CHECK_FALSE(IsEmojiShortcodeChar(':'));
+	CHECK_FALSE(IsEmojiShortcodeChar(' '));
+	CHECK_FALSE(IsEmojiShortcodeChar('\n'));
+}
+
+TEST_CASE("live emoji token accepts colon queries at a word boundary") {
+	const auto thumb = FindEmojiToken(":thumb");
+	REQUIRE(thumb.has_value());
+	CHECK(thumb->colonOffset == 0);
+	CHECK(thumb->query == "thumb");
+
+	const auto plus = FindEmojiToken("hello :+1");
+	REQUIRE(plus.has_value());
+	CHECK(plus->colonOffset == 6);
+	CHECK(plus->query == "+1");
+
+	const auto bare = FindEmojiToken(":");
+	REQUIRE(bare.has_value());
+	CHECK(bare->colonOffset == 0);
+	CHECK(bare->query.empty());
+
+	const auto afterNewline = FindEmojiToken("line\n:smile");
+	REQUIRE(afterNewline.has_value());
+	CHECK(afterNewline->colonOffset == 5);
+	CHECK(afterNewline->query == "smile");
+}
+
+TEST_CASE("live emoji token rejects colon after a letter digit or UTF-8 byte") {
+	CHECK_FALSE(FindEmojiToken("https:").has_value());
+	CHECK_FALSE(FindEmojiToken("12:00").has_value());
+	CHECK_FALSE(FindEmojiToken("foo:").has_value());
+	CHECK_FALSE(FindEmojiToken("12:").has_value());
+	CHECK_FALSE(FindEmojiToken("thumb").has_value());
+	CHECK_FALSE(FindEmojiToken("").has_value());
+	CHECK_FALSE(FindEmojiToken("café:").has_value());
 }
