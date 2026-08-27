@@ -75,6 +75,12 @@ Scintilla::Keys KeyFromKeysym(xkb_keysym_t keysym) noexcept {
 	case XKB_KEY_Return:
 	case XKB_KEY_KP_Enter:
 		return Scintilla::Keys::Return;
+	// International layouts expose these punctuation levels as dead keys.
+	// Preserve the command key while TextForKey continues to own composition.
+	case XKB_KEY_dead_acute:
+		return static_cast<Scintilla::Keys>('\'');
+	case XKB_KEY_dead_diaeresis:
+		return static_cast<Scintilla::Keys>('"');
 	case XKB_KEY_KP_Add:
 		return Scintilla::Keys::Add;
 	case XKB_KEY_KP_Subtract:

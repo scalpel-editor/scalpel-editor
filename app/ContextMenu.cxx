@@ -44,7 +44,7 @@ bool NonEmptyContains(const PRectangle &rc, Point point) noexcept {
 }
 
 int PreferredWidth(const UiStyle &style) noexcept {
-	return style.menuEditDropdownPreferredWidth;
+	return style.contextMenuPreferredWidth;
 }
 
 int PreferredHeight(const UiStyle &style) noexcept {

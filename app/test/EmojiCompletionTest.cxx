@@ -62,6 +62,7 @@ TEST_CASE("emoji completion layout sits below the caret inside the client") {
 	const EmojiCompletionLayout layout =
 		LayoutEmojiCompletion(model, 40, 80, 18, client);
 	REQUIRE(layout.panel.Width() > 0);
+	CHECK(layout.panel.Width() == 240);
 	REQUIRE(layout.panel.Height() > 0);
 	CHECK(layout.panel.top >= 80 + 18);
 	CHECK(layout.panel.left >= client.left);

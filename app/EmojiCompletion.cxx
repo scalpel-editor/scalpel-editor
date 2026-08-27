@@ -65,7 +65,7 @@ EmojiCompletionLayout LayoutEmojiCompletion(const EmojiCompletionModel &model,
 
 	const UiStyle &style = DefaultUiStyle();
 	const int rows = std::min(static_cast<int>(model.matches.size()), kMaxRows);
-	int width = style.menuEditDropdownPreferredWidth;
+	int width = style.emojiCompletionPreferredWidth;
 	const int clientWidth = static_cast<int>(client.Width());
 	if (clientWidth > 0) {
 		width = std::min(width, clientWidth);

@@ -61,6 +61,28 @@ TEST_CASE("Wayland keyboard Shift+apostrophe reports quotedbl") {
 	CHECK(press.text.empty());
 }
 
+TEST_CASE("Wayland keyboard preserves international apostrophe shortcut keys") {
+	const TestKeymap keymap = MakeTestKeymap("intl");
+	Scalpel::WaylandInput input;
+	REQUIRE(input.SetKeymap(keymap.text));
+
+	input.UpdateModifiers(keymap.controlMask, 0, 0, 0);
+	input.RecordKey(23, KEY_APOSTROPHE, true);
+	input.UpdateModifiers(keymap.shiftMask | keymap.controlMask, 0, 0, 0);
+	input.RecordKey(24, KEY_APOSTROPHE, true);
+	const std::vector<Scalpel::InputEvent> events = input.TakeInputs();
+	REQUIRE(events.size() == 2);
+	const auto &apostrophe = std::get<Scalpel::KeyboardInput>(events[0]);
+	const auto &quotedbl = std::get<Scalpel::KeyboardInput>(events[1]);
+	CHECK(apostrophe.key == static_cast<Scintilla::Keys>('\''));
+	CHECK(apostrophe.modifiers == Scintilla::KeyMod::Ctrl);
+	CHECK(apostrophe.text.empty());
+	CHECK(quotedbl.key == static_cast<Scintilla::Keys>('"'));
+	CHECK(quotedbl.modifiers ==
+		(Scintilla::KeyMod::Ctrl | Scintilla::KeyMod::Shift));
+	CHECK(quotedbl.text.empty());
+}
+
 TEST_CASE("Wayland keyboard composes locale text") {
 	const TestKeymap keymap = MakeTestKeymap("intl");
 	Scalpel::WaylandInput input("C.utf8");

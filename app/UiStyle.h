@@ -61,7 +61,9 @@ struct UiStyle {
 	const int menuDropdownPreferredWidth = 220;
 	/** Fits Edit rows that combine a long label with a shortcut column. */
 	const int menuEditDropdownPreferredWidth = 360;
+	const int contextMenuPreferredWidth = 240;
 	const int menuRecentDropdownPreferredWidth = 440;
+	const int emojiCompletionPreferredWidth = 240;
 
 	// Tab strip.
 	const Scintilla::Internal::ColourRGBA tabStripFill{0xec, 0xec, 0xec, 0xff};
