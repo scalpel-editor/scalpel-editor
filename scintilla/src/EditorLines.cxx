@@ -1,10 +1,12 @@
 // Scintilla source code edit control
 /** @file EditorLines.cxx
- ** Line layout helpers, EOL policy, indentation, and line queries for the editor.
+ ** Line layout helpers, EOL policy, indentation, line queries, and
+ ** blockquote prefixes for the editor.
  **/
 // Copyright 1998-2011 by Neil Hodgson <neilh@scintilla.org>
 // The License.txt file describes the conditions under which this software may be distributed.
 
+#include <algorithm>
 #include <cstddef>
 #include <memory>
 #include <string>
@@ -45,6 +47,161 @@ EndOfLine Editor::GetEOLMode() const noexcept {
 void Editor::ConvertEOLs(EndOfLine eolMode) {
 	pdoc->ConvertLineEnds(eolMode);
 	SetSelection(sel.MainCaret(), sel.MainAnchor());
+}
+
+namespace {
+
+constexpr std::string_view kBlockQuotePrefix = "> ";
+
+/// Length of one CommonMark block-quote marker at the start of line, or 0.
+/// The marker is 0-3 spaces, '>', and one following space when present.
+Sci::Position BlockQuoteMarkerLength(const Document *pdoc, Sci::Line line) {
+	const Sci::Position lineStart = pdoc->LineStart(line);
+	const Sci::Position lineEnd = pdoc->LineEnd(line);
+	Sci::Position pos = lineStart;
+	int spaces = 0;
+	while (pos < lineEnd && spaces < 3 && pdoc->CharAt(pos) == ' ') {
+		++pos;
+		++spaces;
+	}
+	if (pos >= lineEnd || pdoc->CharAt(pos) != '>') {
+		return 0;
+	}
+	++pos;
+	if (pos < lineEnd && pdoc->CharAt(pos) == ' ') {
+		++pos;
+	}
+	return pos - lineStart;
+}
+
+struct QuoteSpan {
+	size_t index = 0;
+	Sci::Line top = 0;
+	Sci::Line bottom = -1;
+	Sci::Line lineOfAnchor = 0;
+	Sci::Line lineOfCaret = 0;
+	bool caretAtLineStart = false;
+	bool anchorAtLineStart = false;
+	bool multiLine = false;
+};
+
+/// Inclusive line span for one selection. A multi-line selection omits a
+/// trailing line when the caret or anchor sits at that line's start.
+QuoteSpan QuoteSpanForRange(const Document *pdoc, size_t index,
+	const SelectionRange &range) {
+	QuoteSpan span;
+	span.index = index;
+	span.lineOfAnchor = pdoc->SciLineFromPosition(range.anchor.Position());
+	span.lineOfCaret = pdoc->SciLineFromPosition(range.caret.Position());
+	span.top = std::min(span.lineOfAnchor, span.lineOfCaret);
+	span.bottom = std::max(span.lineOfAnchor, span.lineOfCaret);
+	span.caretAtLineStart =
+		pdoc->LineStart(span.lineOfCaret) == range.caret.Position();
+	span.anchorAtLineStart =
+		pdoc->LineStart(span.lineOfAnchor) == range.anchor.Position();
+	span.multiLine = span.lineOfAnchor != span.lineOfCaret;
+	if (span.multiLine) {
+		if (pdoc->LineStart(span.bottom) == range.anchor.Position() ||
+			pdoc->LineStart(span.bottom) == range.caret.Position()) {
+			--span.bottom;
+		}
+	}
+	return span;
+}
+
+void RestoreMultiLineQuoteSelection(Document *pdoc, SelectionRange &range,
+	const QuoteSpan &span) {
+	if (span.lineOfAnchor < span.lineOfCaret) {
+		if (span.caretAtLineStart) {
+			range = SelectionRange(pdoc->LineStart(span.lineOfCaret),
+				pdoc->LineStart(span.lineOfAnchor));
+		} else {
+			range = SelectionRange(pdoc->LineStart(span.lineOfCaret + 1),
+				pdoc->LineStart(span.lineOfAnchor));
+		}
+	} else if (span.anchorAtLineStart) {
+		range = SelectionRange(pdoc->LineStart(span.lineOfCaret),
+			pdoc->LineStart(span.lineOfAnchor));
+	} else {
+		range = SelectionRange(pdoc->LineStart(span.lineOfCaret),
+			pdoc->LineStart(span.lineOfAnchor + 1));
+	}
+}
+
+}
+
+/// Inserts "> " at the start of each selected line, including empty lines.
+/// One undo action when any line changes. A caret or in-line selection
+/// affects that line. A multi-line selection uses the lines that contain
+/// selected characters and drops a trailing line when the selection ends at
+/// that line's start. Read-only documents and protected ranges are unchanged.
+void Editor::AddBlockQuote() {
+	BlockQuoteLines(true);
+}
+
+/// Removes one block-quote marker from each selected line when present:
+/// 0-3 leading spaces, '>', and one following space when present. Selection
+/// and undo rules match AddBlockQuote.
+void Editor::RemoveBlockQuote() {
+	BlockQuoteLines(false);
+}
+
+void Editor::BlockQuoteLines(bool add) {
+	if (pdoc->IsReadOnly()) {
+		return;
+	}
+
+	std::vector<QuoteSpan> spans;
+	std::vector<Sci::Line> lines;
+	spans.reserve(sel.Count());
+	for (size_t r = 0; r < sel.Count(); r++) {
+		const QuoteSpan span = QuoteSpanForRange(pdoc, r, sel.Range(r));
+		if (span.bottom < span.top) {
+			continue;
+		}
+		const Sci::Position rangeStart = pdoc->LineStart(span.top);
+		const Sci::Position rangeEnd = pdoc->LineStart(span.bottom + 1);
+		if (RangeContainsProtected(rangeStart, rangeEnd)) {
+			continue;
+		}
+		spans.push_back(span);
+		for (Sci::Line line = span.top; line <= span.bottom; line++) {
+			if (add || BlockQuoteMarkerLength(pdoc, line) > 0) {
+				lines.push_back(line);
+			}
+		}
+	}
+	if (lines.empty()) {
+		return;
+	}
+	std::sort(lines.begin(), lines.end());
+	lines.erase(std::unique(lines.begin(), lines.end()), lines.end());
+
+	UndoGroup ug(pdoc);
+	const Selection::SelTypes selType = sel.selType;
+	if (sel.IsRectangular()) {
+		sel.selType = Selection::SelTypes::stream;
+	}
+	for (auto it = lines.rbegin(); it != lines.rend(); ++it) {
+		const Sci::Line line = *it;
+		const Sci::Position lineStart = pdoc->LineStart(line);
+		if (add) {
+			pdoc->InsertString(lineStart, kBlockQuotePrefix);
+		} else {
+			const Sci::Position markerLength = BlockQuoteMarkerLength(pdoc, line);
+			if (markerLength > 0) {
+				pdoc->DeleteChars(lineStart, markerLength);
+			}
+		}
+	}
+	for (const QuoteSpan &span : spans) {
+		if (span.multiLine) {
+			RestoreMultiLineQuoteSelection(pdoc, sel.Range(span.index), span);
+		}
+	}
+	sel.selType = selType;
+	ThinRectangularRange();
+	ContainerNeedsUpdate(Update::Selection);
 }
 
 /// Joins lines that cover the current search target by deleting line ends and

@@ -544,7 +544,9 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	Scintilla::WrapIndentMode GetWrapIndentMode() const noexcept;
 
 	// Lines, indentation, and line queries: EditorLines.cxx.
-	// ConvertEOLs / SetEOLMode / GetEOLMode are public application methods.
+	// ConvertEOLs / SetEOLMode / GetEOLMode / AddBlockQuote / RemoveBlockQuote
+	// are public application methods.
+	void BlockQuoteLines(bool add);
 	void LinesJoin();
 	void LinesSplit(int pixelWidth);
 	void SetTabDrawMode(Scintilla::TabDrawMode tabDrawMode);
@@ -1197,6 +1199,9 @@ public:
 	void SetEOLMode(Scintilla::EndOfLine eolMode);
 	Scintilla::EndOfLine GetEOLMode() const noexcept;
 	void ConvertEOLs(Scintilla::EndOfLine eolMode);
+	// AddBlockQuote / RemoveBlockQuote: definitions in EditorLines.cxx.
+	void AddBlockQuote();
+	void RemoveBlockQuote();
 
 	// View scrolling; definitions in EditorScrolling.cxx.
 	Sci::Line GetFirstVisibleLine() const noexcept;

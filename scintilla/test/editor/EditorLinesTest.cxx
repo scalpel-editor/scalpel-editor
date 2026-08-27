@@ -1,6 +1,7 @@
 // scalpel-editor test code
 /** @file EditorLinesTest.cxx
- ** Focused behavior tests for EOL policy, lines, indentation, and line queries.
+ ** Focused behavior tests for EOL policy, lines, indentation, line queries,
+ ** and blockquote prefixes.
  **/
 
 #include <algorithm>
@@ -203,4 +204,168 @@ TEST_CASE("FindColumn and edge column round-trip") {
 
 	editor.SetEdgeColumn(80);
 	CHECK(editor.GetEdgeColumn() == 80);
+}
+
+TEST_CASE("quote adds a marker on the caret line") {
+	TestHost host;
+	TestEditor editor(host);
+	LoadClean(editor, "foo");
+	editor.GotoPos(1);
+
+	editor.AddBlockQuote();
+	CHECK(editor.GetText() == "> foo");
+	CHECK(editor.CurrentPos() == 3);
+	CHECK(editor.GetModify());
+}
+
+TEST_CASE("quote nests an existing marker") {
+	TestHost host;
+	TestEditor editor(host);
+	LoadClean(editor, "> foo");
+	editor.GotoPos(2);
+
+	editor.AddBlockQuote();
+	CHECK(editor.GetText() == "> > foo");
+}
+
+TEST_CASE("quote an in-line selection quotes the whole line") {
+	TestHost host;
+	TestEditor editor(host);
+	LoadClean(editor, "abcdef");
+	editor.SetSel(2, 4);
+
+	editor.AddBlockQuote();
+	CHECK(editor.GetText() == "> abcdef");
+	CHECK(editor.GetAnchor() == 4);
+	CHECK(editor.CurrentPos() == 6);
+}
+
+TEST_CASE("quote a multi-line selection prefixes each selected line") {
+	TestHost host;
+	TestEditor editor(host);
+	LoadClean(editor, "one\ntwo\nthree\n");
+	editor.SetSel(0, 8);
+
+	editor.AddBlockQuote();
+	CHECK(editor.GetText() == "> one\n> two\nthree\n");
+	CHECK(editor.GetAnchor() == 0);
+	CHECK(editor.CurrentPos() == 12);
+}
+
+TEST_CASE("quote Select All on a trailing newline omits the empty last line") {
+	TestHost host;
+	TestEditor editor(host);
+	LoadClean(editor, "hello\n");
+	editor.RunCommand(EditorCommand::SelectAll);
+
+	editor.AddBlockQuote();
+	CHECK(editor.GetText() == "> hello\n");
+}
+
+TEST_CASE("quote empty lines receive a marker") {
+	TestHost host;
+	TestEditor editor(host);
+	LoadClean(editor, "a\n\nb");
+	editor.SetSel(0, 4);
+
+	editor.AddBlockQuote();
+	CHECK(editor.GetText() == "> a\n> \n> b");
+}
+
+TEST_CASE("quote unquote strips nested, compact, and spaceless markers") {
+	TestHost host;
+	TestEditor editor(host);
+	LoadClean(editor, "> > foo\n>>bar\n>baz\n>");
+	editor.RunCommand(EditorCommand::SelectAll);
+
+	editor.RemoveBlockQuote();
+	CHECK(editor.GetText() == "> foo\n>bar\nbaz\n");
+}
+
+TEST_CASE("quote unquote treats 0-3 leading spaces as the marker") {
+	TestHost host;
+	TestEditor editor(host);
+	LoadClean(editor, " > a\n  > b\n   > c\n    > d");
+	editor.RunCommand(EditorCommand::SelectAll);
+
+	editor.RemoveBlockQuote();
+	CHECK(editor.GetText() == "a\nb\nc\n    > d");
+}
+
+TEST_CASE("quote unquote with no marker leaves text and undo unchanged") {
+	TestHost host;
+	TestEditor editor(host);
+	LoadClean(editor, "plain");
+	editor.GotoPos(0);
+
+	editor.RemoveBlockQuote();
+	CHECK(editor.GetText() == "plain");
+	CHECK_FALSE(editor.GetModify());
+	CHECK_FALSE(editor.CanUndo());
+}
+
+TEST_CASE("quote add and remove are one undo action") {
+	TestHost host;
+	TestEditor editor(host);
+	LoadClean(editor, "one\ntwo");
+	editor.SetSel(0, 7);
+
+	editor.AddBlockQuote();
+	CHECK(editor.GetText() == "> one\n> two");
+	editor.RunCommand(EditorCommand::Undo);
+	CHECK(editor.GetText() == "one\ntwo");
+	CHECK_FALSE(editor.GetModify());
+
+	LoadClean(editor, "> one\n> two");
+	editor.SetSel(0, 11);
+	editor.RemoveBlockQuote();
+	CHECK(editor.GetText() == "one\ntwo");
+	editor.RunCommand(EditorCommand::Undo);
+	CHECK(editor.GetText() == "> one\n> two");
+}
+
+TEST_CASE("quote is a no-op on a read-only document") {
+	TestHost host;
+	TestEditor editor(host);
+	LoadClean(editor, "foo");
+	editor.SetReadOnly(true);
+
+	editor.AddBlockQuote();
+	CHECK(editor.GetText() == "foo");
+	CHECK_FALSE(editor.GetModify());
+	CHECK_FALSE(editor.CanUndo());
+
+	editor.SetReadOnly(false);
+	LoadClean(editor, "> foo");
+	editor.SetReadOnly(true);
+	editor.RemoveBlockQuote();
+	CHECK(editor.GetText() == "> foo");
+	CHECK_FALSE(editor.GetModify());
+}
+
+TEST_CASE("quote keeps the caret on the same content character") {
+	TestHost host;
+	TestEditor editor(host);
+	LoadClean(editor, "foo");
+	editor.GotoPos(1);
+
+	editor.AddBlockQuote();
+	CHECK(editor.GetText() == "> foo");
+	CHECK(editor.CurrentPos() == 3);
+	CHECK(editor.GetText()[static_cast<size_t>(editor.CurrentPos())] == 'o');
+
+	editor.RemoveBlockQuote();
+	CHECK(editor.GetText() == "foo");
+	CHECK(editor.CurrentPos() == 1);
+}
+
+TEST_CASE("quote unquote leaves invalid UTF-8 after the marker unchanged") {
+	TestHost host;
+	TestEditor editor(host);
+	const char raw[] = {'>', ' ', static_cast<char>(0xff), 'x'};
+	LoadClean(editor, std::string(raw, sizeof(raw)));
+	editor.GotoPos(0);
+
+	editor.RemoveBlockQuote();
+	CHECK(editor.GetText() == (std::string{static_cast<char>(0xff), 'x'}));
 }
