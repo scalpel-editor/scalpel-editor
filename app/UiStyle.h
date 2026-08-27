@@ -59,7 +59,8 @@ struct UiStyle {
 	const int menuLabelShortcutGap = 24;
 	const int menuShortcutColumnWidth = 100;
 	const int menuDropdownPreferredWidth = 220;
-	const int menuEditDropdownPreferredWidth = 240;
+	/** Fits Edit rows that combine a long label with a shortcut column. */
+	const int menuEditDropdownPreferredWidth = 360;
 	const int menuRecentDropdownPreferredWidth = 440;
 
 	// Tab strip.

@@ -52,6 +52,7 @@ using Scalpel::MenuBarPointerResult;
 using Scalpel::MenuBarPressKind;
 using Scalpel::PointerAction;
 using Scalpel::PointerInput;
+using Scalpel::TruncateLabel;
 using Scalpel::UnsavedChangesCardPainter;
 using Scalpel::UpdateMenuBarActionState;
 using Scintilla::Internal::PRectangle;
@@ -828,7 +829,7 @@ TEST_CASE("menu bar Edit dropdown reflects enablement flags") {
 	model.cutEnabled = false;
 	model.pasteEnabled = true;
 	const MenuBarLayout layout = LayoutMenuBar(400, 400, model);
-	CHECK(layout.dropdown.right - layout.dropdown.left == 240);
+	CHECK(layout.dropdown.right - layout.dropdown.left == 360);
 	REQUIRE(layout.items.size() == CountMenuItems(ApplicationMenu::Edit));
 
 	const auto *undo = FindItem(layout, ApplicationAction::Undo);
@@ -872,6 +873,34 @@ TEST_CASE("menu bar Edit dropdown reflects enablement flags") {
 	CHECK(toLf->label.right > selectAll->label.right);
 	CHECK(toLf->labelText == "Convert Line Endings to LF");
 	CHECK(toCrLf->labelText == "Convert Line Endings to CRLF");
+}
+
+TEST_CASE("menu bar Edit dropdown keeps quote labels untruncated") {
+	ApplicationEditor editor(400, 400);
+	editor.LoadInitialBuffer("quote menu\n");
+	MenuBarPainter painter;
+	const MenuBarLayout layout = LayoutMenuBar(400, 400,
+		OpenMenu(ApplicationMenu::Edit));
+	const auto *quote = FindItem(layout, ApplicationAction::AddBlockQuote);
+	const auto *unquote = FindItem(layout,
+		ApplicationAction::RemoveBlockQuote);
+	REQUIRE(quote);
+	REQUIRE(unquote);
+
+	std::string quoteDrawn;
+	std::string unquoteDrawn;
+	(void)editor.TakeFrameDamage();
+	editor.SetOverlayPainter(
+		[&](Scintilla::Internal::Surface &surface, int, int) {
+			quoteDrawn = TruncateLabel(surface, painter.LabelFont(),
+				quote->labelText, quote->label.Width());
+			unquoteDrawn = TruncateLabel(surface, painter.LabelFont(),
+				unquote->labelText, unquote->label.Width());
+		});
+	editor.RenderFrame({PRectangle::FromInts(0, 0, editor.FrameWidth(),
+		editor.FrameHeight())});
+	CHECK(quoteDrawn == "Increase Quote Level");
+	CHECK(unquoteDrawn == "Decrease Quote Level");
 }
 
 TEST_CASE("menu bar narrow window clamps dropdown into the frame") {

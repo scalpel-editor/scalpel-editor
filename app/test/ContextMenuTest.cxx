@@ -131,7 +131,7 @@ TEST_CASE("Context menu rows order labels separators and preferred size") {
 
 	CHECK(layout.requestedWidth == ContextMenuPreferredWidth());
 	CHECK(layout.requestedHeight == ContextMenuPreferredHeight());
-	CHECK(layout.requestedWidth == 240);
+	CHECK(layout.requestedWidth == 360);
 	CHECK(NonEmpty(layout.panel));
 	CHECK(layout.panel.left == 0);
 	CHECK(layout.panel.top == 0);
