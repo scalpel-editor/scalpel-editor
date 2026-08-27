@@ -76,7 +76,7 @@ void TypeChar(ApplicationEditor &editor, char ch, uint32_t time) {
 }
 
 TEST_CASE("application actions table lists File Edit and Font in menu order") {
-	REQUIRE(Scalpel::ApplicationActionCount() == 19);
+	REQUIRE(Scalpel::ApplicationActionCount() == 21);
 	const ApplicationActionInfo *table = Scalpel::ApplicationActionTable();
 	CHECK(table[0].action == ApplicationAction::NewTab);
 	CHECK(table[0].menu == ApplicationMenu::File);
@@ -86,11 +86,13 @@ TEST_CASE("application actions table lists File Edit and Font in menu order") {
 	CHECK(table[11].action == ApplicationAction::SelectAll);
 	CHECK(table[12].action == ApplicationAction::Find);
 	CHECK(table[12].shortcutLabel == "Ctrl+F");
-	CHECK(table[13].action == ApplicationAction::ConvertLineEndingsToLf);
-	CHECK(table[14].action == ApplicationAction::ConvertLineEndingsToCrLf);
-	CHECK(table[15].action == ApplicationAction::FontMonospace);
-	CHECK(table[15].menu == ApplicationMenu::Font);
-	CHECK(table[18].action == ApplicationAction::FontSystem);
+	CHECK(table[13].action == ApplicationAction::AddBlockQuote);
+	CHECK(table[14].action == ApplicationAction::RemoveBlockQuote);
+	CHECK(table[15].action == ApplicationAction::ConvertLineEndingsToLf);
+	CHECK(table[16].action == ApplicationAction::ConvertLineEndingsToCrLf);
+	CHECK(table[17].action == ApplicationAction::FontMonospace);
+	CHECK(table[17].menu == ApplicationMenu::Font);
+	CHECK(table[20].action == ApplicationAction::FontSystem);
 
 	CHECK(InfoFor(ApplicationAction::Open).label == "Open\u2026");
 	CHECK(InfoFor(ApplicationAction::SaveAs).shortcutLabel == "Ctrl+Shift+S");
@@ -99,6 +101,15 @@ TEST_CASE("application actions table lists File Edit and Font in menu order") {
 	CHECK(InfoFor(ApplicationAction::Quit).separatorBefore);
 	CHECK(InfoFor(ApplicationAction::Cut).separatorBefore);
 	CHECK(InfoFor(ApplicationAction::SelectAll).separatorBefore);
+	CHECK(InfoFor(ApplicationAction::AddBlockQuote).separatorBefore);
+	CHECK_FALSE(InfoFor(ApplicationAction::RemoveBlockQuote).separatorBefore);
+	CHECK(InfoFor(ApplicationAction::AddBlockQuote).label ==
+		"Increase Quote Level");
+	CHECK(InfoFor(ApplicationAction::RemoveBlockQuote).label ==
+		"Decrease Quote Level");
+	CHECK(InfoFor(ApplicationAction::AddBlockQuote).shortcutLabel == "Ctrl+'");
+	CHECK(InfoFor(ApplicationAction::RemoveBlockQuote).shortcutLabel ==
+		"Ctrl+Shift+'");
 	CHECK(InfoFor(ApplicationAction::ConvertLineEndingsToLf).separatorBefore);
 	CHECK_FALSE(InfoFor(ApplicationAction::ConvertLineEndingsToCrLf).separatorBefore);
 	CHECK(InfoFor(ApplicationAction::ConvertLineEndingsToLf).label ==
@@ -149,6 +160,35 @@ TEST_CASE("application actions convert line endings explicitly and Enter remains
 	CHECK(editor.Text() == "a\r\nb\r\nc\r\n\n");
 }
 
+TEST_CASE("application actions quote and unquote selected lines") {
+	ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("one\ntwo");
+	DocumentWorkspace workspace(editor);
+
+	CHECK(ApplicationActionEnabled(ApplicationAction::AddBlockQuote, editor));
+	CHECK(ApplicationActionEnabled(
+		ApplicationAction::RemoveBlockQuote, editor));
+	DispatchApplicationAction(
+		ApplicationAction::SelectAll, workspace, editor);
+	DispatchApplicationAction(
+		ApplicationAction::AddBlockQuote, workspace, editor);
+	CHECK(editor.Text() == "> one\n> two");
+	CHECK(editor.Modified());
+	CHECK(editor.CanUndoEdit());
+
+	DispatchApplicationAction(ApplicationAction::Undo, workspace, editor);
+	CHECK(editor.Text() == "one\ntwo");
+	CHECK_FALSE(editor.Modified());
+
+	DispatchApplicationAction(
+		ApplicationAction::SelectAll, workspace, editor);
+	DispatchApplicationAction(
+		ApplicationAction::AddBlockQuote, workspace, editor);
+	DispatchApplicationAction(
+		ApplicationAction::RemoveBlockQuote, workspace, editor);
+	CHECK(editor.Text() == "one\ntwo");
+}
+
 TEST_CASE("application actions match listed shortcuts and ignore releases") {
 	const Scintilla::KeyMod ctrl = Scintilla::KeyMod::Ctrl;
 	const Scintilla::KeyMod ctrlShift =
@@ -168,6 +208,10 @@ TEST_CASE("application actions match listed shortcuts and ignore releases") {
 	CHECK(MatchApplicationAction(Press('V', ctrl)) == ApplicationAction::Paste);
 	CHECK(MatchApplicationAction(Press('A', ctrl)) == ApplicationAction::SelectAll);
 	CHECK(MatchApplicationAction(Press('F', ctrl)) == ApplicationAction::Find);
+	CHECK(MatchApplicationAction(Press('\'', ctrl)) ==
+		ApplicationAction::AddBlockQuote);
+	CHECK(MatchApplicationAction(Press('\'', ctrlShift)) ==
+		ApplicationAction::RemoveBlockQuote);
 
 	KeyboardInput release = Press('N', ctrl);
 	release.pressed = false;

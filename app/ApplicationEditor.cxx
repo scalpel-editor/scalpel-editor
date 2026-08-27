@@ -1090,6 +1090,24 @@ void ApplicationEditor::ConvertLineEndings(Scintilla::EndOfLine lineEnding) {
 	textInputChangeCause = ApplicationTextChangeCause::Other;
 }
 
+void ApplicationEditor::AddBlockQuote() {
+	if (pdoc->TentativeActive()) {
+		CancelTextInput();
+	}
+	Scintilla::Internal::Editor::AddBlockQuote();
+	textInputStateDirty = true;
+	textInputChangeCause = ApplicationTextChangeCause::Other;
+}
+
+void ApplicationEditor::RemoveBlockQuote() {
+	if (pdoc->TentativeActive()) {
+		CancelTextInput();
+	}
+	Scintilla::Internal::Editor::RemoveBlockQuote();
+	textInputStateDirty = true;
+	textInputChangeCause = ApplicationTextChangeCause::Other;
+}
+
 void ApplicationEditor::RequestClipboardCopy() {
 	ExecuteApplicationEdit(Scintilla::Internal::EditorCommand::Copy);
 }

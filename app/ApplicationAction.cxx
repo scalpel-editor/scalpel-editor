@@ -44,6 +44,10 @@ constexpr ApplicationActionInfo kActions[] = {
 		Key('A'), Ctrl, true},
 	{ApplicationAction::Find, ApplicationMenu::Edit, "Find", "Ctrl+F",
 		Key('F'), Ctrl, false},
+	{ApplicationAction::AddBlockQuote, ApplicationMenu::Edit,
+		"Increase Quote Level", "Ctrl+'", Key('\''), Ctrl, true},
+	{ApplicationAction::RemoveBlockQuote, ApplicationMenu::Edit,
+		"Decrease Quote Level", "Ctrl+Shift+'", Key('\''), CtrlShift, false},
 	{ApplicationAction::ConvertLineEndingsToLf, ApplicationMenu::Edit,
 		"Convert Line Endings to LF", "", static_cast<Scintilla::Keys>(0),
 		Scintilla::KeyMod::Norm, true},
@@ -110,6 +114,8 @@ bool ApplicationActionEnabled(ApplicationAction action,
 	case ApplicationAction::CloseTab:
 	case ApplicationAction::Quit:
 	case ApplicationAction::Find:
+	case ApplicationAction::AddBlockQuote:
+	case ApplicationAction::RemoveBlockQuote:
 	case ApplicationAction::ConvertLineEndingsToLf:
 	case ApplicationAction::ConvertLineEndingsToCrLf:
 	case ApplicationAction::FontMonospace:
@@ -156,6 +162,8 @@ void DispatchApplicationAction(ApplicationAction action,
 	case ApplicationAction::Copy:
 	case ApplicationAction::Paste:
 	case ApplicationAction::SelectAll:
+	case ApplicationAction::AddBlockQuote:
+	case ApplicationAction::RemoveBlockQuote:
 	case ApplicationAction::ConvertLineEndingsToLf:
 	case ApplicationAction::ConvertLineEndingsToCrLf:
 		if (!ApplicationActionEnabled(action, editor)) {
@@ -203,6 +211,12 @@ void DispatchApplicationAction(ApplicationAction action,
 		break;
 	case ApplicationAction::Find:
 		// UI-local: ApplicationUi opens the find bar before this dispatcher.
+		break;
+	case ApplicationAction::AddBlockQuote:
+		editor.AddBlockQuote();
+		break;
+	case ApplicationAction::RemoveBlockQuote:
+		editor.RemoveBlockQuote();
 		break;
 	case ApplicationAction::ConvertLineEndingsToLf:
 		editor.ConvertLineEndings(Scintilla::EndOfLine::Lf);

@@ -242,6 +242,8 @@ bool MenuBarModel::IsEnabled(ApplicationAction action) const noexcept {
 	case ApplicationAction::CloseTab:
 	case ApplicationAction::Quit:
 	case ApplicationAction::Find:
+	case ApplicationAction::AddBlockQuote:
+	case ApplicationAction::RemoveBlockQuote:
 	case ApplicationAction::ConvertLineEndingsToLf:
 	case ApplicationAction::ConvertLineEndingsToCrLf:
 	case ApplicationAction::FontMonospace:

@@ -827,7 +827,7 @@ TEST_CASE("menu bar Edit dropdown reflects enablement flags") {
 	model.undoEnabled = false;
 	model.cutEnabled = false;
 	model.pasteEnabled = true;
-	const MenuBarLayout layout = LayoutMenuBar(400, 300, model);
+	const MenuBarLayout layout = LayoutMenuBar(400, 400, model);
 	CHECK(layout.dropdown.right - layout.dropdown.left == 240);
 	REQUIRE(layout.items.size() == CountMenuItems(ApplicationMenu::Edit));
 
@@ -835,6 +835,9 @@ TEST_CASE("menu bar Edit dropdown reflects enablement flags") {
 	const auto *cut = FindItem(layout, ApplicationAction::Cut);
 	const auto *paste = FindItem(layout, ApplicationAction::Paste);
 	const auto *selectAll = FindItem(layout, ApplicationAction::SelectAll);
+	const auto *quote = FindItem(layout, ApplicationAction::AddBlockQuote);
+	const auto *unquote = FindItem(layout,
+		ApplicationAction::RemoveBlockQuote);
 	const auto *toLf = FindItem(layout,
 		ApplicationAction::ConvertLineEndingsToLf);
 	const auto *toCrLf = FindItem(layout,
@@ -843,6 +846,8 @@ TEST_CASE("menu bar Edit dropdown reflects enablement flags") {
 	REQUIRE(cut);
 	REQUIRE(paste);
 	REQUIRE(selectAll);
+	REQUIRE(quote);
+	REQUIRE(unquote);
 	REQUIRE(toLf);
 	REQUIRE(toCrLf);
 	CHECK_FALSE(undo->enabled);
@@ -850,6 +855,14 @@ TEST_CASE("menu bar Edit dropdown reflects enablement flags") {
 	CHECK(paste->enabled);
 	CHECK(selectAll->enabled);
 	CHECK(selectAll->separatorBefore);
+	CHECK(quote->enabled);
+	CHECK(quote->separatorBefore);
+	CHECK(unquote->enabled);
+	CHECK_FALSE(unquote->separatorBefore);
+	CHECK(quote->shortcutText == "Ctrl+'");
+	CHECK(unquote->shortcutText == "Ctrl+Shift+'");
+	CHECK(quote->labelText == "Increase Quote Level");
+	CHECK(unquote->labelText == "Decrease Quote Level");
 	CHECK(toLf->enabled);
 	CHECK(toLf->separatorBefore);
 	CHECK(toCrLf->enabled);

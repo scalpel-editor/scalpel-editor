@@ -289,6 +289,9 @@ public:
 	void RequestSelectAll();
 	/** Convert every line ending as one undoable edit; insertion remains LF. */
 	void ConvertLineEndings(Scintilla::EndOfLine lineEnding);
+	/** Add or remove one block-quote marker on the selected lines. */
+	void AddBlockQuote();
+	void RemoveBlockQuote();
 	void RequestClipboardCopy();
 	void RequestClipboardPaste();
 	void SetClipboardPasteAvailable(bool available) noexcept;
