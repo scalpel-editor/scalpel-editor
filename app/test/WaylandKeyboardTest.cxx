@@ -45,6 +45,22 @@ TEST_CASE("Wayland keyboard applies modifiers and maps command keys") {
 	CHECK(controlled.text.empty());
 }
 
+TEST_CASE("Wayland keyboard Shift+apostrophe reports quotedbl") {
+	const TestKeymap keymap = MakeTestKeymap();
+	Scalpel::WaylandInput input;
+	REQUIRE(input.SetKeymap(keymap.text));
+
+	input.UpdateModifiers(keymap.shiftMask | keymap.controlMask, 0, 0, 0);
+	input.RecordKey(22, KEY_APOSTROPHE, true);
+	const std::vector<Scalpel::InputEvent> events = input.TakeInputs();
+	REQUIRE(events.size() == 1);
+	const auto &press = std::get<Scalpel::KeyboardInput>(events[0]);
+	CHECK(press.key == static_cast<Scintilla::Keys>('"'));
+	CHECK(press.modifiers ==
+		(Scintilla::KeyMod::Ctrl | Scintilla::KeyMod::Shift));
+	CHECK(press.text.empty());
+}
+
 TEST_CASE("Wayland keyboard composes locale text") {
 	const TestKeymap keymap = MakeTestKeymap("intl");
 	Scalpel::WaylandInput input("C.utf8");

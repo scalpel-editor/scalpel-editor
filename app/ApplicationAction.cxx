@@ -46,8 +46,11 @@ constexpr ApplicationActionInfo kActions[] = {
 		Key('F'), Ctrl, false},
 	{ApplicationAction::AddBlockQuote, ApplicationMenu::Edit,
 		"Increase Quote Level", "Ctrl+'", Key('\''), Ctrl, true},
+	// xkb reports Shift+' as '"'. Letter shortcuts still match after Shift
+	// because KeyFromKeysym folds a-z to A-Z; punctuation keeps the shifted
+	// keysym, so this row binds quotedbl rather than apostrophe.
 	{ApplicationAction::RemoveBlockQuote, ApplicationMenu::Edit,
-		"Decrease Quote Level", "Ctrl+Shift+'", Key('\''), CtrlShift, false},
+		"Decrease Quote Level", "Ctrl+Shift+'", Key('"'), CtrlShift, false},
 	{ApplicationAction::ConvertLineEndingsToLf, ApplicationMenu::Edit,
 		"Convert Line Endings to LF", "", static_cast<Scintilla::Keys>(0),
 		Scintilla::KeyMod::Norm, true},

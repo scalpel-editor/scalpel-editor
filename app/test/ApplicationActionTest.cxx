@@ -210,7 +210,7 @@ TEST_CASE("application actions match listed shortcuts and ignore releases") {
 	CHECK(MatchApplicationAction(Press('F', ctrl)) == ApplicationAction::Find);
 	CHECK(MatchApplicationAction(Press('\'', ctrl)) ==
 		ApplicationAction::AddBlockQuote);
-	CHECK(MatchApplicationAction(Press('\'', ctrlShift)) ==
+	CHECK(MatchApplicationAction(Press('"', ctrlShift)) ==
 		ApplicationAction::RemoveBlockQuote);
 
 	KeyboardInput release = Press('N', ctrl);
