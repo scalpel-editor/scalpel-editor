@@ -133,6 +133,15 @@ public:
 	void SetDrawTarget(unsigned framebuffer, int bufferWidth, int bufferHeight,
 		int logicalWidth, int logicalHeight);
 	/**
+	 * Record the draw target and clear clips when identity or size changes.
+	 * Does not bind GL state; call BindCurrentTarget after restoring clips.
+	 * Returns true when clips were cleared.
+	 */
+	bool SelectDrawTarget(unsigned framebuffer, int bufferWidth, int bufferHeight,
+		int logicalWidth, int logicalHeight);
+	/** Push a clip rectangle without applying GL scissor state. */
+	void PushBufferClip(PixelRect rc);
+	/**
 	 * Set the stable nominal output scale used for glyph rasterization and
 	 * cache identity (Wayland preferred scale as an exact rational). Changing
 	 * it retires scale-dependent outline glyph textures immediately. Fixed
@@ -245,6 +254,25 @@ public:
 	};
 	[[nodiscard]] const GlyphDrawCounts &GlyphCounts() const noexcept { return glyphCounts; }
 	void ResetGlyphCounts() noexcept { glyphCounts = {}; }
+	[[nodiscard]] const GlContext::DrawSetupCounts &DrawSetupCounts() const noexcept {
+		return context.SetupCounts();
+	}
+	void ResetDrawSetupCounts() noexcept { context.ResetSetupCounts(); }
+
+	/**
+	 * Establish drawing state for an uninterrupted glyph run. Public renderer
+	 * operations remain safe on their own; this only skips boundary checks
+	 * until destruction. Do not hold across pixmap or popup work.
+	 */
+	class PreparedDraw {
+	public:
+		explicit PreparedDraw(Renderer &renderer);
+		~PreparedDraw();
+		PreparedDraw(const PreparedDraw &) = delete;
+		PreparedDraw &operator=(const PreparedDraw &) = delete;
+	private:
+		Renderer &renderer;
+	};
 
 	/** Active buffer clip, for rejecting previously measured run ink. */
 	[[nodiscard]] PixelRect CurrentClip() const noexcept;
@@ -383,6 +411,8 @@ private:
 		float u0, float v0, float u1, float v1, unsigned texture, bool flipV,
 		bool sourceStraightAlpha, ColourRGBA modulate = ColourRGBA(255, 255, 255, 255));
 	void BeginDraw();
+	void EnterPreparedDraw();
+	void LeavePreparedDraw() noexcept;
 	void SetBlendForColour(ColourRGBA colour);
 
 	GlContext &context;
@@ -402,6 +432,7 @@ private:
 	std::vector<PixelRect> clipStack;
 	std::unordered_map<GlyphKey, CachedGlyph, GlyphKeyHash> glyphCache;
 	GlyphDrawCounts glyphCounts;
+	int preparedDepth = 0;
 
 	unsigned programSolid = 0;
 	unsigned programTexture = 0;

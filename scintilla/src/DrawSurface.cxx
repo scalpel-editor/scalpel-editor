@@ -85,23 +85,19 @@ void DrawSurface::BindDrawTarget() {
 	if (!buffer.Valid() && !hasExternalTarget) {
 		throw std::runtime_error("DrawSurface::BindDrawTarget without a framebuffer");
 	}
-	const bool targetChanged = renderer->TargetFramebuffer() != framebuffer ||
-		renderer->TargetWidth() != width || renderer->TargetHeight() != height ||
-		renderer->TargetLogicalWidth() != logicalWidth ||
-		renderer->TargetLogicalHeight() != logicalHeight;
 	// Only the frame/window surface (external target) pushes output scale.
 	// Owned colour buffers and pixmaps must not change it mid-paint.
 	if (hasExternalTarget) {
 		renderer->SetOutputRasterScale(rasterScale);
 	}
-	renderer->SetDrawTarget(
+	const bool targetChanged = renderer->SelectDrawTarget(
 		framebuffer, width, height, logicalWidth, logicalHeight);
 	if (targetChanged) {
 		if (bufferClip) {
-			renderer->SetBufferClip(*bufferClip);
+			renderer->PushBufferClip(*bufferClip);
 		}
 		for (const PRectangle rc : clipStack) {
-			renderer->SetClip(rc);
+			renderer->PushBufferClip(renderer->LogicalPixelRect(rc));
 		}
 	}
 	renderer->BindCurrentTarget();
@@ -420,18 +416,23 @@ void DrawSurface::DrawTextCommon(PRectangle rc, const Font *font_, XYPOSITION yb
 	}
 	PixelRect ink;
 	XYPOSITION penX = rc.left;
-	for (const ShapedGlyph &glyph : run->glyphs) {
-		if (glyph.face) {
-			// HarfBuzz uses font coordinates with Y up; surfaces use Y down.
-			const PixelRect glyphInk = renderer->DrawGlyph(penX + glyph.xOffset, ybase - glyph.yOffset,
-				glyph.face, glyph.glyphId, fore);
-			if (!glyphInk.Empty()) {
-				ink = ink.Empty() ? glyphInk : PixelRect{
-					std::min(ink.left, glyphInk.left), std::min(ink.top, glyphInk.top),
-					std::max(ink.right, glyphInk.right), std::max(ink.bottom, glyphInk.bottom)};
+	{
+		Renderer::PreparedDraw prepared(*renderer);
+		for (const ShapedGlyph &glyph : run->glyphs) {
+			if (glyph.face) {
+				// HarfBuzz uses font coordinates with Y up; surfaces use Y down.
+				const PixelRect glyphInk = renderer->DrawGlyph(
+					penX + glyph.xOffset, ybase - glyph.yOffset,
+					glyph.face, glyph.glyphId, fore);
+				if (!glyphInk.Empty()) {
+					ink = ink.Empty() ? glyphInk : PixelRect{
+						std::min(ink.left, glyphInk.left), std::min(ink.top, glyphInk.top),
+						std::max(ink.right, glyphInk.right),
+						std::max(ink.bottom, glyphInk.bottom)};
+				}
 			}
+			penX += glyph.xAdvance;
 		}
-		penX += glyph.xAdvance;
 	}
 	if (found == runInk.end() && runInk.size() >= runCache.Capacity()) {
 		// Reclaim expired placements first. The hard cap also covers callers

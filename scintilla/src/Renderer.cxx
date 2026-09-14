@@ -627,9 +627,15 @@ void Renderer::SetDrawTarget(unsigned framebuffer, int width, int height) {
 
 void Renderer::SetDrawTarget(unsigned framebuffer, int bufferWidth, int bufferHeight,
 	int logicalWidth, int logicalHeight) {
+	SelectDrawTarget(framebuffer, bufferWidth, bufferHeight, logicalWidth, logicalHeight);
+	BindCurrentTarget();
+}
+
+bool Renderer::SelectDrawTarget(unsigned framebuffer, int bufferWidth, int bufferHeight,
+	int logicalWidth, int logicalHeight) {
 	if (bufferWidth <= 0 || bufferHeight <= 0 ||
 		logicalWidth <= 0 || logicalHeight <= 0) {
-		throw std::runtime_error("Renderer::SetDrawTarget requires positive size");
+		throw std::runtime_error("Renderer::SelectDrawTarget requires positive size");
 	}
 	MakeCurrent();
 	const bool changed = targetFbo != framebuffer ||
@@ -643,7 +649,13 @@ void Renderer::SetDrawTarget(unsigned framebuffer, int bufferWidth, int bufferHe
 	targetHeight = bufferHeight;
 	targetLogicalWidth = logicalWidth;
 	targetLogicalHeight = logicalHeight;
-	BindCurrentTarget();
+	return changed;
+}
+
+void Renderer::PushBufferClip(PixelRect next) {
+	next = IntersectPixelRect(next, CurrentClip());
+	next = IntersectPixelRect(next, PixelRect{0, 0, targetWidth, targetHeight});
+	clipStack.push_back(next);
 }
 
 void Renderer::SetOutputRasterScale(RasterScale rasterScale) {
@@ -706,10 +718,7 @@ void Renderer::SetClip(PRectangle rc) {
 void Renderer::SetBufferClip(PixelRect next) {
 	MakeCurrent();
 	context.BindDrawFramebuffer(targetFbo);
-	next = IntersectPixelRect(next, CurrentClip());
-	// Also clamp to target.
-	next = IntersectPixelRect(next, PixelRect{0, 0, targetWidth, targetHeight});
-	clipStack.push_back(next);
+	PushBufferClip(next);
 	ApplyScissor();
 }
 
@@ -756,7 +765,31 @@ void Renderer::UploadProjection() const {
 }
 
 void Renderer::BeginDraw() {
+	if (preparedDepth > 0) {
+		return;
+	}
 	BindCurrentTarget();
+}
+
+Renderer::PreparedDraw::PreparedDraw(Renderer &renderer_) : renderer(renderer_) {
+	renderer.EnterPreparedDraw();
+}
+
+Renderer::PreparedDraw::~PreparedDraw() {
+	renderer.LeavePreparedDraw();
+}
+
+void Renderer::EnterPreparedDraw() {
+	if (preparedDepth == 0) {
+		BindCurrentTarget();
+	}
+	++preparedDepth;
+}
+
+void Renderer::LeavePreparedDraw() noexcept {
+	if (preparedDepth > 0) {
+		--preparedDepth;
+	}
 }
 
 void Renderer::SetBlendForColour(ColourRGBA colour) {
@@ -1303,7 +1336,9 @@ const Renderer::CachedGlyph &Renderer::GetOrCreateGlyph(
 				static_cast<size_t>(srcWidth) * static_cast<size_t>(srcHeight) * 4u;
 			rgba.assign(rgbaSrc, rgbaSrc + byteCount);
 		}
-		MakeCurrent();
+		if (preparedDepth == 0) {
+			MakeCurrent();
+		}
 		GLuint tex = 0;
 		glGenTextures(1, &tex);
 		glBindTexture(GL_TEXTURE_2D, tex);

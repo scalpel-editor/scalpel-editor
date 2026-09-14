@@ -372,6 +372,7 @@ void GlContext::MakeCurrent(SurfaceTarget target) {
 	if (target == SurfaceTarget::Popup && !chosen) {
 		throw std::runtime_error("GlContext::MakeCurrent popup surface missing");
 	}
+	++setupCounts.contextRequested;
 	if (threadCurrent == this && currentTarget == target) {
 		return;
 	}
@@ -382,6 +383,7 @@ void GlContext::MakeCurrent(SurfaceTarget target) {
 	EGLDisplay dpy = static_cast<EGLDisplay>(display);
 	EGLContext ctx = static_cast<EGLContext>(context);
 	EGLSurface surf = chosen ? static_cast<EGLSurface>(chosen) : EGL_NO_SURFACE;
+	++setupCounts.contextEmitted;
 	if (!eglMakeCurrent(dpy, surf, surf, ctx)) {
 		DropCurrent();
 		InvalidateAppliedDrawState();
@@ -556,19 +558,23 @@ void GlContext::DropCurrent() noexcept {
 }
 
 void GlContext::BindDrawFramebuffer(unsigned framebuffer) {
+	++setupCounts.framebufferRequested;
 	if (applied.framebufferKnown && applied.framebuffer == framebuffer) {
 		return;
 	}
+	++setupCounts.framebufferEmitted;
 	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
 	applied.framebuffer = framebuffer;
 	applied.framebufferKnown = true;
 }
 
 void GlContext::SetDrawViewport(int width, int height) {
+	++setupCounts.viewportRequested;
 	if (applied.viewportKnown &&
 		applied.viewportWidth == width && applied.viewportHeight == height) {
 		return;
 	}
+	++setupCounts.viewportEmitted;
 	glViewport(0, 0, width, height);
 	applied.viewportWidth = width;
 	applied.viewportHeight = height;
@@ -576,10 +582,12 @@ void GlContext::SetDrawViewport(int width, int height) {
 }
 
 void GlContext::SetDrawScissor(bool enabled, int x, int y, int width, int height) {
+	++setupCounts.scissorRequested;
 	if (!enabled) {
 		if (applied.scissorKnown && !applied.scissorEnabled) {
 			return;
 		}
+		++setupCounts.scissorEmitted;
 		glDisable(GL_SCISSOR_TEST);
 		applied.scissorEnabled = false;
 		applied.scissorKnown = true;
@@ -591,6 +599,7 @@ void GlContext::SetDrawScissor(bool enabled, int x, int y, int width, int height
 	if (boxMatches && applied.scissorEnabled) {
 		return;
 	}
+	++setupCounts.scissorEmitted;
 	if (!boxMatches) {
 		glScissor(x, y, width, height);
 		applied.scissorX = x;

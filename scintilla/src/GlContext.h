@@ -121,6 +121,21 @@ public:
 	 */
 	[[nodiscard]] static GlContext *CurrentOnThread() noexcept;
 
+	struct DrawSetupCounts {
+		size_t contextRequested = 0;
+		size_t contextEmitted = 0;
+		size_t framebufferRequested = 0;
+		size_t framebufferEmitted = 0;
+		size_t viewportRequested = 0;
+		size_t viewportEmitted = 0;
+		size_t scissorRequested = 0;
+		size_t scissorEmitted = 0;
+	};
+	[[nodiscard]] const DrawSetupCounts &SetupCounts() const noexcept {
+		return setupCounts;
+	}
+	void ResetSetupCounts() noexcept { setupCounts = {}; }
+
 	/**
 	 * Bind a draw/read framebuffer if it is not already the applied binding.
 	 * The context must be current. Framebuffer 0 is the default framebuffer.
@@ -190,6 +205,7 @@ private:
 	bool bufferAgeSupported = false;
 	SurfaceTarget currentTarget = SurfaceTarget::Editor;
 	AppliedDrawState applied;
+	DrawSetupCounts setupCounts;
 	void (*swapBuffersWithDamage)() = nullptr;
 	int majorVersion = 0;
 	int minorVersion = 0;
