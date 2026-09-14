@@ -14,6 +14,7 @@
 
 #define GL_GLEXT_PROTOTYPES
 #include <GL/gl.h>
+#include <GL/glext.h>
 
 namespace Scintilla::Internal {
 
@@ -46,6 +47,8 @@ namespace {
 	}
 	return false;
 }
+
+thread_local GlContext *threadCurrent = nullptr;
 
 }  // namespace
 
@@ -181,6 +184,7 @@ GlContext::GlContext() {
 				"eglMakeCurrent with pbuffer failed (egl error " + EglErrorHex() + ")");
 		}
 	}
+	AdoptCurrent(SurfaceTarget::Editor, false);
 
 	try {
 		ConfigureCurrentContext();
@@ -269,6 +273,7 @@ GlContext::GlContext(void *nativeDisplay, void *nativeWindow) {
 		Destroy();
 		throw std::runtime_error("eglMakeCurrent for Wayland failed (egl error " + EglErrorHex() + ")");
 	}
+	AdoptCurrent(SurfaceTarget::Editor, false);
 	// Disabling synchronization is optional; keep the usable window context
 	// when the EGL implementation only supports a non-zero interval.
 	eglSwapInterval(dpy, 0);
@@ -319,6 +324,8 @@ void GlContext::Destroy() noexcept {
 		if (eglGetCurrentContext() == ctx) {
 			eglMakeCurrent(dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 		}
+		DropCurrent();
+		InvalidateAppliedDrawState();
 		if (popup != nullptr && popup != EGL_NO_SURFACE) {
 			eglDestroySurface(dpy, popup);
 		}
@@ -365,14 +372,23 @@ void GlContext::MakeCurrent(SurfaceTarget target) {
 	if (target == SurfaceTarget::Popup && !chosen) {
 		throw std::runtime_error("GlContext::MakeCurrent popup surface missing");
 	}
+	if (threadCurrent == this && currentTarget == target) {
+		return;
+	}
+	if (SurfacesCurrent(target)) {
+		AdoptCurrent(target, false);
+		return;
+	}
 	EGLDisplay dpy = static_cast<EGLDisplay>(display);
 	EGLContext ctx = static_cast<EGLContext>(context);
 	EGLSurface surf = chosen ? static_cast<EGLSurface>(chosen) : EGL_NO_SURFACE;
 	if (!eglMakeCurrent(dpy, surf, surf, ctx)) {
+		DropCurrent();
+		InvalidateAppliedDrawState();
 		throw std::runtime_error(
 			"GlContext::MakeCurrent failed (egl error " + EglErrorHex() + ")");
 	}
-	currentTarget = target;
+	AdoptCurrent(target, true);
 }
 
 void GlContext::CreatePopupSurface(void *nativeWindow) {
@@ -405,20 +421,28 @@ void GlContext::DestroyPopupSurface() noexcept {
 	}
 	EGLDisplay dpy = static_cast<EGLDisplay>(display);
 	EGLContext ctx = static_cast<EGLContext>(context);
+	EGLSurface popup = static_cast<EGLSurface>(popupSurface);
+	const bool popupIsCurrent = eglGetCurrentContext() == ctx &&
+		eglGetCurrentSurface(EGL_DRAW) == popup &&
+		eglGetCurrentSurface(EGL_READ) == popup;
 	// Leave the popup current only after restoring the editor surface.
-	if (eglGetCurrentContext() == ctx &&
-		currentTarget == SurfaceTarget::Popup) {
+	if (popupIsCurrent) {
 		EGLSurface editor = surface ? static_cast<EGLSurface>(surface) :
 			EGL_NO_SURFACE;
 		if (editor != EGL_NO_SURFACE) {
-			eglMakeCurrent(dpy, editor, editor, ctx);
-			currentTarget = SurfaceTarget::Editor;
+			if (eglMakeCurrent(dpy, editor, editor, ctx)) {
+				AdoptCurrent(SurfaceTarget::Editor, true);
+			} else {
+				DropCurrent();
+				InvalidateAppliedDrawState();
+			}
 		} else {
 			eglMakeCurrent(dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-			currentTarget = SurfaceTarget::Editor;
+			DropCurrent();
+			InvalidateAppliedDrawState();
 		}
 	}
-	eglDestroySurface(dpy, static_cast<EGLSurface>(popupSurface));
+	eglDestroySurface(dpy, popup);
 	popupSurface = nullptr;
 }
 
@@ -487,6 +511,7 @@ void GlContext::ReleaseCurrent() noexcept {
 	if (eglGetCurrentContext() == ctx) {
 		eglMakeCurrent(dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 	}
+	DropCurrent();
 }
 
 bool GlContext::IsCurrent() const noexcept {
@@ -494,6 +519,112 @@ bool GlContext::IsCurrent() const noexcept {
 		return false;
 	}
 	return eglGetCurrentContext() == static_cast<EGLContext>(context);
+}
+
+bool GlContext::SurfacesCurrent(SurfaceTarget target) const noexcept {
+	if (!display || !context) {
+		return false;
+	}
+	void *chosen = SurfaceFor(target);
+	if (target == SurfaceTarget::Popup && !chosen) {
+		return false;
+	}
+	const EGLSurface surf = chosen ? static_cast<EGLSurface>(chosen) : EGL_NO_SURFACE;
+	return eglGetCurrentDisplay() == static_cast<EGLDisplay>(display) &&
+		eglGetCurrentContext() == static_cast<EGLContext>(context) &&
+		eglGetCurrentSurface(EGL_DRAW) == surf &&
+		eglGetCurrentSurface(EGL_READ) == surf;
+}
+
+GlContext *GlContext::CurrentOnThread() noexcept {
+	return threadCurrent;
+}
+
+void GlContext::AdoptCurrent(SurfaceTarget target, bool invalidateViewport) noexcept {
+	currentTarget = target;
+	threadCurrent = this;
+	if (invalidateViewport) {
+		applied.viewportKnown = false;
+		applied.scissorKnown = false;
+	}
+}
+
+void GlContext::DropCurrent() noexcept {
+	if (threadCurrent == this) {
+		threadCurrent = nullptr;
+	}
+}
+
+void GlContext::BindDrawFramebuffer(unsigned framebuffer) {
+	if (applied.framebufferKnown && applied.framebuffer == framebuffer) {
+		return;
+	}
+	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+	applied.framebuffer = framebuffer;
+	applied.framebufferKnown = true;
+}
+
+void GlContext::SetDrawViewport(int width, int height) {
+	if (applied.viewportKnown &&
+		applied.viewportWidth == width && applied.viewportHeight == height) {
+		return;
+	}
+	glViewport(0, 0, width, height);
+	applied.viewportWidth = width;
+	applied.viewportHeight = height;
+	applied.viewportKnown = true;
+}
+
+void GlContext::SetDrawScissor(bool enabled, int x, int y, int width, int height) {
+	if (!enabled) {
+		if (applied.scissorKnown && !applied.scissorEnabled) {
+			return;
+		}
+		glDisable(GL_SCISSOR_TEST);
+		applied.scissorEnabled = false;
+		applied.scissorKnown = true;
+		return;
+	}
+	const bool boxMatches = applied.scissorKnown &&
+		applied.scissorX == x && applied.scissorY == y &&
+		applied.scissorWidth == width && applied.scissorHeight == height;
+	if (boxMatches && applied.scissorEnabled) {
+		return;
+	}
+	if (!boxMatches) {
+		glScissor(x, y, width, height);
+		applied.scissorX = x;
+		applied.scissorY = y;
+		applied.scissorWidth = width;
+		applied.scissorHeight = height;
+	}
+	if (!applied.scissorKnown || !applied.scissorEnabled) {
+		glEnable(GL_SCISSOR_TEST);
+	}
+	applied.scissorEnabled = true;
+	applied.scissorKnown = true;
+}
+
+void GlContext::InvalidateAppliedDrawState() noexcept {
+	applied = {};
+}
+
+void GlContext::InvalidateAppliedFramebuffer(unsigned framebuffer) noexcept {
+	if (applied.framebufferKnown && applied.framebuffer == framebuffer) {
+		applied.framebufferKnown = false;
+	}
+}
+
+void GlContext::RestoreFramebufferBindings(int draw, int read) {
+	if (draw == read) {
+		glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(draw));
+		applied.framebuffer = static_cast<unsigned>(draw);
+		applied.framebufferKnown = true;
+		return;
+	}
+	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<GLuint>(draw));
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(read));
+	applied.framebufferKnown = false;
 }
 
 std::string GlContext::VersionString() const {

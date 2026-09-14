@@ -5,6 +5,7 @@ add_executable(rendererTest
   FixedGlyphBitmapReduceTest.cxx
   RendererCompositionTest.cxx
   RendererPrimitivesTest.cxx
+  RendererStateTest.cxx
   RendererSurfaceTest.cxx
   RendererTestMain.cxx
 )

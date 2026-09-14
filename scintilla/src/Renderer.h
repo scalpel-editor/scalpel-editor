@@ -32,7 +32,9 @@ namespace Scintilla::Internal {
  * Texture-backed colour attachment in the current GlContext.
  *
  * Pixmap surfaces and the main offscreen target each own one of these in the
- * parent context. Destroy while the context is current.
+ * parent context. Destroy while the context is current. Resize and readback
+ * restore the incoming draw/read framebuffer bindings, including when those
+ * two bindings differ.
  */
 class ColourBuffer {
 public:
@@ -140,7 +142,10 @@ public:
 	 */
 	void SetOutputRasterScale(RasterScale rasterScale);
 
-	/** Re-bind the current target FBO and viewport without clearing clips. */
+	/**
+	 * Make the context current and apply the current target FBO, viewport, and
+	 * scissor. Skips GL calls that already match the context-owned applied state.
+	 */
 	void BindCurrentTarget();
 
 	/** Clear the current draw target fully (ignores clip stack). */
@@ -360,7 +365,7 @@ private:
 	void EnsureSolidProgram();
 	void EnsureTextureProgram();
 	void EnsureGradientProgram();
-	void ApplyScissor() const;
+	void ApplyScissor();
 	void UploadProjection() const;
 	void DrawSolidQuad(float x0, float y0, float x1, float y1, ColourRGBA colour);
 	void DrawSolidTriangles(const float *xy, size_t vertexCount, ColourRGBA colour);

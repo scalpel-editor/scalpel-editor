@@ -305,6 +305,35 @@ PixelRect IntersectPixelRect(PixelRect a, PixelRect b) noexcept {
 	return r;
 }
 
+namespace {
+
+struct FramebufferBindings {
+	GLint draw = 0;
+	GLint read = 0;
+};
+
+[[nodiscard]] FramebufferBindings QueryFramebufferBindings() {
+	FramebufferBindings bindings;
+	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &bindings.draw);
+	glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &bindings.read);
+	return bindings;
+}
+
+void RestoreFramebufferBindings(const FramebufferBindings &bindings) {
+	if (GlContext *owner = GlContext::CurrentOnThread()) {
+		owner->RestoreFramebufferBindings(bindings.draw, bindings.read);
+		return;
+	}
+	if (bindings.draw == bindings.read) {
+		glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(bindings.draw));
+	} else {
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<GLuint>(bindings.draw));
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(bindings.read));
+	}
+}
+
+}
+
 ColourBuffer::~ColourBuffer() noexcept {
 	if (fbo != 0 || texture != 0) {
 		Destroy();
@@ -313,6 +342,9 @@ ColourBuffer::~ColourBuffer() noexcept {
 
 void ColourBuffer::Destroy() noexcept {
 	if (fbo != 0) {
+		if (GlContext *owner = GlContext::CurrentOnThread()) {
+			owner->InvalidateAppliedFramebuffer(fbo);
+		}
 		GLuint name = fbo;
 		glDeleteFramebuffers(1, &name);
 		fbo = 0;
@@ -332,6 +364,8 @@ void ColourBuffer::Resize(int width_, int height_) {
 	}
 	Destroy();
 
+	const FramebufferBindings previous = QueryFramebufferBindings();
+
 	GLuint tex = 0;
 	glGenTextures(1, &tex);
 	glBindTexture(GL_TEXTURE_2D, tex);
@@ -346,10 +380,13 @@ void ColourBuffer::Resize(int width_, int height_) {
 	glBindFramebuffer(GL_FRAMEBUFFER, fb);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
 	const GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	RestoreFramebufferBindings(previous);
 	glBindTexture(GL_TEXTURE_2D, 0);
 
 	if (status != GL_FRAMEBUFFER_COMPLETE) {
+		if (GlContext *owner = GlContext::CurrentOnThread()) {
+			owner->InvalidateAppliedFramebuffer(fb);
+		}
 		glDeleteFramebuffers(1, &fb);
 		glDeleteTextures(1, &tex);
 		throw std::runtime_error(
@@ -370,10 +407,11 @@ std::vector<uint8_t> ColourBuffer::ReadPixelsTopDown() const {
 	const size_t rowBytes = static_cast<size_t>(width) * 4u;
 	const size_t total = rowBytes * static_cast<size_t>(height);
 	std::vector<uint8_t> bottomUp(total);
+	const FramebufferBindings previous = QueryFramebufferBindings();
 	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 	glPixelStorei(GL_PACK_ALIGNMENT, 1);
 	glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, bottomUp.data());
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	RestoreFramebufferBindings(previous);
 	for (size_t i = 0; i < total; i += 4) {
 		UnpremultiplyPixel(bottomUp.data() + i);
 	}
@@ -393,10 +431,11 @@ ColourRGBA ColourBuffer::ReadPixel(int x, int y) const {
 	}
 	const int glY = height - 1 - y;
 	uint8_t px[4] = {};
+	const FramebufferBindings previous = QueryFramebufferBindings();
 	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 	glPixelStorei(GL_PACK_ALIGNMENT, 1);
 	glReadPixels(x, glY, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	RestoreFramebufferBindings(previous);
 	UnpremultiplyPixel(px);
 	return ColourRGBA(px[0], px[1], px[2], px[3]);
 }
@@ -620,8 +659,8 @@ void Renderer::SetOutputRasterScale(RasterScale rasterScale) {
 
 void Renderer::BindCurrentTarget() {
 	MakeCurrent();
-	glBindFramebuffer(GL_FRAMEBUFFER, targetFbo);
-	glViewport(0, 0, targetWidth, targetHeight);
+	context.BindDrawFramebuffer(targetFbo);
+	context.SetDrawViewport(targetWidth, targetHeight);
 	ApplyScissor();
 }
 
@@ -648,20 +687,16 @@ PixelRect Renderer::LogicalPixelRect(PRectangle rc) const noexcept {
 	};
 }
 
-void Renderer::ApplyScissor() const {
+void Renderer::ApplyScissor() {
 	const PixelRect clip = CurrentClip();
 	if (clip.Empty() || targetWidth <= 0 || targetHeight <= 0) {
-		glDisable(GL_SCISSOR_TEST);
+		context.SetDrawScissor(false, 0, 0, 0, 0);
 		// Empty clip: leave scissor disabled and draws must no-op themselves.
 		return;
 	}
 	// OpenGL scissor origin is bottom-left; our rect is top-down half-open.
-	const GLint glX = clip.left;
-	const GLint glY = targetHeight - clip.bottom;
-	const GLsizei glW = clip.Width();
-	const GLsizei glH = clip.Height();
-	glEnable(GL_SCISSOR_TEST);
-	glScissor(glX, glY, glW, glH);
+	context.SetDrawScissor(true, clip.left, targetHeight - clip.bottom,
+		clip.Width(), clip.Height());
 }
 
 void Renderer::SetClip(PRectangle rc) {
@@ -670,7 +705,7 @@ void Renderer::SetClip(PRectangle rc) {
 
 void Renderer::SetBufferClip(PixelRect next) {
 	MakeCurrent();
-	glBindFramebuffer(GL_FRAMEBUFFER, targetFbo);
+	context.BindDrawFramebuffer(targetFbo);
 	next = IntersectPixelRect(next, CurrentClip());
 	// Also clamp to target.
 	next = IntersectPixelRect(next, PixelRect{0, 0, targetWidth, targetHeight});
@@ -683,7 +718,7 @@ void Renderer::PopClip() {
 		return;
 	}
 	MakeCurrent();
-	glBindFramebuffer(GL_FRAMEBUFFER, targetFbo);
+	context.BindDrawFramebuffer(targetFbo);
 	clipStack.pop_back();
 	ApplyScissor();
 }
@@ -693,17 +728,17 @@ void Renderer::ClearClips() {
 		return;
 	}
 	MakeCurrent();
-	glBindFramebuffer(GL_FRAMEBUFFER, targetFbo);
+	context.BindDrawFramebuffer(targetFbo);
 	clipStack.clear();
 	ApplyScissor();
 }
 
 void Renderer::Clear(ColourRGBA colour) {
 	MakeCurrent();
-	glBindFramebuffer(GL_FRAMEBUFFER, targetFbo);
-	glViewport(0, 0, targetWidth, targetHeight);
+	context.BindDrawFramebuffer(targetFbo);
+	context.SetDrawViewport(targetWidth, targetHeight);
 	// Full-target clear ignores the clip stack.
-	glDisable(GL_SCISSOR_TEST);
+	context.SetDrawScissor(false, 0, 0, 0, 0);
 	glClearColor(
 		colour.GetRedComponent() * colour.GetAlphaComponent(),
 		colour.GetGreenComponent() * colour.GetAlphaComponent(),
@@ -721,10 +756,7 @@ void Renderer::UploadProjection() const {
 }
 
 void Renderer::BeginDraw() {
-	MakeCurrent();
-	glBindFramebuffer(GL_FRAMEBUFFER, targetFbo);
-	glViewport(0, 0, targetWidth, targetHeight);
-	ApplyScissor();
+	BindCurrentTarget();
 }
 
 void Renderer::SetBlendForColour(ColourRGBA colour) {
@@ -802,8 +834,8 @@ void Renderer::FillRectangleOpaque(PRectangle rc, ColourRGBA colour) {
 		return;
 	}
 	// Exact opaque fill via scissored clear.
-	glEnable(GL_SCISSOR_TEST);
-	glScissor(pr.left, targetHeight - pr.bottom, pr.Width(), pr.Height());
+	context.SetDrawScissor(true, pr.left, targetHeight - pr.bottom,
+		pr.Width(), pr.Height());
 	glClearColor(
 		colour.GetRedComponent(),
 		colour.GetGreenComponent(),
