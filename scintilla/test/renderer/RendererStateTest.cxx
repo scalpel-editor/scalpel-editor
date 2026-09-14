@@ -327,6 +327,25 @@ TEST_CASE("Renderer state nested and empty clips keep pixels") {
 	surface->PopClip();
 }
 
+TEST_CASE("Renderer state disabling scissor preserves unknown box state") {
+	GlContext context;
+	context.SetDrawScissor(true, 1, 2, 3, 4);
+	context.InvalidateAppliedDrawState();
+	context.SetDrawScissor(false, 0, 0, 0, 0);
+	context.ResetSetupCounts();
+	context.SetDrawScissor(false, 0, 0, 0, 0);
+	CHECK(context.SetupCounts().scissorEmitted == 0);
+
+	context.SetDrawScissor(true, 0, 0, 0, 0);
+	GLint box[4] = {};
+	glGetIntegerv(GL_SCISSOR_BOX, box);
+	CHECK(box[0] == 0);
+	CHECK(box[1] == 0);
+	CHECK(box[2] == 0);
+	CHECK(box[3] == 0);
+	CHECK(glIsEnabled(GL_SCISSOR_TEST) == GL_TRUE);
+}
+
 TEST_CASE("Renderer state clear restores clip scissor") {
 	GlContext context;
 	Renderer renderer(context);

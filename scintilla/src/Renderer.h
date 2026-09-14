@@ -32,9 +32,10 @@ namespace Scintilla::Internal {
  * Texture-backed colour attachment in the current GlContext.
  *
  * Pixmap surfaces and the main offscreen target each own one of these in the
- * parent context. Destroy while the context is current. Resize and readback
- * restore the incoming draw/read framebuffer bindings, including when those
- * two bindings differ.
+ * parent context. Destroy while the context is current. Allocation and
+ * readback restore incoming draw/read framebuffer bindings, including when
+ * those two bindings differ. Resize deletes the old buffer first; bindings
+ * to that deleted framebuffer become 0.
  */
 class ColourBuffer {
 public:

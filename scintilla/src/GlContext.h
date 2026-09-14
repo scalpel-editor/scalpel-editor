@@ -194,6 +194,7 @@ private:
 		int viewportHeight = 0;
 		bool scissorKnown = false;
 		bool scissorEnabled = false;
+		bool scissorBoxKnown = false;
 		int scissorX = 0;
 		int scissorY = 0;
 		int scissorWidth = 0;

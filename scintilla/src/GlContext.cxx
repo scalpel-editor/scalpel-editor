@@ -548,6 +548,7 @@ void GlContext::AdoptCurrent(SurfaceTarget target, bool invalidateViewport) noex
 	if (invalidateViewport) {
 		applied.viewportKnown = false;
 		applied.scissorKnown = false;
+		applied.scissorBoxKnown = false;
 	}
 }
 
@@ -593,7 +594,7 @@ void GlContext::SetDrawScissor(bool enabled, int x, int y, int width, int height
 		applied.scissorKnown = true;
 		return;
 	}
-	const bool boxMatches = applied.scissorKnown &&
+	const bool boxMatches = applied.scissorBoxKnown &&
 		applied.scissorX == x && applied.scissorY == y &&
 		applied.scissorWidth == width && applied.scissorHeight == height;
 	if (boxMatches && applied.scissorEnabled) {
@@ -606,6 +607,7 @@ void GlContext::SetDrawScissor(bool enabled, int x, int y, int width, int height
 		applied.scissorY = y;
 		applied.scissorWidth = width;
 		applied.scissorHeight = height;
+		applied.scissorBoxKnown = true;
 	}
 	if (!applied.scissorKnown || !applied.scissorEnabled) {
 		glEnable(GL_SCISSOR_TEST);
