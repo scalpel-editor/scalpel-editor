@@ -549,3 +549,86 @@ TEST_CASE("Partial repaint skips warm text runs without reshaping") {
 	CHECK(surface->TextCounts().clipped == 0);
 	CHECK(renderer.GlyphCounts().submitted > 0);
 }
+
+TEST_CASE("Partial repaint fractional regions cover each buffer pixel once") {
+	for (const int scale : {125, 150, 200}) {
+		CAPTURE(scale);
+		GlContext context;
+		Renderer renderer(context);
+		ColourBuffer buffer;
+		const int width = (81 * scale + 99) / 100;
+		const int height = (61 * scale + 99) / 100;
+		buffer.Resize(width, height);
+		auto surface = CreateExternalDrawSurface(renderer, buffer.FramebufferName(),
+			width, height, 81, 61, RasterScale::FromParts(scale, 100), {});
+		const std::vector<PRectangle> damage{PRectangle(1, 1, 7, 9),
+			PRectangle(7, 1, 12, 5), PRectangle(3, 9, 10, 14), PRectangle(50, 40, 60, 50)};
+		const auto regions = surface->PrepareRepaint(damage);
+		const ColourRGBA background(20, 30, 40);
+		const ColourRGBA foreground(200, 100, 60, 111);
+		renderer.Clear(background);
+		surface->FillRectangle(PRectangle(0, 0, 81, 61), Fill(foreground));
+		const auto reference = buffer.ReadPixelsTopDown();
+		renderer.Clear(background);
+		for (const auto &region : regions) {
+			surface->SetBufferClip(region.clip);
+			// A nested logical clip must not reopen rounded overlaps.
+			surface->SetClip(region.area);
+			surface->FillRectangle(PRectangle(0, 0, 81, 61), Fill(foreground));
+			surface->PopClip();
+		}
+		const auto pixels = buffer.ReadPixelsTopDown();
+		for (int y = 0; y < height; ++y) {
+			for (int x = 0; x < width; ++x) {
+				bool covered = false;
+				for (const PRectangle area : damage) {
+					const PixelRect clip = renderer.LogicalPixelRect(area);
+					covered |= x >= clip.left && x < clip.right && y >= clip.top && y < clip.bottom;
+				}
+				REQUIRE(PixelAt(pixels, width, x, y) ==
+					(covered ? PixelAt(reference, width, x, y) : background));
+			}
+		}
+	}
+}
+
+TEST_CASE("Partial repaint keeps negative bearings and whole emoji shaping units") {
+	FontCache fonts;
+	const auto mono = fonts.LoadPath(std::filesystem::path(SCALPEL_TEST_FONT_DIR) /
+		"FallbackEmojiMono.ttf", FontParameters("fixture", 24.0));
+	const auto emoji = fonts.LoadPath(std::filesystem::path(SCALPEL_TEST_FONT_DIR) /
+		"EmojiFixture.ttf", FontParameters("emoji", 24.0));
+	const auto font = FontFromFace(mono);
+	const auto j = ShapeText("j", mono);
+	REQUIRE_FALSE(j.glyphs.empty());
+	REQUIRE(mono->RasterizeGlyph(j.glyphs.front().glyphId).left < 0);
+	GlContext context;
+	Renderer renderer(context);
+	auto surface = CreateDrawSurface(renderer, 160, 60, FontFallback::Fixed({emoji}));
+	const ColourRGBA background(30, 40, 50);
+	const ColourRGBA foreground(220, 180, 120);
+	const std::string text = "j 1\xEF\xB8\x8F\xE2\x83\xA3 \xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x9A\x80";
+	const auto paint = [&] {
+		surface->DrawTextTransparent(PRectangle(40, 0, 160, 60), font.get(), 34,
+			text, foreground);
+	};
+	renderer.Clear(background);
+	paint();
+	const auto reference = surface->Buffer().ReadPixelsTopDown();
+	const size_t misses = surface->RunCache().MissCount();
+	for (const PRectangle clip : {PRectangle(39, 0, 40, 60), PRectangle(61, 0, 66, 60),
+		PRectangle(95, 0, 100, 60)}) {
+		surface->ResetClips();
+		renderer.Clear(background);
+		surface->SetClip(clip);
+		paint();
+		CHECK(surface->RunCache().MissCount() == misses);
+		const auto pixels = surface->Buffer().ReadPixelsTopDown();
+		for (int y = 0; y < 60; ++y) {
+			for (int x = 0; x < 160; ++x) {
+				REQUIRE(PixelAt(pixels, 160, x, y) ==
+					(x >= clip.left && x < clip.right ? PixelAt(reference, 160, x, y) : background));
+			}
+		}
+	}
+}

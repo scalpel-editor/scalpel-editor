@@ -236,17 +236,6 @@ std::vector<Scintilla::Internal::PRectangle> EditorDamage(
 	return rectangles;
 }
 
-std::vector<int> EglDamage(
-	const std::vector<Scalpel::DamageRectangle> &damage) {
-	std::vector<int> rectangles;
-	rectangles.reserve(damage.size() * 4);
-	for (const Scalpel::DamageRectangle &rectangle : damage) {
-		rectangles.insert(rectangles.end(), {
-			rectangle.x, rectangle.y, rectangle.width, rectangle.height});
-	}
-	return rectangles;
-}
-
 std::vector<Scalpel::FileDialogFilter> TextDialogFilters() {
 	return {
 		{"Text files", {"*.txt", "*.md"}},
@@ -594,7 +583,7 @@ ApplicationTerminationReason RunWaylandApplication(ApplicationSession &session) 
 					ui.BeginFrameLayout();
 					const bool presented = editor.PresentFrame(
 						EditorDamage(plan->repaintDamage),
-						EglDamage(plan->eglDamage), plan->fullSwap);
+						plan->fullSwap);
 					ui.EndFrameLayout();
 					if (presented) {
 						window.SubmitFrame(plan->submission);

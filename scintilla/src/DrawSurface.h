@@ -10,6 +10,7 @@
 #define DRAWSURFACE_H
 
 #include <memory>
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
@@ -69,6 +70,14 @@ public:
 	 * the surface is reused across frames after an abandoned or partial paint.
 	 */
 	void ResetClips() noexcept;
+	/** Start a frame region with an exact outer buffer clip. */
+	void SetBufferClip(PixelRect rc);
+	struct PaintRegion {
+		PRectangle area;
+		PixelRect clip;
+	};
+	/** Normalize damage in buffer pixels; area encloses exactly that coverage. */
+	std::vector<PaintRegion> PrepareRepaint(const std::vector<PRectangle> &damage);
 	/** Use a non-owning framebuffer target, including window framebuffer 0. */
 	void SetExternalDrawTarget(unsigned framebuffer, int bufferWidth, int bufferHeight,
 		int logicalWidth, int logicalHeight, RasterScale rasterScale = {});
@@ -150,6 +159,7 @@ private:
 	ShapedRunCache runCache;
 	FontFallback fallback;
 	std::vector<PRectangle> clipStack;
+	std::optional<PixelRect> bufferClip;
 	unsigned externalFramebuffer = 0;
 	int externalWidth = 0;
 	int externalHeight = 0;

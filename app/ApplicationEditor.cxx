@@ -26,31 +26,6 @@ using Scintilla::Internal::PRectangle;
 
 namespace {
 
-PRectangle DamageBounds(
-	const std::vector<PRectangle> &damage, PRectangle client) {
-	std::optional<PRectangle> bounds;
-	for (const PRectangle &rectangle : damage) {
-		const PRectangle clipped{
-			std::clamp(rectangle.left, client.left, client.right),
-			std::clamp(rectangle.top, client.top, client.bottom),
-			std::clamp(rectangle.right, client.left, client.right),
-			std::clamp(rectangle.bottom, client.top, client.bottom),
-		};
-		if (clipped.left >= clipped.right || clipped.top >= clipped.bottom) {
-			continue;
-		}
-		if (!bounds) {
-			bounds = clipped;
-		} else {
-			bounds->left = std::min(bounds->left, clipped.left);
-			bounds->top = std::min(bounds->top, clipped.top);
-			bounds->right = std::max(bounds->right, clipped.right);
-			bounds->bottom = std::max(bounds->bottom, clipped.bottom);
-		}
-	}
-	return bounds.value_or(client);
-}
-
 bool DamageIntersects(const std::vector<PRectangle> &damage,
 	PRectangle area) noexcept {
 	if (damage.empty()) {
@@ -1458,63 +1433,21 @@ bool ApplicationEditor::RenderFrame(const std::vector<PRectangle> &damage) {
 	} else {
 		frame = Scintilla::Internal::CreateDrawSurface(*renderer, width, height);
 	}
-	paintState = PaintState::painting;
-	const PRectangle client = GetClientRectangle();
-	const bool paintOverlay = static_cast<bool>(overlayPainter);
-	// Modal overlay spans the full frame (tabs + editor + scrollbars).
-	const bool paintEditor = paintOverlay || DamageIntersects(damage, client);
-	const bool paintChrome = permanentChromePainter && PermanentChromePresent() &&
-		(paintOverlay || DamageIntersectsPermanentChrome(damage));
-	if (paintOverlay) {
-		rcPaint = client;
-	} else if (paintEditor) {
-		rcPaint = DamageBounds(damage, client);
-	} else {
-		rcPaint = PRectangle::FromInts(0, 0, 0, 0);
-	}
-	paintingAllText = paintEditor && (rcPaint == client);
-	try {
-		if (paintEditor) {
-			Paint(frame.get(), rcPaint);
-		}
-		if (paintState != PaintState::abandoned) {
-			if (paintChrome) {
-				permanentChromePainter(*frame, width, height);
-			}
-			if (overlayPainter) {
-				overlayPainter(*frame, width, height);
-			}
-		}
-	} catch (...) {
-		paintState = PaintState::notPainting;
-		paintingAllText = false;
-		throw;
-	}
-	const bool completed = paintState != PaintState::abandoned;
-	paintState = PaintState::notPainting;
-	paintingAllText = false;
-	if (!completed) {
-		InvalidateClient();
-	}
-	return completed;
+	return PaintFrameContents(damage);
 }
 
 bool ApplicationEditor::PresentFrame() {
 	if (!glContext->HasWindowSurface()) {
 		throw std::runtime_error("ApplicationEditor::PresentFrame requires a window surface");
 	}
-	return PresentFrame(TakeFrameDamage(), {}, true);
+	return PresentFrame(TakeFrameDamage(), true);
 }
 
 bool ApplicationEditor::PresentFrame(
 	const std::vector<PRectangle> &damage,
-	const std::vector<int> &eglDamage, bool fullSwap) {
+	bool fullSwap) {
 	if (!glContext->HasWindowSurface()) {
 		throw std::runtime_error("ApplicationEditor::PresentFrame requires a window surface");
-	}
-	if (eglDamage.size() % 4 != 0) {
-		throw std::invalid_argument(
-			"ApplicationEditor::PresentFrame requires complete EGL rectangles");
 	}
 	const int width = FrameWidth();
 	const int height = FrameHeight();
@@ -1538,53 +1471,90 @@ bool ApplicationEditor::PresentFrame(
 		frame = Scintilla::Internal::CreateExternalDrawSurface(
 			*renderer, 0, bufferWidth, bufferHeight, width, height, frameRasterScale);
 	}
-	paintState = PaintState::painting;
+	const bool paintOverlay = static_cast<bool>(overlayPainter);
+	if (!PaintFrameContents(damage)) {
+		return false;
+	}
+	if (fullSwap || paintOverlay) {
+		glContext->SwapBuffers();
+	} else {
+		glContext->SwapBuffersWithDamage(frameEglDamage.data(), frameEglDamage.size() / 4);
+	}
+	return true;
+}
+
+bool ApplicationEditor::PaintFrameContents(const std::vector<PRectangle> &damage) {
+	using namespace Scintilla::Internal;
+	const int width = FrameWidth();
+	const int height = FrameHeight();
+	const int pixelHeight = renderer->TargetHeight();
 	const PRectangle client = GetClientRectangle();
 	const bool paintOverlay = static_cast<bool>(overlayPainter);
-	const bool paintEditor = paintOverlay || DamageIntersects(damage, client);
-	const bool paintChrome = permanentChromePainter && PermanentChromePresent() &&
-		(paintOverlay || DamageIntersectsPermanentChrome(damage));
-	// Overlay alpha (scrim) must not re-blend outside the reported EGL damage.
-	if (paintOverlay) {
-		rcPaint = client;
-		fullSwap = true;
-	} else if (paintEditor) {
-		rcPaint = DamageBounds(damage, client);
-	} else {
-		rcPaint = PRectangle::FromInts(0, 0, 0, 0);
+	const auto regions = frame->PrepareRepaint(
+		paintOverlay || damage.empty() ? std::vector<PRectangle>{FrameRectangle()} : damage);
+	std::vector<PRectangle> areas;
+	frameEglDamage.clear();
+	for (const auto &region : regions) {
+		areas.push_back(region.area);
+		const PixelRect clip = region.clip;
+		frameEglDamage.insert(frameEglDamage.end(), {clip.left,
+			pixelHeight - clip.bottom, clip.Width(), clip.Height()});
 	}
-	paintingAllText = paintEditor && (rcPaint == client);
+	const auto clientRegions = NormalizeRectangles(areas, client, static_cast<size_t>(-1));
+	paintState = PaintState::painting;
+	paintRegions.clear();
+	rcPaint = PRectangle();
+	paintingAllText = false;
+	view.linesPainted = 0;
 	try {
-		if (paintEditor) {
-			Paint(frame.get(), rcPaint);
+		if (!clientRegions.empty()) {
+			if (PreparePaint(frame.get(), clientRegions)) {
+				for (size_t region = 0; region < areas.size(); ++region) {
+					const PRectangle area(std::max(areas[region].left, client.left),
+						std::max(areas[region].top, client.top), std::min(areas[region].right, client.right),
+						std::min(areas[region].bottom, client.bottom));
+					if (!area.Empty()) {
+						frame->SetBufferClip(regions[region].clip);
+						PaintPreparedRegion(frame.get(), area);
+						if (paintState == PaintState::abandoned) {
+							break;
+						}
+					}
+				}
+				frame->ResetClips();
+				CompletePaint();
+			} else {
+				paintState = PaintState::abandoned;
+			}
 		}
 		if (paintState != PaintState::abandoned) {
-			if (paintChrome) {
-				permanentChromePainter(*frame, width, height);
+			if (permanentChromePainter && PermanentChromePresent()) {
+				for (size_t region = 0; region < areas.size(); ++region) {
+					if (DamageIntersectsPermanentChrome({areas[region]})) {
+						frame->SetBufferClip(regions[region].clip);
+						permanentChromePainter(*frame, width, height);
+					}
+				}
 			}
 			if (overlayPainter) {
+				frame->ResetClips();
 				overlayPainter(*frame, width, height);
 			}
 		}
 	} catch (...) {
+		frame->ResetClips();
 		paintState = PaintState::notPainting;
 		paintingAllText = false;
 		throw;
 	}
+	frame->ResetClips();
 	const bool completed = paintState != PaintState::abandoned;
 	paintState = PaintState::notPainting;
 	paintingAllText = false;
 	if (!completed) {
 		InvalidateClient();
-		return false;
 	}
-	if (fullSwap) {
-		glContext->SwapBuffers();
-	} else {
-		glContext->SwapBuffersWithDamage(
-			eglDamage.data(), eglDamage.size() / 4);
-	}
-	return true;
+	return completed;
 }
 
 void ApplicationEditor::SetOverlayPainter(OverlayPainter painter) noexcept {

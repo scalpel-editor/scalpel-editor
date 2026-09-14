@@ -97,6 +97,9 @@ void DrawSurface::BindDrawTarget() {
 	renderer->SetDrawTarget(
 		framebuffer, width, height, logicalWidth, logicalHeight);
 	if (targetChanged) {
+		if (bufferClip) {
+			renderer->SetBufferClip(*bufferClip);
+		}
 		for (const PRectangle rc : clipStack) {
 			renderer->SetClip(rc);
 		}
@@ -106,6 +109,7 @@ void DrawSurface::BindDrawTarget() {
 
 void DrawSurface::ResetClips() noexcept {
 	clipStack.clear();
+	bufferClip.reset();
 	if (!renderer) {
 		return;
 	}
@@ -114,6 +118,38 @@ void DrawSurface::ResetClips() noexcept {
 	} catch (...) {
 		// Best-effort: leave the surface clip list empty for the next paint.
 	}
+}
+
+std::vector<DrawSurface::PaintRegion> DrawSurface::PrepareRepaint(
+	const std::vector<PRectangle> &damage) {
+	BindDrawTarget();
+	const int width = renderer->TargetWidth();
+	const int height = renderer->TargetHeight();
+	const int logicalWidth = renderer->TargetLogicalWidth();
+	const int logicalHeight = renderer->TargetLogicalHeight();
+	const auto logical = NormalizeRectangles(damage,
+		PRectangle::FromInts(0, 0, logicalWidth, logicalHeight));
+	std::vector<PRectangle> pixels;
+	for (const PRectangle area : logical) {
+		const PixelRect clip = renderer->LogicalPixelRect(area);
+		pixels.push_back(PRectangle::FromInts(clip.left, clip.top, clip.right, clip.bottom));
+	}
+	// Rounding can make separate logical rectangles overlap in buffer pixels.
+	pixels = NormalizeRectangles(pixels, PRectangle::FromInts(0, 0, width, height));
+	std::vector<PaintRegion> regions;
+	for (const PRectangle pixel : pixels) {
+		regions.push_back({PRectangle(pixel.left * logicalWidth / width,
+			pixel.top * logicalHeight / height, pixel.right * logicalWidth / width,
+			pixel.bottom * logicalHeight / height), PixelRectFromPRectangle(pixel)});
+	}
+	return regions;
+}
+
+void DrawSurface::SetBufferClip(PixelRect rc) {
+	ResetClips();
+	BindDrawTarget();
+	bufferClip = rc;
+	renderer->SetBufferClip(rc);
 }
 
 void DrawSurface::SetExternalDrawTarget(unsigned framebuffer,
@@ -174,6 +210,7 @@ void DrawSurface::Release() noexcept {
 	}
 	initialised = false;
 	clipStack.clear();
+	bufferClip.reset();
 	bufferLogicalWidth = 0;
 	bufferLogicalHeight = 0;
 	hasExternalTarget = false;

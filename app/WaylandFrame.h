@@ -41,7 +41,6 @@ struct FramePlan {
 	std::vector<FrameRectangle> submissionDamage;
 	std::vector<FrameRectangle> repaintDamage;
 	std::vector<DamageRectangle> waylandDamage;
-	std::vector<DamageRectangle> eglDamage;
 	bool fullSwap = false;
 };
 
@@ -77,8 +76,6 @@ struct PresentationResult {
 	std::size_t maximumRectangles = 16);
 [[nodiscard]] std::vector<DamageRectangle> WaylandBufferDamage(
 	const std::vector<FrameRectangle> &damage);
-[[nodiscard]] std::vector<DamageRectangle> EglBufferDamage(
-	const std::vector<FrameRectangle> &damage, int bufferHeight);
 [[nodiscard]] FramePlan ScaleFramePlan(
 	FramePlan plan, int logicalWidth, int logicalHeight,
 	int bufferWidth, int bufferHeight);

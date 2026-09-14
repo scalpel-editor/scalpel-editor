@@ -665,9 +665,12 @@ void Renderer::ApplyScissor() const {
 }
 
 void Renderer::SetClip(PRectangle rc) {
+	SetBufferClip(LogicalPixelRect(rc));
+}
+
+void Renderer::SetBufferClip(PixelRect next) {
 	MakeCurrent();
 	glBindFramebuffer(GL_FRAMEBUFFER, targetFbo);
-	PixelRect next = LogicalPixelRect(rc);
 	next = IntersectPixelRect(next, CurrentClip());
 	// Also clamp to target.
 	next = IntersectPixelRect(next, PixelRect{0, 0, targetWidth, targetHeight});

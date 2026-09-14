@@ -362,3 +362,23 @@ TEST_CASE("Partial repaint normalization covers each pixel once") {
 	CHECK(NormalizeRectangles(input, frame, 1) ==
 		std::vector<PRectangle>{PRectangle(0, 1, 18, 20)});
 }
+
+TEST_CASE("Partial repaint abandons when styling changes a gap") {
+	TestHost host;
+	TestEditor editor(host, PRectangle(0, 0, 240, 160));
+	editor.SetText("first\nsecond\nthird\nfourth\nfifth\nsixth\nseventh\neighth\n");
+	editor.StyleSetFore(1, 0x0000ff);
+	editor.PaintAll();
+	editor.ClearObservations();
+	const auto surface = editor.PaintRegionsToSurface(
+		{PRectangle(0, 0, 240, 12), PRectangle(0, 140, 240, 160)}, ColourRGBA(1, 2, 3), [&] {
+			editor.StartStyling(13);
+			editor.SetStyling(5, 1);
+		});
+	CHECK(editor.observations.paintAbandoned);
+	CHECK(std::none_of(editor.observations.notifications.begin(),
+		editor.observations.notifications.end(), [](const TestNotification &notification) {
+			return notification.code == Notification::Painted;
+		}));
+	CHECK(surface->Buffer().ReadPixel(100, 70) == ColourRGBA(1, 2, 3));
+}

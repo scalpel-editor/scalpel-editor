@@ -119,9 +119,6 @@ TEST_CASE("Wayland frame damage clips and converts coordinate origins") {
 	CHECK(Scalpel::WaylandBufferDamage(clipped) ==
 		std::vector<Scalpel::DamageRectangle>{
 			{0, 2, 20, 10}, {90, 70, 10, 10}});
-	CHECK(Scalpel::EglBufferDamage(clipped, 80) ==
-		std::vector<Scalpel::DamageRectangle>{
-			{0, 68, 20, 10}, {90, 0, 10, 10}});
 	CHECK(Scalpel::ScaleFrameDamage({{10, 5, 30, 20}}, 100, 80, 2) ==
 		std::vector<Scalpel::FrameRectangle>{{20, 10, 60, 40}});
 	CHECK(Scalpel::ScaleFrameDamageFractional(
@@ -134,7 +131,6 @@ TEST_CASE("Wayland frame damage clips and converts coordinate origins") {
 	CHECK_THROWS(Scalpel::ScaleFrameDamage(damage, 100, 80, 0));
 	CHECK_THROWS(Scalpel::ScaleFrameDamageFractional(
 		damage, 100, 80, 150, 0));
-	CHECK_THROWS(Scalpel::EglBufferDamage(clipped, 0));
 }
 
 TEST_CASE("Wayland frame plans keep paint logical and damage scaled") {
@@ -151,8 +147,6 @@ TEST_CASE("Wayland frame plans keep paint logical and damage scaled") {
 			{1, 1, 3, 3}, {7, 5, 9, 7}});
 	CHECK(scaled.waylandDamage ==
 		std::vector<Scalpel::DamageRectangle>{{1, 1, 3, 3}});
-	CHECK(scaled.eglDamage ==
-		std::vector<Scalpel::DamageRectangle>{{1, 91, 11, 8}});
 }
 
 TEST_CASE("Wayland frame damage bounds excessive rectangle counts") {
@@ -188,8 +182,6 @@ TEST_CASE("Wayland frame buffer age extends repaint damage") {
 	CHECK(aged->repaintDamage ==
 		std::vector<Scalpel::FrameRectangle>{
 			{40, 40, 50, 50}, {20, 20, 30, 30}});
-	CHECK(aged->eglDamage ==
-		std::vector<Scalpel::DamageRectangle>{{20, 30, 30, 30}});
 	(void)frame.PrepareFrame(aged->submission, false);
 	frame.SubmitFrame(aged->submission);
 	frame.FrameCallbackDone();

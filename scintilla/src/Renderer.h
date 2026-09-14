@@ -152,6 +152,8 @@ public:
 	 * until PopClip.
 	 */
 	void SetClip(PRectangle rc);
+	/** Push an already rounded buffer clip without a second conversion. */
+	void SetBufferClip(PixelRect rc);
 
 	/** Restore the previous clip; no-op if the stack is empty. */
 	void PopClip();
@@ -241,6 +243,7 @@ public:
 
 	/** Active buffer clip, for rejecting previously measured run ink. */
 	[[nodiscard]] PixelRect CurrentClip() const noexcept;
+	[[nodiscard]] PixelRect LogicalPixelRect(PRectangle rc) const noexcept;
 
 	/** Number of entries in the glyph texture cache, including deferred uploads. */
 	[[nodiscard]] size_t GlyphCacheSize() const noexcept { return glyphCache.size(); }
@@ -374,7 +377,6 @@ private:
 	void DrawTexturedQuadBuffer(float x0, float y0, float x1, float y1,
 		float u0, float v0, float u1, float v1, unsigned texture, bool flipV,
 		bool sourceStraightAlpha, ColourRGBA modulate = ColourRGBA(255, 255, 255, 255));
-	[[nodiscard]] PixelRect LogicalPixelRect(PRectangle rc) const noexcept;
 	void BeginDraw();
 	void SetBlendForColour(ColourRGBA colour);
 

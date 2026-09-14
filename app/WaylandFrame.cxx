@@ -155,24 +155,6 @@ std::vector<DamageRectangle> WaylandBufferDamage(
 	return rectangles;
 }
 
-std::vector<DamageRectangle> EglBufferDamage(
-	const std::vector<FrameRectangle> &damage, int bufferHeight) {
-	if (bufferHeight <= 0) {
-		throw std::invalid_argument("EGL damage requires a positive buffer height");
-	}
-	std::vector<DamageRectangle> rectangles;
-	rectangles.reserve(damage.size());
-	for (const FrameRectangle &rectangle : damage) {
-		if (!Empty(rectangle)) {
-			rectangles.push_back({rectangle.left,
-				bufferHeight - rectangle.bottom,
-				rectangle.right - rectangle.left,
-				rectangle.bottom - rectangle.top});
-		}
-	}
-	return rectangles;
-}
-
 FramePlan ScaleFramePlan(
 	FramePlan plan, int logicalWidth, int logicalHeight,
 	int bufferWidth, int bufferHeight) {
@@ -180,16 +162,7 @@ FramePlan ScaleFramePlan(
 		ScaleFrameDamageToBuffer(
 			plan.submissionDamage, logicalWidth, logicalHeight,
 			bufferWidth, bufferHeight);
-	const std::vector<FrameRectangle> paintBounds =
-		plan.repaintDamage.empty() ?
-			std::vector<FrameRectangle>{} :
-			std::vector<FrameRectangle>{Bounds(plan.repaintDamage)};
-	const std::vector<FrameRectangle> scaledRepaint =
-		ScaleFrameDamageToBuffer(
-			paintBounds, logicalWidth, logicalHeight,
-			bufferWidth, bufferHeight);
 	plan.waylandDamage = WaylandBufferDamage(scaledSubmission);
-	plan.eglDamage = EglBufferDamage(scaledRepaint, bufferHeight);
 	return plan;
 }
 
@@ -241,14 +214,12 @@ std::optional<FramePlan> WaylandFrameState::BeginFrame(
 	}
 	repaintDamage = ClipFrameDamage(
 		repaintDamage, bufferWidth, bufferHeight, MaximumDamageRectangles);
-	const std::vector<FrameRectangle> paintBounds = {Bounds(repaintDamage)};
 
 	return FramePlan{
 		activeSubmission,
 		std::move(submissionDamage),
 		repaintDamage,
 		WaylandBufferDamage(activeDamage),
-		EglBufferDamage(paintBounds, bufferHeight),
 		!damageSwapSupported,
 	};
 }

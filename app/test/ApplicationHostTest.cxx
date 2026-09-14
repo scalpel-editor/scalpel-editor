@@ -1968,3 +1968,120 @@ TEST_CASE("application session process status for pathname editor launch") {
 	CHECK(session.ProcessStatus(
 		Scalpel::ApplicationTerminationReason::FatalFailure) == 1);
 }
+
+TEST_CASE("production editor partial repaint keeps sparse frame gaps") {
+	using namespace Scintilla::Internal;
+	Scalpel::ApplicationEditor editor(320, 240);
+	editor.LoadInitialBuffer("first\nsecond\nthird\nfourth\nfifth\nsixth\nseventh\neighth\n");
+	REQUIRE(editor.RenderFrame());
+	const auto reference = editor.FramePixels();
+	const size_t fullLines = editor.FramePaintedLines();
+	const std::vector<PRectangle> damage{PRectangle(0, 0, 320, 20),
+		PRectangle(0, 120, 320, 140), PRectangle(50, 0, 100, 20)};
+	REQUIRE(editor.RenderFrame(damage));
+	CHECK(editor.FramePaintedLines() < fullLines);
+	CHECK(editor.FramePixels() == reference);
+	CHECK(editor.FrameEglDamage() == std::vector<int>{0, 220, 320, 20, 0, 100, 320, 20});
+}
+
+TEST_CASE("production editor partial repaint clips all permanent chrome writes") {
+	using namespace Scintilla::Internal;
+	Scalpel::ApplicationEditor editor(160, 100);
+	editor.SetTopChromeInset(20);
+	editor.LoadInitialBuffer("body\n");
+	ColourRGBA chrome(30, 40, 50);
+	editor.SetPermanentChromePainter([&](Surface &surface, int width, int) {
+		surface.FillRectangle(PRectangle(0, 0, width, 20), Fill(chrome));
+	});
+	REQUIRE(editor.RenderFrame());
+	const auto previous = editor.FramePixels();
+	chrome = ColourRGBA(230, 140, 50);
+	REQUIRE(editor.RenderFrame({PRectangle(2, 3, 12, 10), PRectangle(100, 3, 112, 10)}));
+	const auto pixels = editor.FramePixels();
+	for (int y = 0; y < 100; ++y) {
+		for (int x = 0; x < 160; ++x) {
+			const size_t offset = (y * 160 + x) * 4;
+			const bool changed = y >= 3 && y < 10 && ((x >= 2 && x < 12) || (x >= 100 && x < 112));
+			const unsigned char colour[] = {230, 140, 50, 255};
+			for (int channel = 0; channel < 4; ++channel) {
+				REQUIRE(pixels[offset + channel] ==
+					(changed ? colour[channel] : previous[offset + channel]));
+			}
+		}
+	}
+	CHECK(editor.FramePaintedLines() == 0);
+	CHECK(editor.FrameEglDamage() == std::vector<int>{2, 90, 10, 7, 100, 90, 12, 7});
+}
+
+TEST_CASE("production editor partial repaint resets clips after painter failure") {
+	using namespace Scintilla::Internal;
+	Scalpel::ApplicationEditor editor(160, 100);
+	editor.SetTopChromeInset(20);
+	editor.LoadInitialBuffer("body\n");
+	REQUIRE(editor.RenderFrame());
+	editor.SetPermanentChromePainter([](Surface &surface, int, int) {
+		surface.SetClip(PRectangle(0, 0, 1, 1));
+		throw std::runtime_error("paint failed");
+	});
+	CHECK_THROWS(editor.RenderFrame({PRectangle(0, 0, 10, 10)}));
+	editor.SetPermanentChromePainter([](Surface &surface, int width, int) {
+		surface.FillRectangle(PRectangle(0, 0, width, 20), Fill(ColourRGBA(200, 100, 30)));
+	});
+	REQUIRE(editor.RenderFrame({}));
+	const auto pixels = editor.FramePixels();
+	CHECK(pixels[(10 * 160 + 100) * 4] == 200);
+}
+
+TEST_CASE("production editor partial repaint matches full frames after interaction") {
+	using namespace Scintilla::Internal;
+	using namespace std::chrono_literals;
+	Scalpel::ApplicationEditor::Clock::time_point now{};
+	Scalpel::ApplicationEditor editor(420, 240, [&] { return now; });
+	std::string text;
+	for (int line = 0; line < 30; ++line) {
+		text += "row " + std::to_string(line) + "\tproportional AV j text with a long tail 0123456789\n";
+	}
+	editor.LoadInitialBuffer(text);
+	editor.SetTopChromeInset(20);
+	editor.SetPermanentChromePainter([](Surface &surface, int width, int) {
+		surface.FillRectangle(PRectangle(0, 0, width, 20), Fill(ColourRGBA(20, 30, 40)));
+	});
+	editor.RunPendingWork();
+	editor.SetKeyboardFocus(true);
+	REQUIRE(editor.RenderFrame());
+	const auto verify = [&] {
+		const auto damage = editor.TakeFrameDamage();
+		if (!editor.RenderFrame(damage)) {
+			REQUIRE(editor.RenderFrame(editor.TakeFrameDamage()));
+		}
+		const auto partial = editor.FramePixels();
+		REQUIRE(editor.RenderFrame({}));
+		REQUIRE(editor.FramePixels() == partial);
+	};
+	SECTION("caret and separated chrome damage") {
+		now += 500ms;
+		editor.RunPendingWork();
+		editor.InvalidateTopChrome();
+		verify();
+	}
+	SECTION("selection changes") {
+		editor.SetSel(2, 25);
+		verify();
+		editor.SetSel(8, 14);
+		verify();
+	}
+	SECTION("horizontal scrolling and tabs") {
+		editor.ScrollHorizontalTo(35);
+		verify();
+	}
+	SECTION("wrapped lines") {
+		editor.SetWrapMode(Scintilla::Wrap::Word);
+		verify();
+		editor.SetSel(10, 130);
+		verify();
+	}
+	SECTION("document changes") {
+		REQUIRE(editor.ReplaceRange(8, 4, "word"));
+		verify();
+	}
+}

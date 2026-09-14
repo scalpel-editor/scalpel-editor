@@ -194,7 +194,8 @@ std::unique_ptr<DrawSurface> TestEditor::PaintToSurface(
 }
 
 std::unique_ptr<DrawSurface> TestEditor::PaintRegionsToSurface(
-	const std::vector<PRectangle> &regions, ColourRGBA initialColour) {
+	const std::vector<PRectangle> &regions, ColourRGBA initialColour,
+	const std::function<void()> &duringPaint) {
 	paintState = PaintState::painting;
 	const PRectangle client = GetClientRectangle();
 	host.EnsureRenderer();
@@ -203,6 +204,9 @@ std::unique_ptr<DrawSurface> TestEditor::PaintRegionsToSurface(
 			TestFontFallbackFaces(static_cast<double>(Platform::DefaultFontSize()))));
 	host.GetRenderer()->Clear(initialColour);
 	if (PreparePaint(surface.get(), regions)) {
+		if (duringPaint) {
+			duringPaint();
+		}
 		for (const PRectangle region : paintRegions) {
 			PaintPreparedRegion(surface.get(), region);
 			if (paintState == PaintState::abandoned) {
@@ -211,6 +215,7 @@ std::unique_ptr<DrawSurface> TestEditor::PaintRegionsToSurface(
 		}
 		CompletePaint();
 	}
+	observations.paintAbandoned = paintState == PaintState::abandoned;
 	paintState = PaintState::notPainting;
 	paintingAllText = false;
 	return surface;

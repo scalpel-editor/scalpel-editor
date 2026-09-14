@@ -394,7 +394,7 @@ public:
 	bool PresentFrame();
 	bool PresentFrame(
 		const std::vector<Scintilla::Internal::PRectangle> &damage,
-		const std::vector<int> &eglDamage, bool fullSwap);
+		bool fullSwap);
 	/**
 	 * Optional post-paint overlay. Called after a successful Scintilla Paint on
 	 * the same surface, with logical frame width and height, before swap.
@@ -411,9 +411,9 @@ public:
 	void SetOverlayPainter(OverlayPainter painter) noexcept;
 	/**
 	 * Opaque permanent chrome (menu bar, tab strip, scrollbars, junction)
-	 * painted after Scintilla and before any modal overlay. Only runs when any
-	 * permanent chrome rectangle intersects frame damage, or when an overlay
-	 * forces a full-frame paint. Does not expand damage or force a full buffer
+	 * painted after Scintilla and before any modal overlay. Runs under the
+	 * exact buffer clip of each region intersecting chrome, or once when an
+	 * overlay forces a full-frame paint. Does not expand damage or force a full buffer
 	 * swap on ordinary editor frames.
 	 */
 	using PermanentChromePainter = std::function<void(
@@ -447,6 +447,9 @@ public:
 	[[nodiscard]] Scintilla::Internal::PRectangle LastPaintRectangle() const noexcept {
 		return rcPaint;
 	}
+	/** Actual bottom-left buffer rectangles supplied to the damage swap. */
+	[[nodiscard]] const std::vector<int> &FrameEglDamage() const noexcept { return frameEglDamage; }
+	[[nodiscard]] size_t FramePaintedLines() const noexcept { return view.linesPainted; }
 	[[nodiscard]] const ApplicationWindow &WindowState() const noexcept { return window; }
 	[[nodiscard]] const ScrollMetrics &Scrollbars() const noexcept { return scrollbars; }
 	/**
@@ -509,6 +512,8 @@ protected:
 	void QueueIdleWork(Scintilla::Internal::WorkItems items, Scintilla::Position upTo = 0) override;
 
 private:
+	bool PaintFrameContents(const std::vector<Scintilla::Internal::PRectangle> &damage);
+	std::vector<int> frameEglDamage;
 	struct RetainedDocument {
 		Scintilla::Internal::Document *document = nullptr;
 		DocumentLanguage language = DocumentLanguage::PlainText;

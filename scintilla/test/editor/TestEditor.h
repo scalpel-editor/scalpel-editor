@@ -9,6 +9,7 @@
 #include "EditorRecording.h"
 
 #include <memory>
+#include <functional>
 
 namespace Scintilla::Internal {
 
@@ -61,6 +62,7 @@ struct TestEditorSnapshot {
 };
 
 struct TestEditorObservations {
+	bool paintAbandoned = false;
 	int horizontalScrollUpdates = 0;
 	int verticalScrollUpdates = 0;
 	int scrollbarChanges = 0;
@@ -116,7 +118,7 @@ public:
 	std::unique_ptr<DrawSurface> PaintToSurface(
 		PRectangle paintRectangle, ColourRGBA initialColour);
 	std::unique_ptr<DrawSurface> PaintRegionsToSurface(const std::vector<PRectangle> &regions,
-		ColourRGBA initialColour);
+		ColourRGBA initialColour, const std::function<void()> &duringPaint = {});
 	size_t PaintedLines() const noexcept { return view.linesPainted; }
 	bool CoverageContains(PRectangle rectangle) { return PaintContains(rectangle); }
 	void ClearObservations();

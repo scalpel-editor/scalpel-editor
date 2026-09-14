@@ -68,7 +68,7 @@ Session shell mapping (portal request IDs to application dialog IDs, dialog star
 
 Damage accumulation is separate from compositor permission to submit. `WaylandFrameState` retains pending invalidation while a frame callback is outstanding, captures the damage used by an active paint, and preserves invalidation raised during painting for the next frame.
 
-Buffer-age history expands repaint damage when preserved buffers are available. Missing buffer age or damage-swap support selects a full repaint or full swap. Presentation feedback reports a submitted frame but does not grant permission for the next one; only the frame callback controls pacing.
+Buffer-age history expands repaint damage when preserved buffers are available. `WaylandFrameState` supplies logical repaint regions; `ApplicationEditor` normalizes their physical coverage and builds EGL damage from the exact clips used for painting, including permanent chrome. Missing buffer age or damage-swap support selects a full repaint or full swap. Presentation feedback reports a submitted frame but does not grant permission for the next one; only the frame callback controls pacing.
 
 ## Coordinate spaces
 
