@@ -80,7 +80,11 @@ public:
 	 * change which surface is current.
 	 */
 	void CreatePopupSurface(void *nativeWindow);
-	/** Destroy the popup EGL surface if present; restores editor as current. */
+	/**
+	 * Destroy the popup EGL surface if present; restores editor as current.
+	 * A successful restore forgets the applied viewport and scissor because
+	 * framebuffer 0 now names the editor window.
+	 */
 	void DestroyPopupSurface() noexcept;
 	[[nodiscard]] bool HasPopupSurface() const noexcept {
 		return popupSurface != nullptr;

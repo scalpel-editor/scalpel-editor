@@ -63,7 +63,11 @@ public:
 	[[nodiscard]] int ExternalLogicalHeight() const noexcept { return externalLogicalHeight; }
 	[[nodiscard]] RasterScale SurfaceRasterScale() const noexcept { return rasterScale; }
 
-	/** Bind this surface's colour buffer as the renderer draw target. */
+	/**
+	 * Establish this surface's framebuffer, sizes, and saved clips as the
+	 * renderer draw target. Unchanged selection preserves clips and applies
+	 * the final scissor once.
+	 */
 	void BindDrawTarget();
 	/**
 	 * Clear surface and renderer clip stacks before a new frame paint. Safe when

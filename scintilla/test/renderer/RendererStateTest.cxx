@@ -445,6 +445,80 @@ TEST_CASE("Renderer state fractional scale preparation is stable") {
 	REQUIRE(renderer.TargetLogicalWidth() == 8);
 }
 
+TEST_CASE("Renderer state framebuffer 0 alternates equal and unequal sizes") {
+	GlContext context;
+	Renderer editor(context);
+	Renderer popup(context);
+	editor.SetDrawTarget(0, 8, 8);
+	editor.SetClip(PRectangle::FromInts(1, 1, 7, 7));
+	REQUIRE(DrawFramebufferBinding() == 0);
+	REQUIRE(ReadFramebufferBinding() == 0);
+	Viewport editorViewport = CurrentViewport();
+	REQUIRE(editorViewport.width == 8);
+	REQUIRE(editorViewport.height == 8);
+	REQUIRE(editor.ClipDepth() == 1);
+
+	popup.SetDrawTarget(0, 8, 8);
+	REQUIRE(DrawFramebufferBinding() == 0);
+	REQUIRE(popup.ClipDepth() == 0);
+	REQUIRE(CurrentViewport().width == 8);
+	REQUIRE(CurrentViewport().height == 8);
+	popup.SetClip(PRectangle::FromInts(2, 2, 4, 4));
+	REQUIRE(popup.ClipDepth() == 1);
+
+	editor.BindCurrentTarget();
+	REQUIRE(DrawFramebufferBinding() == 0);
+	REQUIRE(editor.ClipDepth() == 1);
+	editorViewport = CurrentViewport();
+	REQUIRE(editorViewport.width == 8);
+	REQUIRE(editorViewport.height == 8);
+
+	popup.SetDrawTarget(0, 16, 4);
+	REQUIRE(popup.ClipDepth() == 0);
+	const Viewport popupViewport = CurrentViewport();
+	REQUIRE(popupViewport.width == 16);
+	REQUIRE(popupViewport.height == 4);
+
+	editor.BindCurrentTarget();
+	editorViewport = CurrentViewport();
+	REQUIRE(editorViewport.width == 8);
+	REQUIRE(editorViewport.height == 8);
+	REQUIRE(editor.ClipDepth() == 1);
+}
+
+TEST_CASE("Renderer state framebuffer 0 recovers after popup recreation and release") {
+	GlContext context;
+	Renderer editor(context);
+	editor.SetDrawTarget(0, 10, 6);
+	editor.SetClip(PRectangle::FromInts(0, 0, 5, 6));
+	{
+		Renderer popup(context);
+		popup.SetDrawTarget(0, 4, 4);
+		REQUIRE(CurrentViewport().width == 4);
+		REQUIRE(CurrentViewport().height == 4);
+	}
+	editor.BindCurrentTarget();
+	REQUIRE(DrawFramebufferBinding() == 0);
+	REQUIRE(CurrentViewport().width == 10);
+	REQUIRE(CurrentViewport().height == 6);
+	REQUIRE(editor.ClipDepth() == 1);
+
+	{
+		Renderer popup(context);
+		popup.SetDrawTarget(0, 12, 8);
+		REQUIRE(CurrentViewport().width == 12);
+		REQUIRE(CurrentViewport().height == 8);
+	}
+	context.ReleaseCurrent();
+	REQUIRE_FALSE(context.SurfacesCurrent(GlContext::SurfaceTarget::Editor));
+	editor.BindCurrentTarget();
+	REQUIRE(context.SurfacesCurrent(GlContext::SurfaceTarget::Editor));
+	REQUIRE(DrawFramebufferBinding() == 0);
+	REQUIRE(CurrentViewport().width == 10);
+	REQUIRE(CurrentViewport().height == 6);
+	REQUIRE(editor.ClipDepth() == 1);
+}
+
 TEST_CASE("Renderer state pixmap bind keeps output raster scale") {
 	GlContext context;
 	Renderer renderer(context);
