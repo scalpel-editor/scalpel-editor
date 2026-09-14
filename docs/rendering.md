@@ -86,6 +86,8 @@ The active output scale is an exact rational `RasterScale`. `main` copies `Wayla
 
 Sibling pixmaps retain logical drawing dimensions but allocate their colour buffers at the active output scale. Copies and pattern fills map logical source coordinates across those scaled buffers, so indent-guide and fold-margin stamps use the same device-pixel placement as direct window drawing.
 
+Each drawing surface keeps bounded, weakly owned ink bounds for the most recent placement of a shaped run. A warm run outside the active clip skips all glyph visits without changing its shaping input. Placement, nominal scale, and logical/buffer dimensions must match; otherwise drawing refreshes the bounds through the exact glyph path. Background fills retain their original geometry.
+
 Glyph drawing rejects destination ink outside the active buffer clip before graphics-state setup or quad submission. A cold clipped glyph is rasterized to obtain exact bearings and extents, but its texture upload is deferred. Only metrics are retained for that entry; its image is rasterized again if it later becomes visible. Warm clipped glyphs require neither rasterization nor upload. Outline bounds use the same device phase and float quad coordinates as drawing; fixed-bitmap bounds use the logical strike placement mapped onto the buffer.
 
 The frame surface keeps the prepared damage rectangle clipped for the complete editor paint. Text, margins, and chrome draw directly into that surface and cannot modify preserved pixels outside the damage.

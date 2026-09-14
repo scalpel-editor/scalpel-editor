@@ -226,7 +226,7 @@ public:
 	 * face, glyph id, and either the shrinking RasterScale or one shared
 	 * full-strike generation when no reduction is needed.
 	 */
-	void DrawGlyph(XYPOSITION penX, XYPOSITION penY, const std::shared_ptr<FontFace> &face,
+	PixelRect DrawGlyph(XYPOSITION penX, XYPOSITION penY, const std::shared_ptr<FontFace> &face,
 		uint32_t glyphId, ColourRGBA fore);
 
 	struct GlyphDrawCounts {
@@ -238,6 +238,9 @@ public:
 	};
 	[[nodiscard]] const GlyphDrawCounts &GlyphCounts() const noexcept { return glyphCounts; }
 	void ResetGlyphCounts() noexcept { glyphCounts = {}; }
+
+	/** Active buffer clip, for rejecting previously measured run ink. */
+	[[nodiscard]] PixelRect CurrentClip() const noexcept;
 
 	/** Number of entries in the glyph texture cache, including deferred uploads. */
 	[[nodiscard]] size_t GlyphCacheSize() const noexcept { return glyphCache.size(); }
@@ -371,7 +374,6 @@ private:
 	void DrawTexturedQuadBuffer(float x0, float y0, float x1, float y1,
 		float u0, float v0, float u1, float v1, unsigned texture, bool flipV,
 		bool sourceStraightAlpha, ColourRGBA modulate = ColourRGBA(255, 255, 255, 255));
-	[[nodiscard]] PixelRect CurrentClip() const noexcept;
 	[[nodiscard]] PixelRect LogicalPixelRect(PRectangle rc) const noexcept;
 	void BeginDraw();
 	void SetBlendForColour(ColourRGBA colour);

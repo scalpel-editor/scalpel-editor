@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <limits>
+#include <iterator>
 #include <stdexcept>
 #include <utility>
 
@@ -53,6 +54,7 @@ DrawSurface::~DrawSurface() {
 void DrawSurface::SetFallbacks(FontFallback fallback_) {
 	fallback = std::move(fallback_);
 	runCache.Clear();
+	runInk.clear();
 }
 
 void DrawSurface::EnsureRenderer() const {
@@ -331,6 +333,7 @@ std::unique_ptr<IScreenLineLayout> DrawSurface::Layout(const IScreenLine *screen
 
 void DrawSurface::DrawTextCommon(PRectangle rc, const Font *font_, XYPOSITION ybase,
 	std::string_view text, ColourRGBA fore, bool fillBack, ColourRGBA back, bool clipToRc) {
+	++textCounts.attempted;
 	if (!renderer) {
 		// Measure-only surfaces never paint; match the previous no-op contract.
 		return;
@@ -360,15 +363,52 @@ void DrawSurface::DrawTextCommon(PRectangle rc, const Font *font_, XYPOSITION yb
 			throw;
 		}
 	}
+	const PixelRect clip = renderer->CurrentClip();
+	const auto found = runInk.find(run.get());
+	const auto samePlacement = [&](const RunInk &cached) {
+		return cached.run.lock() == run && cached.origin == Point(rc.left, ybase) &&
+			cached.scale == renderer->TargetRasterScale() &&
+			cached.width == renderer->TargetWidth() && cached.height == renderer->TargetHeight() &&
+			cached.logicalWidth == renderer->TargetLogicalWidth() &&
+			cached.logicalHeight == renderer->TargetLogicalHeight();
+	};
+	if (clip.Empty() || (found != runInk.end() && samePlacement(found->second) &&
+		IntersectPixelRect(found->second.ink, clip).Empty())) {
+		++textCounts.clipped;
+		if (clipToRc) {
+			renderer->PopClip();
+			clipStack.pop_back();
+		}
+		return;
+	}
+	PixelRect ink;
 	XYPOSITION penX = rc.left;
 	for (const ShapedGlyph &glyph : run->glyphs) {
 		if (glyph.face) {
 			// HarfBuzz uses font coordinates with Y up; surfaces use Y down.
-			renderer->DrawGlyph(penX + glyph.xOffset, ybase - glyph.yOffset,
+			const PixelRect glyphInk = renderer->DrawGlyph(penX + glyph.xOffset, ybase - glyph.yOffset,
 				glyph.face, glyph.glyphId, fore);
+			if (!glyphInk.Empty()) {
+				ink = ink.Empty() ? glyphInk : PixelRect{
+					std::min(ink.left, glyphInk.left), std::min(ink.top, glyphInk.top),
+					std::max(ink.right, glyphInk.right), std::max(ink.bottom, glyphInk.bottom)};
+			}
 		}
 		penX += glyph.xAdvance;
 	}
+	if (found == runInk.end() && runInk.size() >= runCache.Capacity()) {
+		// Reclaim expired placements first. The hard cap also covers callers
+		// holding shaped runs alive after their cache entries have been evicted.
+		for (auto it = runInk.begin(); it != runInk.end();) {
+			it = it->second.run.expired() ? runInk.erase(it) : std::next(it);
+		}
+		if (runInk.size() >= runCache.Capacity()) {
+			runInk.erase(runInk.begin());
+		}
+	}
+	runInk[run.get()] = {run, Point(rc.left, ybase), renderer->TargetRasterScale(),
+		renderer->TargetWidth(), renderer->TargetHeight(), renderer->TargetLogicalWidth(),
+		renderer->TargetLogicalHeight(), ink};
 	if (clipToRc) {
 		renderer->PopClip();
 		clipStack.pop_back();

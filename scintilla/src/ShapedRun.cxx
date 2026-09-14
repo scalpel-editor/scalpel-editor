@@ -341,6 +341,7 @@ XYPOSITION WidthTextShaped(
 
 class ShapedRunCache::Impl {
 public:
+	size_t missCount = 0;
 	explicit Impl(size_t capacity_) : capacity(std::max<size_t>(1, capacity_)) {
 	}
 
@@ -355,6 +356,7 @@ public:
 			return found->second->run;
 		}
 
+		++missCount;
 		auto shaped = std::make_shared<ShapedRun>(ShapeText(text, primary, fallback));
 		order.push_front(Entry{key, std::move(shaped), primary, fallback});
 		map[key] = order.begin();
@@ -410,6 +412,10 @@ void ShapedRunCache::Clear() noexcept {
 
 size_t ShapedRunCache::Size() const noexcept {
 	return impl->Size();
+}
+
+size_t ShapedRunCache::MissCount() const noexcept {
+	return impl->missCount;
 }
 
 size_t ShapedRunCache::Capacity() const noexcept {

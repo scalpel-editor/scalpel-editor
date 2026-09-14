@@ -1306,16 +1306,16 @@ bool Renderer::GlyphVisible(PRectangle rectangle, bool fixedBitmap) const noexce
 	return !rectangle.Empty() && !IntersectPixelRect(pixels, CurrentClip()).Empty();
 }
 
-void Renderer::DrawGlyph(XYPOSITION penX, XYPOSITION penY,
+PixelRect Renderer::DrawGlyph(XYPOSITION penX, XYPOSITION penY,
 	const std::shared_ptr<FontFace> &face,
 	uint32_t glyphId, ColourRGBA fore) {
 	++glyphCounts.attempted;
 	if (!face || fore.GetAlpha() == 0) {
-		return;
+		return {};
 	}
 	if (CurrentClip().Empty()) {
 		++glyphCounts.clipped;
-		return;
+		return {};
 	}
 	const bool fixedBitmap = face->UsesBitmapStrike();
 	GlyphRasterRequest request;
@@ -1345,12 +1345,14 @@ void Renderer::DrawGlyph(XYPOSITION penX, XYPOSITION penY,
 	}
 	const CachedGlyph &glyph = GetOrCreateGlyph(face, request, fullStrike, origin);
 	const PRectangle rectangle = GlyphRectangle(glyph, origin, fixedBitmap);
+	const PixelRect ink = fixedBitmap ? LogicalPixelRect(rectangle) :
+		PixelRectFromPRectangle(rectangle);
 	if (!GlyphVisible(rectangle, fixedBitmap)) {
 		++glyphCounts.clipped;
-		return;
+		return ink;
 	}
 	if (!glyph.texture) {
-		return;
+		return ink;
 	}
 	BeginDraw();
 	++glyphCounts.submitted;
@@ -1365,6 +1367,7 @@ void Renderer::DrawGlyph(XYPOSITION penX, XYPOSITION penY,
 			0.0f, 0.0f, 1.0f, 1.0f, glyph.texture, false, !glyph.colour, modulate);
 	}
 	glDisable(GL_BLEND);
+	return ink;
 }
 
 void Renderer::GradientRectangle(PRectangle rc, const std::vector<ColourStop> &stops, int options) {

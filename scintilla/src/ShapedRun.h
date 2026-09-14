@@ -158,6 +158,7 @@ public:
 	void Clear() noexcept;
 	[[nodiscard]] size_t Size() const noexcept;
 	[[nodiscard]] size_t Capacity() const noexcept;
+	[[nodiscard]] size_t MissCount() const noexcept;
 
 private:
 	class Impl;

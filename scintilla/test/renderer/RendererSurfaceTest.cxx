@@ -501,3 +501,51 @@ TEST_CASE("color emoji DrawText respects clip and overall text alpha") {
 	const uint8_t opaqueBrightness = brightestChannel();
 	CHECK(halfAlphaBrightness < opaqueBrightness);
 }
+
+TEST_CASE("Partial repaint skips warm text runs without reshaping") {
+	FontCache fonts;
+	const auto face = fonts.LoadPath(std::filesystem::path(SCALPEL_TEST_FONT_DIR) /
+		"FallbackPrimary.ttf", FontParameters("fixture", 16.0));
+	const auto font = FontFromFace(face);
+	GlContext context;
+	Renderer renderer(context);
+	auto surface = CreateDrawSurface(renderer, 240, 48, {});
+	const ColourRGBA background(33, 43, 53);
+	const ColourRGBA foreground(203, 173, 153, 193);
+	const auto paint = [&] {
+		surface->DrawTextTransparent(PRectangle(4, 0, 80, 40), font.get(), 24,
+			"left", foreground);
+		surface->DrawTextTransparent(PRectangle(90, 0, 160, 40), font.get(), 24,
+			"middle", foreground);
+		surface->DrawTextTransparent(PRectangle(174, 0, 240, 40), font.get(), 24,
+			"right", foreground);
+	};
+	renderer.Clear(background);
+	paint();
+	const auto reference = surface->Buffer().ReadPixelsTopDown();
+	const size_t misses = surface->RunCache().MissCount();
+	renderer.Clear(background);
+	surface->SetClip(PRectangle(90, 0, 110, 48));
+	renderer.ResetGlyphCounts();
+	surface->ResetTextCounts();
+	paint();
+	CHECK(surface->TextCounts().attempted == 3);
+	CHECK(surface->TextCounts().clipped == 2);
+	CHECK(surface->RunCache().MissCount() == misses);
+	CHECK(renderer.GlyphCounts().attempted == 6);
+	CHECK(renderer.GlyphCounts().uploaded == 0);
+	const auto pixels = surface->Buffer().ReadPixelsTopDown();
+	for (int y = 0; y < 48; ++y) {
+		for (int x = 0; x < 240; ++x) {
+			REQUIRE(PixelAt(pixels, 240, x, y) ==
+				(x >= 90 && x < 110 ? PixelAt(reference, 240, x, y) : background));
+		}
+	}
+	// A previously rejected run moved into the clip must be drawn again.
+	surface->ResetTextCounts();
+	renderer.ResetGlyphCounts();
+	surface->DrawTextTransparent(PRectangle(92, 0, 160, 40), font.get(), 24,
+		"right", foreground);
+	CHECK(surface->TextCounts().clipped == 0);
+	CHECK(renderer.GlyphCounts().submitted > 0);
+}

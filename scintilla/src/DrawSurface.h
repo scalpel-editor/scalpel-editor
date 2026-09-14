@@ -10,6 +10,7 @@
 #define DRAWSURFACE_H
 
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 #include "FontPlatform.h"
@@ -39,6 +40,12 @@ public:
 
 	~DrawSurface() override;
 
+	struct TextDrawCounts {
+		size_t attempted = 0;
+		size_t clipped = 0;
+	};
+	[[nodiscard]] const TextDrawCounts &TextCounts() const noexcept { return textCounts; }
+	void ResetTextCounts() noexcept { textCounts = {}; }
 	void SetFallbacks(FontFallback fallback);
 	[[nodiscard]] const FontFallback &Fallbacks() const noexcept { return fallback; }
 	[[nodiscard]] ShapedRunCache &RunCache() noexcept { return runCache; }
@@ -121,6 +128,19 @@ private:
 	void DrawTextCommon(PRectangle rc, const Font *font_, XYPOSITION ybase, std::string_view text,
 		ColourRGBA fore, bool fillBack, ColourRGBA back, bool clipToRc);
 
+	struct RunInk {
+		std::weak_ptr<const ShapedRun> run;
+		Point origin;
+		RasterScale scale;
+		int width = 0;
+		int height = 0;
+		int logicalWidth = 0;
+		int logicalHeight = 0;
+		PixelRect ink;
+	};
+	// One recent placement per run; weak ownership follows shaped-run eviction.
+	std::unordered_map<const ShapedRun *, RunInk> runInk;
+	TextDrawCounts textCounts;
 	Renderer *renderer = nullptr;
 	ColourBuffer buffer;
 	int bufferLogicalWidth = 0;
