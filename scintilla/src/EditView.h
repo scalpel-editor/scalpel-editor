@@ -81,6 +81,7 @@ public:
 	Scintilla::PhasesDraw phasesDraw;
 
 	int lineWidthMaxSeen;
+	size_t linesPainted = 0;
 
 	bool additionalCaretsBlink;
 	bool additionalCaretsVisible;

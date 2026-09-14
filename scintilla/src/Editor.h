@@ -289,6 +289,7 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	enum class PaintState { notPainting, painting, abandoned } paintState;
 	bool paintAbandonedByStyling;
 	PRectangle rcPaint;
+	std::vector<PRectangle> paintRegions;
 	bool paintingAllText;
 	bool willRedrawAll;
 	WorkNeeded workNeeded;
@@ -608,6 +609,9 @@ protected:	// ScintillaBase subclass needs access to much of Editor
 	void PaintSelMargin(Surface *surfaceWindow, const PRectangle &rc);
 	void RefreshPixMaps(Surface *surfaceWindow);
 	void Paint(Surface *surfaceWindow, PRectangle rcArea);
+	bool PreparePaint(Surface *surfaceWindow, const std::vector<PRectangle> &regions);
+	void PaintPreparedRegion(Surface *surfaceWindow, PRectangle rcArea);
+	void CompletePaint();
 
 	virtual void SetVerticalScrollPos();
 	virtual void SetHorizontalScrollPos() = 0;

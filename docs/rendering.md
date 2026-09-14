@@ -90,6 +90,8 @@ Each drawing surface keeps bounded, weakly owned ink bounds for the most recent 
 
 Glyph drawing rejects destination ink outside the active buffer clip before graphics-state setup or quad submission. A cold clipped glyph is rasterized to obtain exact bearings and extents, but its texture upload is deferred. Only metrics are retained for that entry; its image is rasterized again if it later becomes visible. Warm clipped glyphs require neither rasterization nor upload. Outline bounds use the same device phase and float quad coordinates as drawing; fixed-bitmap bounds use the logical strike placement mapped onto the buffer.
 
+The core separates paint preparation, clipped region drawing, and completion. Multiple regions share one styling/wrapping preparation and painted notification, and paint containment checks use their actual union so gaps cannot hide changes requiring a wider redraw. The single-rectangle entry point uses the same lifecycle.
+
 The frame surface keeps the prepared damage rectangle clipped for the complete editor paint. Text, margins, and chrome draw directly into that surface and cannot modify preserved pixels outside the damage.
 
 When wrapping changes display heights, the editor invalidates the client even if scroll metrics are unchanged. Short documents that still fit on screen can change row layout without moving the scrollbar; without that invalidation, partial paints can leave old rows at previous Y positions.

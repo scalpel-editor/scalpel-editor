@@ -308,3 +308,57 @@ TEST_CASE("Text width preserves embedded NUL bytes and zoom round-trips") {
 	editor.SetZoom(static_cast<int>(2));
 	CHECK(editor.GetZoom() == 2);
 }
+
+TEST_CASE("Partial repaint regions preserve gaps and notify once") {
+	TestHost host;
+	TestEditor editor(host, PRectangle(0, 0, 240, 160));
+	editor.SetText("first\nsecond\nthird\nfourth\nfifth\nsixth\nseventh\neighth\n");
+	editor.PaintAll();
+	const auto reference = editor.PaintToSurface()->Buffer().ReadPixelsTopDown();
+	const size_t fullLines = editor.PaintedLines();
+	editor.ClearObservations();
+	const ColourRGBA untouched(211, 43, 97);
+	const std::vector<PRectangle> regions{PRectangle(0, 0, 240, 12),
+		PRectangle(0, 110, 240, 125), PRectangle(60, 0, 160, 12)};
+	const auto partial = editor.PaintRegionsToSurface(regions, untouched);
+	CHECK(editor.PaintedLines() < fullLines);
+	CHECK_FALSE(editor.CoverageContains(PRectangle(0, 40, 240, 60)));
+	CHECK(editor.CoverageContains(PRectangle(60, 0, 160, 12)));
+	CHECK(std::count_if(editor.observations.notifications.begin(),
+		editor.observations.notifications.end(), [](const TestNotification &notification) {
+			return notification.code == Notification::Painted;
+		}) == 1);
+	const auto pixels = partial->Buffer().ReadPixelsTopDown();
+	for (int y = 0; y < 160; ++y) {
+		for (int x = 0; x < 240; ++x) {
+			const size_t offset = (y * 240 + x) * 4;
+			const bool painted = y < 12 || (y >= 110 && y < 125);
+			for (int channel = 0; channel < 4; ++channel) {
+				const unsigned char sentinel[] = {211, 43, 97, 255};
+				REQUIRE(pixels[offset + channel] ==
+					(painted ? reference[offset + channel] : sentinel[channel]));
+			}
+		}
+	}
+}
+
+TEST_CASE("Partial repaint normalization covers each pixel once") {
+	const PRectangle frame(0, 0, 20, 20);
+	const std::vector<PRectangle> input{PRectangle(-2, 1, 12, 8),
+		PRectangle(4, 4, 18, 15), PRectangle(4, 4, 18, 15), PRectangle(1, 17, 3, 20)};
+	const auto regions = NormalizeRectangles(input, frame);
+	for (int y = 0; y < 20; ++y) {
+		for (int x = 0; x < 20; ++x) {
+			const Point point(x + 0.5, y + 0.5);
+			const bool covered = std::any_of(input.begin(), input.end(),
+				[&](PRectangle rc) { return rc.Contains(point); });
+			CHECK(std::count_if(regions.begin(), regions.end(),
+				[&](PRectangle rc) { return rc.Contains(point); }) == (covered ? 1 : 0));
+		}
+	}
+	CHECK_FALSE(RectanglesContain(input, frame));
+	CHECK(RectanglesContain({PRectangle(0, 0, 10, 20), PRectangle(10, 0, 20, 20)}, frame));
+	CHECK_FALSE(RectanglesContain({PRectangle(0, 0, 10, 20), PRectangle(11, 0, 20, 20)}, frame));
+	CHECK(NormalizeRectangles(input, frame, 1) ==
+		std::vector<PRectangle>{PRectangle(0, 1, 18, 20)});
+}

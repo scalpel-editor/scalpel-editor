@@ -1311,6 +1311,18 @@ void Editor::RefreshPixMaps(Surface *surfaceWindow) {
 }
 
 void Editor::Paint(Surface *surfaceWindow, PRectangle rcArea) {
+	if (PreparePaint(surfaceWindow, {rcArea})) {
+		PaintPreparedRegion(surfaceWindow, rcArea);
+		CompletePaint();
+	}
+}
+
+bool Editor::PreparePaint(Surface *surfaceWindow, const std::vector<PRectangle> &regions) {
+	paintRegions = NormalizeRectangles(regions, GetClientRectangle(), static_cast<size_t>(-1));
+	view.linesPainted = 0;
+	rcPaint = RectangleBounds(paintRegions);
+	paintingAllText = RectanglesContain(paintRegions, GetClientRectangle());
+	const PRectangle rcArea = rcPaint;
 	redrawPendingText = false;
 	redrawPendingMargin = false;
 
@@ -1319,15 +1331,11 @@ void Editor::Paint(Surface *surfaceWindow, PRectangle rcArea) {
 
 	RefreshStyleData();
 	if (paintState == PaintState::abandoned)
-		return;	// Scroll bars may have changed so need redraw
+		return false;	// Scroll bars may have changed so need redraw
 
 	paintAbandonedByStyling = false;
 
 	StyleAreaBounded(rcArea, false);
-
-	const PRectangle rcClient = GetClientRectangle();
-	//Platform::DebugPrintf("Client: (%3d,%3d) ... (%3d,%3d)   %d\n",
-	//	rcClient.left, rcClient.top, rcClient.right, rcClient.bottom);
 
 	if (NotifyUpdateUI()) {
 		RefreshStyleData();
@@ -1338,7 +1346,7 @@ void Editor::Paint(Surface *surfaceWindow, PRectangle rcArea) {
 		// The wrapping process has changed the height of some lines so
 		// abandon this paint for a complete repaint.
 		if (AbandonPaint()) {
-			return;
+			return false;
 		}
 	}
 
@@ -1348,9 +1356,17 @@ void Editor::Paint(Surface *surfaceWindow, PRectangle rcArea) {
 		// When Direct2D is used, pixmap creation may fail with D2DERR_RECREATE_TARGET so
 		// abandon this paint to avoid further failures.
 		// Main drawing surface and pixmaps should be recreated by next paint.
-		return;
+		return false;
 	}
 
+	if (paintState == PaintState::abandoned && Wrapping() && paintAbandonedByStyling) {
+		NeedWrapping(pcs->DocFromDisplay(topLine));
+	}
+	return paintState != PaintState::abandoned && !paintRegions.empty();
+}
+
+void Editor::PaintPreparedRegion(Surface *surfaceWindow, PRectangle rcArea) {
+	const PRectangle rcClient = GetClientRectangle();
 	// Keep every paint operation inside the damage prepared by the host.
 	surfaceWindow->SetClip(rcArea);
 
@@ -1389,14 +1405,19 @@ void Editor::Paint(Surface *surfaceWindow, PRectangle rcArea) {
 
 	view.PaintText(surfaceWindow, *this, vs, rcArea, rcClient);
 
+	surfaceWindow->PopClip();
+}
+
+void Editor::CompletePaint() {
+	if (paintState == PaintState::abandoned) {
+		return;
+	}
 	if (horizontalScrollBarVisible && trackLineWidth && (view.lineWidthMaxSeen > scrollWidth)) {
 		scrollWidth = view.lineWidthMaxSeen;
 		if (!FineTickerRunning(TickReason::widen)) {
 			FineTickerStart(TickReason::widen, 50, 5);
 		}
 	}
-
-	surfaceWindow->PopClip();
 
 	NotifyPainted();
 }
@@ -4077,7 +4098,7 @@ bool Editor::PaintContains(PRectangle rc) {
 	if (rc.Empty()) {
 		return true;
 	}
-	return rcPaint.Contains(rc);
+	return paintRegions.empty() ? rcPaint.Contains(rc) : RectanglesContain(paintRegions, rc);
 }
 
 bool Editor::PaintContainsMargin() {

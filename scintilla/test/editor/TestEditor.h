@@ -115,6 +115,10 @@ public:
 	/** Paint a bounded rectangle over a known initial target colour. */
 	std::unique_ptr<DrawSurface> PaintToSurface(
 		PRectangle paintRectangle, ColourRGBA initialColour);
+	std::unique_ptr<DrawSurface> PaintRegionsToSurface(const std::vector<PRectangle> &regions,
+		ColourRGBA initialColour);
+	size_t PaintedLines() const noexcept { return view.linesPainted; }
+	bool CoverageContains(PRectangle rectangle) { return PaintContains(rectangle); }
 	void ClearObservations();
 	TestEditorSnapshot Snapshot() const;
 	// Drive fine tickers the host would fire (dwell, caret, …).

@@ -2578,6 +2578,7 @@ void EditView::PaintText(Surface *surfaceWindow, const EditModel &model, const V
 						surfaceWindow->FillRectangleAligned(rcSpacer, Fill(vsDraw.styles[StyleDefault].back));
 					}
 
+					++linesPainted;
 					DrawLine(surfaceWindow, model, vsDraw, ll.get(), lineDoc, lineVisible, xOrigin, rcLine, subLine, phase);
 #if defined(TIME_PAINTING)
 					durPaint += ep.Duration(true);

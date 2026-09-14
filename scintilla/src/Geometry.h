@@ -9,6 +9,8 @@
 #define GEOMETRY_H
 
 #include <cstdint>
+#include <cstddef>
+#include <vector>
 #include <stdexcept>
 
 namespace Scintilla::Internal {
@@ -167,6 +169,12 @@ public:
 		return (Height() <= 0) || (Width() <= 0);
 	}
 };
+
+/** Bound and normalize half-open repaint coverage into disjoint rectangles. */
+PRectangle RectangleBounds(const std::vector<PRectangle> &rectangles) noexcept;
+std::vector<PRectangle> NormalizeRectangles(const std::vector<PRectangle> &rectangles,
+	PRectangle clip, size_t maximumRectangles = 16);
+bool RectanglesContain(const std::vector<PRectangle> &rectangles, PRectangle rectangle);
 
 enum class Edge { left, top, bottom, right };
 

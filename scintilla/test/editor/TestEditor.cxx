@@ -193,6 +193,29 @@ std::unique_ptr<DrawSurface> TestEditor::PaintToSurface(
 	return surface;
 }
 
+std::unique_ptr<DrawSurface> TestEditor::PaintRegionsToSurface(
+	const std::vector<PRectangle> &regions, ColourRGBA initialColour) {
+	paintState = PaintState::painting;
+	const PRectangle client = GetClientRectangle();
+	host.EnsureRenderer();
+	auto surface = CreateDrawSurface(*host.GetRenderer(), static_cast<int>(client.Width()),
+		static_cast<int>(client.Height()), FontFallback::Fixed(
+			TestFontFallbackFaces(static_cast<double>(Platform::DefaultFontSize()))));
+	host.GetRenderer()->Clear(initialColour);
+	if (PreparePaint(surface.get(), regions)) {
+		for (const PRectangle region : paintRegions) {
+			PaintPreparedRegion(surface.get(), region);
+			if (paintState == PaintState::abandoned) {
+				break;
+			}
+		}
+		CompletePaint();
+	}
+	paintState = PaintState::notPainting;
+	paintingAllText = false;
+	return surface;
+}
+
 void TestEditor::ClearObservations() {
 	const std::string clipboard = observations.clipboard;
 	const bool mouseCaptured = host.mainWindow.mouseCaptured;
