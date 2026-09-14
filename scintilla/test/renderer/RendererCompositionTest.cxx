@@ -884,3 +884,92 @@ TEST_CASE("fixed bitmap glyph cache shares one full-strike entry when not shrink
 	CHECK(renderer.GlyphCacheTextureSize(face, glyphId, RasterScale{},
 		GlyphRasterPhase{}, true) == full);
 }
+
+TEST_CASE("Partial repaint glyph rejection preserves clipped coverage") {
+	FontCache fonts;
+	const auto primary = fonts.LoadPath(std::filesystem::path(SCALPEL_TEST_FONT_DIR) /
+		"FallbackPrimary.ttf", FontParameters("fixture", 16.0));
+	const auto emoji = fonts.LoadPath(std::filesystem::path(SCALPEL_TEST_FONT_DIR) /
+		"EmojiFixture.ttf", FontParameters("emoji", 16.0));
+	const ColourRGBA background(27, 37, 47, 255);
+	const ColourRGBA foreground(213, 173, 123, 183);
+	for (const RasterScale scale : {RasterScale{}, RasterScale::FromParts(5, 4),
+		RasterScale::FromParts(3, 2), RasterScale::FromParts(2, 1)}) {
+		CAPTURE(scale.Numerator(), scale.Denominator());
+		const int width = 240 * scale.Numerator() / scale.Denominator();
+		const int height = 48 * scale.Numerator() / scale.Denominator();
+		GlContext context;
+		Renderer renderer(context);
+		ColourBuffer buffer;
+		buffer.Resize(width, height);
+		renderer.SetDrawTarget(buffer.FramebufferName(), width, height, 240, 48);
+		renderer.SetOutputRasterScale(scale);
+		const auto paint = [&] {
+			const ShapedRun run = ShapeText("AV j", primary);
+			for (int repeat = 0; repeat < 7; ++repeat) {
+				XYPOSITION x = 0.25 + repeat * 32;
+				for (const ShapedGlyph &glyph : run.glyphs) {
+					renderer.DrawGlyph(x + glyph.xOffset, 23.25 - glyph.yOffset,
+						glyph.face, glyph.glyphId, foreground);
+					x += glyph.xAdvance;
+				}
+			}
+			const auto colour = ShapeText("\xF0\x9F\x98\x80", emoji);
+			REQUIRE_FALSE(colour.glyphs.empty());
+			renderer.DrawGlyph(61.25, 23.25, emoji, colour.glyphs.front().glyphId, foreground);
+		};
+		renderer.Clear(background);
+		paint();
+		const auto reference = buffer.ReadPixelsTopDown();
+		const size_t fullSubmissions = renderer.GlyphCounts().submitted;
+		// Integer logical edges cover exact pixels at every chosen scale.
+		const PRectangle clip(64, 4, 72, 36);
+		renderer.Clear(background);
+		renderer.SetClip(PRectangle(60, 0, 80, 48));
+		renderer.SetClip(clip);
+		renderer.ResetGlyphCounts();
+		paint();
+		CHECK(renderer.GlyphCounts().submitted < fullSubmissions);
+		CHECK(renderer.GlyphCounts().clipped > 0);
+		CHECK(renderer.GlyphCounts().rasterized == 0);
+		CHECK(renderer.GlyphCounts().uploaded == 0);
+		const auto partial = buffer.ReadPixelsTopDown();
+		for (int y = 0; y < height; ++y) {
+			for (int x = 0; x < width; ++x) {
+				const bool inside = x >= 64 * width / 240 && x < 72 * width / 240 &&
+					y >= 4 * height / 48 && y < 36 * height / 48;
+				REQUIRE(PixelAt(partial, width, x, y) ==
+					(inside ? PixelAt(reference, width, x, y) : background));
+			}
+		}
+		renderer.SetClip(PRectangle(100, 0, 120, 48));
+		renderer.ResetGlyphCounts();
+		paint();
+		CHECK(renderer.GlyphCounts().submitted == 0);
+		CHECK(renderer.GlyphCounts().rasterized == 0);
+	}
+}
+
+TEST_CASE("Partial repaint cold clipped glyph defers its upload") {
+	FontCache fonts;
+	const auto face = fonts.LoadPath(std::filesystem::path(SCALPEL_TEST_FONT_DIR) /
+		"FallbackPrimary.ttf", FontParameters("fixture", 16.0));
+	const auto run = ShapeText("A", face);
+	REQUIRE_FALSE(run.glyphs.empty());
+	GlContext context;
+	Renderer renderer(context);
+	ColourBuffer buffer;
+	buffer.Resize(100, 40);
+	renderer.SetDrawTarget(buffer.FramebufferName(), 100, 40);
+	renderer.SetClip(PRectangle(80, 0, 100, 40));
+	renderer.DrawGlyph(4, 24, face, run.glyphs.front().glyphId, ColourRGBA(0, 0, 0));
+	CHECK(renderer.GlyphCounts().rasterized == 1);
+	CHECK(renderer.GlyphCounts().uploaded == 0);
+	renderer.DrawGlyph(4, 24, face, run.glyphs.front().glyphId, ColourRGBA(0, 0, 0));
+	CHECK(renderer.GlyphCounts().rasterized == 1);
+	renderer.PopClip();
+	renderer.DrawGlyph(4, 24, face, run.glyphs.front().glyphId, ColourRGBA(0, 0, 0));
+	CHECK(renderer.GlyphCounts().rasterized == 2);
+	CHECK(renderer.GlyphCounts().uploaded == 1);
+	CHECK(renderer.GlyphCounts().submitted == 1);
+}

@@ -229,7 +229,17 @@ public:
 	void DrawGlyph(XYPOSITION penX, XYPOSITION penY, const std::shared_ptr<FontFace> &face,
 		uint32_t glyphId, ColourRGBA fore);
 
-	/** Number of entries in the glyph texture cache. */
+	struct GlyphDrawCounts {
+		size_t attempted = 0;
+		size_t clipped = 0;
+		size_t submitted = 0;
+		size_t rasterized = 0;
+		size_t uploaded = 0;
+	};
+	[[nodiscard]] const GlyphDrawCounts &GlyphCounts() const noexcept { return glyphCounts; }
+	void ResetGlyphCounts() noexcept { glyphCounts = {}; }
+
+	/** Number of entries in the glyph texture cache, including deferred uploads. */
 	[[nodiscard]] size_t GlyphCacheSize() const noexcept { return glyphCache.size(); }
 
 	/**
@@ -337,7 +347,10 @@ private:
 	/** Delete fixed-bitmap cache entries keyed by the given shrinking scale. */
 	void EvictFixedBitmapScaleGeneration(RasterScale scale) noexcept;
 	const CachedGlyph &GetOrCreateGlyph(const std::shared_ptr<FontFace> &face,
-		const GlyphRasterRequest &request, bool fixedBitmapFullStrike = false);
+		const GlyphRasterRequest &request, bool fixedBitmapFullStrike, Point origin);
+	[[nodiscard]] PRectangle GlyphRectangle(const CachedGlyph &glyph, Point origin,
+		bool fixedBitmap) const noexcept;
+	[[nodiscard]] bool GlyphVisible(PRectangle rectangle, bool fixedBitmap) const noexcept;
 	void EnsureSolidProgram();
 	void EnsureTextureProgram();
 	void EnsureGradientProgram();
@@ -379,6 +392,7 @@ private:
 
 	std::vector<PixelRect> clipStack;
 	std::unordered_map<GlyphKey, CachedGlyph, GlyphKeyHash> glyphCache;
+	GlyphDrawCounts glyphCounts;
 
 	unsigned programSolid = 0;
 	unsigned programTexture = 0;

@@ -478,6 +478,7 @@ void Renderer::TouchFixedBitmapScaleGeneration(RasterScale scale) {
 	while (fixedBitmapScaleGenerations.size() > kMaxFixedBitmapScaleGenerations) {
 		const RasterScale evict = fixedBitmapScaleGenerations.front();
 		fixedBitmapScaleGenerations.erase(fixedBitmapScaleGenerations.begin());
+		MakeCurrent();
 		EvictFixedBitmapScaleGeneration(evict);
 	}
 }
@@ -1178,27 +1179,38 @@ std::pair<int, int> Renderer::GlyphCacheTextureSize(
 
 const Renderer::CachedGlyph &Renderer::GetOrCreateGlyph(
 	const std::shared_ptr<FontFace> &face, const GlyphRasterRequest &request,
-	bool fixedBitmapFullStrike) {
+	bool fixedBitmapFullStrike, Point origin) {
 	const GlyphKey key{face, request.glyphId, request.scale, request.phase,
 		fixedBitmapFullStrike};
-	if (const auto found = glyphCache.find(key); found != glyphCache.end()) {
-		return found->second;
+	const bool fixedBitmap = face->UsesBitmapStrike();
+	const auto found = glyphCache.find(key);
+	if (found != glyphCache.end()) {
+		const CachedGlyph &cached = found->second;
+		if (cached.texture || cached.width <= 0 || cached.height <= 0 ||
+			!GlyphVisible(GlyphRectangle(cached, origin, fixedBitmap), fixedBitmap)) {
+			return cached;
+		}
 	}
-	CachedGlyph cached;
+	// A clipped cold glyph keeps only its metrics. Rasterize it again if it
+	// becomes visible, rather than retaining a second copy of every mask.
+	++glyphCounts.rasterized;
 	const GlyphImage image = face->RasterizeGlyph(request);
+	CachedGlyph &cached = glyphCache[key];
 	cached.left = image.left;
 	cached.top = image.top;
 	// Logical layout extent stays at the source strike/device size even when
 	// the uploaded texture is area-reduced for fixed bitmaps.
 	cached.width = image.width;
 	cached.height = image.height;
-	cached.textureWidth = image.width;
-	cached.textureHeight = image.height;
+	cached.textureWidth = 0;
+	cached.textureHeight = 0;
 	cached.scale = image.scale > 0.0 ? image.scale : 1.0;
 	cached.colour = image.kind == GlyphImageKind::Colour;
 	const bool hasGray = image.kind == GlyphImageKind::Gray && !image.gray.empty();
 	const bool hasColour = image.kind == GlyphImageKind::Colour && !image.rgba.empty();
-	const bool fixedBitmap = face->UsesBitmapStrike();
+	if (!GlyphVisible(GlyphRectangle(cached, origin, fixedBitmap), fixedBitmap)) {
+		return cached;
+	}
 	if (image.width > 0 && image.height > 0 && (hasGray || hasColour)) {
 		const uint8_t *graySrc = hasGray ? image.gray.data() : nullptr;
 		const uint8_t *rgbaSrc = hasColour ? image.rgba.data() : nullptr;
@@ -1256,6 +1268,7 @@ const Renderer::CachedGlyph &Renderer::GetOrCreateGlyph(
 				static_cast<size_t>(srcWidth) * static_cast<size_t>(srcHeight) * 4u;
 			rgba.assign(rgbaSrc, rgbaSrc + byteCount);
 		}
+		MakeCurrent();
 		GLuint tex = 0;
 		glGenTextures(1, &tex);
 		glBindTexture(GL_TEXTURE_2D, tex);
@@ -1271,98 +1284,85 @@ const Renderer::CachedGlyph &Renderer::GetOrCreateGlyph(
 			GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
 		glBindTexture(GL_TEXTURE_2D, 0);
 		cached.texture = tex;
+		++glyphCounts.uploaded;
 	}
-	const auto [inserted, _] = glyphCache.emplace(key, cached);
-	return inserted->second;
+	return cached;
+}
+
+PRectangle Renderer::GlyphRectangle(const CachedGlyph &glyph, Point origin,
+	bool fixedBitmap) const noexcept {
+	// Match the float arithmetic used by the submitted quad, including the
+	// logical bearings and strike scaling of fixed bitmaps.
+	const float scale = fixedBitmap ? static_cast<float>(glyph.scale) : 1.0f;
+	const float x0 = static_cast<float>(origin.x) + static_cast<float>(glyph.left);
+	const float y0 = static_cast<float>(origin.y) - static_cast<float>(glyph.top);
+	return PRectangle(x0, y0, x0 + static_cast<float>(glyph.width) * scale,
+		y0 + static_cast<float>(glyph.height) * scale);
+}
+
+bool Renderer::GlyphVisible(PRectangle rectangle, bool fixedBitmap) const noexcept {
+	const PixelRect pixels = fixedBitmap ? LogicalPixelRect(rectangle) :
+		PixelRectFromPRectangle(rectangle);
+	return !rectangle.Empty() && !IntersectPixelRect(pixels, CurrentClip()).Empty();
 }
 
 void Renderer::DrawGlyph(XYPOSITION penX, XYPOSITION penY,
 	const std::shared_ptr<FontFace> &face,
 	uint32_t glyphId, ColourRGBA fore) {
+	++glyphCounts.attempted;
 	if (!face || fore.GetAlpha() == 0) {
 		return;
 	}
-	BeginDraw();
 	if (CurrentClip().Empty()) {
+		++glyphCounts.clipped;
 		return;
 	}
-
-	// Fixed bitmap / colour strikes: logical placement, optional CPU area
-	// reduction to near-physical size, linear residual filter, no outline phase.
-	if (face->UsesBitmapStrike()) {
-		const double metricsScale = face->MetricsScale();
-		const double raster =
-			static_cast<double>(targetRasterScale.Numerator()) /
-			static_cast<double>(targetRasterScale.Denominator());
-		const double reductionFactor = metricsScale * raster;
-		const bool shrink = reductionFactor > 0.0 && reductionFactor < 1.0;
-
-		GlyphRasterRequest request;
-		request.glyphId = glyphId;
-		request.phase = {};
-		bool fullStrike = false;
-		if (shrink) {
-			request.scale = targetRasterScale;
-			TouchFixedBitmapScaleGeneration(targetRasterScale);
-		} else {
-			// One shared source-size texture for all non-shrinking scales.
-			request.scale = RasterScale{};
-			fullStrike = true;
-		}
-		const CachedGlyph &glyph = GetOrCreateGlyph(face, request, fullStrike);
-		if (glyph.texture == 0 || glyph.width <= 0 || glyph.height <= 0) {
-			return;
-		}
-		// Destination stays at the original logical ink rectangle.
-		const float scale = static_cast<float>(glyph.scale > 0.0 ? glyph.scale : 1.0);
-		const float x0 = static_cast<float>(penX) + static_cast<float>(glyph.left);
-		const float y0 = static_cast<float>(penY) - static_cast<float>(glyph.top);
-		const float x1 = x0 + static_cast<float>(glyph.width) * scale;
-		const float y1 = y0 + static_cast<float>(glyph.height) * scale;
-		glEnable(GL_BLEND);
-		if (glyph.colour) {
-			const unsigned int alpha = fore.GetAlpha();
-			const ColourRGBA modulate(alpha, alpha, alpha, alpha);
-			DrawTexturedQuad(x0, y0, x1, y1, 0.0f, 0.0f, 1.0f, 1.0f, glyph.texture,
-				false, false, modulate);
-		} else {
-			DrawTexturedQuad(x0, y0, x1, y1, 0.0f, 0.0f, 1.0f, 1.0f, glyph.texture,
-				false, true, fore);
-		}
-		glDisable(GL_BLEND);
-		return;
-	}
-
-	// Outline path: device-size raster + integer buffer placement.
-	int originX = 0;
-	int originY = 0;
-	int32_t phaseX = 0;
-	int32_t phaseY = 0;
-	LogicalToDeviceOriginAndPhase(penX, targetRasterScale, originX, phaseX);
-	LogicalToDeviceOriginAndPhase(penY, targetRasterScale, originY, phaseY);
+	const bool fixedBitmap = face->UsesBitmapStrike();
 	GlyphRasterRequest request;
 	request.glyphId = glyphId;
 	request.scale = targetRasterScale;
-	request.phase = GlyphRasterPhase::Normalize(phaseX, phaseY);
-	const CachedGlyph &glyph = GetOrCreateGlyph(face, request, false);
-	if (glyph.texture == 0 || glyph.width <= 0 || glyph.height <= 0) {
+	Point origin(penX, penY);
+	bool fullStrike = false;
+	if (fixedBitmap) {
+		const double raster = static_cast<double>(targetRasterScale.Numerator()) /
+			static_cast<double>(targetRasterScale.Denominator());
+		const double reduction = face->MetricsScale() * raster;
+		fullStrike = !(reduction > 0.0 && reduction < 1.0);
+		if (fullStrike) {
+			request.scale = RasterScale{};
+		} else {
+			TouchFixedBitmapScaleGeneration(targetRasterScale);
+		}
+	} else {
+		int x = 0;
+		int y = 0;
+		int32_t phaseX = 0;
+		int32_t phaseY = 0;
+		LogicalToDeviceOriginAndPhase(penX, targetRasterScale, x, phaseX);
+		LogicalToDeviceOriginAndPhase(penY, targetRasterScale, y, phaseY);
+		origin = Point::FromInts(x, y);
+		request.phase = GlyphRasterPhase::Normalize(phaseX, phaseY);
+	}
+	const CachedGlyph &glyph = GetOrCreateGlyph(face, request, fullStrike, origin);
+	const PRectangle rectangle = GlyphRectangle(glyph, origin, fixedBitmap);
+	if (!GlyphVisible(rectangle, fixedBitmap)) {
+		++glyphCounts.clipped;
 		return;
 	}
-	// Device bearings from FreeType; place on integer buffer pixels.
-	const float x0 = static_cast<float>(originX + glyph.left);
-	const float y0 = static_cast<float>(originY - glyph.top);
-	const float x1 = x0 + static_cast<float>(glyph.width);
-	const float y1 = y0 + static_cast<float>(glyph.height);
+	if (!glyph.texture) {
+		return;
+	}
+	BeginDraw();
+	++glyphCounts.submitted;
 	glEnable(GL_BLEND);
-	if (glyph.colour) {
-		// Scalable colour outlines (rare): still 1:1 buffer copy, no RGB tint.
-		const unsigned int alpha = fore.GetAlpha();
-		const ColourRGBA modulate(alpha, alpha, alpha, alpha);
-		DrawTexturedQuadBuffer(x0, y0, x1, y1, 0.0f, 0.0f, 1.0f, 1.0f, glyph.texture,
-			false, false, modulate);
+	const unsigned int alpha = fore.GetAlpha();
+	const ColourRGBA modulate = glyph.colour ? ColourRGBA(alpha, alpha, alpha, alpha) : fore;
+	if (fixedBitmap) {
+		DrawTexturedQuad(rectangle.left, rectangle.top, rectangle.right, rectangle.bottom,
+			0.0f, 0.0f, 1.0f, 1.0f, glyph.texture, false, !glyph.colour, modulate);
 	} else {
-		DrawTexturedQuadBuffer(x0, y0, x1, y1, 0.0f, 0.0f, 1.0f, 1.0f, glyph.texture,
-			false, true, fore);
+		DrawTexturedQuadBuffer(rectangle.left, rectangle.top, rectangle.right, rectangle.bottom,
+			0.0f, 0.0f, 1.0f, 1.0f, glyph.texture, false, !glyph.colour, modulate);
 	}
 	glDisable(GL_BLEND);
 }
