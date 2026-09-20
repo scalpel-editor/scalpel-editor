@@ -26,6 +26,7 @@
           freetype
           glib
           harfbuzz
+          hunspell
           libffi
           libglvnd
           libsysprof-capture
@@ -121,6 +122,7 @@
           freetype
           glib
           harfbuzz
+          hunspell
           libffi
           libglvnd
           libsysprof-capture

@@ -6,6 +6,7 @@ pkg_check_modules(WAYLAND_CURSOR REQUIRED IMPORTED_TARGET wayland-cursor)
 pkg_check_modules(WAYLAND_PROTOCOLS REQUIRED wayland-protocols)
 pkg_check_modules(XKBCOMMON REQUIRED IMPORTED_TARGET xkbcommon)
 pkg_check_modules(DBUS REQUIRED IMPORTED_TARGET dbus-1)
+pkg_check_modules(HUNSPELL REQUIRED IMPORTED_TARGET hunspell)
 
 find_program(WAYLAND_SCANNER_EXECUTABLE wayland-scanner REQUIRED)
 pkg_get_variable(WAYLAND_PROTOCOLS_DATA_DIR wayland-protocols pkgdatadir)
@@ -167,6 +168,18 @@ target_link_libraries(scalpel_wayland PUBLIC
 )
 target_compile_options(scalpel_wayland PRIVATE -Wall -Wextra)
 add_dependencies(scalpel_wayland scalpel_xdg_shell)
+
+add_library(scalpel_spellcheck STATIC
+  Spellcheck.cxx
+)
+target_include_directories(scalpel_spellcheck PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_link_libraries(scalpel_spellcheck PUBLIC
+  scintilla_core
+  PkgConfig::HUNSPELL
+)
+target_compile_options(scalpel_spellcheck PRIVATE -Wall -Wextra)
 
 # Keep the platform definitions as object files in each final target. The core
 # static archive refers back to Window and Platform functions supplied here.

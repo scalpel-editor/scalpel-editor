@@ -64,6 +64,19 @@ target_compile_options(emojiCatalogTest PRIVATE -Wall -Wextra)
 
 add_test(NAME emoji-catalog COMMAND emojiCatalogTest)
 
+add_executable(spellcheckTest
+  SpellcheckTest.cxx
+  ApplicationTestMain.cxx
+)
+target_include_directories(spellcheckTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(spellcheckTest PRIVATE scalpel_spellcheck)
+target_compile_options(spellcheckTest PRIVATE -Wall -Wextra)
+
+add_test(NAME spellcheck COMMAND spellcheckTest)
+
 add_executable(documentFileTest
   DocumentFileTest.cxx
   ApplicationTestMain.cxx
