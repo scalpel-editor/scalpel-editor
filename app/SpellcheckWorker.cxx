@@ -150,6 +150,7 @@ bool SpellcheckWorker::Submit(Task task) {
 }
 
 void SpellcheckWorker::Run() noexcept {
+	uint64_t dictionaryGeneration = 0;
 	for (;;) {
 		Task task;
 		{
@@ -167,6 +168,12 @@ void SpellcheckWorker::Run() noexcept {
 		const uint64_t request = task.request;
 		const SpellcheckWorkerOperation operation = task.operation;
 		try {
+			if (dictionaryGeneration != generation) {
+				// Reload files for each review, retaining the dictionary only
+				// between requests within that review.
+				dictionary.reset();
+				dictionaryGeneration = generation;
+			}
 			Execute(std::move(task));
 		} catch (const std::exception &error) {
 			Publish({generation, request, operation,

@@ -244,6 +244,7 @@ bool SpellcheckSession::Apply(std::vector<SpellcheckReplacement> replacements,
 		document, expectedGeneration, replacements);
 	if (status != SpellcheckEditStatus::Applied) {
 		error = EditFailureMessage(status);
+		state = SpellcheckSessionState::Decision;
 		if (status == SpellcheckEditStatus::DocumentChanged ||
 			status == SpellcheckEditStatus::ReviewInactive ||
 			status == SpellcheckEditStatus::InvalidRange) {

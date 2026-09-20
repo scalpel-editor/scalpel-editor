@@ -374,6 +374,38 @@ TEST_CASE("spellcheck keeps a read-only replacement decision") {
 	CHECK(session.Error() == "The document is read-only.");
 }
 
+TEST_CASE("spellcheck replace all recovers from a read-only rejection") {
+	TempDictionary fixture;
+	Scalpel::SpellcheckWorker worker;
+	Scalpel::ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("bad bad");
+	Scalpel::SpellcheckSession session(editor, worker, fixture.Info(), {},
+		0, editor.DocumentLength());
+	Deliver(session);
+	REQUIRE(session.ReplaceAll("right"));
+	editor.SetReadOnly(true);
+
+	// Deliver only this result: a rejected edit must not await more work.
+	pollfd descriptor{session.ResultDescriptor(), POLLIN, 0};
+	int result = 0;
+	do {
+		result = poll(&descriptor, 1, 2000);
+	} while (result < 0 && errno == EINTR);
+	REQUIRE(result == 1);
+	session.ProcessResults();
+	REQUIRE(session.State() == Scalpel::SpellcheckSessionState::Decision);
+	REQUIRE(session.Current().has_value());
+	CHECK(session.Current()->word == "bad");
+	CHECK(session.Error() == "The document is read-only.");
+	CHECK(editor.Text() == "bad bad");
+
+	editor.SetReadOnly(false);
+	REQUIRE(session.ReplaceAll("right"));
+	Deliver(session);
+	CHECK(session.State() == Scalpel::SpellcheckSessionState::Complete);
+	CHECK(editor.Text() == "right right");
+}
+
 TEST_CASE("spellcheck makes sequential replacements separate undo actions") {
 	TempDictionary fixture;
 	Scalpel::SpellcheckWorker worker;
@@ -438,6 +470,42 @@ TEST_CASE("spellcheck personal-word write advances after worker completion") {
 	const std::string bytes((std::istreambuf_iterator<char>(personal)),
 		std::istreambuf_iterator<char>());
 	CHECK(bytes.find("bad\n") != std::string::npos);
+	personal.close();
+	CHECK(std::remove(personalPath.c_str()) == 0);
+}
+
+TEST_CASE("spellcheck worker reloads personal words between reviews") {
+	TempDictionary fixture;
+	Scalpel::SpellcheckWorker worker;
+	Scalpel::ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("wrng bad");
+	const std::string personalPath = fixture.path + "/personal.txt";
+	{
+		Scalpel::SpellcheckSession session(editor, worker, fixture.Info(),
+			personalPath, 0, editor.DocumentLength());
+		Deliver(session);
+		REQUIRE(session.Current().has_value());
+		CHECK(session.Current()->word == "wrng");
+	}
+	{
+		std::ofstream output(personalPath, std::ios::binary);
+		output << "scalpel-personal-words-v1\nbad\n";
+		REQUIRE(output.good());
+	}
+	{
+		Scalpel::SpellcheckSession session(editor, worker, fixture.Info(),
+			personalPath, 0, editor.DocumentLength());
+		Deliver(session);
+		REQUIRE(session.Current().has_value());
+		CHECK(session.Current()->word == "wrng");
+		REQUIRE(session.AddToDictionary());
+		Deliver(session);
+		CHECK(session.State() == Scalpel::SpellcheckSessionState::Complete);
+	}
+	std::ifstream personal(personalPath, std::ios::binary);
+	const std::string bytes((std::istreambuf_iterator<char>(personal)),
+		std::istreambuf_iterator<char>());
+	CHECK(bytes == "scalpel-personal-words-v1\nbad\nwrng\n");
 	personal.close();
 	CHECK(std::remove(personalPath.c_str()) == 0);
 }
