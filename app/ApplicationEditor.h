@@ -76,6 +76,22 @@ enum class ApplicationFindOutcome {
 	Wrapped,
 };
 
+/** One byte-exact replacement made by the active spelling review. */
+struct SpellcheckReplacement {
+	Scintilla::Position start = 0;
+	std::string expected;
+	std::string replacement;
+};
+
+enum class SpellcheckEditStatus {
+	Applied,
+	ReviewInactive,
+	DocumentChanged,
+	ReadOnly,
+	InvalidRange,
+	ProtectedRange,
+};
+
 struct TickerRequest {
 	int reason = 0;
 	int milliseconds = 0;
@@ -190,6 +206,31 @@ public:
 	 */
 	bool ReplaceRange(Scintilla::Position start, Scintilla::Position length,
 		std::string_view text);
+	/**
+	 * Hold the active document for a spelling review. Starting cancels
+	 * tentative input and invalidates pending paste delivery. While held,
+	 * ordinary editor input and workspace document changes are blocked.
+	 */
+	[[nodiscard]] bool BeginSpellcheckReview(DocumentId document);
+	void EndSpellcheckReview(DocumentId document) noexcept;
+	[[nodiscard]] bool SpellcheckReviewActive() const noexcept {
+		return spellcheckReviewDocument != 0;
+	}
+	[[nodiscard]] uint64_t DocumentGeneration() const noexcept {
+		return documentGeneration;
+	}
+	[[nodiscard]] Scintilla::Position DocumentLength() const noexcept;
+	/** Select and reveal the current spelling occurrence. */
+	[[nodiscard]] bool ShowSpellcheckRange(DocumentId document,
+		Scintilla::Position start, Scintilla::Position length);
+	/**
+	 * Apply sorted, non-overlapping, byte-exact replacements as one undo
+	 * action. The captured generation and every expected byte range must still
+	 * match before any edit is made.
+	 */
+	[[nodiscard]] SpellcheckEditStatus ReplaceSpellcheckRanges(
+		DocumentId document, uint64_t expectedGeneration,
+		const std::vector<SpellcheckReplacement> &replacements);
 	/** True when the active document is not at its save point. */
 	[[nodiscard]] bool Modified() const noexcept;
 	[[nodiscard]] bool Modified(DocumentId id) const;
@@ -589,6 +630,7 @@ private:
 	uint64_t nextPrimarySelectionRequest = 1;
 	uint64_t latestPrimarySelectionClaimRequest = 0;
 	uint64_t documentGeneration = 0;
+	DocumentId spellcheckReviewDocument = 0;
 	bool primarySelectionClaimed = false;
 	bool suppressPrimarySelectionClaim = false;
 	bool clipboardPasteAvailable = false;

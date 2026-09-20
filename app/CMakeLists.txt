@@ -202,6 +202,7 @@ add_library(scalpel_application OBJECT
   MenuBar.cxx
   RecentFiles.cxx
   ScrollBar.cxx
+  SpellcheckSession.cxx
   TabStrip.cxx
   UiStyle.cxx
   UnsavedChangesCard.cxx
@@ -212,6 +213,7 @@ target_include_directories(scalpel_application PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}
 )
 target_link_libraries(scalpel_application PUBLIC
+  scalpel_spellcheck
   scintilla_core
   scintilla_render
   scintilla_platform_popups

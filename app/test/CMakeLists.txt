@@ -77,6 +77,19 @@ target_compile_options(spellcheckTest PRIVATE -Wall -Wextra)
 
 add_test(NAME spellcheck COMMAND spellcheckTest)
 
+add_executable(spellcheckSessionTest
+  SpellcheckSessionTest.cxx
+  ApplicationTestMain.cxx
+)
+target_include_directories(spellcheckSessionTest PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ../../scintilla/test/unit
+)
+target_link_libraries(spellcheckSessionTest PRIVATE scalpel_application)
+target_compile_options(spellcheckSessionTest PRIVATE -Wall -Wextra)
+
+add_test(NAME spellcheck-session COMMAND spellcheckSessionTest)
+
 add_executable(documentFileTest
   DocumentFileTest.cxx
   ApplicationTestMain.cxx

@@ -295,6 +295,9 @@ void ApplicationEditor::ActivateDocument(DocumentId id) {
 	if (id == activeDocumentId) {
 		return;
 	}
+	if (SpellcheckReviewActive()) {
+		return;
+	}
 	RetainedDocument *incoming = FindRetained(id);
 	if (!incoming || !incoming->document) {
 		throw std::invalid_argument(
@@ -546,7 +549,7 @@ Scintilla::Position ApplicationEditor::CaretPosition() const noexcept {
 
 bool ApplicationEditor::ReplaceRange(Scintilla::Position start,
 	Scintilla::Position length, std::string_view text) {
-	if (GetReadOnly() || start < 0 || length < 0) {
+	if (SpellcheckReviewActive() || GetReadOnly() || start < 0 || length < 0) {
 		return false;
 	}
 	const Scintilla::Position documentLength = pdoc->Length();
@@ -573,6 +576,97 @@ bool ApplicationEditor::ReplaceRange(Scintilla::Position start,
 	textInputStateDirty = true;
 	textInputChangeCause = ApplicationTextChangeCause::Other;
 	return true;
+}
+
+bool ApplicationEditor::BeginSpellcheckReview(DocumentId document) {
+	if (SpellcheckReviewActive() || document == 0 || document != activeDocumentId) {
+		return false;
+	}
+	CancelTextInput();
+	spellcheckReviewDocument = document;
+	// Supersede deliveries requested before the review took ownership.
+	documentGeneration++;
+	pendingPaste.reset();
+	pendingPrimaryPaste.reset();
+	return true;
+}
+
+void ApplicationEditor::EndSpellcheckReview(DocumentId document) noexcept {
+	if (spellcheckReviewDocument == document) {
+		spellcheckReviewDocument = 0;
+	}
+}
+
+Scintilla::Position ApplicationEditor::DocumentLength() const noexcept {
+	return pdoc->Length();
+}
+
+bool ApplicationEditor::ShowSpellcheckRange(DocumentId document,
+	Scintilla::Position start, Scintilla::Position length) {
+	if (spellcheckReviewDocument != document || document != activeDocumentId ||
+		start < 0 || length < 0 || start > pdoc->Length() ||
+		length > pdoc->Length() - start) {
+		return false;
+	}
+	SetSel(start, start + length);
+	EnsureCaretVisible();
+	textInputStateDirty = true;
+	textInputChangeCause = ApplicationTextChangeCause::Other;
+	return true;
+}
+
+SpellcheckEditStatus ApplicationEditor::ReplaceSpellcheckRanges(
+	DocumentId document, uint64_t expectedGeneration,
+	const std::vector<SpellcheckReplacement> &replacements) {
+	if (spellcheckReviewDocument != document || document != activeDocumentId) {
+		return SpellcheckEditStatus::ReviewInactive;
+	}
+	if (expectedGeneration != documentGeneration) {
+		return SpellcheckEditStatus::DocumentChanged;
+	}
+	if (GetReadOnly()) {
+		return SpellcheckEditStatus::ReadOnly;
+	}
+	Scintilla::Position previousEnd = 0;
+	for (const SpellcheckReplacement &replacement : replacements) {
+		const Scintilla::Position length =
+			static_cast<Scintilla::Position>(replacement.expected.size());
+		if (replacement.start < previousEnd || replacement.start < 0 ||
+			replacement.start > pdoc->Length() ||
+			length > pdoc->Length() - replacement.start) {
+			return SpellcheckEditStatus::InvalidRange;
+		}
+		const Scintilla::Position end = replacement.start + length;
+		if (RangeContainsProtected(replacement.start, end)) {
+			return SpellcheckEditStatus::ProtectedRange;
+		}
+		if (TextRange(replacement.start, end) != replacement.expected) {
+			return SpellcheckEditStatus::DocumentChanged;
+		}
+		previousEnd = end;
+	}
+	if (replacements.empty()) {
+		return SpellcheckEditStatus::Applied;
+	}
+	{
+		Scintilla::Internal::UndoGroup undoGroup(pdoc);
+		for (auto it = replacements.rbegin(); it != replacements.rend(); ++it) {
+			const Scintilla::Position length =
+				static_cast<Scintilla::Position>(it->expected.size());
+			if (length != 0) {
+				pdoc->DeleteChars(it->start, length);
+			}
+			pdoc->InsertString(it->start, it->replacement);
+		}
+	}
+	const SpellcheckReplacement &first = replacements.front();
+	SetEmptySelection(first.start +
+		static_cast<Scintilla::Position>(first.replacement.size()));
+	SetLastXChosen();
+	EnsureCaretVisible();
+	textInputStateDirty = true;
+	textInputChangeCause = ApplicationTextChangeCause::Other;
+	return SpellcheckEditStatus::Applied;
 }
 
 bool ApplicationEditor::Modified() const noexcept {
@@ -819,7 +913,8 @@ void ApplicationEditor::SetKeyboardFocus(bool focused) {
 
 void ApplicationEditor::HandleTextInputBatch(
 	const ApplicationTextInputBatch &batch) {
-	if (batch.cancel || pdoc->IsReadOnly() || SelectionContainsProtected()) {
+	if (batch.cancel || SpellcheckReviewActive() || pdoc->IsReadOnly() ||
+		SelectionContainsProtected()) {
 		CancelTextInput();
 		textInputStateDirty = textInputStateDirty || batch.refreshState;
 		return;
@@ -914,7 +1009,7 @@ int ApplicationEditor::ImeIndicatorAt(Scintilla::Position position) const {
 }
 
 void ApplicationEditor::HandleKeyboardInput(const KeyboardInput &input) {
-	if (!input.pressed) {
+	if (!input.pressed || SpellcheckReviewActive()) {
 		return;
 	}
 	const Scintilla::Position caretBefore = sel.MainCaret();
@@ -943,6 +1038,10 @@ void ApplicationEditor::HandleKeyboardInput(const KeyboardInput &input) {
 }
 
 void ApplicationEditor::HandlePointerInput(const PointerInput &input) {
+	if (SpellcheckReviewActive() && input.action != PointerAction::Move &&
+		input.action != PointerAction::Leave && input.action != PointerAction::Scroll) {
+		return;
+	}
 	const Scintilla::Internal::Point point(input.x, input.y);
 	const Scintilla::Position caretBefore = sel.MainCaret();
 	const Scintilla::Position anchorBefore = sel.MainAnchor();
@@ -1025,6 +1124,9 @@ void ApplicationEditor::SetPointerCapture(bool captured) {
 
 void ApplicationEditor::ExecuteApplicationEdit(
 	Scintilla::Internal::EditorCommand command) {
+	if (SpellcheckReviewActive()) {
+		return;
+	}
 	const Scintilla::Position caretBefore = sel.MainCaret();
 	const Scintilla::Position anchorBefore = sel.MainAnchor();
 	const int xOffsetBefore = xOffset;
@@ -1057,6 +1159,9 @@ void ApplicationEditor::RequestSelectAll() {
 }
 
 void ApplicationEditor::ConvertLineEndings(Scintilla::EndOfLine lineEnding) {
+	if (SpellcheckReviewActive()) {
+		return;
+	}
 	if (pdoc->TentativeActive()) {
 		CancelTextInput();
 	}
@@ -1066,6 +1171,9 @@ void ApplicationEditor::ConvertLineEndings(Scintilla::EndOfLine lineEnding) {
 }
 
 void ApplicationEditor::AddBlockQuote() {
+	if (SpellcheckReviewActive()) {
+		return;
+	}
 	if (pdoc->TentativeActive()) {
 		CancelTextInput();
 	}
@@ -1075,6 +1183,9 @@ void ApplicationEditor::AddBlockQuote() {
 }
 
 void ApplicationEditor::RemoveBlockQuote() {
+	if (SpellcheckReviewActive()) {
+		return;
+	}
 	if (pdoc->TentativeActive()) {
 		CancelTextInput();
 	}
@@ -1280,19 +1391,19 @@ bool ApplicationEditor::HasTentativeTextInput() const noexcept {
 }
 
 bool ApplicationEditor::CanSelectAll() const noexcept {
-	return GetTextLength() > 0;
+	return !SpellcheckReviewActive() && GetTextLength() > 0;
 }
 
 bool ApplicationEditor::CanUndoEdit() const noexcept {
-	return CanUndo();
+	return !SpellcheckReviewActive() && CanUndo();
 }
 
 bool ApplicationEditor::CanRedoEdit() const noexcept {
-	return CanRedo();
+	return !SpellcheckReviewActive() && CanRedo();
 }
 
 bool ApplicationEditor::CanCut() const noexcept {
-	return !GetReadOnly() && HasSelection();
+	return !SpellcheckReviewActive() && !GetReadOnly() && HasSelection();
 }
 
 bool ApplicationEditor::CanCopy() const noexcept {
@@ -1862,7 +1973,7 @@ void ApplicationEditor::Copy() {
 }
 
 void ApplicationEditor::Paste() {
-	if (!CanPaste()) {
+	if (SpellcheckReviewActive() || !CanPaste()) {
 		return;
 	}
 	const uint64_t request = nextClipboardRequest++;
@@ -1920,6 +2031,9 @@ void ApplicationEditor::QueuePrimarySelectionClaim(
 
 void ApplicationEditor::RequestPrimarySelectionPaste(
 	Scintilla::Position position) {
+	if (SpellcheckReviewActive()) {
+		return;
+	}
 	const uint64_t request = nextPrimarySelectionRequest++;
 	pendingPrimaryPaste = PendingPrimaryPaste{
 		request, documentGeneration, position};

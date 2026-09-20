@@ -174,7 +174,7 @@ void DocumentWorkspace::ClearDirtyCloseState() noexcept {
 
 bool DocumentWorkspace::DecisionActive() const noexcept {
 	return prompt.Active() || pendingLargeOpen.has_value() ||
-		pendingExternalChange.has_value();
+		pendingExternalChange.has_value() || editor.SpellcheckReviewActive();
 }
 
 const std::string &DocumentWorkspace::LargeFilePromptPath() const noexcept {
