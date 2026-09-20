@@ -81,7 +81,11 @@ struct DecodedCharacter {
 	std::set<int> characters;
 	for (std::size_t position = 0; position < text.size();) {
 		const DecodedCharacter decoded = Decode(text, position);
-		if (decoded.valid) {
+		const CharacterCategory category = CategoriseCharacter(decoded.codePoint);
+		// WORDCHARS must not override identifier skipping or internal joiners.
+		if (decoded.valid && !IsDigit(category) &&
+			category != Scintilla::Internal::ccPc &&
+			!IsJoiner(decoded.codePoint, category)) {
 			characters.insert(decoded.codePoint);
 		}
 		position += decoded.width;
@@ -96,8 +100,12 @@ struct DecodedCharacter {
 		tail.compare(0, 4, "www.") == 0;
 }
 
-[[nodiscard]] bool IsSpaceByte(char value) noexcept {
-	return value == ' ' || value == '\t' || value == '\r' || value == '\n';
+[[nodiscard]] bool IsSpace(int codePoint) noexcept {
+	const CharacterCategory category = CategoriseCharacter(codePoint);
+	return category == Scintilla::Internal::ccZs ||
+		category == Scintilla::Internal::ccZl ||
+		category == Scintilla::Internal::ccZp ||
+		(codePoint >= '\t' && codePoint <= '\r') || codePoint == 0x85;
 }
 
 [[nodiscard]] bool IsUrlBoundary(std::string_view text,
@@ -177,7 +185,7 @@ struct DecodedCharacter {
 
 [[nodiscard]] bool ValidPersonalWord(std::string_view word) noexcept {
 	return !word.empty() && word.size() < 300 &&
-		word.find_first_of("\0\r\n") == std::string_view::npos &&
+		word.find_first_of(std::string_view("\0\r\n", 3)) == std::string_view::npos &&
 		Scintilla::Internal::UTF8IsValid(word);
 }
 
@@ -381,8 +389,12 @@ std::optional<SpellcheckToken> FindNextSpellcheckToken(std::string_view text,
 	std::size_t position = std::min(start, text.size());
 	while (position < text.size()) {
 		if (StartsUrl(text, position) && IsUrlBoundary(text, position)) {
-			while (position < text.size() && !IsSpaceByte(text[position])) {
-				++position;
+			while (position < text.size()) {
+				const DecodedCharacter current = Decode(text, position);
+				if (!current.valid || IsSpace(current.codePoint)) {
+					break;
+				}
+				position += current.width;
 			}
 			continue;
 		}

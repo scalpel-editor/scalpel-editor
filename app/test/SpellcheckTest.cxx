@@ -150,6 +150,37 @@ TEST_CASE("spellcheck loads UTF-8 fixture checks words and owns suggestions") {
 		suggestions.end());
 }
 
+TEST_CASE("spellcheck dictionary word characters preserve identifier and joiner rules") {
+	TempDirectory directory;
+	WriteDictionary(directory, "test_US");
+	directory.Write("test_US.aff", "SET UTF-8\nWORDCHARS 0123456789_’'-·\n");
+	auto loaded = Scalpel::SpellcheckDictionary::Load(DictionaryInfo(directory));
+	REQUIRE(loaded.dictionary != nullptr);
+	const std::string text =
+		"abc123 123abc snake_case _hidden ‘hello’ 'world' -next- can't rock’n’roll foo·bar";
+	std::size_t position = 0;
+	for (const std::string expected : {"hello", "world", "next", "can't", "rock’n’roll", "foo·bar"}) {
+		const auto token = Scalpel::FindNextSpellcheckToken(text, position,
+			loaded.dictionary->WordCharacters());
+		CHECK(TokenText(text, token) == expected);
+		position = token->position + token->length;
+	}
+	CHECK_FALSE(Scalpel::FindNextSpellcheckToken(text, position,
+		loaded.dictionary->WordCharacters()).has_value());
+}
+
+TEST_CASE("spellcheck URL runs stop at Unicode whitespace and malformed bytes") {
+	for (const std::string separator : {"\t", "\n", "\v", "\f", "\r", " ",
+		"\xC2\x85", "\xC2\xA0", "\xE2\x80\x83", "\xE2\x80\xA8", "\xE2\x80\xA9",
+		"\xFF", "\xC2"}) {
+		const std::string prefix = "https://example.test/café" + separator;
+		const std::string text = prefix + "mispell";
+		const auto token = Scalpel::FindNextSpellcheckToken(text, 0);
+		CHECK(TokenText(text, token) == "mispell");
+		CHECK(token->position == prefix.size());
+	}
+}
+
 TEST_CASE("spellcheck rejects missing and non-UTF-8 dictionaries explicitly") {
 	TempDirectory directory;
 	auto missing = Scalpel::SpellcheckDictionary::Load(DictionaryInfo(directory));
@@ -193,6 +224,29 @@ TEST_CASE("personal word persistence failure does not mutate live dictionary") {
 	CHECK(loaded.dictionary->AddPersonalWord("unpersistableword") ==
 		Scalpel::AddPersonalWordStatus::WriteFailure);
 	CHECK_FALSE(loaded.dictionary->Check("unpersistableword"));
+}
+
+TEST_CASE("personal words reject file delimiters without changing persisted words") {
+	TempDirectory directory;
+	WriteDictionary(directory, "test_US");
+	const std::string personal = directory.path + "/personal/test_US.txt";
+	auto loaded = Scalpel::SpellcheckDictionary::Load(DictionaryInfo(directory), personal);
+	REQUIRE(loaded.dictionary != nullptr);
+	REQUIRE(loaded.dictionary->AddPersonalWord("scalpelish") ==
+		Scalpel::AddPersonalWordStatus::Added);
+	directory.files.push_back(personal);
+	for (const char delimiter : {'\0', '\r', '\n'}) {
+		const std::string word = std::string("injected") + delimiter + "otherword";
+		CHECK(loaded.dictionary->AddPersonalWord(word) ==
+			Scalpel::AddPersonalWordStatus::InvalidWord);
+		CHECK_FALSE(loaded.dictionary->Check("injected"));
+		CHECK_FALSE(loaded.dictionary->Check("otherword"));
+	}
+	auto reloaded = Scalpel::SpellcheckDictionary::Load(DictionaryInfo(directory), personal);
+	REQUIRE(reloaded.dictionary != nullptr);
+	CHECK(reloaded.dictionary->Check("scalpelish"));
+	CHECK_FALSE(reloaded.dictionary->Check("injected"));
+	CHECK_FALSE(reloaded.dictionary->Check("otherword"));
 }
 
 TEST_CASE("personal word paths are locale-safe and follow XDG data home") {
