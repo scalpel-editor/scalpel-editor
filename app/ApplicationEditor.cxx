@@ -584,6 +584,11 @@ bool ApplicationEditor::BeginSpellcheckReview(DocumentId document) {
 	}
 	CancelTextInput();
 	spellcheckReviewDocument = document;
+	// A release received during review is ignored, so end any earlier gesture.
+	ChangeMouseCapture(false);
+	inDragDrop = DragDrop::none;
+	SetDragPosition(Scintilla::Internal::SelectionPosition(Sci::invalidPosition));
+	pendingPrimaryClaim.reset();
 	// Supersede deliveries requested before the review took ownership.
 	documentGeneration++;
 	pendingPaste.reset();
@@ -1204,7 +1209,7 @@ void ApplicationEditor::RequestClipboardPaste() {
 
 ApplicationFindOutcome ApplicationEditor::FindTextForward(
 	std::string_view query, Scintilla::Position origin) {
-	if (query.empty()) {
+	if (SpellcheckReviewActive() || query.empty()) {
 		return ApplicationFindOutcome::NotFound;
 	}
 	// Drop tentative IME so target endpoints and selection stay committed.
@@ -1254,7 +1259,7 @@ ApplicationFindOutcome ApplicationEditor::FindTextForward(
 
 ApplicationFindOutcome ApplicationEditor::FindTextBackward(
 	std::string_view query, Scintilla::Position origin) {
-	if (query.empty()) {
+	if (SpellcheckReviewActive() || query.empty()) {
 		return ApplicationFindOutcome::NotFound;
 	}
 	if (pdoc->TentativeActive()) {
@@ -1318,7 +1323,7 @@ void ApplicationEditor::SetClipboardPasteAvailable(bool available) noexcept {
 }
 
 bool ApplicationEditor::ClipboardPasteAvailable() {
-	return clipboardPasteAvailable && CanPaste();
+	return !SpellcheckReviewActive() && clipboardPasteAvailable && CanPaste();
 }
 
 bool ApplicationEditor::HasSelection() const noexcept {
@@ -1351,7 +1356,7 @@ bool ApplicationEditor::PointAllowsContextMenu(
 
 bool ApplicationEditor::PrepareSelectionForContextMenu(
 	Scintilla::Internal::Point point) {
-	if (PointInSelection(point)) {
+	if (SpellcheckReviewActive() || PointInSelection(point)) {
 		return false;
 	}
 	const Scintilla::Position caretBefore = sel.MainCaret();

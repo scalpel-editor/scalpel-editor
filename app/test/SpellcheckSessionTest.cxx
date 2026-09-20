@@ -172,6 +172,60 @@ TEST_CASE("spellcheck review keeps workspace tab identity synchronized") {
 	CHECK(editor.ActiveDocument() == first);
 }
 
+TEST_CASE("spellcheck review preserves its selection against other commands") {
+	TempDictionary fixture;
+	Scalpel::ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("bad hello world");
+	editor.RenderFrame();
+	Scalpel::SpellcheckSession session(editor, fixture.Load(),
+		0, editor.DocumentLength());
+	REQUIRE(session.Current().has_value());
+	editor.SetClipboardPasteAvailable(true);
+	CHECK_FALSE(editor.ClipboardPasteAvailable());
+	CHECK(editor.FindTextForwardFromSelection("hello") ==
+		Scalpel::ApplicationFindOutcome::NotFound);
+	CHECK(editor.FindTextBackwardFromSelection("world") ==
+		Scalpel::ApplicationFindOutcome::NotFound);
+	CHECK_FALSE(editor.PrepareSelectionForContextMenu(
+		Scintilla::Internal::Point(200, 8)));
+	CHECK(editor.GetSelectionStart() == 0);
+	CHECK(editor.GetSelectionEnd() == 3);
+}
+
+TEST_CASE("spellcheck review cancels an existing pointer gesture") {
+	TempDictionary fixture;
+	Scalpel::ApplicationEditor editor(320, 180);
+	editor.LoadInitialBuffer("bad hello world");
+	editor.RenderFrame();
+	SECTION("selection gesture") {
+		editor.HandlePointerInput({Scalpel::PointerAction::Press,
+			Scintilla::KeyMod::Norm, 20, 8, 0, 0, 10, 0});
+	}
+	SECTION("dragging selected text") {
+		editor.RequestSelectAll();
+		editor.HandlePointerInput({Scalpel::PointerAction::Press,
+			Scintilla::KeyMod::Norm, 60, 8, 0, 0, 10, 0});
+	}
+	REQUIRE(editor.WindowState().mouseCaptured);
+	{
+		Scalpel::SpellcheckSession session(editor, fixture.Load(),
+			0, editor.DocumentLength());
+		CHECK_FALSE(editor.WindowState().mouseCaptured);
+		editor.HandlePointerInput({Scalpel::PointerAction::Move,
+			Scintilla::KeyMod::Norm, 200, 8, 0, 0, 11, -1});
+		editor.HandlePointerInput({Scalpel::PointerAction::Release,
+			Scintilla::KeyMod::Norm, 200, 8, 0, 0, 12, 0});
+		CHECK(editor.GetSelectionStart() == 0);
+		CHECK(editor.GetSelectionEnd() == 3);
+	}
+	editor.HandlePointerInput({Scalpel::PointerAction::Move,
+		Scintilla::KeyMod::Norm, 150, 8, 0, 0, 13, -1});
+	CHECK_FALSE(editor.WindowState().mouseCaptured);
+	CHECK(editor.GetSelectionStart() == 0);
+	CHECK(editor.GetSelectionEnd() == 3);
+	CHECK(editor.UnsupportedRequests().empty());
+}
+
 TEST_CASE("spellcheck review rejects delayed paste and IME delivery") {
 	TempDictionary fixture;
 	Scalpel::ApplicationEditor editor(320, 180);
