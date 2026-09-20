@@ -1122,7 +1122,8 @@ void WaylandWindow::RoundTrip() {
 	}
 }
 
-void WaylandWindow::WaitForEvents(std::optional<std::chrono::milliseconds> timeout) {
+void WaylandWindow::WaitForEvents(std::optional<std::chrono::milliseconds> timeout,
+	int applicationWakeDescriptor) {
 	if (!display) {
 		throw std::runtime_error("Wayland event wait requires a display");
 	}
@@ -1158,6 +1159,15 @@ void WaylandWindow::WaitForEvents(std::optional<std::chrono::milliseconds> timeo
 		clipboard.AddPollSources(eventLoop);
 		primarySelection.AddPollSources(eventLoop);
 		dbus.AddPollSources(eventLoop);
+		if (applicationWakeDescriptor >= 0) {
+			eventLoop.AddSource(applicationWakeDescriptor, POLLIN,
+				[](short revents) {
+					if (revents & (POLLERR | POLLHUP | POLLNVAL)) {
+						throw std::runtime_error(
+							"Application worker result source failed");
+					}
+				});
+		}
 		std::vector<pollfd> pollDescriptors = eventLoop.PollDescriptors();
 		const int pollResult = poll(
 			pollDescriptors.data(), pollDescriptors.size(),

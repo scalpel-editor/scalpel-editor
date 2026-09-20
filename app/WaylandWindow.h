@@ -217,10 +217,12 @@ public:
 	/** Complete one request/event round trip, throwing on display failure. */
 	void RoundTrip();
 	/**
-	 * Wait for display, transfer, or D-Bus activity, or for the earliest editor,
-	 * key-repeat, transfer, or D-Bus deadline.
+	 * Wait for display, transfer, D-Bus, or application-worker activity, or for
+	 * the earliest editor, key-repeat, transfer, or D-Bus deadline. A nonnegative
+	 * application descriptor wakes the runner; its owner drains the result.
 	 */
-	void WaitForEvents(std::optional<std::chrono::milliseconds> timeout);
+	void WaitForEvents(std::optional<std::chrono::milliseconds> timeout,
+		int applicationWakeDescriptor = -1);
 
 private:
 	void Initialise(const char *title);

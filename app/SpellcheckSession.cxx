@@ -12,11 +12,6 @@ namespace {
 
 constexpr Scintilla::Position kScanReadBytes = 64 * 1024;
 
-[[nodiscard]] bool IsAsciiSpace(char value) noexcept {
-	return value == ' ' || value == '\t' || value == '\n' || value == '\r' ||
-		value == '\v' || value == '\f';
-}
-
 [[nodiscard]] std::string EditFailureMessage(SpellcheckEditStatus status) {
 	switch (status) {
 	case SpellcheckEditStatus::Applied:
@@ -38,15 +33,13 @@ constexpr Scintilla::Position kScanReadBytes = 64 * 1024;
 }
 
 SpellcheckSession::SpellcheckSession(ApplicationEditor &editor_,
-	std::unique_ptr<SpellcheckDictionary> dictionary_,
+	SpellcheckWorker &worker_, SpellcheckDictionaryInfo dictionary_,
+	std::string personalWordsPath_,
 	Scintilla::Position scopeStart_, Scintilla::Position scopeEnd_) :
-	editor(editor_), dictionary(std::move(dictionary_)),
+	editor(editor_), worker(worker_), dictionary(std::move(dictionary_)),
+	personalWordsPath(std::move(personalWordsPath_)),
 	document(editor_.ActiveDocument()), scopeStart(scopeStart_),
 	scopeEnd(scopeEnd_), scanPosition(scopeStart_) {
-	if (!dictionary) {
-		Fail("No spelling dictionary is loaded.");
-		return;
-	}
 	if (!editor.BeginSpellcheckReview(document)) {
 		Fail("Another document decision is already active.");
 		return;
@@ -58,55 +51,26 @@ SpellcheckSession::SpellcheckSession(ApplicationEditor &editor_,
 		return;
 	}
 	expectedGeneration = editor.DocumentGeneration();
+	workerGeneration = worker.BeginSession();
 	ScanNext();
 }
 
 SpellcheckSession::~SpellcheckSession() {
+	worker.Cancel(workerGeneration);
 	if (reviewHeld) {
 		editor.EndSpellcheckReview(document);
 	}
 }
 
-std::optional<SpellcheckSession::Token> SpellcheckSession::NextToken(
-	Scintilla::Position from) const {
-	if (from < scopeStart || from >= scopeEnd) {
-		return std::nullopt;
+std::string SpellcheckSession::CopyScope(Scintilla::Position from) const {
+	std::string text;
+	for (Scintilla::Position position = from; position < scopeEnd;) {
+		const Scintilla::Position end = position +
+			std::min(kScanReadBytes, scopeEnd - position);
+		text += editor.TextRange(position, end);
+		position = end;
 	}
-	std::string bytes;
-	Scintilla::Position readPosition = from;
-	while (readPosition < scopeEnd) {
-		const Scintilla::Position readEnd = readPosition +
-			std::min(kScanReadBytes, scopeEnd - readPosition);
-		bytes += editor.TextRange(readPosition, readEnd);
-		readPosition = readEnd;
-
-		std::size_t safeLength = bytes.size();
-		if (readPosition < scopeEnd) {
-			const auto boundary = std::find_if(bytes.rbegin(), bytes.rend(),
-				[](char value) { return IsAsciiSpace(value); });
-			if (boundary == bytes.rend()) {
-				continue;
-			}
-			safeLength = bytes.size() -
-				static_cast<std::size_t>(std::distance(bytes.rbegin(), boundary));
-		}
-		const std::string_view safe(bytes.data(), safeLength);
-		const std::optional<SpellcheckToken> token = FindNextSpellcheckToken(
-			safe, 0, dictionary->WordCharacters());
-		if (token) {
-			return Token{
-				from + static_cast<Scintilla::Position>(token->position),
-				static_cast<Scintilla::Position>(token->length),
-				std::string(safe.substr(token->position, token->length)),
-			};
-		}
-		if (readPosition == scopeEnd) {
-			return std::nullopt;
-		}
-		from += static_cast<Scintilla::Position>(safeLength);
-		bytes.erase(0, safeLength);
-	}
-	return std::nullopt;
+	return text;
 }
 
 bool SpellcheckSession::ValidateDocument() {
@@ -125,29 +89,136 @@ void SpellcheckSession::ScanNext() {
 	state = SpellcheckSessionState::Checking;
 	current.reset();
 	error.clear();
-	while (scanPosition < scopeEnd) {
-		const std::optional<Token> token = NextToken(scanPosition);
-		if (!token) {
-			scanPosition = scopeEnd;
-			state = SpellcheckSessionState::Complete;
+	if (scanPosition >= scopeEnd) {
+		state = SpellcheckSessionState::Complete;
+		return;
+	}
+	std::string text = CopyScope(scanPosition);
+	activeRequest = nextRequest++;
+	if (!worker.Scan(workerGeneration, activeRequest, dictionary,
+		personalWordsPath, std::move(text), ignored)) {
+		Fail("The spelling worker is no longer available.");
+	}
+}
+
+void SpellcheckSession::ProcessResults() {
+	for (SpellcheckWorkerResult &result : worker.TakeResults()) {
+		if (result.generation == workerGeneration &&
+			result.request == activeRequest) {
+			HandleResult(std::move(result));
+		}
+	}
+}
+
+void SpellcheckSession::HandleResult(SpellcheckWorkerResult result) {
+	if (!ValidateDocument()) {
+		worker.Cancel(workerGeneration);
+		return;
+	}
+	if (result.outcome == SpellcheckWorkerOutcome::Failed) {
+		Fail(result.message.empty() ? "The spelling worker failed." :
+			std::move(result.message));
+		return;
+	}
+	if (result.operation == SpellcheckWorkerOperation::AddPersonalWord) {
+		if (result.outcome != SpellcheckWorkerOutcome::PersonalWord) {
+			Fail("The personal dictionary request failed.");
 			return;
 		}
-		scanPosition = token->start;
-		if (ignored.count(token->word) != 0 || dictionary->Check(token->word)) {
-			scanPosition = token->start + token->length;
-			continue;
+		if (result.personalWordStatus == AddPersonalWordStatus::Added ||
+			result.personalWordStatus == AddPersonalWordStatus::AlreadyPresent) {
+			AdvancePastCurrent();
+			return;
 		}
-		current = SpellcheckOccurrence{
-			token->start, token->length, token->word,
-			dictionary->Suggest(token->word),
-		};
 		state = SpellcheckSessionState::Decision;
-		if (!editor.ShowSpellcheckRange(document, token->start, token->length)) {
-			Fail("The spelling occurrence is no longer in the document.");
+		switch (result.personalWordStatus) {
+		case AddPersonalWordStatus::InvalidWord:
+			error = "This word cannot be added to the dictionary.";
+			break;
+		case AddPersonalWordStatus::LimitExceeded:
+			error = "The personal dictionary is full.";
+			break;
+		case AddPersonalWordStatus::WriteFailure:
+			error = "The personal dictionary could not be saved.";
+			break;
+		case AddPersonalWordStatus::Added:
+		case AddPersonalWordStatus::AlreadyPresent:
+			break;
 		}
 		return;
 	}
-	state = SpellcheckSessionState::Complete;
+	if (result.operation == SpellcheckWorkerOperation::FindMatches) {
+		if (result.outcome != SpellcheckWorkerOutcome::Matches ||
+			!pendingReplaceAll) {
+			Fail("The replace-all spelling request failed.");
+			return;
+		}
+		const SpellcheckOccurrence occurrence = *pendingReplaceAll;
+		std::vector<SpellcheckReplacement> replacements;
+		replacements.reserve(result.matches.size());
+		for (const std::size_t relative : result.matches) {
+			if (relative > static_cast<std::size_t>(scopeEnd - occurrence.start) ||
+				occurrence.length > scopeEnd - occurrence.start -
+					static_cast<Scintilla::Position>(relative)) {
+				Fail("The spelling worker returned an invalid replacement.");
+				return;
+			}
+			replacements.push_back({occurrence.start +
+				static_cast<Scintilla::Position>(relative), occurrence.word,
+				pendingReplacement});
+		}
+		if (replacements.empty() || replacements.front().start !=
+			occurrence.start) {
+			Fail("The current spelling occurrence is no longer in the document.");
+			return;
+		}
+		const Scintilla::Position replacementLength =
+			static_cast<Scintilla::Position>(pendingReplacement.size());
+		const Scintilla::Position oneDelta = replacementLength - occurrence.length;
+		if (replacements.size() > static_cast<std::size_t>(
+			std::numeric_limits<Scintilla::Position>::max())) {
+			error = "There are too many spelling replacements.";
+			state = SpellcheckSessionState::Decision;
+			return;
+		}
+		const Scintilla::Position count =
+			static_cast<Scintilla::Position>(replacements.size());
+		if (oneDelta > 0 && count >
+			(std::numeric_limits<Scintilla::Position>::max() - scopeEnd) / oneDelta) {
+			error = "The spelling replacements are too large.";
+			state = SpellcheckSessionState::Decision;
+			return;
+		}
+		pendingReplaceAll.reset();
+		const Scintilla::Position totalDelta = oneDelta * count;
+		(void)Apply(std::move(replacements),
+			occurrence.start + replacementLength, totalDelta);
+		return;
+	}
+	wordCharacters = std::move(result.wordCharacters);
+	if (result.outcome == SpellcheckWorkerOutcome::Complete) {
+		scanPosition = scopeEnd;
+		state = SpellcheckSessionState::Complete;
+		return;
+	}
+	if (result.outcome != SpellcheckWorkerOutcome::Occurrence ||
+		result.position > static_cast<std::size_t>(scopeEnd - scanPosition) ||
+		result.length > static_cast<std::size_t>(scopeEnd - scanPosition) -
+			result.position) {
+		Fail("The spelling worker returned an invalid occurrence.");
+		return;
+	}
+	const Scintilla::Position start = scanPosition +
+		static_cast<Scintilla::Position>(result.position);
+	const Scintilla::Position length =
+		static_cast<Scintilla::Position>(result.length);
+	scanPosition = start;
+	current = SpellcheckOccurrence{start, length, std::move(result.word),
+		std::move(result.suggestions)};
+	state = SpellcheckSessionState::Decision;
+	if (!editor.ShowSpellcheckRange(document, start, length)) {
+		Fail("The spelling occurrence is no longer in the document.");
+	}
 }
 
 void SpellcheckSession::AdvancePastCurrent() {
@@ -223,37 +294,22 @@ bool SpellcheckSession::ReplaceAll(std::string_view replacement) {
 		return false;
 	}
 	const SpellcheckOccurrence occurrence = *current;
-	std::vector<SpellcheckReplacement> replacements;
-	Scintilla::Position position = occurrence.start;
-	while (position < scopeEnd) {
-		const std::optional<Token> token = NextToken(position);
-		if (!token) {
-			break;
-		}
-		if (token->word == occurrence.word) {
-			replacements.push_back(
-				{token->start, token->word, std::string(replacement)});
-		}
-		position = token->start + token->length;
-	}
-	const Scintilla::Position replacementLength =
-		static_cast<Scintilla::Position>(replacement.size());
-	const Scintilla::Position oneDelta = replacementLength - occurrence.length;
-	if (replacements.size() > static_cast<std::size_t>(
-			std::numeric_limits<Scintilla::Position>::max())) {
-		error = "There are too many spelling replacements.";
+	if (!ValidateDocument()) {
 		return false;
 	}
-	const Scintilla::Position count =
-		static_cast<Scintilla::Position>(replacements.size());
-	if (oneDelta > 0 && count >
-			(std::numeric_limits<Scintilla::Position>::max() - scopeEnd) / oneDelta) {
-		error = "The spelling replacements are too large.";
+	state = SpellcheckSessionState::Checking;
+	error.clear();
+	pendingReplaceAll = occurrence;
+	pendingReplacement = replacement;
+	activeRequest = nextRequest++;
+	if (!worker.FindMatches(workerGeneration, activeRequest,
+		CopyScope(occurrence.start), occurrence.word, wordCharacters)) {
+		pendingReplaceAll.reset();
+		state = SpellcheckSessionState::Decision;
+		error = "The spelling worker is no longer available.";
 		return false;
 	}
-	const Scintilla::Position totalDelta = oneDelta * count;
-	return Apply(std::move(replacements),
-		occurrence.start + replacementLength, totalDelta);
+	return true;
 }
 
 bool SpellcheckSession::Ignore() {
@@ -275,32 +331,20 @@ bool SpellcheckSession::IgnoreAll() {
 	return true;
 }
 
-AddPersonalWordStatus SpellcheckSession::AddToDictionary() {
+bool SpellcheckSession::AddToDictionary() {
 	if (state != SpellcheckSessionState::Decision || !current ||
 		!ValidateDocument()) {
-		return AddPersonalWordStatus::InvalidWord;
+		return false;
 	}
-	const AddPersonalWordStatus status = dictionary->AddPersonalWord(current->word);
-	if (status == AddPersonalWordStatus::Added ||
-		status == AddPersonalWordStatus::AlreadyPresent) {
-		AdvancePastCurrent();
-		return status;
+	state = SpellcheckSessionState::Checking;
+	error.clear();
+	activeRequest = nextRequest++;
+	if (!worker.AddPersonalWord(workerGeneration, activeRequest, current->word)) {
+		state = SpellcheckSessionState::Decision;
+		error = "The spelling worker is no longer available.";
+		return false;
 	}
-	switch (status) {
-	case AddPersonalWordStatus::InvalidWord:
-		error = "This word cannot be added to the dictionary.";
-		break;
-	case AddPersonalWordStatus::LimitExceeded:
-		error = "The personal dictionary is full.";
-		break;
-	case AddPersonalWordStatus::WriteFailure:
-		error = "The personal dictionary could not be saved.";
-		break;
-	case AddPersonalWordStatus::Added:
-	case AddPersonalWordStatus::AlreadyPresent:
-		break;
-	}
-	return status;
+	return true;
 }
 
 }

@@ -13,6 +13,7 @@
 
 #include "ApplicationEditor.h"
 #include "Spellcheck.h"
+#include "SpellcheckWorker.h"
 
 namespace Scalpel {
 
@@ -37,7 +38,8 @@ struct SpellcheckOccurrence {
 class SpellcheckSession final {
 public:
 	SpellcheckSession(ApplicationEditor &editor,
-		std::unique_ptr<SpellcheckDictionary> dictionary,
+		SpellcheckWorker &worker, SpellcheckDictionaryInfo dictionary,
+		std::string personalWordsPath,
 		Scintilla::Position scopeStart, Scintilla::Position scopeEnd);
 	~SpellcheckSession();
 
@@ -57,6 +59,11 @@ public:
 	[[nodiscard]] Scintilla::Position ScanPosition() const noexcept {
 		return scanPosition;
 	}
+	[[nodiscard]] int ResultDescriptor() const noexcept {
+		return worker.ResultDescriptor();
+	}
+	/** Deliver completed worker requests on the application thread. */
+	void ProcessResults();
 
 	/** Replace this occurrence and advance. Empty UTF-8 text is allowed. */
 	[[nodiscard]] bool Replace(std::string_view replacement);
@@ -67,33 +74,36 @@ public:
 	/** Ignore this exact word for the remaining session and advance. */
 	[[nodiscard]] bool IgnoreAll();
 	/** Persist this exact word, retaining the decision when persistence fails. */
-	[[nodiscard]] AddPersonalWordStatus AddToDictionary();
+	[[nodiscard]] bool AddToDictionary();
 
 private:
-	struct Token {
-		Scintilla::Position start = 0;
-		Scintilla::Position length = 0;
-		std::string word;
-	};
-
-	[[nodiscard]] std::optional<Token> NextToken(Scintilla::Position from) const;
+	[[nodiscard]] std::string CopyScope(Scintilla::Position from) const;
 	[[nodiscard]] bool ValidateDocument();
 	void ScanNext();
+	void HandleResult(SpellcheckWorkerResult result);
 	void AdvancePastCurrent();
 	void Fail(std::string message);
 	[[nodiscard]] bool Apply(std::vector<SpellcheckReplacement> replacements,
 		Scintilla::Position nextScan, Scintilla::Position endDelta);
 
 	ApplicationEditor &editor;
-	std::unique_ptr<SpellcheckDictionary> dictionary;
+	SpellcheckWorker &worker;
+	SpellcheckDictionaryInfo dictionary;
+	std::string personalWordsPath;
 	DocumentId document = 0;
 	uint64_t expectedGeneration = 0;
+	uint64_t workerGeneration = 0;
+	uint64_t nextRequest = 1;
+	uint64_t activeRequest = 0;
 	Scintilla::Position scopeStart = 0;
 	Scintilla::Position scopeEnd = 0;
 	Scintilla::Position scanPosition = 0;
 	SpellcheckSessionState state = SpellcheckSessionState::Failed;
 	std::optional<SpellcheckOccurrence> current;
+	std::optional<SpellcheckOccurrence> pendingReplaceAll;
+	std::string pendingReplacement;
 	std::unordered_set<std::string> ignored;
+	std::string wordCharacters;
 	std::string error;
 	bool reviewHeld = false;
 };

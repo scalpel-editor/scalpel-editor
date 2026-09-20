@@ -1,5 +1,6 @@
 # Generate the external Wayland protocol contracts used by the shell.
 find_package(PkgConfig REQUIRED)
+find_package(Threads REQUIRED)
 pkg_check_modules(WAYLAND_CLIENT REQUIRED IMPORTED_TARGET wayland-client)
 pkg_check_modules(WAYLAND_EGL REQUIRED IMPORTED_TARGET wayland-egl)
 pkg_check_modules(WAYLAND_CURSOR REQUIRED IMPORTED_TARGET wayland-cursor)
@@ -171,6 +172,7 @@ add_dependencies(scalpel_wayland scalpel_xdg_shell)
 
 add_library(scalpel_spellcheck STATIC
   Spellcheck.cxx
+  SpellcheckWorker.cxx
 )
 target_include_directories(scalpel_spellcheck PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}
@@ -178,6 +180,7 @@ target_include_directories(scalpel_spellcheck PUBLIC
 target_link_libraries(scalpel_spellcheck PUBLIC
   scintilla_core
   PkgConfig::HUNSPELL
+  Threads::Threads
 )
 target_compile_options(scalpel_spellcheck PRIVATE -Wall -Wextra)
 
