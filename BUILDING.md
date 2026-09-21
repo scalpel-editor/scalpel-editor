@@ -4,6 +4,8 @@ The root `CMakeLists.txt` is the project's only top-level CMake project and incl
 
 The checkout is shared between openSUSE and NixOS. Each operating system must use its own CMake build trees because CMake caches absolute compiler, header, library, and pkg-config paths. Do not mix artifacts between the two environments, create temporary project build trees, use `--clean-first`, or manually delete build products. Ninja rebuilds the dependencies required by the requested target.
 
+Hunspell and its development files are required at configure time. Spelling review discovers installed UTF-8 Hunspell dictionary pairs at runtime; install the dictionary package for each locale that should appear in the review card. A missing dictionary does not prevent the editor from starting, but Check Spelling reports that no readable UTF-8 dictionary is available.
+
 ## openSUSE
 
 Configure the normal development tree once, then build requested targets from it:
@@ -14,6 +16,8 @@ cmake --build build --target scalpel-editor
 ```
 
 The openSUSE development, AddressSanitizer, and UndefinedBehaviorSanitizer trees are `build/`, `build-asan/`, and `build-ubsan/`.
+
+The openSUSE package names are `hunspell-devel` for the build dependency and, for example, `myspell-en_US` for an English (United States) runtime dictionary.
 
 Run the full openSUSE matrix only when required by [TESTING.md](TESTING.md):
 
@@ -32,6 +36,8 @@ cmake --build --preset dev-nixos --target scalpel-editor
 ```
 
 The Nix shell supplies CMake, GCC, Clang, Python, Ninja, pkg-config, wayland-scanner, and all library development outputs required by the project and its verification scripts. The NixOS CTest presets select the pinned Mesa EGL vendor and drivers, and the headless context selects Mesa's software EGL device directly. Renderer-backed tests therefore use llvmpipe without probing host GPUs; normal application runs retain the host's EGL vendor and hardware selection. The shell does not require project-specific additions to `/etc/nixos/configuration.nix`.
+
+The flake supplies the Hunspell library for development and packaged builds. Install the desired Hunspell dictionary packages in the host system or user profile so the application can discover them through `XDG_DATA_DIRS`.
 
 The NixOS development, optimized Release, optimized Release test, AddressSanitizer, and UndefinedBehaviorSanitizer trees are `build-nixos/`, `build-release-nixos/`, `build-release-test-nixos/`, `build-asan-nixos/`, and `build-ubsan-nixos/`. The corresponding presets are `dev-nixos`, `release-nixos`, `release-test-nixos`, `asan-nixos`, and `ubsan-nixos`.
 

@@ -28,7 +28,7 @@ struct SpellcheckDiscovery {
 	std::vector<SpellcheckDiscoveryIssue> issues;
 };
 
-/** Search the usual system Hunspell directories in priority order. */
+/** Search Hunspell and MySpell directories below XDG data roots in order. */
 [[nodiscard]] SpellcheckDiscovery DiscoverSpellcheckDictionaries();
 
 /**

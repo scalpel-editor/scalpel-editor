@@ -1,16 +1,16 @@
 # Application UI
 
-The application UI is a fixed composition of the Scintilla editor, a menu bar, a tab strip, an optional find bar, scrollbars, modal cards, and one active overlay. `ApplicationUi` coordinates those concrete parts without depending on Wayland and without introducing a general control framework.
+The application UI is a fixed composition of the Scintilla editor, a menu bar, a tab strip, an optional find bar, scrollbars, modal cards including spelling review, and one active overlay. `ApplicationUi` coordinates those concrete parts without depending on Wayland and without introducing a general control framework.
 
 ## Ownership
 
 | Owner | Responsibility |
 | --- | --- |
-| `WaylandWindow` | Display connection, Wayland and EGL objects, external services, input transport, scaling, frame submission, toplevel title, and waiting. |
-| `ApplicationEditor` | Scintilla documents, per-document language, editor input, rendering, damage, editor work deadlines, editor client geometry, scrollbar visibility and ranges, clipboard values, text-input state, wrapped plain-text find, and the process-wide generic editor text face. |
+| `WaylandWindow` | Display connection, Wayland and EGL objects, external services, input transport, scaling, frame submission, toplevel title, and waiting, including the optional spelling-worker result descriptor. |
+| `ApplicationEditor` | Scintilla documents, per-document language, editor input, rendering, damage, editor work deadlines, editor client geometry, scrollbar visibility and ranges, clipboard values, text-input state, wrapped plain-text find, spelling-review document locking and edits, and the process-wide generic editor text face. |
 | `DocumentWorkspace` | Tabs, paths, file operations, application dialog intents, recent-path outcomes, startup path-list loading, and dirty-close policy. |
 | `ApplicationSession` | Process-lifetime startup and exit-status policy for interactive and pathname launches, independent of the compositor. |
-| `ApplicationUi` | Chrome models and painters (including the find bar and context menu), top-chrome inset, modal-card and error state, hover and press state, scrollbar interaction, input priority, cursor choice, overlay selection, window title from the active tab label, application layout snapshots, recent-file updates, and conversion of workspace work into host effects (including context-popup show/close/invalidate). |
+| `ApplicationUi` | Chrome models and painters (including the find bar, spelling card, and context menu), the lazy spelling worker and active review session, top-chrome inset, modal-card and error state, hover and press state, scrollbar interaction, input priority, cursor choice, overlay selection, window title from the active tab label, application layout snapshots, recent-file updates, and conversion of workspace work into host effects (including context-popup show/close/invalidate). |
 | `WaylandApplicationRunner` | Construction and the platform pump. It applies session startup, moves copied events and external-service results across the boundary, performs host effects (including the grabbed context-menu `xdg_popup`), copies the current window title onto the toplevel, submits frames, waits, and returns a typed termination reason. |
 | `main.cxx` | Command-line parsing, help, version, and usage reporting, invoking the Wayland runner, mapping the termination reason through session policy, and returning the process status. |
 
@@ -20,38 +20,41 @@ The application UI is a fixed composition of the Scintilla editor, a menu bar, a
 
 One platform-loop iteration has this application order:
 
-1. The Wayland runner takes copied presentation, clipboard, primary-selection, text-input, and portal results from `WaylandWindow`.
-2. Portal results are translated from platform request IDs to application dialog IDs and delivered through `ApplicationUi`. Clipboard results and text-input batches also enter through `ApplicationUi`, which chooses the editor or find field as owner. Primary-selection traffic still targets `ApplicationEditor` directly.
+1. The Wayland runner takes copied presentation, clipboard, primary-selection, text-input, and portal results from `WaylandWindow`, then asks `ApplicationUi` to consume any completed spelling-worker result.
+2. Portal results are translated from platform request IDs to application dialog IDs and delivered through `ApplicationUi`. Clipboard results and text-input batches also enter through `ApplicationUi`, which chooses the editor, find field, or spelling replacement field as owner. Primary-selection traffic still targets `ApplicationEditor` directly.
 3. Window-close, size, focus, pointer, and keyboard changes enter `ApplicationUi`. It applies application transitions immediately. Only an unconsumed pointer event crosses from `ApplicationUi` to `ApplicationEditor`; keyboard delivery is completed inside `ApplicationUi`.
 4. `ApplicationUi::TakeShellEffects` drains workspace requests and outcomes plus queued context-menu popup effects. UI-local work is completed there, while portal-dialog, accepted-close, and context-popup work is returned to the runner.
 5. The runner starts requested portal dialogs, records the platform-to-application dialog ID mapping, feeds startup failure back through `ApplicationUi`, and creates, paints, or destroys the context-menu popup.
 6. After editor work and application synchronization, `ApplicationUi` selects the overlay and cursor. The runner copies `CurrentWindowTitle` (the active tab label, including the dirty marker) to `xdg_toplevel.set_title`, transfers editor damage to `WaylandWindow`, and may paint an independent popup surface.
 7. When the compositor permits a frame, `ApplicationUi` retains one frame layout while `ApplicationEditor` paints the editor, permanent chrome, and active overlay. The runner then submits the frame and returns to the shared event wait.
 
-Focus loss is one `ApplicationUi` transition: it cancels editor focus and tentative IME, closes the menu bar, context menu, and emoji completion list, cancels scrollbar interaction, clears modal press state, and blurs the find field without closing the bar or discarding its query. Opening a menu, context menu, or modal card also cancels tentative IME and blurs the find field. While a modal card, menu bar, or context menu owns input, `ChromeOwnsInput` tells the platform adapter to discard compositor IME batches; protocol conversion remains outside the UI.
+The shared wait includes the spelling worker's nonblocking result descriptor only after the worker has been created. Dictionary discovery, dictionary loading, checking, suggestions, personal-word writes, and Replace All matching stay on that one worker thread. Requests contain copied text, results identify the session and request, and closing or restarting a review rejects late results without accessing editor objects from the worker.
+
+Focus loss is one `ApplicationUi` transition: it cancels editor focus and tentative IME, closes the menu bar, context menu, and emoji completion list, cancels scrollbar interaction, clears modal press state, blurs the find field without closing the bar or discarding its query, and moves an open spelling card to its Close control after cancelling replacement-field preedit. Opening a menu, context menu, or modal card also cancels tentative IME and blurs the find field. While a modal card, menu bar, or context menu owns input, `ChromeOwnsInput` tells the platform adapter to discard compositor IME batches, except that an active spelling replacement field receives its own text-input batches; protocol conversion remains outside the UI.
 
 ## Interaction and overlay priority
 
 `ApplicationUi::HandlePointer` is the only application pointer-priority decision. It resolves one owner in this order:
 
 1. File-error card.
-2. External-change confirmation.
-3. Large-file confirmation.
-4. Unsaved-changes prompt.
-5. Active scrollbar drag.
-6. Editor selection capture.
-7. Open menu bar, including an outside click that dismisses it.
-8. Open context menu (popup-local coordinates, or a toplevel outside press that dismisses without click-through).
-9. Open emoji completion list (a row click completes; a press outside dismisses with click-through).
-10. Visible find bar band (field, Previous, Next, Close, or empty chrome).
-11. Permanent chrome: menu bar, tab strip, or a scrollbar hit.
-12. Editor client (including a right press that opens the context menu when eligible).
+2. Spelling-review card.
+3. External-change confirmation.
+4. Large-file confirmation.
+5. Unsaved-changes prompt.
+6. Active scrollbar drag.
+7. Editor selection capture.
+8. Open menu bar, including an outside click that dismisses it.
+9. Open context menu (popup-local coordinates, or a toplevel outside press that dismisses without click-through).
+10. Open emoji completion list (a row click completes; a press outside dismisses with click-through).
+11. Visible find bar band (field, Previous, Next, Close, or empty chrome).
+12. Permanent chrome: menu bar, tab strip, or a scrollbar hit.
+13. Editor client (including a right press that opens the context menu when eligible).
 
 Modal owners consume pointer input. Editor selection capture and surface leave remain deliverable to `ApplicationEditor` so Scintilla can finish its interaction. A click that dismisses a menu does not also activate the control underneath it. A pointer press in the editor client while the find bar is visible leaves the bar open but transfers keyboard focus back to the editor. Each routing entry point applies actions, invalidation, and interaction cleanup before returning.
 
 The same coordinator chooses the pointer cursor. Chrome and modal interaction select the arrow; editor interaction defers to the Scintilla cursor. `CurrentPointerCursor` also forces the arrow when a modal appears without a pointer event, so the Wayland runner only applies the resolved choice.
 
-Keyboard priority is file-error card, external-change confirmation, large-file confirmation, unsaved-changes prompt, open context menu, Shift+F10 context-menu open, menu-bar navigation or accelerator, the global Find action (`Ctrl+F` / Edit > Find), a focused find field for query editing and field-local clipboard or select-all keys, other application shortcuts or tab cycle, an open emoji list for Up/Down/Enter/Tab/Escape, then editor input. Unmatched application shortcuts (for example Save or Close Tab) and Ctrl+Tab still run while the find field is focused; field-local Ctrl+A/C/X/V stay on the query. Overlay paint priority is file-error card, external-change confirmation, large-file confirmation, unsaved-changes prompt, open menu bar dropdown, then no overlay. The context menu paints on its own popup surface rather than the in-window overlay. A higher-priority modal closes an open menu or context menu, and every overlay change invalidates the full frame. When a higher-priority card becomes active, any armed press on a lower-priority card is cleared so a later release cannot activate it.
+Keyboard priority is file-error card, spelling-review card, external-change confirmation, large-file confirmation, unsaved-changes prompt, open context menu, Shift+F10 context-menu open, menu-bar navigation or accelerator, the global Find action (`Ctrl+F` / Edit > Find), a focused find field for query editing and field-local clipboard or select-all keys, other application shortcuts or tab cycle, an open emoji list for Up/Down/Enter/Tab/Escape, then editor input. Unmatched application shortcuts (for example Save or Close Tab) and Ctrl+Tab still run while the find field is focused; field-local Ctrl+A/C/X/V stay on the query. Overlay paint priority is file-error card, spelling-review card, external-change confirmation, large-file confirmation, unsaved-changes prompt, open menu bar dropdown, then no overlay. The context menu paints on its own popup surface rather than the in-window overlay. A higher-priority modal closes an open menu or context menu, and every overlay change invalidates the full frame. When a higher-priority card becomes active, any armed press on a lower-priority card is cleared so a later release cannot activate it.
 
 ## Layout and paint authority
 
@@ -68,6 +71,18 @@ The find bar is a third opaque top-chrome band below the tab strip. `FindBar` is
 Search is case-insensitive plain text. Committed query changes run an incremental forward search from the captured origin so extending the query does not skip past the match for the shorter query. Enter and Next search forward from the end of the current editor selection; Shift+Enter and Previous search backward from its start. Both directions wrap once. Empty queries do not search. Status is clear after a first-range match, `Wrapped` after a wrap match, and `No matches` after a failed search. Search changes only the editor selection and scroll position, not document bytes, undo, or save state. The origin is document-qualified and is reset on focus gain and active-document change.
 
 While the find field is focused, direct keyboard text, text-input batches (commit, preedit, delete-surrounding), and clipboard cut/copy/paste operate on the query. `ApplicationUi` assigns shell-facing clipboard request IDs, maps editor-local IDs for document paste, and ignores a late find paste after focus loss or close so it cannot mutate the document or a superseded query. When the bar is visible but unfocused, text-input and editor clipboard paths still target the editor. Opening, closing, focus transfer, and query edits dirty the text-input client state so the compositor receives updated surrounding text and caret geometry (including the dynamic top-chrome inset).
+
+The find query and spelling replacement use one concrete UTF-8 field model and its editing, selection, clipboard, IME, caret, horizontal scrolling, and paint operations. Their surrounding components still own focus, commands, layout, and result handling; there is no shared widget hierarchy.
+
+## Spelling review
+
+`F7` and Edit > Check Spelling open the same modal review. A nonempty stream selection captures that byte range; no selection captures the whole active document. Rectangular and multiple selections stop with an explanation. The review begins at the captured range's first byte and does not wrap. It checks plain text and Markdown alike, preserves malformed bytes as token boundaries, skips URL and identifier runs, and leaves untouched document bytes unchanged.
+
+The worker discovers readable `.aff` and `.dic` pairs in the Hunspell and MySpell directories below the ordered `XDG_DATA_DIRS` roots, using `/usr/local/share:/usr/share` when that variable is unset, accepts dictionaries that declare UTF-8, and prefers the process locale. The card shows the chosen locale and lets Dictionary cycle through installed choices. Changing it restarts the adjusted captured range and clears the session's Ignore All words. Add to dictionary writes the exact word to the locale's bounded application data file with an atomic replacement before updating the live Hunspell instance; a persistence failure leaves the current decision open with an error.
+
+Each unknown word is revealed in the editor while the card shows nearby context, suggestions, and an editable replacement. Suggestion navigation copies a choice into the field without changing the document. Replace applies one immediate undoable edit. Replace All applies exact, case-sensitive whole-token matches from the current position through the remaining scope as one undo action. Ignore skips one occurrence, and Ignore All lasts for this review. Every successful decision advances automatically; completion remains in the card until Close or Escape returns focus to the editor.
+
+The session captures the active document identity, its generation, and byte-exact expected occurrences. It adjusts the scope and scan positions after variable-length UTF-8 replacements. While the card owns a live session, ordinary editor edits, tab changes, IME delivery, and delayed clipboard or primary-selection edits are blocked. A direct document mutation through an inherited core entry point cannot be blocked centrally, so generation and byte checks stop the review before applying a stale result. Closing keeps completed replacements and cancels queued work; an in-flight Hunspell call may finish before the worker accepts another request.
 
 ## Editor font menu
 
@@ -152,6 +167,6 @@ The boundary is intentionally application-specific:
 - Right-click inside the current selection preserves it; outside it places a single caret first. Margin right-clicks stay on the core notification path and do not open the text menu. File errors and unsaved prompts outrank and dismiss it. Focus loss, tab/document change, portal takeover, resize/scale, Escape, action activation, outside click, and `xdg_popup.popup_done` also close it. Bare F10 / Menu still open the menu bar.
 - Scintilla autocomplete and call-tip popup surfaces remain explicit unsupported production paths. Production stubs keep in-memory list state and never report a created window; cancel must clear active state without a window id.
 - Emoji completion is application-owned, not Scintilla autocomplete. Typing `:` at a word boundary (start of the line or after a byte that is not a shortcode character and not a UTF-8 lead or continuation byte) opens a caret-anchored list of GitHub shortcode matches. Further typing filters by alias prefix, so `+1` and `thumbsup` select the same thumbs-up emoji. Enter, Tab, or a row click replaces the live `:query` with the Unicode emoji as one undo action. Escape leaves the typed text. The list paints with permanent chrome rather than `BoundOverlay` or an `xdg_popup`, stays inside the editor client, and uses whichever side of the caret fits more rows when the full list does not fit. A modal, menu, context menu, find-field focus, application command, tab change, resize, or focus loss dismisses it. `https:` and `12:00` do not open it. The list is available in every document, not only Markdown.
-- Find is the one UI-local application action: menu activation and `Ctrl+F` share `OpenFindBar` before the existing dispatcher. Other actions still dispatch through `DocumentWorkspace` and `ApplicationEditor`.
+- Find and Check Spelling are UI-local application actions: menu activation and their shortcuts share `OpenFindBar` and `OpenSpellcheck` before the existing dispatcher. Other actions still dispatch through `DocumentWorkspace` and `ApplicationEditor`.
 
 Production composition is exercised through `applicationUiTest` with an offscreen `ApplicationEditor`, so input, layout, overlays, portal workflows, and rendering can be tested without opening a Wayland connection. Live Wayland runs check the platform integration rather than replacing those deterministic cases.

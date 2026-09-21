@@ -4,7 +4,7 @@ scalpel-editor is a Wayland-only markdown editor built from the Scintilla 5.6.4 
 
 The editor has no GTK, Qt, or general-purpose UI toolkit dependency. Its application chrome is a small fixed set of controls composed directly with the editor.
 
-The application supports multiple tabs, desktop-portal open and save dialogs, file-manager open for plain text and Markdown, Markdown token highlighting for `.md` and `.markdown` files, color emoji, atomic whole-file saves with save-time external-change detection, dirty-buffer close prompts, recent files, menu and keyboard actions, two-axis scrollbars, clipboard and primary selection, text-input-v3 IME, compositor-driven key repeat, cursor themes, fractional scaling, damage-aware frame pacing, and optional presentation feedback.
+The application supports multiple tabs, desktop-portal open and save dialogs, file-manager open for plain text and Markdown, Markdown token highlighting for `.md` and `.markdown` files, on-demand Hunspell spelling review, color emoji, atomic whole-file saves with save-time external-change detection, dirty-buffer close prompts, recent files, menu and keyboard actions, two-axis scrollbars, clipboard and primary selection, text-input-v3 IME, compositor-driven key repeat, cursor themes, fractional scaling, damage-aware frame pacing, and optional presentation feedback.
 
 ## Scope
 

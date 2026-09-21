@@ -2,8 +2,11 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
+#include <optional>
 #include <string>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <vector>
 
@@ -25,7 +28,17 @@ public:
 			(void)std::remove(file.c_str());
 		}
 		(void)rmdir((path + "/personal").c_str());
+		for (auto directory = directories.rbegin();
+			directory != directories.rend(); ++directory) {
+			(void)rmdir(directory->c_str());
+		}
 		(void)rmdir(path.c_str());
+	}
+
+	void MakeDirectory(std::string_view name) {
+		const std::string destination = path + "/" + std::string(name);
+		REQUIRE(mkdir(destination.c_str(), 0700) == 0);
+		directories.push_back(destination);
 	}
 
 	void Write(std::string_view name, std::string_view bytes) {
@@ -39,6 +52,31 @@ public:
 
 	std::string path;
 	std::vector<std::string> files;
+	std::vector<std::string> directories;
+};
+
+class ScopedDataDirectories {
+public:
+	explicit ScopedDataDirectories(std::string_view value) {
+		if (const char *current = std::getenv("XDG_DATA_DIRS")) {
+			previous = current;
+		}
+		REQUIRE(setenv("XDG_DATA_DIRS", std::string(value).c_str(), 1) == 0);
+	}
+
+	~ScopedDataDirectories() {
+		if (previous) {
+			(void)setenv("XDG_DATA_DIRS", previous->c_str(), 1);
+		} else {
+			(void)unsetenv("XDG_DATA_DIRS");
+		}
+	}
+
+	ScopedDataDirectories(const ScopedDataDirectories &) = delete;
+	ScopedDataDirectories &operator=(const ScopedDataDirectories &) = delete;
+
+private:
+	std::optional<std::string> previous;
 };
 
 void WriteDictionary(TempDirectory &directory, std::string_view locale,
@@ -79,6 +117,22 @@ TEST_CASE("spellcheck discovers complete dictionary pairs and reports incomplete
 	CHECK(discovery.dictionaries[1].locale == "fr_FR");
 	REQUIRE(discovery.issues.size() == 1);
 	CHECK(discovery.issues[0].message == "dictionary pair is incomplete");
+}
+
+TEST_CASE("spellcheck discovers dictionaries in configured shared-data roots") {
+	TempDirectory data;
+	data.MakeDirectory("hunspell");
+	data.Write("hunspell/test_XDG.aff",
+		"SET UTF-8\nTRY abcdefghijklmnopqrstuvwxyz\n");
+	data.Write("hunspell/test_XDG.dic", "1\nhello\n");
+	const ScopedDataDirectories configured(data.path);
+
+	const Scalpel::SpellcheckDiscovery discovery =
+		Scalpel::DiscoverSpellcheckDictionaries();
+	REQUIRE(discovery.dictionaries.size() == 1);
+	CHECK(discovery.dictionaries[0].locale == "test_XDG");
+	CHECK(discovery.dictionaries[0].dictionaryPath ==
+		data.path + "/hunspell/test_XDG.dic");
 }
 
 TEST_CASE("spellcheck dictionary preference follows locale then language") {

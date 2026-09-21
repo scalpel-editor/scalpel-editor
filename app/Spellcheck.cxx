@@ -33,6 +33,29 @@ constexpr std::size_t kMaximumPersonalBytes = 1024U * 1024U;
 constexpr std::size_t kMaximumPersonalWords = 10000U;
 constexpr std::string_view kPersonalHeader = "scalpel-personal-words-v1\n";
 
+[[nodiscard]] std::vector<std::string> SystemDictionaryDirectories() {
+	const char *configured = std::getenv("XDG_DATA_DIRS");
+	const std::string_view roots = configured && *configured ? configured :
+		"/usr/local/share:/usr/share";
+	std::vector<std::string> directories;
+	for (std::size_t start = 0; start <= roots.size();) {
+		const std::size_t separator = roots.find(':', start);
+		const std::size_t end = separator == std::string_view::npos ?
+			roots.size() : separator;
+		if (end > start) {
+			const std::string root(roots.substr(start, end - start));
+			directories.push_back(root + "/hunspell");
+			directories.push_back(root + "/myspell");
+			directories.push_back(root + "/myspell/dicts");
+		}
+		if (separator == std::string_view::npos) {
+			break;
+		}
+		start = separator + 1;
+	}
+	return directories;
+}
+
 struct DecodedCharacter {
 	int codePoint = 0;
 	std::size_t width = 1;
@@ -307,9 +330,7 @@ struct DecodedCharacter {
 }
 
 SpellcheckDiscovery DiscoverSpellcheckDictionaries() {
-	return DiscoverSpellcheckDictionaries({
-		"/usr/share/hunspell", "/usr/local/share/hunspell",
-		"/usr/share/myspell", "/usr/share/myspell/dicts"});
+	return DiscoverSpellcheckDictionaries(SystemDictionaryDirectories());
 }
 
 SpellcheckDiscovery DiscoverSpellcheckDictionaries(

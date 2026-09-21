@@ -1,6 +1,6 @@
 # Installing the RPM on openSUSE Leap 16
 
-The RPM installs `scalpel-editor` under `/usr/bin` together with its desktop launcher and icon. The desktop entry advertises `text/plain` and `text/markdown` so file managers can open those files with the editor. Runtime library dependencies are generated from the linked executable, and the package requires the desktop portal service used by the editor's Open and Save dialogs.
+The RPM installs `scalpel-editor` under `/usr/bin` together with its desktop launcher and icon. The desktop entry advertises `text/plain` and `text/markdown` so file managers can open those files with the editor. Runtime library dependencies are generated from the linked executable, and the package requires the desktop portal service used by the editor's Open and Save dialogs. Check Spelling also needs an installed Hunspell dictionary for the desired locale; the editor reports the missing dictionary without preventing other use.
 
 ## Install the package-building tools
 
@@ -10,9 +10,11 @@ On openSUSE Leap 16, install the compiler, RPM tools, and development packages u
 sudo zypper install \
   git rpm-build cmake gcc-c++ binutils make desktop-file-utils pkgconf-pkg-config \
   wayland-devel wayland-protocols-devel libxkbcommon-devel dbus-1-devel \
-  freetype2-devel fontconfig-devel harfbuzz-devel \
+  freetype2-devel fontconfig-devel harfbuzz-devel hunspell-devel \
   Mesa-libGL-devel Mesa-libEGL-devel
 ```
+
+Install one or more runtime dictionaries separately, such as `myspell-en_US` for English (United States).
 
 ## Build and install
 
