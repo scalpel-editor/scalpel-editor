@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <optional>
 #include <string>
@@ -133,6 +134,42 @@ TEST_CASE("spellcheck discovers dictionaries in configured shared-data roots") {
 	CHECK(discovery.dictionaries[0].locale == "test_XDG");
 	CHECK(discovery.dictionaries[0].dictionaryPath ==
 		data.path + "/hunspell/test_XDG.dic");
+}
+
+TEST_CASE("spellcheck discovers dictionaries only in absolute shared-data roots") {
+	TempDirectory relative;
+	relative.MakeDirectory("hunspell");
+	WriteDictionary(relative, "hunspell/test_XDG");
+	const std::string relativeRoot =
+		std::filesystem::relative(relative.path).string();
+	REQUIRE_FALSE(relativeRoot.empty());
+	REQUIRE(relativeRoot.front() != '/');
+
+	SECTION("relative and empty entries are ignored") {
+		const ScopedDataDirectories configured(":" + relativeRoot + "::");
+		const auto discovery = Scalpel::DiscoverSpellcheckDictionaries();
+		CHECK(discovery.dictionaries.empty());
+		CHECK(discovery.issues.empty());
+	}
+
+	SECTION("absolute roots keep their priority after invalid entries") {
+		TempDirectory first;
+		first.MakeDirectory("myspell");
+		first.MakeDirectory("myspell/dicts");
+		WriteDictionary(first, "myspell/dicts/test_XDG");
+		TempDirectory second;
+		second.MakeDirectory("hunspell");
+		WriteDictionary(second, "hunspell/test_XDG");
+		WriteDictionary(second, "hunspell/test_OTHER");
+		const ScopedDataDirectories configured(":" + relativeRoot + ":" +
+			first.path + "::" + second.path + ":");
+		const auto discovery = Scalpel::DiscoverSpellcheckDictionaries();
+		REQUIRE(discovery.dictionaries.size() == 2);
+		CHECK(discovery.dictionaries[0].dictionaryPath ==
+			first.path + "/myspell/dicts/test_XDG.dic");
+		CHECK(discovery.dictionaries[1].dictionaryPath ==
+			second.path + "/hunspell/test_OTHER.dic");
+	}
 }
 
 TEST_CASE("spellcheck dictionary preference follows locale then language") {

@@ -42,7 +42,8 @@ constexpr std::string_view kPersonalHeader = "scalpel-personal-words-v1\n";
 		const std::size_t separator = roots.find(':', start);
 		const std::size_t end = separator == std::string_view::npos ?
 			roots.size() : separator;
-		if (end > start) {
+		// XDG data roots must be absolute, never relative to the launch directory.
+		if (end > start && roots[start] == '/') {
 			const std::string root(roots.substr(start, end - start));
 			directories.push_back(root + "/hunspell");
 			directories.push_back(root + "/myspell");
