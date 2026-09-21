@@ -34,6 +34,7 @@ enum class ApplicationAction {
 	Paste,
 	SelectAll,
 	Find,
+	CheckSpelling,
 	AddBlockQuote,
 	RemoveBlockQuote,
 	ConvertLineEndingsToLf,

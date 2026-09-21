@@ -76,7 +76,7 @@ void TypeChar(ApplicationEditor &editor, char ch, uint32_t time) {
 }
 
 TEST_CASE("application actions table lists File Edit and Font in menu order") {
-	REQUIRE(Scalpel::ApplicationActionCount() == 21);
+	REQUIRE(Scalpel::ApplicationActionCount() == 22);
 	const ApplicationActionInfo *table = Scalpel::ApplicationActionTable();
 	CHECK(table[0].action == ApplicationAction::NewTab);
 	CHECK(table[0].menu == ApplicationMenu::File);
@@ -86,13 +86,15 @@ TEST_CASE("application actions table lists File Edit and Font in menu order") {
 	CHECK(table[11].action == ApplicationAction::SelectAll);
 	CHECK(table[12].action == ApplicationAction::Find);
 	CHECK(table[12].shortcutLabel == "Ctrl+F");
-	CHECK(table[13].action == ApplicationAction::AddBlockQuote);
-	CHECK(table[14].action == ApplicationAction::RemoveBlockQuote);
-	CHECK(table[15].action == ApplicationAction::ConvertLineEndingsToLf);
-	CHECK(table[16].action == ApplicationAction::ConvertLineEndingsToCrLf);
-	CHECK(table[17].action == ApplicationAction::FontMonospace);
-	CHECK(table[17].menu == ApplicationMenu::Font);
-	CHECK(table[20].action == ApplicationAction::FontSystem);
+	CHECK(table[13].action == ApplicationAction::CheckSpelling);
+	CHECK(table[13].shortcutLabel == "F7");
+	CHECK(table[14].action == ApplicationAction::AddBlockQuote);
+	CHECK(table[15].action == ApplicationAction::RemoveBlockQuote);
+	CHECK(table[16].action == ApplicationAction::ConvertLineEndingsToLf);
+	CHECK(table[17].action == ApplicationAction::ConvertLineEndingsToCrLf);
+	CHECK(table[18].action == ApplicationAction::FontMonospace);
+	CHECK(table[18].menu == ApplicationMenu::Font);
+	CHECK(table[21].action == ApplicationAction::FontSystem);
 
 	CHECK(InfoFor(ApplicationAction::Open).label == "Open\u2026");
 	CHECK(InfoFor(ApplicationAction::SaveAs).shortcutLabel == "Ctrl+Shift+S");
@@ -208,6 +210,8 @@ TEST_CASE("application actions match listed shortcuts and ignore releases") {
 	CHECK(MatchApplicationAction(Press('V', ctrl)) == ApplicationAction::Paste);
 	CHECK(MatchApplicationAction(Press('A', ctrl)) == ApplicationAction::SelectAll);
 	CHECK(MatchApplicationAction(Press('F', ctrl)) == ApplicationAction::Find);
+	CHECK(MatchApplicationAction(Press(Scintilla::Keys::F7,
+		Scintilla::KeyMod::Norm)) == ApplicationAction::CheckSpelling);
 	CHECK(MatchApplicationAction(Press('\'', ctrl)) ==
 		ApplicationAction::AddBlockQuote);
 	CHECK(MatchApplicationAction(Press('"', ctrlShift)) ==

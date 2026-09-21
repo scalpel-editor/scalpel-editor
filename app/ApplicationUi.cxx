@@ -1,6 +1,7 @@
 #include "ApplicationUi.h"
 
 #include <cmath>
+#include <cstdlib>
 #include <iostream>
 #include <stdexcept>
 #include <string_view>
@@ -65,6 +66,8 @@ void ActivateMenuBarItem(MenuBarItemId item, MenuBarModel &menuModel,
 	case MenuBarItemKind::ApplicationAction:
 		if (item.action == ApplicationAction::Find && ui) {
 			ui->OpenFindBar();
+		} else if (item.action == ApplicationAction::CheckSpelling && ui) {
+			ui->OpenSpellcheck();
 		} else {
 			DispatchApplicationAction(item.action, workspace, editor);
 		}
@@ -577,17 +580,21 @@ ApplicationLayout BuildApplicationLayout(int frameWidth, int frameHeight,
 	layout.externalChangeCard =
 		LayoutExternalChangeCard(frameWidth, frameHeight);
 	layout.fileErrorCard = LayoutFileErrorCard(frameWidth, frameHeight);
+	layout.spellcheckDialog = LayoutSpellcheckDialog(frameWidth, frameHeight);
 	return layout;
 }
 
 ApplicationUi::ApplicationUi(ApplicationEditor &editor_,
 	DocumentWorkspace &workspace_,
 	RecentFiles &recent_,
-	std::string recentStatePath_) :
+	std::string recentStatePath_,
+	std::vector<std::string> spellcheckDictionaryDirectories_) :
 	editor(&editor_),
 	workspace(&workspace_),
 	recent(&recent_),
 	recentStatePath(std::move(recentStatePath_)),
+	spellcheckDictionaryDirectories(
+		std::move(spellcheckDictionaryDirectories_)),
 	lastActiveDocument(editor_.ActiveDocument()) {
 	menuModel.recentFiles = recent_.Paths();
 	ApplyTopChromeInset();
@@ -633,6 +640,9 @@ BoundOverlay ApplicationUi::DesiredOverlay() const noexcept {
 	if (!fileErrors.empty()) {
 		return BoundOverlay::FileError;
 	}
+	if (spellcheckDialogModel.open) {
+		return BoundOverlay::Spellcheck;
+	}
 	// External-change sits above large-file and dirty-close cards because it
 	// may resolve a save that either modal initiated.
 	if (workspace->ExternalChangePromptActive()) {
@@ -667,7 +677,8 @@ void ApplicationUi::BindPainters() {
 BoundOverlay ApplicationUi::SynchronizeComposition() {
 	// Modal cards outrank an open menu. Drop menu state so it does not linger
 	// after the card closes or paint under the card.
-	if ((!fileErrors.empty() || workspace->ExternalChangePromptActive() ||
+	if ((!fileErrors.empty() || spellcheckDialogModel.open ||
+			workspace->ExternalChangePromptActive() ||
 			workspace->LargeFilePromptActive() || workspace->PromptActive()) &&
 		menuModel.openMenu.has_value()) {
 		CloseMenuBar(menuModel);
@@ -736,6 +747,10 @@ void ApplicationUi::PaintActiveOverlay(
 		fileErrorPainter.Paint(surface, layout.fileErrorCard,
 			FileErrorTitle(fileErrors.front()), fileErrors.front().path);
 		return;
+	case BoundOverlay::Spellcheck:
+		spellcheckDialogPainter.Paint(surface, layout.spellcheckDialog,
+			spellcheckDialogModel);
+		return;
 	}
 }
 
@@ -758,6 +773,42 @@ ApplicationPointerResult ApplicationUi::HandlePointer(
 		DismissApplicationContextMenu();
 		HandleFileErrorPointer(input, layout.fileErrorCard, fileErrors, *editor,
 			fileErrorPressHit);
+		pointerCursor = CursorBelowModal(input, layout);
+	} else if (spellcheckDialogModel.open) {
+		result.owner = ApplicationPointerOwner::Spellcheck;
+		result.consumed = true;
+		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
+		DismissApplicationContextMenu();
+		const SpellcheckDialogHit hit = HitTestSpellcheckDialog(
+			layout.spellcheckDialog,
+			Scintilla::Internal::Point(input.x, input.y));
+		if (input.action == PointerAction::Leave) {
+			spellcheckDialogModel.pressOrigin.reset();
+			result.consumed = false;
+		} else if (input.action == PointerAction::Press && input.button == 0) {
+			spellcheckDialogModel.pressOrigin = hit == SpellcheckDialogHit::None ?
+				std::nullopt : std::optional<SpellcheckDialogHit>(hit);
+			if (hit != SpellcheckDialogHit::None) {
+				spellcheckDialogModel.focus =
+					static_cast<SpellcheckDialogControl>(
+						static_cast<int>(hit) - 1);
+			}
+			if (hit == SpellcheckDialogHit::Replacement) {
+				spellcheckDialogModel.focus = SpellcheckDialogControl::Replacement;
+				spellcheckDialogModel.replacement.SetFocused(true);
+			} else {
+				spellcheckDialogModel.replacement.SetFocused(false);
+			}
+			editor->InvalidateFrame();
+		} else if (input.action == PointerAction::Release && input.button == 0) {
+			const std::optional<SpellcheckDialogHit> origin =
+				spellcheckDialogModel.pressOrigin;
+			spellcheckDialogModel.pressOrigin.reset();
+			if (origin && *origin == hit) {
+				ActivateSpellcheckControl(hit);
+			}
+			editor->InvalidateFrame();
+		}
 		pointerCursor = CursorBelowModal(input, layout);
 	} else if (workspace->ExternalChangePromptActive()) {
 		result.owner = ApplicationPointerOwner::ExternalChange;
@@ -953,7 +1004,8 @@ ApplicationPointerResult ApplicationUi::HandlePointer(
 
 ApplicationPointerCursor ApplicationUi::CurrentPointerCursor() const noexcept {
 	if (!fileErrors.empty() || workspace->ExternalChangePromptActive() ||
-		workspace->LargeFilePromptActive() || workspace->PromptActive()) {
+		spellcheckDialogModel.open || workspace->LargeFilePromptActive() ||
+		workspace->PromptActive()) {
 		return ApplicationPointerCursor::Arrow;
 	}
 	return pointerCursor;
@@ -1215,6 +1267,64 @@ ApplicationKeyboardResult ApplicationUi::HandleKeyboard(
 		BlurFindField();
 		DismissApplicationContextMenu();
 		HandleFileErrorKeyboard(input, fileErrors, *editor, fileErrorPressHit);
+	} else if (spellcheckDialogModel.open) {
+		result.owner = ApplicationKeyboardOwner::Spellcheck;
+		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
+		DismissApplicationContextMenu();
+		if (input.pressed && input.key == Scintilla::Keys::Escape) {
+			CloseSpellcheck();
+		} else if (input.pressed && input.key == Scintilla::Keys::Tab) {
+			const int delta = input.modifiers == Scintilla::KeyMod::Shift ? -1 : 1;
+			spellcheckDialogModel.focus = CycleSpellcheckDialogFocus(
+				spellcheckDialogModel.focus, delta);
+			spellcheckDialogModel.replacement.SetFocused(
+				spellcheckDialogModel.focus ==
+					SpellcheckDialogControl::Replacement);
+			editor->InvalidateFrame();
+		} else if (spellcheckDialogModel.focus ==
+				SpellcheckDialogControl::Replacement) {
+			const FindBarKeyboardResult field = HandleFindBarKeyboard(
+				spellcheckDialogModel.replacement, input);
+			ApplySpellcheckClipboardRequests(field.requests);
+			for (const FindBarRequest &request : field.requests) {
+				if (request.kind == FindBarRequestKind::SearchForward ||
+					request.kind == FindBarRequestKind::SearchBackward) {
+					ActivateSpellcheckControl(SpellcheckDialogHit::Replace);
+				}
+			}
+			if (field.dirty) {
+				editor->InvalidateFrame();
+			}
+		} else if (input.pressed &&
+			spellcheckDialogModel.focus == SpellcheckDialogControl::Dictionary &&
+			(input.key == Scintilla::Keys::Left ||
+				input.key == Scintilla::Keys::Right) &&
+			!spellcheckDialogModel.dictionaries.empty()) {
+			const int delta = input.key == Scintilla::Keys::Left ? -1 : 1;
+			const std::size_t count = spellcheckDialogModel.dictionaries.size();
+			spellcheckDialogModel.dictionary =
+				(spellcheckDialogModel.dictionary + count + delta) % count;
+			StartSpellcheckSession(spellcheckDialogModel.dictionary);
+		} else if (input.pressed &&
+			spellcheckDialogModel.focus == SpellcheckDialogControl::Suggestion &&
+			(input.key == Scintilla::Keys::Up ||
+				input.key == Scintilla::Keys::Down) &&
+			!spellcheckDialogModel.suggestions.empty()) {
+			const int delta = input.key == Scintilla::Keys::Up ? -1 : 1;
+			const std::size_t count = spellcheckDialogModel.suggestions.size();
+			spellcheckDialogModel.suggestion =
+				(spellcheckDialogModel.suggestion + count + delta) % count;
+			(void)spellcheckDialogModel.replacement.SetQuery(
+				spellcheckDialogModel.suggestions[
+					spellcheckDialogModel.suggestion]);
+			editor->InvalidateFrame();
+		} else if (input.pressed &&
+			(input.key == Scintilla::Keys::Return ||
+				(input.key == static_cast<Scintilla::Keys>(' ') &&
+				 input.modifiers == Scintilla::KeyMod::Norm))) {
+			ActivateSpellcheckControl(static_cast<SpellcheckDialogHit>(
+				static_cast<int>(spellcheckDialogModel.focus) + 1));
+		}
 	} else if (workspace->ExternalChangePromptActive()) {
 		result.owner = ApplicationKeyboardOwner::ExternalChange;
 		CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
@@ -1365,12 +1475,18 @@ void ApplicationUi::HandleFocus(bool focused) {
 	promptPressHit.reset();
 	largeFilePressHit.reset();
 	externalChangePressHit.reset();
+	spellcheckDialogModel.pressOrigin.reset();
+	if (spellcheckDialogModel.open) {
+		spellcheckDialogModel.replacement.SetFocused(false);
+		spellcheckDialogModel.focus = SpellcheckDialogControl::Close;
+	}
 	// Keep the bar and query; only drop field focus and presses.
 	BlurFindField();
 }
 
 bool ApplicationUi::ChromeOwnsInput() const noexcept {
-	return !fileErrors.empty() || workspace->ExternalChangePromptActive() ||
+	return !fileErrors.empty() || spellcheckDialogModel.open ||
+		workspace->ExternalChangePromptActive() ||
 		workspace->LargeFilePromptActive() || workspace->PromptActive() ||
 		menuModel.openMenu.has_value() || contextMenuModel.open;
 }
@@ -1515,6 +1631,7 @@ void ApplicationUi::SynchronizeInteraction() {
 	const DocumentId activeDocument = editor->ActiveDocument();
 	const bool documentChanged = activeDocument != lastActiveDocument;
 	if (documentChanged || !fileErrors.empty() ||
+		spellcheckDialogModel.open ||
 		workspace->ExternalChangePromptActive() ||
 		workspace->LargeFilePromptActive() || workspace->PromptActive() ||
 		menuModel.openMenu.has_value() || contextMenuModel.open) {
@@ -1745,7 +1862,289 @@ void ApplicationUi::ActivateAction(ApplicationAction action) {
 		OpenFindBar();
 		return;
 	}
+	if (action == ApplicationAction::CheckSpelling) {
+		OpenSpellcheck();
+		return;
+	}
 	DispatchApplicationAction(action, *workspace, *editor);
+}
+
+void ApplicationUi::OpenSpellcheck() {
+	CloseSpellcheck();
+	spellcheckDialogModel = {};
+	spellcheckDialogModel.open = true;
+	spellcheckDialogModel.phase = SpellcheckDialogPhase::Loading;
+	spellcheckDialogModel.focus = SpellcheckDialogControl::Close;
+	DismissOpenMenu(menuModel, *editor);
+	DismissApplicationContextMenu();
+	DismissEmojiCompletion();
+	CloseFindBar();
+	editor->CancelActiveTextInput();
+	CancelScrollBarShellInteraction(scrollBarInteraction, *editor);
+
+	const SpellcheckScope scope = editor->CurrentSpellcheckScope();
+	if (scope.status != SpellcheckScopeStatus::Available) {
+		spellcheckDialogModel.phase = SpellcheckDialogPhase::Failed;
+		spellcheckDialogModel.message =
+			scope.status == SpellcheckScopeStatus::RectangularSelection ?
+			"Spelling review needs a stream selection." :
+			"Spelling review needs a single selection.";
+		editor->InvalidateFrame();
+		return;
+	}
+	spellcheckScopeStart = scope.start;
+	spellcheckScopeEnd = scope.end;
+	if (!spellcheckWorker) {
+		spellcheckWorker = std::make_unique<SpellcheckWorker>();
+	}
+	spellcheckDiscoveryGeneration = spellcheckWorker->BeginSession();
+	spellcheckDiscoveryRequest = 1;
+	if (!spellcheckWorker->Discover(spellcheckDiscoveryGeneration,
+		spellcheckDiscoveryRequest, spellcheckDictionaryDirectories)) {
+		spellcheckDialogModel.phase = SpellcheckDialogPhase::Failed;
+		spellcheckDialogModel.message =
+			"The spelling worker is no longer available.";
+		spellcheckDiscoveryGeneration = 0;
+	}
+	editor->InvalidateFrame();
+}
+
+void ApplicationUi::CloseSpellcheck() {
+	if (!spellcheckDialogModel.open && !spellcheckSession) {
+		return;
+	}
+	spellcheckDialogModel.replacement.SetFocused(false);
+	spellcheckSession.reset();
+	if (spellcheckWorker && spellcheckDiscoveryGeneration != 0) {
+		spellcheckWorker->Cancel(spellcheckDiscoveryGeneration);
+	}
+	spellcheckDiscoveryGeneration = 0;
+	spellcheckDiscoveryRequest = 0;
+	spellcheckDialogModel.open = false;
+	spellcheckDialogModel.pressOrigin.reset();
+	shownSpellcheckStart = -1;
+	shownSpellcheckWord.clear();
+	editor->CancelActiveTextInput();
+	editor->InvalidateFrame();
+}
+
+int ApplicationUi::SpellcheckResultDescriptor() const noexcept {
+	return spellcheckWorker ? spellcheckWorker->ResultDescriptor() : -1;
+}
+
+void ApplicationUi::StartSpellcheckSession(std::size_t dictionary) {
+	if (!spellcheckWorker || dictionary >= spellcheckDialogModel.dictionaries.size()) {
+		return;
+	}
+	if (spellcheckSession) {
+		spellcheckScopeStart = spellcheckSession->ScopeStart();
+		spellcheckScopeEnd = spellcheckSession->ScopeEnd();
+		spellcheckSession.reset();
+	}
+	spellcheckDialogModel.dictionary = dictionary;
+	spellcheckDialogModel.phase = SpellcheckDialogPhase::Loading;
+	spellcheckDialogModel.message.clear();
+	spellcheckDialogModel.word.clear();
+	spellcheckDialogModel.context.clear();
+	spellcheckDialogModel.suggestions.clear();
+	spellcheckDialogModel.replacement.SetFocused(false);
+	shownSpellcheckStart = -1;
+	shownSpellcheckWord.clear();
+	const SpellcheckDictionaryInfo &info =
+		spellcheckDialogModel.dictionaries[dictionary];
+	spellcheckSession = std::make_unique<SpellcheckSession>(*editor,
+		*spellcheckWorker, info, SpellcheckPersonalWordsPath(info.locale),
+		spellcheckScopeStart, spellcheckScopeEnd);
+	SynchronizeSpellcheckDialog();
+}
+
+void ApplicationUi::ProcessSpellcheckResults() {
+	if (!spellcheckWorker) {
+		return;
+	}
+	if (spellcheckSession) {
+		spellcheckSession->ProcessResults();
+		SynchronizeSpellcheckDialog();
+		return;
+	}
+	for (SpellcheckWorkerResult &result : spellcheckWorker->TakeResults()) {
+		if (!spellcheckDialogModel.open ||
+			result.generation != spellcheckDiscoveryGeneration ||
+			result.request != spellcheckDiscoveryRequest) {
+			continue;
+		}
+		spellcheckDiscoveryGeneration = 0;
+		if (result.outcome != SpellcheckWorkerOutcome::Discovery) {
+			spellcheckDialogModel.phase = SpellcheckDialogPhase::Failed;
+			spellcheckDialogModel.message = result.message.empty() ?
+				"Dictionary discovery failed." : std::move(result.message);
+			break;
+		}
+		spellcheckDialogModel.dictionaries =
+			std::move(result.discovery.dictionaries);
+		if (spellcheckDialogModel.dictionaries.empty()) {
+			spellcheckDialogModel.phase = SpellcheckDialogPhase::Failed;
+			spellcheckDialogModel.message =
+				"No readable UTF-8 Hunspell dictionaries were found.";
+			break;
+		}
+		std::string locale = "C";
+		for (const char *name : {"LC_ALL", "LC_CTYPE", "LANG"}) {
+			if (const char *value = std::getenv(name); value && *value) {
+				locale = value;
+				break;
+			}
+		}
+		const std::size_t dictionary = PreferredSpellcheckDictionary(
+			spellcheckDialogModel.dictionaries, locale).value_or(0);
+		StartSpellcheckSession(dictionary);
+		break;
+	}
+	editor->InvalidateFrame();
+}
+
+void ApplicationUi::SynchronizeSpellcheckDialog() {
+	if (!spellcheckSession || !spellcheckDialogModel.open) {
+		return;
+	}
+	switch (spellcheckSession->State()) {
+	case SpellcheckSessionState::Checking:
+		spellcheckDialogModel.phase = SpellcheckDialogPhase::Loading;
+		spellcheckDialogModel.message.clear();
+		break;
+	case SpellcheckSessionState::Complete:
+		spellcheckDialogModel.phase = SpellcheckDialogPhase::Complete;
+		spellcheckDialogModel.message = "No more suspected spelling errors.";
+		spellcheckDialogModel.focus = SpellcheckDialogControl::Close;
+		spellcheckDialogModel.replacement.SetFocused(false);
+		break;
+	case SpellcheckSessionState::Failed:
+		spellcheckDialogModel.phase = SpellcheckDialogPhase::Failed;
+		spellcheckDialogModel.message = std::string(spellcheckSession->Error());
+		spellcheckDialogModel.focus = SpellcheckDialogControl::Close;
+		spellcheckDialogModel.replacement.SetFocused(false);
+		break;
+	case SpellcheckSessionState::Decision: {
+		spellcheckDialogModel.phase = SpellcheckDialogPhase::Decision;
+		const std::optional<SpellcheckOccurrence> &occurrence =
+			spellcheckSession->Current();
+		if (!occurrence) {
+			break;
+		}
+		spellcheckDialogModel.message = std::string(spellcheckSession->Error());
+		if (shownSpellcheckStart == occurrence->start &&
+			shownSpellcheckWord == occurrence->word) {
+			break;
+		}
+		shownSpellcheckStart = occurrence->start;
+		shownSpellcheckWord = occurrence->word;
+		spellcheckDialogModel.word = "Word: " + occurrence->word;
+		spellcheckDialogModel.suggestions = occurrence->suggestions;
+		spellcheckDialogModel.suggestion = 0;
+		const Scintilla::Position contextStart = std::max(
+			spellcheckSession->ScopeStart(), occurrence->start - 32);
+		const Scintilla::Position contextEnd = std::min(
+			spellcheckSession->ScopeEnd(),
+			occurrence->start + occurrence->length + 32);
+		std::string context = editor->TextRange(contextStart, contextEnd);
+		if (!Scintilla::Internal::UTF8IsValid(context)) {
+			context = occurrence->word;
+		}
+		for (char &character : context) {
+			if (character == '\n' || character == '\r' || character == '\t') {
+				character = ' ';
+			}
+		}
+		spellcheckDialogModel.context = "Context: " + context;
+		const std::string &replacement = occurrence->suggestions.empty() ?
+			occurrence->word : occurrence->suggestions.front();
+		(void)spellcheckDialogModel.replacement.SetQuery(replacement);
+		spellcheckDialogModel.focus = SpellcheckDialogControl::Replacement;
+		spellcheckDialogModel.replacement.SetFocused(true);
+		break;
+	}
+	}
+	editor->InvalidateFrame();
+}
+
+void ApplicationUi::ActivateSpellcheckControl(SpellcheckDialogHit hit) {
+	if (!spellcheckDialogModel.open) {
+		return;
+	}
+	if (hit == SpellcheckDialogHit::Close) {
+		CloseSpellcheck();
+		return;
+	}
+	if (hit == SpellcheckDialogHit::Dictionary &&
+		!spellcheckDialogModel.dictionaries.empty()) {
+		spellcheckDialogModel.dictionary =
+			(spellcheckDialogModel.dictionary + 1) %
+			spellcheckDialogModel.dictionaries.size();
+		StartSpellcheckSession(spellcheckDialogModel.dictionary);
+		return;
+	}
+	if (hit == SpellcheckDialogHit::Suggestion &&
+		!spellcheckDialogModel.suggestions.empty()) {
+		spellcheckDialogModel.suggestion =
+			(spellcheckDialogModel.suggestion + 1) %
+			spellcheckDialogModel.suggestions.size();
+		(void)spellcheckDialogModel.replacement.SetQuery(
+			spellcheckDialogModel.suggestions[spellcheckDialogModel.suggestion]);
+		editor->InvalidateFrame();
+		return;
+	}
+	if (!spellcheckSession ||
+		spellcheckDialogModel.phase != SpellcheckDialogPhase::Decision) {
+		return;
+	}
+	const std::string replacement = spellcheckDialogModel.replacement.query;
+	switch (hit) {
+	case SpellcheckDialogHit::Replace:
+		(void)spellcheckSession->Replace(replacement);
+		break;
+	case SpellcheckDialogHit::ReplaceAll:
+		(void)spellcheckSession->ReplaceAll(replacement);
+		break;
+	case SpellcheckDialogHit::Ignore:
+		(void)spellcheckSession->Ignore();
+		break;
+	case SpellcheckDialogHit::IgnoreAll:
+		(void)spellcheckSession->IgnoreAll();
+		break;
+	case SpellcheckDialogHit::Add:
+		(void)spellcheckSession->AddToDictionary();
+		break;
+	case SpellcheckDialogHit::None:
+	case SpellcheckDialogHit::Dictionary:
+	case SpellcheckDialogHit::Suggestion:
+	case SpellcheckDialogHit::Replacement:
+	case SpellcheckDialogHit::Close:
+		break;
+	}
+	SynchronizeSpellcheckDialog();
+}
+
+void ApplicationUi::ApplySpellcheckClipboardRequests(
+	const std::vector<FindBarRequest> &requests) {
+	for (const FindBarRequest &request : requests) {
+		if (request.kind != FindBarRequestKind::ClipboardCopy &&
+			request.kind != FindBarRequestKind::ClipboardPaste) {
+			continue;
+		}
+		const uint64_t shellId = nextShellClipboardId++;
+		const ApplicationClipboardOperation operation =
+			request.kind == FindBarRequestKind::ClipboardCopy ?
+			ApplicationClipboardOperation::Copy :
+			ApplicationClipboardOperation::Paste;
+		shellClipboardMap[shellId] = {
+			ClipboardRequestOwner::Spellcheck,
+			request.clipboardId,
+			spellcheckDialogModel.replacement.focusGeneration,
+			operation,
+		};
+		shellClipboardRequests.push_back({
+			shellId, operation, request.clipboardText});
+	}
 }
 
 void ApplicationUi::OpenFindBar() {
@@ -1791,6 +2190,7 @@ void ApplicationUi::CloseFindBar() {
 	findBarModel.CancelPreedit();
 	findBarModel.SetFocused(false);
 	findBarModel.pressOrigin.reset();
+	spellcheckDialogModel.pressOrigin.reset();
 	findBarVisible = false;
 	findOrigin.reset();
 	ApplyTopChromeInset();
@@ -1800,6 +2200,16 @@ void ApplicationUi::CloseFindBar() {
 }
 
 void ApplicationUi::HandleTextInputBatch(const ApplicationTextInputBatch &batch) {
+	if (spellcheckDialogModel.open &&
+		spellcheckDialogModel.focus == SpellcheckDialogControl::Replacement &&
+		spellcheckDialogModel.replacement.focused) {
+		const FindBarTextInputResult result = HandleFindBarTextInputBatch(
+			spellcheckDialogModel.replacement, batch);
+		if (result.dirty) {
+			editor->InvalidateFrame();
+		}
+		return;
+	}
 	if (ChromeOwnsInput()) {
 		// Modal or menu owns input; cancel any find preedit and drop the batch.
 		if (findBarModel.preedit) {
@@ -1831,6 +2241,29 @@ void ApplicationUi::HandleTextInputBatch(const ApplicationTextInputBatch &batch)
 }
 
 std::optional<ApplicationTextInputState> ApplicationUi::TakeTextInputState() {
+	if (spellcheckDialogModel.open &&
+		spellcheckDialogModel.focus == SpellcheckDialogControl::Replacement &&
+		spellcheckDialogModel.replacement.focused) {
+		if (!spellcheckDialogModel.replacement.textInputStateDirty) {
+			return std::nullopt;
+		}
+		const SpellcheckDialogLayout layout = Layout().spellcheckDialog;
+		FindBarLayout fieldLayout;
+		fieldLayout.field = layout.replacement;
+		fieldLayout.fieldText = layout.replacementText;
+		std::unique_ptr<Scintilla::Internal::Surface> surface =
+			Scintilla::Internal::Surface::Allocate();
+		surface->Init(Scintilla::Internal::WindowID{});
+		ApplicationTextInputState state = BuildFindBarTextInputState(
+			spellcheckDialogModel.replacement, fieldLayout, *surface,
+			spellcheckDialogPainter.BodyFont());
+		state.changeCause =
+			spellcheckDialogModel.replacement.textInputChangeCause;
+		spellcheckDialogModel.replacement.textInputStateDirty = false;
+		spellcheckDialogModel.replacement.textInputChangeCause =
+			ApplicationTextChangeCause::Other;
+		return state;
+	}
 	if (FindBarFocused()) {
 		if (!findBarModel.textInputStateDirty) {
 			return std::nullopt;
@@ -1852,6 +2285,7 @@ std::optional<ApplicationTextInputState> ApplicationUi::TakeTextInputState() {
 void ApplicationUi::SetClipboardPasteAvailable(bool available) noexcept {
 	editor->SetClipboardPasteAvailable(available);
 	findBarModel.pasteAvailable = available;
+	spellcheckDialogModel.replacement.pasteAvailable = available;
 	// Open context menu Paste enablement follows the clipboard offer; ask the
 	// host to repaint the popup rather than the toplevel frame.
 	if (contextMenuModel.open &&
@@ -1902,6 +2336,24 @@ void ApplicationUi::HandleClipboardResult(uint64_t shellId,
 		return;
 	}
 
+	if (mapping.owner == ClipboardRequestOwner::Spellcheck) {
+		ApplicationClipboardStatus reported = status;
+		if (operation == ApplicationClipboardOperation::Paste &&
+			status == ApplicationClipboardStatus::Complete) {
+			if (!spellcheckDialogModel.open ||
+				!spellcheckDialogModel.replacement.focused ||
+				mapping.findGeneration !=
+					spellcheckDialogModel.replacement.focusGeneration) {
+				reported = ApplicationClipboardStatus::Superseded;
+			} else if (!text.empty() && ApplyFindBarPaste(
+				spellcheckDialogModel.replacement, text)) {
+				editor->InvalidateFrame();
+			}
+		}
+		shellClipboardResults.push_back({shellId, operation, reported});
+		return;
+	}
+
 	// Find-bar owner.
 	ApplicationClipboardStatus reported = status;
 	if (operation == ApplicationClipboardOperation::Paste &&
@@ -1942,7 +2394,8 @@ void ApplicationUi::HandleFrameSizeChange() {
 	(void)SynchronizeTabs(true);
 	editor->InvalidateTopChrome();
 	editor->InvalidateScrollBars();
-	if (!fileErrors.empty() || workspace->ExternalChangePromptActive() ||
+	if (!fileErrors.empty() || spellcheckDialogModel.open ||
+		workspace->ExternalChangePromptActive() ||
 		workspace->LargeFilePromptActive() || workspace->PromptActive() ||
 		menuModel.openMenu.has_value()) {
 		// Full frame so the card or dropdown cannot leave stale pixels.
@@ -1966,6 +2419,7 @@ void ApplicationUi::RefreshOpenMenuActionState() {
 }
 
 void ApplicationUi::PrepareForExit() {
+	CloseSpellcheck();
 	DismissOpenMenu(menuModel, *editor);
 	DismissApplicationContextMenu();
 	DismissEmojiCompletion();

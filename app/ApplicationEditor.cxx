@@ -606,6 +606,20 @@ Scintilla::Position ApplicationEditor::DocumentLength() const noexcept {
 	return pdoc->Length();
 }
 
+SpellcheckScope ApplicationEditor::CurrentSpellcheckScope() const noexcept {
+	if (GetSelectionMode() != Scintilla::SelectionMode::Stream) {
+		return {SpellcheckScopeStatus::RectangularSelection, 0, 0};
+	}
+	if (GetSelections() != 1) {
+		return {SpellcheckScopeStatus::MultipleSelections, 0, 0};
+	}
+	if (GetSelectionEmpty()) {
+		return {SpellcheckScopeStatus::Available, 0, DocumentLength()};
+	}
+	return {SpellcheckScopeStatus::Available,
+		GetSelectionStart(), GetSelectionEnd()};
+}
+
 bool ApplicationEditor::ShowSpellcheckRange(DocumentId document,
 	Scintilla::Position start, Scintilla::Position length) {
 	if (spellcheckReviewDocument != document || document != activeDocumentId ||

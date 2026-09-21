@@ -1,6 +1,7 @@
 // Application chrome and overlay selection state for the production editor.
 // Owns menu, context menu, emoji completion, tab-strip, scrollbar interaction,
-// modal-card, error-queue, hover, press, painters, and which overlay is bound.
+// modal-card, spelling-review, error-queue, hover, press, painters, and which
+// overlay is bound.
 // Holds
 // references to ApplicationEditor, DocumentWorkspace, and RecentFiles. Pointer
 // and keyboard routing go through HandlePointer and HandleKeyboard with
@@ -22,6 +23,7 @@
 #define APPLICATIONUI_H
 
 #include <deque>
+#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -43,6 +45,7 @@
 #include "MenuBar.h"
 #include "ScrollBar.h"
 #include "ScrollMetrics.h"
+#include "SpellcheckDialog.h"
 #include "TabStrip.h"
 #include "UnsavedChangesCard.h"
 
@@ -58,6 +61,7 @@ enum class BoundOverlay {
 	LargeFile,
 	ExternalChange,
 	FileError,
+	Spellcheck,
 };
 
 /**
@@ -82,6 +86,7 @@ struct ApplicationLayout {
 	LargeFileCardLayout largeFileCard;
 	ExternalChangeCardLayout externalChangeCard;
 	FileErrorCardLayout fileErrorCard;
+	SpellcheckDialogLayout spellcheckDialog;
 };
 
 /**
@@ -99,13 +104,14 @@ struct ApplicationLayout {
 
 /**
  * Who owns the pointer for one event after priority resolution.
- * Order when deciding: file error, external-change confirmation, large-file
- * confirmation, unsaved prompt, active scrollbar drag, editor selection
+ * Order when deciding: file error, spelling review, external-change
+ * confirmation, large-file confirmation, unsaved prompt, active scrollbar drag, editor selection
  * capture, open menu bar, open context menu, open emoji list, permanent chrome
  * (including scrollbar hits), then editor.
  */
 enum class ApplicationPointerOwner {
 	FileError,
+	Spellcheck,
 	ExternalChange,
 	LargeFile,
 	UnsavedPrompt,
@@ -138,8 +144,9 @@ struct ApplicationPointerResult {
 
 /**
  * Who owns keyboard handling for one event after priority resolution.
- * Order when deciding: file error, external-change confirmation, large-file
- * confirmation, unsaved prompt, open context menu, Shift+F10 context-menu open,
+ * Order when deciding: file error, spelling review, external-change
+ * confirmation, large-file confirmation, unsaved prompt, open context menu,
+ * Shift+F10 context-menu open,
  * open menu bar (including open accelerators while closed), global Find
  * (Ctrl+F), a focused find field for editing and field-local clipboard keys,
  * other application shortcuts and tab cycling, then an open emoji list for
@@ -148,6 +155,7 @@ struct ApplicationPointerResult {
  */
 enum class ApplicationKeyboardOwner {
 	FileError,
+	Spellcheck,
 	ExternalChange,
 	LargeFile,
 	UnsavedPrompt,
@@ -212,7 +220,8 @@ public:
 	ApplicationUi(ApplicationEditor &editor,
 		DocumentWorkspace &workspace,
 		RecentFiles &recent,
-		std::string recentStatePath);
+		std::string recentStatePath,
+		std::vector<std::string> spellcheckDictionaryDirectories = {});
 	~ApplicationUi();
 
 	ApplicationUi(const ApplicationUi &) = delete;
@@ -319,9 +328,9 @@ public:
 	void HandleFocus(bool focused);
 
 	/**
-	 * True while a file-error, external-change, large-file, or unsaved card,
-	 * open menu bar, or open context menu owns input. The platform host drops
-	 * IME batches while this is true; protocol conversion stays in the adapter.
+	 * True while a modal card, open menu bar, or open context menu owns input.
+	 * The spelling card remains an explicit text-input owner for its replacement
+	 * field; other modal owners drop IME batches.
 	 */
 	[[nodiscard]] bool ChromeOwnsInput() const noexcept;
 
@@ -362,6 +371,21 @@ public:
 
 	/** Hide the find bar, restore the base inset, and leave the last match selected. */
 	void CloseFindBar();
+
+	/** Open or restart the modal spelling review for the current selection. */
+	void OpenSpellcheck();
+	/** Close the review immediately, retaining replacements already applied. */
+	void CloseSpellcheck();
+	[[nodiscard]] bool SpellcheckOpen() const noexcept {
+		return spellcheckDialogModel.open;
+	}
+	[[nodiscard]] const SpellcheckDialogModel &SpellcheckModel() const noexcept {
+		return spellcheckDialogModel;
+	}
+	/** Worker descriptor passed to the application event loop, or -1. */
+	[[nodiscard]] int SpellcheckResultDescriptor() const noexcept;
+	/** Deliver discovery or review results completed by the worker. */
+	void ProcessSpellcheckResults();
 
 	[[nodiscard]] bool FindBarVisible() const noexcept { return findBarVisible; }
 	[[nodiscard]] bool FindBarFocused() const noexcept {
@@ -587,6 +611,11 @@ private:
 	void RunFindForward();
 	void RunFindBackward();
 	void BlurFindField();
+	void SynchronizeSpellcheckDialog();
+	void StartSpellcheckSession(std::size_t dictionary);
+	void ActivateSpellcheckControl(SpellcheckDialogHit hit);
+	void ApplySpellcheckClipboardRequests(
+		const std::vector<FindBarRequest> &requests);
 	void DismissEmojiCompletion();
 	void RefreshEmojiCompletion();
 	void CompleteEmoji(const EmojiMatch &match);
@@ -599,6 +628,7 @@ private:
 	DocumentWorkspace *workspace = nullptr;
 	RecentFiles *recent = nullptr;
 	std::string recentStatePath;
+	std::vector<std::string> spellcheckDictionaryDirectories;
 	MenuBarModel menuModel;
 	ContextMenuModel contextMenuModel;
 	EmojiCompletionModel emojiCompletionModel;
@@ -617,6 +647,7 @@ private:
 	enum class ClipboardRequestOwner {
 		Editor,
 		FindBar,
+		Spellcheck,
 	};
 	struct ShellClipboardMapping {
 		ClipboardRequestOwner owner = ClipboardRequestOwner::Editor;
@@ -633,6 +664,16 @@ private:
 	MenuBarPainter menuPainter;
 	TabStripPainter stripPainter;
 	FindBarPainter findBarPainter;
+	SpellcheckDialogModel spellcheckDialogModel;
+	SpellcheckDialogPainter spellcheckDialogPainter;
+	std::unique_ptr<SpellcheckWorker> spellcheckWorker;
+	std::unique_ptr<SpellcheckSession> spellcheckSession;
+	uint64_t spellcheckDiscoveryGeneration = 0;
+	uint64_t spellcheckDiscoveryRequest = 0;
+	Scintilla::Position spellcheckScopeStart = 0;
+	Scintilla::Position spellcheckScopeEnd = 0;
+	Scintilla::Position shownSpellcheckStart = -1;
+	std::string shownSpellcheckWord;
 	UnsavedChangesCardPainter cardPainter;
 	LargeFileCardPainter largeFilePainter;
 	ExternalChangeCardPainter externalChangePainter;

@@ -96,6 +96,7 @@ enum class Keys {
 	Win = 313,
 	RWin = 314,
 	Menu = 315,
+	F7 = 316,
 };
 
 enum class KeyMod {

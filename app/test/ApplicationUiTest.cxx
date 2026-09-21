@@ -3,8 +3,10 @@
 #include <algorithm>
 #include <cstdio>
 #include <fcntl.h>
+#include <poll.h>
 #include <string>
 #include <string_view>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <vector>
 
@@ -19,6 +21,7 @@
 #include "MenuBar.h"
 #include "RecentFiles.h"
 #include "ScrollBar.h"
+#include "SpellcheckDialog.h"
 #include "TabStrip.h"
 #include "UnsavedChangesCard.h"
 
@@ -151,6 +154,53 @@ public:
 
 	std::string path;
 };
+
+class TempDictionaryDirectory {
+public:
+	TempDictionaryDirectory() {
+		char pattern[] = "/tmp/scalpel-ui-spell-XXXXXX";
+		char *created = mkdtemp(pattern);
+		REQUIRE(created != nullptr);
+		path = created;
+		Write("test_US.aff", "SET UTF-8\nTRY esiarntolcdugmphbyfvkwzxjq\n");
+		Write("test_US.dic", "2\nhello\nworld\n");
+	}
+	~TempDictionaryDirectory() {
+		(void)std::remove((path + "/test_US.aff").c_str());
+		(void)std::remove((path + "/test_US.dic").c_str());
+		(void)rmdir(path.c_str());
+	}
+	TempDictionaryDirectory(const TempDictionaryDirectory &) = delete;
+	TempDictionaryDirectory &operator=(const TempDictionaryDirectory &) = delete;
+
+	std::string path;
+
+private:
+	void Write(std::string_view name, std::string_view contents) {
+		const std::string file = path + "/" + std::string(name);
+		const int descriptor = ::open(file.c_str(),
+			O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+		REQUIRE(descriptor >= 0);
+		REQUIRE(write(descriptor, contents.data(), contents.size()) ==
+			static_cast<ssize_t>(contents.size()));
+		REQUIRE(close(descriptor) == 0);
+	}
+};
+
+bool PumpSpellcheck(ApplicationUi &ui,
+	Scalpel::SpellcheckDialogPhase phase) {
+	for (int attempt = 0; attempt < 6; ++attempt) {
+		if (ui.SpellcheckModel().phase == phase) {
+			return true;
+		}
+		pollfd descriptor{ui.SpellcheckResultDescriptor(), POLLIN, 0};
+		if (descriptor.fd < 0 || poll(&descriptor, 1, 1000) <= 0) {
+			return false;
+		}
+		ui.ProcessSpellcheckResults();
+	}
+	return ui.SpellcheckModel().phase == phase;
+}
 
 }
 
@@ -2888,4 +2938,122 @@ TEST_CASE("application UI find field does not open emoji completion") {
 	(void)ui.HandleKeyboard(MakeText(":"));
 	CHECK_FALSE(ui.EmojiCompletionOpen());
 	CHECK(ui.FindModel().query.find(':') != std::string::npos);
+}
+
+TEST_CASE("spellcheck dialog layout stays bounded and exposes every control") {
+	const Scalpel::SpellcheckDialogLayout layout =
+		Scalpel::LayoutSpellcheckDialog(320, 240);
+	CHECK(layout.card.left >= 0);
+	CHECK(layout.card.top >= 0);
+	CHECK(layout.card.right <= 320);
+	CHECK(layout.card.bottom <= 240);
+	CHECK(Scalpel::HitTestSpellcheckDialog(layout,
+		Center(layout.replacement)) == Scalpel::SpellcheckDialogHit::Replacement);
+	CHECK(Scalpel::HitTestSpellcheckDialog(layout,
+		Center(layout.replaceButton)) == Scalpel::SpellcheckDialogHit::Replace);
+	CHECK(Scalpel::HitTestSpellcheckDialog(layout,
+		Center(layout.closeButton)) == Scalpel::SpellcheckDialogHit::Close);
+	CHECK(Scalpel::CycleSpellcheckDialogFocus(
+		Scalpel::SpellcheckDialogControl::Close, 1) ==
+		Scalpel::SpellcheckDialogControl::Dictionary);
+	CHECK(Scalpel::CycleSpellcheckDialogFocus(
+		Scalpel::SpellcheckDialogControl::Dictionary, -1) ==
+		Scalpel::SpellcheckDialogControl::Close);
+
+	const Scalpel::SpellcheckDialogLayout narrow =
+		Scalpel::LayoutSpellcheckDialog(90, 80);
+	CHECK(narrow.card.left >= 0);
+	CHECK(narrow.card.top >= 0);
+	CHECK(narrow.card.right <= 90);
+	CHECK(narrow.card.bottom <= 80);
+}
+
+TEST_CASE("application UI F7 opens and Escape closes spelling review") {
+	ApplicationEditor editor(400, 240);
+	PrepareChromeEditor(editor);
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "");
+	SeedStrip(ui, editor);
+
+	const ApplicationKeyboardResult opened = ui.HandleKeyboard(
+		MakeKey(Scintilla::Keys::F7));
+	CHECK(opened.owner == ApplicationKeyboardOwner::ApplicationShortcut);
+	CHECK(ui.SpellcheckOpen());
+	CHECK(ui.SpellcheckResultDescriptor() >= 0);
+	CHECK(ui.SynchronizeComposition() == BoundOverlay::Spellcheck);
+	CHECK(ui.ChromeOwnsInput());
+
+	const ApplicationKeyboardResult closed = ui.HandleKeyboard(
+		MakeKey(Scintilla::Keys::Escape));
+	CHECK(closed.owner == ApplicationKeyboardOwner::Spellcheck);
+	CHECK_FALSE(ui.SpellcheckOpen());
+	CHECK_FALSE(editor.SpellcheckReviewActive());
+}
+
+TEST_CASE("application UI spelling review accepts IME replacement and advances") {
+	TempDictionaryDirectory dictionary;
+	ApplicationEditor editor(500, 320);
+	PrepareChromeEditor(editor);
+	editor.LoadInitialBuffer("helo world");
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "", {dictionary.path});
+
+	ui.OpenSpellcheck();
+	REQUIRE(PumpSpellcheck(ui, Scalpel::SpellcheckDialogPhase::Decision));
+	CHECK(ui.SpellcheckModel().dictionaries.size() == 1);
+	CHECK(ui.SpellcheckModel().dictionaries[0].locale == "test_US");
+	CHECK(ui.SpellcheckModel().word == "Word: helo");
+	CHECK(editor.SpellcheckReviewActive());
+
+	ApplicationTextInputBatch replacement;
+	replacement.commit = "hello";
+	ui.HandleTextInputBatch(replacement);
+	CHECK(ui.SpellcheckModel().replacement.query == "hello");
+	(void)ui.HandleKeyboard(MakeKey(Keys::Return));
+	REQUIRE(PumpSpellcheck(ui, Scalpel::SpellcheckDialogPhase::Complete));
+	CHECK(editor.Text() == "hello world");
+	CHECK(editor.SpellcheckReviewActive());
+
+	(void)ui.HandleKeyboard(MakeKey(Keys::Escape));
+	CHECK_FALSE(ui.SpellcheckOpen());
+	CHECK_FALSE(editor.SpellcheckReviewActive());
+}
+
+TEST_CASE("application UI rejects delayed spelling paste after focus loss") {
+	TempDictionaryDirectory dictionary;
+	ApplicationEditor editor(500, 320);
+	PrepareChromeEditor(editor);
+	editor.LoadInitialBuffer("helo");
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "", {dictionary.path});
+
+	ui.OpenSpellcheck();
+	REQUIRE(PumpSpellcheck(ui, Scalpel::SpellcheckDialogPhase::Decision));
+	ui.SetClipboardPasteAvailable(true);
+	(void)ui.HandleKeyboard(MakeLetter('V', KeyMod::Ctrl));
+	std::vector<Scalpel::ApplicationClipboardRequest> requests =
+		ui.TakeClipboardRequests();
+	REQUIRE(requests.size() == 1);
+
+	ApplicationTextInputBatch preedit;
+	preedit.preedit = ApplicationTextInputPreedit{"candidate", 9, 9};
+	ui.HandleTextInputBatch(preedit);
+	REQUIRE(ui.SpellcheckModel().replacement.preedit.has_value());
+	ui.HandleFocus(false);
+	CHECK_FALSE(ui.SpellcheckModel().replacement.preedit.has_value());
+	CHECK(ui.SpellcheckModel().focus ==
+		Scalpel::SpellcheckDialogControl::Close);
+
+	ui.HandleClipboardResult(requests[0].id,
+		Scalpel::ApplicationClipboardOperation::Paste,
+		Scalpel::ApplicationClipboardStatus::Complete, "late");
+	const std::vector<Scalpel::ApplicationClipboardResult> results =
+		ui.TakeClipboardResults();
+	REQUIRE(results.size() == 1);
+	CHECK(results[0].status ==
+		Scalpel::ApplicationClipboardStatus::Superseded);
+	CHECK(ui.SpellcheckModel().replacement.query != "late");
 }

@@ -205,6 +205,7 @@ add_library(scalpel_application OBJECT
   MenuBar.cxx
   RecentFiles.cxx
   ScrollBar.cxx
+	SpellcheckDialog.cxx
   SpellcheckSession.cxx
   TabStrip.cxx
   UiStyle.cxx

@@ -448,3 +448,20 @@ TEST_CASE("Wayland keyboard menu keys map F10 and Menu") {
 	CHECK(altE.modifiers == Scintilla::KeyMod::Alt);
 	CHECK(altE.text.empty());
 }
+
+TEST_CASE("Wayland keyboard maps F7 for spelling review") {
+	const TestKeymap keymap = MakeTestKeymap();
+	Scalpel::WaylandInput input;
+	REQUIRE(input.SetKeymap(keymap.text));
+
+	input.RecordKey(40, KEY_F7, true);
+	input.RecordKey(41, KEY_F7, false);
+	const std::vector<Scalpel::InputEvent> events = input.TakeInputs();
+	REQUIRE(events.size() == 2);
+	CHECK(std::get<Scalpel::KeyboardInput>(events[0]).key ==
+		Scintilla::Keys::F7);
+	CHECK(std::get<Scalpel::KeyboardInput>(events[0]).pressed);
+	CHECK(std::get<Scalpel::KeyboardInput>(events[1]).key ==
+		Scintilla::Keys::F7);
+	CHECK_FALSE(std::get<Scalpel::KeyboardInput>(events[1]).pressed);
+}

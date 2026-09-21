@@ -916,6 +916,70 @@ bool ApplyFindBarPaste(FindBarModel &model, std::string_view text) {
 	return model.InsertText(text);
 }
 
+void PaintFindBarField(Surface &surface, const FindBarLayout &layout,
+	const FindBarModel &model, const Font *font, const UiStyle &style) {
+	if (NonEmpty(layout.field)) {
+		surface.FillRectangle(layout.field, Fill(style.findFieldFill));
+		const ColourRGBA border = model.focused ? style.focusBorder :
+			style.findFieldBorder;
+		DrawInsideFrame(surface, layout.field, border, model.focused ? 2.0 : 1.0);
+	}
+	if (!NonEmpty(layout.fieldText) || !font) {
+		return;
+	}
+	const std::string display = DisplayText(model);
+	const XYPOSITION scroll = FieldScrollX(surface, font, model, layout);
+	const std::size_t selStart = model.preedit && !model.preedit->text.empty()
+		? std::min(DisplayCaret(model), DisplayAnchor(model))
+		: model.SelectionStart();
+	const std::size_t selEnd = model.preedit && !model.preedit->text.empty()
+		? std::max(DisplayCaret(model), DisplayAnchor(model))
+		: model.SelectionEnd();
+	if (model.focused && selStart != selEnd) {
+		const XYPOSITION x0 = TextWidth(surface, font,
+			std::string_view(display).substr(0, selStart)) - scroll;
+		const XYPOSITION x1 = TextWidth(surface, font,
+			std::string_view(display).substr(0, selEnd)) - scroll;
+		const PRectangle selection(
+			std::max(layout.fieldText.left,
+				layout.fieldText.left + std::min(x0, x1)),
+			layout.fieldText.top,
+			std::min(layout.fieldText.right,
+				layout.fieldText.left + std::max(x0, x1)),
+			layout.fieldText.bottom);
+		if (NonEmpty(selection)) {
+			surface.FillRectangle(selection, Fill(style.findSelectionFill));
+		}
+	}
+	if (!display.empty()) {
+		const XYPOSITION ascent = surface.Ascent(font);
+		const XYPOSITION height = surface.Height(font);
+		const XYPOSITION ybase = static_cast<XYPOSITION>(static_cast<int>(
+			layout.fieldText.top +
+			(layout.fieldText.Height() - height) / 2.0 + ascent));
+		const XYPOSITION textX = layout.fieldText.left - scroll;
+		const PRectangle textRectangle(textX, layout.fieldText.top,
+			textX + TextWidth(surface, font, display) + 1.0,
+			layout.fieldText.bottom);
+		surface.SetClip(layout.fieldText);
+		surface.DrawTextTransparent(textRectangle, font, ybase, display,
+			style.text);
+		surface.PopClip();
+	}
+	const bool hideCaret = model.preedit && model.preedit->cursorBegin < 0;
+	if (model.focused && !hideCaret) {
+		const std::size_t caret = DisplayCaret(model);
+		const XYPOSITION caretX = TextWidth(surface, font,
+			std::string_view(display).substr(0, caret)) - scroll;
+		const XYPOSITION x = layout.fieldText.left + caretX;
+		if (x >= layout.fieldText.left && x < layout.fieldText.right) {
+			surface.FillRectangle(PRectangle(x, layout.fieldText.top + 2.0,
+				x + 1.0, layout.fieldText.bottom - 2.0),
+				Fill(style.findCaretInk));
+		}
+	}
+}
+
 FindBarPainter::FindBarPainter(const UiStyle &styleIn) : style(styleIn) {
 	labelFont = Font::Allocate(FontParameters{
 		style.fontName, UiPixelSizeFromPoints(style.chromeLabelPoints)});
@@ -929,76 +993,7 @@ void FindBarPainter::Paint(Surface &surface, const FindBarLayout &layout,
 	surface.FillRectangle(layout.band, Fill(style.findBarFill));
 	DrawInsideFrame(surface, layout.band, style.chromeBorder, 1.0);
 
-	if (NonEmpty(layout.field)) {
-		surface.FillRectangle(layout.field, Fill(style.findFieldFill));
-		const ColourRGBA border = model.focused ? style.focusBorder :
-			style.findFieldBorder;
-		const XYPOSITION borderWidth = model.focused ? 2.0 : 1.0;
-		DrawInsideFrame(surface, layout.field, border, borderWidth);
-	}
-
-	if (NonEmpty(layout.fieldText) && labelFont) {
-		const std::string display = DisplayText(model);
-		const XYPOSITION scroll = FieldScrollX(surface, labelFont.get(), model,
-			layout);
-		const std::size_t selStart = model.preedit && !model.preedit->text.empty()
-			? std::min(DisplayCaret(model), DisplayAnchor(model))
-			: model.SelectionStart();
-		const std::size_t selEnd = model.preedit && !model.preedit->text.empty()
-			? std::max(DisplayCaret(model), DisplayAnchor(model))
-			: model.SelectionEnd();
-
-		// Selection highlight behind the text.
-		if (model.focused && selStart != selEnd) {
-			const XYPOSITION x0 = TextWidth(surface, labelFont.get(),
-				std::string_view(display).substr(0, selStart)) - scroll;
-			const XYPOSITION x1 = TextWidth(surface, labelFont.get(),
-				std::string_view(display).substr(0, selEnd)) - scroll;
-			const XYPOSITION left = layout.fieldText.left + std::min(x0, x1);
-			const XYPOSITION right = layout.fieldText.left + std::max(x0, x1);
-			const PRectangle selRc(
-				std::max(layout.fieldText.left, left),
-				layout.fieldText.top,
-				std::min(layout.fieldText.right, right),
-				layout.fieldText.bottom);
-			if (NonEmpty(selRc)) {
-				surface.FillRectangle(selRc, Fill(style.findSelectionFill));
-			}
-		}
-
-		if (!display.empty()) {
-			const XYPOSITION ascent = surface.Ascent(labelFont.get());
-			const XYPOSITION height = surface.Height(labelFont.get());
-			const XYPOSITION ybase = static_cast<XYPOSITION>(static_cast<int>(
-				layout.fieldText.top +
-				(layout.fieldText.Height() - height) / 2.0 + ascent));
-			const XYPOSITION textX = layout.fieldText.left - scroll;
-			const PRectangle textRc(textX, layout.fieldText.top,
-				textX + TextWidth(surface, labelFont.get(), display) + 1.0,
-				layout.fieldText.bottom);
-			// Clip to the field text band so scrolled content does not paint
-			// under the buttons.
-			surface.SetClip(layout.fieldText);
-			surface.DrawTextTransparent(textRc, labelFont.get(), ybase, display,
-				style.text);
-			surface.PopClip();
-		}
-
-		// Caret when focused and not hiding for negative preedit cursor.
-		const bool hideCaret = model.preedit && model.preedit->cursorBegin < 0;
-		if (model.focused && !hideCaret) {
-			const std::size_t caret = DisplayCaret(model);
-			const XYPOSITION caretX = TextWidth(surface, labelFont.get(),
-				std::string_view(display).substr(0, caret)) - scroll;
-			const XYPOSITION x = layout.fieldText.left + caretX;
-			if (x >= layout.fieldText.left && x < layout.fieldText.right) {
-				surface.FillRectangle(
-					PRectangle(x, layout.fieldText.top + 2.0, x + 1.0,
-						layout.fieldText.bottom - 2.0),
-					Fill(style.findCaretInk));
-			}
-		}
-	}
+	PaintFindBarField(surface, layout, model, labelFont.get(), style);
 
 	const std::string_view status = FindBarStatusLabel(model.status);
 	if (NonEmpty(layout.status) && !status.empty()) {

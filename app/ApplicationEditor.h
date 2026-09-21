@@ -83,6 +83,18 @@ struct SpellcheckReplacement {
 	std::string replacement;
 };
 
+enum class SpellcheckScopeStatus {
+	Available,
+	RectangularSelection,
+	MultipleSelections,
+};
+
+struct SpellcheckScope {
+	SpellcheckScopeStatus status = SpellcheckScopeStatus::Available;
+	Scintilla::Position start = 0;
+	Scintilla::Position end = 0;
+};
+
 enum class SpellcheckEditStatus {
 	Applied,
 	ReviewInactive,
@@ -220,6 +232,8 @@ public:
 		return documentGeneration;
 	}
 	[[nodiscard]] Scintilla::Position DocumentLength() const noexcept;
+	/** Capture one stream selection, or the whole document when it is empty. */
+	[[nodiscard]] SpellcheckScope CurrentSpellcheckScope() const noexcept;
 	/** Select and reveal the current spelling occurrence. */
 	[[nodiscard]] bool ShowSpellcheckRange(DocumentId document,
 		Scintilla::Position start, Scintilla::Position length);

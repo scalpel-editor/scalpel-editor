@@ -44,6 +44,8 @@ constexpr ApplicationActionInfo kActions[] = {
 		Key('A'), Ctrl, true},
 	{ApplicationAction::Find, ApplicationMenu::Edit, "Find", "Ctrl+F",
 		Key('F'), Ctrl, false},
+	{ApplicationAction::CheckSpelling, ApplicationMenu::Edit, "Check Spelling",
+		"F7", Scintilla::Keys::F7, Scintilla::KeyMod::Norm, false},
 	{ApplicationAction::AddBlockQuote, ApplicationMenu::Edit,
 		"Increase Quote Level", "Ctrl+'", Key('\''), Ctrl, true},
 	// xkb reports Shift+' as '"'. Letter shortcuts still match after Shift
@@ -117,6 +119,7 @@ bool ApplicationActionEnabled(ApplicationAction action,
 	case ApplicationAction::CloseTab:
 	case ApplicationAction::Quit:
 	case ApplicationAction::Find:
+	case ApplicationAction::CheckSpelling:
 	case ApplicationAction::AddBlockQuote:
 	case ApplicationAction::RemoveBlockQuote:
 	case ApplicationAction::ConvertLineEndingsToLf:
@@ -154,6 +157,7 @@ void DispatchApplicationAction(ApplicationAction action,
 	case ApplicationAction::CloseTab:
 	case ApplicationAction::Quit:
 	case ApplicationAction::Find:
+	case ApplicationAction::CheckSpelling:
 	case ApplicationAction::FontMonospace:
 	case ApplicationAction::FontSerif:
 	case ApplicationAction::FontSans:
@@ -214,6 +218,9 @@ void DispatchApplicationAction(ApplicationAction action,
 		break;
 	case ApplicationAction::Find:
 		// UI-local: ApplicationUi opens the find bar before this dispatcher.
+		break;
+	case ApplicationAction::CheckSpelling:
+		// UI-local: ApplicationUi opens the spelling dialog.
 		break;
 	case ApplicationAction::AddBlockQuote:
 		editor.AddBlockQuote();

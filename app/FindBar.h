@@ -216,6 +216,12 @@ struct FindBarTextInputResult {
  */
 [[nodiscard]] bool ApplyFindBarPaste(FindBarModel &model, std::string_view text);
 
+/** Paint the shared editable field used by find and spelling replacement. */
+void PaintFindBarField(Scintilla::Internal::Surface &surface,
+	const FindBarLayout &layout, const FindBarModel &model,
+	const Scintilla::Internal::Font *font,
+	const UiStyle &style = DefaultUiStyle());
+
 /**
  * Owns the find-bar font. Construct once beside the shell and reuse across
  * frames. Paints opaque band chrome; does not dim the client.

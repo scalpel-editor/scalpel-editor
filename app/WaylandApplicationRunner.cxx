@@ -9,7 +9,7 @@
 // dirty-tab sync, interaction cleanup, and exit dismissal. This file maps
 // portal request IDs to application dialog identities, delivers platform
 // events and unconsumed pointer input through ApplicationUi, applies
-// CurrentPointerCursor, drops IME batches while ChromeOwnsInput is true, drains
+// CurrentPointerCursor, routes IME batches through ApplicationUi, drains
 // TakeShellEffects for portal dialogs and accept-close, copies
 // CurrentWindowTitle onto the toplevel, submits frames, and waits. Open/save
 // policy and prompt transitions live in DocumentWorkspace.
@@ -492,6 +492,7 @@ ApplicationTerminationReason RunWaylandApplication(ApplicationSession &session) 
 
 	while (!quitAccepted && !window.ForceCloseRequested()) {
 		(void)window.TakePresentationResults();
+		ui.ProcessSpellcheckResults();
 		DeliverClipboardResults(window, ui);
 		DeliverPrimarySelectionResults(window, editor);
 		DeliverTextInputBatches(window, ui);
@@ -598,7 +599,8 @@ ApplicationTerminationReason RunWaylandApplication(ApplicationSession &session) 
 			}
 		}
 		if (!quitAccepted && !window.ForceCloseRequested()) {
-			window.WaitForEvents(editor.TimeUntilNextWork());
+			window.WaitForEvents(editor.TimeUntilNextWork(),
+				ui.SpellcheckResultDescriptor());
 		}
 	}
 	DestroyContextMenuPopupHost(window, gl, contextPopup);
