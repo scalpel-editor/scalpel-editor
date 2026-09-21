@@ -3057,3 +3057,97 @@ TEST_CASE("application UI rejects delayed spelling paste after focus loss") {
 		Scalpel::ApplicationClipboardStatus::Superseded);
 	CHECK(ui.SpellcheckModel().replacement.query != "late");
 }
+
+TEST_CASE("application UI spelling review preserves an existing clipboard offer") {
+	TempDictionaryDirectory dictionary;
+	ApplicationEditor editor(500, 320);
+	PrepareChromeEditor(editor);
+	editor.LoadInitialBuffer("helo");
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "", {dictionary.path});
+	ui.SetClipboardPasteAvailable(true);
+	ui.OpenSpellcheck();
+	REQUIRE(PumpSpellcheck(ui, Scalpel::SpellcheckDialogPhase::Decision));
+	(void)ui.HandleKeyboard(MakeLetter('V', KeyMod::Ctrl));
+	CHECK(ui.TakeClipboardRequests().size() == 1);
+}
+
+TEST_CASE("application UI spelling review rejects paste across decisions") {
+	TempDictionaryDirectory dictionary;
+	ApplicationEditor editor(500, 320);
+	PrepareChromeEditor(editor);
+	editor.LoadInitialBuffer("helo wrld");
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "", {dictionary.path});
+	ui.OpenSpellcheck();
+	REQUIRE(PumpSpellcheck(ui, Scalpel::SpellcheckDialogPhase::Decision));
+	ui.SetClipboardPasteAvailable(true);
+	(void)ui.HandleKeyboard(MakeLetter('V', KeyMod::Ctrl));
+	const auto requests = ui.TakeClipboardRequests();
+	REQUIRE(requests.size() == 1);
+
+	SECTION("next occurrence") {
+		(void)ui.HandleKeyboard(MakeKey(Keys::Return));
+		REQUIRE(ui.SpellcheckModel().phase == Scalpel::SpellcheckDialogPhase::Loading);
+		CHECK_FALSE(ui.SpellcheckModel().replacement.focused);
+		REQUIRE(PumpSpellcheck(ui, Scalpel::SpellcheckDialogPhase::Decision));
+		CHECK(ui.SpellcheckModel().word == "Word: wrld");
+	}
+	SECTION("reopened review") {
+		ui.CloseSpellcheck();
+		ui.OpenSpellcheck();
+		REQUIRE(PumpSpellcheck(ui, Scalpel::SpellcheckDialogPhase::Decision));
+	}
+	ui.HandleClipboardResult(requests[0].id,
+		Scalpel::ApplicationClipboardOperation::Paste,
+		Scalpel::ApplicationClipboardStatus::Complete, "late");
+	const auto results = ui.TakeClipboardResults();
+	REQUIRE(results.size() == 1);
+	CHECK(results[0].status == Scalpel::ApplicationClipboardStatus::Superseded);
+	CHECK(ui.SpellcheckModel().replacement.query != "late");
+}
+
+TEST_CASE("application UI spelling worker polling does not damage an idle frame") {
+	TempDictionaryDirectory dictionary;
+	ApplicationEditor editor(500, 320);
+	PrepareChromeEditor(editor);
+	editor.LoadInitialBuffer("helo");
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "", {dictionary.path});
+	ui.OpenSpellcheck();
+	REQUIRE(PumpSpellcheck(ui, Scalpel::SpellcheckDialogPhase::Decision));
+	SECTION("open review") {}
+	SECTION("closed review") { ui.CloseSpellcheck(); }
+	(void)editor.TakeFrameDamage();
+	ui.ProcessSpellcheckResults();
+	CHECK(editor.TakeFrameDamage().empty());
+}
+
+TEST_CASE("application UI spelling field yields to file errors") {
+	TempDictionaryDirectory dictionary;
+	ApplicationEditor editor(500, 320);
+	PrepareChromeEditor(editor);
+	editor.LoadInitialBuffer("helo");
+	DocumentWorkspace workspace(editor);
+	RecentFiles recent;
+	ApplicationUi ui(editor, workspace, recent, "", {dictionary.path});
+	ui.OpenSpellcheck();
+	REQUIRE(PumpSpellcheck(ui, Scalpel::SpellcheckDialogPhase::Decision));
+	ApplicationTextInputBatch preedit;
+	preedit.preedit = ApplicationTextInputPreedit{"candidate", 9, 9};
+	ui.HandleTextInputBatch(preedit);
+	REQUIRE(ui.SpellcheckModel().replacement.preedit.has_value());
+	const std::string query = ui.SpellcheckModel().replacement.query;
+	ui.AppendFileErrors({DocumentFileError{
+		DocumentFileOperation::Open, "/missing"}});
+	CHECK(ui.SynchronizeComposition() == BoundOverlay::FileError);
+	CHECK_FALSE(ui.SpellcheckModel().replacement.focused);
+	CHECK_FALSE(ui.SpellcheckModel().replacement.preedit.has_value());
+	ApplicationTextInputBatch commit;
+	commit.commit = "hidden";
+	ui.HandleTextInputBatch(commit);
+	CHECK(ui.SpellcheckModel().replacement.query == query);
+}
